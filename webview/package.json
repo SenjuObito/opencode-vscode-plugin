@@ -56,5 +56,11 @@
   },
   "overrides": {
     "intersection-observer": "npm:empty-npm-package@^1.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@swc/core"
+    ]
   }
 }
