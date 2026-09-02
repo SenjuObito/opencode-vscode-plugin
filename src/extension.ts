@@ -43,7 +43,7 @@ import { TokenTrackerHandler } from './host/handlers/TokenTrackerHandler.js';
 import { logDiagnostic } from './host/util/DiagnosticLogger.js';
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('[extension] OpenCode GUI activating...');
+	console.log('[extension] OpenCode X activating...');
 
 	// ── 1. 设置存储 ──────────────────────────────────────────────────────────
 	const store = new MementoSettingsStore(context.workspaceState, context.globalState);
@@ -275,7 +275,7 @@ export function activate(context: vscode.ExtensionContext) {
 	void warmupDaemon(daemon, handlerContext, settings, cliModelsHandler)
 		.catch((err) => console.warn(`[extension] Daemon warmup failed: ${(err as Error).message}`));
 
-	console.log('[extension] OpenCode GUI activated');
+	console.log('[extension] OpenCode X activated');
 }
 
 /** 常驻 daemon 启动 + `opencode.preconnect` 预热 serve。 */
@@ -326,5 +326,5 @@ function pushDaemonStatus(channel: BroadcastChannel, alive: boolean): void {
 }
 
 export function deactivate() {
-	console.log('[extension] OpenCode GUI deactivating...');
+	console.log('[extension] OpenCode X deactivating...');
 }

@@ -92,7 +92,7 @@ if (!notes) {
   source = 'default';
 }
 
-const header = `## OpenCode GUI ${version}\n\n`;
+const header = `## OpenCode X ${version}\n\n`;
 const body = header + notes + '\n';
 
 writeFileSync(outFile, body, 'utf8');

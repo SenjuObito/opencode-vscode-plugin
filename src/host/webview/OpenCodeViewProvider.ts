@@ -179,7 +179,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 		// Webview debug logs — forwarded here from the webview via the cardDebug
-		// bridge event so they appear in the «OpenCode GUI» Output channel.
+		// bridge event so they appear in the «OpenCode X» Output channel.
 		if (type === 'cardDebug') {
 			logDiagnostic(`[Webview] ${content}`);
 			return;

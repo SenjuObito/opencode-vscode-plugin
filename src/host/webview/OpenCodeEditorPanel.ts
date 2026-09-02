@@ -119,7 +119,7 @@ export class OpenCodeEditorPanel {
 			if (!type) {
 				return;
 			}
-			// Webview debug logs — 转发到 «OpenCode GUI» 输出通道。
+			// Webview debug logs — 转发到 «OpenCode X» 输出通道。
 			if (type === 'cardDebug') {
 				logDiagnostic(`[Webview] ${content}`);
 				return;

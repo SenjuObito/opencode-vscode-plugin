@@ -1,6 +1,6 @@
 {
   "name": "opencode-gui",
-  "displayName": "OpenCode GUI",
+  "displayName": "OpenCode X",
   "publisher": "SenjuObito",
   "description": "opencode gui",
   "version": "0.0.1",
@@ -14,7 +14,7 @@
   },
   "icon": "media/opencode.png",
   "engines": {
-    "vscode": "^1.125.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
