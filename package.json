@@ -1,0 +1,112 @@
+{
+  "name": "opencode-gui",
+  "displayName": "OpenCode GUI",
+  "publisher": "SenjuObito",
+  "description": "opencode gui",
+  "version": "0.0.1",
+  "icon": "media/opencode.png",
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "opencode-gui",
+          "title": "OpenCode",
+          "icon": "media/opencode-activity.svg"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "opencode-gui-chat",
+          "title": "OpenCode",
+          "icon": "media/opencode-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "opencode-gui": [
+        {
+          "type": "webview",
+          "id": "opencode-gui.left",
+          "name": "OpenCode"
+        }
+      ],
+      "opencode-gui-chat": [
+        {
+          "type": "webview",
+          "id": "opencode-gui.right",
+          "name": "OpenCode"
+        }
+      ]
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "opencode-gui.openChat",
+          "group": "navigation"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "opencode-gui.openLeft",
+        "title": "打开 OpenCode 面板（左侧）",
+        "category": "OpenCode"
+      },
+      {
+        "command": "opencode-gui.openChat",
+        "title": "在编辑器分栏打开 OpenCode",
+        "category": "OpenCode",
+        "icon": {
+          "light": "media/opencode-activity-light.svg",
+          "dark": "media/opencode-activity-dark.svg"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run package",
+    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/vscode": "^1.125.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "typescript-eslint": "^8.61.1",
+    "eslint": "^10.5.0",
+    "esbuild": "^0.28.1",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^6.0.3",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}

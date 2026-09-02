@@ -1,0 +1,199 @@
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useTriggerDetection } from './useTriggerDetection.js';
+import { debounce } from '../utils/debounce.js';
+import { perfTimer } from '../../../utils/debug.js';
+import { TEXT_LENGTH_THRESHOLDS, DEBOUNCE_TIMING } from '../../../constants/performance.js';
+
+/**
+ * Completion dropdown state interface
+ */
+interface CompletionDropdownState {
+  isOpen: boolean;
+  open: (position: { top: number; left: number; width: number; height: number }, trigger: { trigger: string; query: string; start: number; end: number }) => void;
+  close: () => void;
+  updateQuery: (trigger: { trigger: string; query: string; start: number; end: number }) => void;
+}
+
+/**
+ * Hook parameters
+ */
+interface UseCompletionTriggerDetectionParams {
+  editableRef: RefObject<HTMLDivElement | null>;
+  sharedComposingRef: RefObject<boolean>;
+  justRenderedTagRef: RefObject<boolean>;
+  getTextContent: () => string;
+  fileCompletion: CompletionDropdownState;
+  commandCompletion: CompletionDropdownState;
+  dollarCommandCompletion: CompletionDropdownState;
+  /** Only enable $ trigger detection when provider is codex */
+  isDollarTriggerEnabled?: boolean;
+}
+
+/**
+ * useCompletionTriggerDetection - Completion trigger detection hook
+ * Handles detection and triggering of @ / / # / ! / $ completion menus
+ */
+export function useCompletionTriggerDetection({
+  editableRef,
+  sharedComposingRef,
+  justRenderedTagRef,
+  getTextContent,
+  fileCompletion,
+  commandCompletion,
+  dollarCommandCompletion,
+  isDollarTriggerEnabled = false,
+}: UseCompletionTriggerDetectionParams) {
+  const { detectTrigger, getTriggerPosition, getCursorPosition } = useTriggerDetection();
+
+  /**
+   * Detect and handle completion triggers
+   * Optimized: only start detection when @ or / or # is input
+   */
+  const detectAndTriggerCompletion = useCallback(() => {
+    const timer = perfTimer('detectAndTriggerCompletion');
+
+    if (!editableRef.current) return;
+
+    // Don't detect completion during IME composition to avoid interfering with composition
+    // Use sharedComposingRef for reliable, up-to-date composing state check
+    if (sharedComposingRef.current) {
+      return;
+    }
+
+    // If file tags were just rendered, skip this completion detection
+    if (justRenderedTagRef.current) {
+      justRenderedTagRef.current = false;
+      fileCompletion.close();
+      commandCompletion.close();
+      dollarCommandCompletion.close();
+      return;
+    }
+
+    const text = getTextContent();
+    timer.mark('getText');
+
+    // Performance optimization: Skip completion detection for very large text
+    // This prevents expensive operations (cursor position calculation, trigger detection) on large inputs
+    if (text.length > TEXT_LENGTH_THRESHOLDS.COMPLETION_DETECTION) {
+      fileCompletion.close();
+      commandCompletion.close();
+      dollarCommandCompletion.close();
+      timer.mark('skip-large-text');
+      timer.end();
+      return;
+    }
+
+    // Optimization: Quick check if text contains trigger characters, return immediately if not
+    const hasAtSymbol = text.includes('@');
+    const hasSlashSymbol = text.includes('/');
+    const hasDollarSymbol = isDollarTriggerEnabled && text.includes('$');
+
+    if (!hasAtSymbol && !hasSlashSymbol && !hasDollarSymbol) {
+      fileCompletion.close();
+      commandCompletion.close();
+      dollarCommandCompletion.close();
+      timer.end();
+      return;
+    }
+    timer.mark('quickCheck');
+
+    const cursorPos = getCursorPosition(editableRef.current);
+    timer.mark('getCursorPos');
+
+    // Pass element parameter so detectTrigger can skip file tags
+    const trigger = detectTrigger(text, cursorPos, editableRef.current);
+    timer.mark('detectTrigger');
+
+    // Close currently open completion
+    if (!trigger) {
+      fileCompletion.close();
+      commandCompletion.close();
+      dollarCommandCompletion.close();
+      timer.end();
+      return;
+    }
+
+    // Get trigger position
+    const position = getTriggerPosition(editableRef.current, trigger.start);
+    if (!position) {
+      timer.end();
+      return;
+    }
+
+    // Open corresponding completion based on trigger symbol
+    if (trigger.trigger === '@') {
+      commandCompletion.close();
+      dollarCommandCompletion.close();
+      if (!fileCompletion.isOpen) {
+        fileCompletion.open(position, trigger);
+        fileCompletion.updateQuery(trigger);
+      } else {
+        fileCompletion.updateQuery(trigger);
+      }
+    } else if (trigger.trigger === '/') {
+      fileCompletion.close();
+      dollarCommandCompletion.close();
+      if (!commandCompletion.isOpen) {
+        commandCompletion.open(position, trigger);
+        commandCompletion.updateQuery(trigger);
+      } else {
+        commandCompletion.updateQuery(trigger);
+      }
+    } else if (trigger.trigger === '$') {
+      if (!isDollarTriggerEnabled) {
+        // Ignore $ trigger when not in Codex provider mode
+        fileCompletion.close();
+        commandCompletion.close();
+        dollarCommandCompletion.close();
+        timer.end();
+        return;
+      }
+      fileCompletion.close();
+      commandCompletion.close();
+      if (!dollarCommandCompletion.isOpen) {
+        dollarCommandCompletion.open(position, trigger);
+        dollarCommandCompletion.updateQuery(trigger);
+      } else {
+        dollarCommandCompletion.updateQuery(trigger);
+      }
+    }
+
+    timer.end();
+  }, [
+    editableRef,
+    sharedComposingRef,
+    justRenderedTagRef,
+    getTextContent,
+    getCursorPosition,
+    detectTrigger,
+    getTriggerPosition,
+    fileCompletion,
+    commandCompletion,
+    dollarCommandCompletion,
+    isDollarTriggerEnabled,
+  ]);
+
+  // Keep a stable debounced instance: detectAndTriggerCompletion is recreated
+  // every render (completion objects are fresh literals), which would otherwise
+  // spawn a new debounce per render — orphaned timers then fire with stale
+  // closures (e.g. isOpen=false) and redundantly re-open/clear the dropdown.
+  const detectRef = useRef(detectAndTriggerCompletion);
+  detectRef.current = detectAndTriggerCompletion;
+
+  const debouncedDetectCompletion = useMemo(
+    () => debounce(() => detectRef.current(), DEBOUNCE_TIMING.COMPLETION_DETECTION_MS),
+    []
+  );
+
+  // Cancel pending detection on unmount
+  useEffect(() => {
+    return () => debouncedDetectCompletion.cancel();
+  }, [debouncedDetectCompletion]);
+
+  return {
+    detectAndTriggerCompletion,
+    debouncedDetectCompletion,
+  };
+}
+
+export default useCompletionTriggerDetection;

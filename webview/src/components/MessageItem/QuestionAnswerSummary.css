@@ -1,0 +1,92 @@
+/* Read-only opencode askuserquestion summary, rendered inline in the chat flow.
+   Matches the old QuestionCard answered-state design from question-card.less. */
+
+.question-answer-summary {
+  position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  padding: 12px 20px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  opacity: 0.85;
+  transition: all 0.3s ease;
+}
+
+/* ── Header (matches .question-card-header) ── */
+
+.qas-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qas-header .codicon {
+  font-size: 16px;
+  color: var(--color-link);
+  flex-shrink: 0;
+}
+
+.qas-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+/* ── "已回答" badge (matches .question-card-status-badge) ── */
+
+.qas-answered-badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-success, #2ea043);
+  background: rgba(46, 160, 67, 0.12);
+  padding: 2px 10px;
+  border-radius: 4px;
+}
+
+/* ── Body: summary rows (matches .question-card-summary) ── */
+
+.qas-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qas-summary-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Matches shared .question-tag */
+.qas-tag {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-link);
+  background: rgba(0, 120, 212, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* Matches .summary-question */
+.qas-question {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Matches .summary-answer */
+.qas-answer {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.qas-answer::before {
+  content: '→ ';
+  color: var(--text-muted);
+}

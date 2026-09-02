@@ -1,0 +1,110 @@
+name: Release
+
+# Build & package the VS Code extension on every pushed tag (e.g. `v0.1.0`).
+# Produces one .vsix per platform/architecture and publishes a GitHub Release
+# whose body becomes the "What's New" content shown by the in-extension
+# changelog dialog (it reads the GitHub Releases API).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, package & publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for git-log fallback in release notes
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # vsce requires `version` to match the tag so the .vsix and the
+      # in-extension APP_VERSION (embedded into the webview at build time)
+      # line up with the GitHub release.
+      - name: Sync version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VERSION="$VERSION" node -e "const fs=require('fs');const p='package.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.version=process.env.VERSION;fs.writeFileSync(p,JSON.stringify(d,null,2)+'\n');console.log('package.json version ->',process.env.VERSION);"
+
+      - name: Install root dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Type check (extension host)
+        run: pnpm run check-types
+
+      - name: Install & build webview
+        run: |
+          cd webview
+          pnpm install --no-frozen-lockfile
+          pnpm rebuild esbuild || true
+          pnpm build
+          cd ..
+
+      # ai-bridge is an independent npm project; its deps must ship inside the
+      # VSIX (the daemon does `import('@opencode-ai/sdk/v2')` at runtime).
+      - name: Install ai-bridge runtime dependencies
+        run: |
+          cd ai-bridge
+          npm install
+          cd ..
+
+      - name: Build extension host
+        run: node esbuild.js --production
+
+      - name: Extract release notes
+        run: node tools/extract-release-notes.mjs "${{ steps.meta.outputs.version }}" release-notes.md
+
+      - name: Package VSIX for all platforms
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          TARGETS=(darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64)
+          for t in "${TARGETS[@]}"; do
+            echo "Packaging target: $t"
+            npx --yes @vscode/vsce@latest package --target "$t" --no-dependencies -o "opencode-gui-$VERSION-$t.vsix"
+          done
+
+      # Guard against the packaging defect where ai-bridge/node_modules gets
+      # stripped: if the daemon SDK is missing, fail loudly instead of shipping
+      # a broken extension.
+      - name: Verify daemon dependency is packaged
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          unzip -l "opencode-gui-$VERSION-linux-x64.vsix" | grep -q "ai-bridge/node_modules/@opencode-ai/sdk" \
+            && echo "OK: @opencode-ai/sdk shipped in VSIX" \
+            || { echo "ERROR: @opencode-ai/sdk missing from VSIX"; exit 1; }
+
+      - name: Create / update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          mapfile -t ASSETS < <(ls opencode-gui-"$VERSION"-*.vsix 2>/dev/null)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading assets..."
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --title "OpenCode GUI $TAG" \
+              --notes-file release-notes.md
+          fi

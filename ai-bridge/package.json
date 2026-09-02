@@ -1,0 +1,12 @@
+{
+  "name": "ai-bridge",
+  "version": "1.0.0",
+  "description": "Persistent opencode bridge (opencode serve + @opencode-ai/sdk) for the desktop GUI",
+  "type": "module",
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.18.15"
+  },
+  "scripts": {
+    "test:opencode": "node channel-manager.js opencode send"
+  }
+}

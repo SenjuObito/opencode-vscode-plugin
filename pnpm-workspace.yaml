@@ -1,0 +1,5 @@
+# pnpm 10+ / 11: onlyBuiltDependencies whitelists build scripts (esbuild's
+# postinstall downloads its platform binary). Without this, `pnpm install`
+# blocks the build and `node esbuild.js` fails in CI.
+onlyBuiltDependencies:
+  - esbuild
