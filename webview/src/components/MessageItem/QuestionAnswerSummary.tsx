@@ -14,6 +14,8 @@ interface QuestionAnswerSummaryProps {
   questions: QuestionSummaryItem[];
   answer: ToolResultBlock | null | undefined;
   t: TFunction;
+  /** true=已回答（带 ✓ 与「已回答」徽章）；false=未回答/已跳过（带 ? 与「未回答」徽章）。默认 true 以兼容既有用法。 */
+  answered?: boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ export const QuestionAnswerSummary = memo(function QuestionAnswerSummary({
   questions,
   answer,
   t,
+  answered = true,
 }: QuestionAnswerSummaryProps) {
   if (!questions.length) return null;
 
@@ -73,12 +76,15 @@ export const QuestionAnswerSummary = memo(function QuestionAnswerSummary({
   return (
     <div className="question-answer-summary">
       <div className="qas-header">
-        <span className="codicon codicon-check" aria-hidden="true" />
+        <span className={`codicon ${answered ? 'codicon-check' : 'codicon-question'}`} aria-hidden="true" />
         <span className="qas-header-title">
           {t('askUserQuestion.title', 'OpenCode 有一些问题想问你')}
         </span>
-        <span className="qas-answered-badge">
-          {t('askUserQuestion.answeredStatus', '已回答')}
+        <span className={`qas-answered-badge ${answered ? '' : 'qas-unanswered-badge'}`}>
+          {t(
+            answered ? 'askUserQuestion.answeredStatus' : 'askUserQuestion.unansweredStatus',
+            answered ? '已回答' : '未回答',
+          )}
         </span>
       </div>
       <div className="qas-body">

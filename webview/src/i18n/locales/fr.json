@@ -813,7 +813,8 @@
     "timeoutWarning": "Répondez vite, la question sera ignorée dans {{seconds}} secondes",
     "progress": "Question {{current}} / {{total}}",
     "prev": "Précédent",
-    "next": "Suivant"
+    "next": "Suivant",
+    "unansweredStatus": "Sans réponse"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",

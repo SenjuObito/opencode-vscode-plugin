@@ -48,6 +48,13 @@
   border-radius: 4px;
 }
 
+/* ── "未回答" / 已跳过 badge（中性灰，区别于已回答的绿色） ── */
+
+.qas-unanswered-badge {
+  color: var(--color-fg-muted, #8b949e);
+  background: rgba(139, 148, 158, 0.14);
+}
+
 /* ── Body: summary rows (matches .question-card-summary) ── */
 
 .qas-body {

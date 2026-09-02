@@ -840,7 +840,8 @@
     "timeoutWarning": "Ответьте скорее, вопрос будет пропущен через {{seconds}} сек.",
     "progress": "Вопрос {{current}} / {{total}}",
     "prev": "Назад",
-    "next": "Далее"
+    "next": "Далее",
+    "unansweredStatus": "Без ответа"
   },
   "planApproval": {
     "title": "План готов к утверждению",

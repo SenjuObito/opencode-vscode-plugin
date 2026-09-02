@@ -196,6 +196,8 @@ export const HistoryListItem = memo(({
 
   const fileSize = session.fileSize ? formatFileSize(session.fileSize) : null;
   const showEntrypointBadge = session.entrypoint && session.entrypoint !== 'cli' && session.entrypoint !== 'remote';
+  // [TEMP] 下载会话按钮当前点击无响应，临时隐藏（handler / props / i18n 均保留）。详见 docs/KNOWN-ISSUES.md
+  const showExportButton = false;
   // Converting the session this window is still chatting in would race with the
   // SDK process appending to the jsonl file, so hide the button for it.
   const showConvertButton = !isActiveSession
@@ -276,14 +278,16 @@ export const HistoryListItem = memo(({
             >
               <span className="codicon codicon-edit"></span>
             </button>
-            <button
-              className="history-export-btn"
-              onClick={handleExport}
-              title={t('history.exportSession')}
-              aria-label={t('history.exportSession')}
-            >
-              <span className="codicon codicon-arrow-down"></span>
-            </button>
+            {showExportButton && (
+              <button
+                className="history-export-btn"
+                onClick={handleExport}
+                title={t('history.exportSession')}
+                aria-label={t('history.exportSession')}
+              >
+                <span className="codicon codicon-arrow-down"></span>
+              </button>
+            )}
             <button
               className="history-delete-btn"
               onClick={handleDelete}

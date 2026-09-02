@@ -340,6 +340,19 @@ export function ContentBlockRenderer({
         answerBlock = findToolResult(blockId, messageIndex) ?? null;
         console.log(`[ContentBlockRenderer] askuserquestion fallback findToolResult blockId="${blockId}" found=${!!answerBlock}`);
       }
+      // 仅当答案文本非空才算「已回答」；否则（用户跳过 / 弹窗仍待回答 / 答案为空）
+      // 渲染为「未回答」，避免把未作答的提问卡片误标成「已回答」。
+      const answerBlockText = answerBlock
+        ? (typeof answerBlock.content === 'string'
+            ? answerBlock.content
+            : Array.isArray(answerBlock.content)
+              ? answerBlock.content
+                  .map((item) => (item && typeof item.text === 'string' ? item.text : ''))
+                  .filter(Boolean)
+                  .join('\n')
+              : '')
+        : '';
+      const hasAnswer = answerBlockText.trim().length > 0;
       return (
         <QuestionAnswerSummary
           questions={
@@ -348,6 +361,7 @@ export function ContentBlockRenderer({
               ?? []) as QuestionSummaryItem[]
           }
           answer={answerBlock}
+          answered={hasAnswer}
           t={t}
         />
       );

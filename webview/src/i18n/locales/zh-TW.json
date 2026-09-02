@@ -818,7 +818,8 @@
     "timeoutWarning": "請盡快回答，問題將在 {{seconds}} 秒後自動跳過",
     "progress": "問題 {{current}} / {{total}}",
     "prev": "上一題",
-    "next": "下一題"
+    "next": "下一題",
+    "unansweredStatus": "未回答"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",

@@ -9,9 +9,6 @@ export function createLocalizeMessage(t: TFunction): (text: string) => string {
   return (text: string): string => {
     // ai-bridge error message English to i18n key mapping
     const aiBridgeMessageMap: Record<string, string> = {
-      // Claude Code error messages
-      'Claude Code was interrupted (possibly response timeout or user cancellation):': t('aiBridge.claudeCodeInterrupted'),
-      'Claude Code error:': t('aiBridge.claudeCodeError'),
       'Not configured': t('aiBridge.notConfigured'),
       'Not configured (value is empty or missing)': t('aiBridge.notConfiguredEmpty'),
       'Default (https://api.anthropic.com)': t('aiBridge.defaultBaseUrl'),

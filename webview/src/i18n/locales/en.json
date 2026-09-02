@@ -877,7 +877,8 @@
     "timeoutWarning": "Please answer soon, the question will be skipped in {{seconds}} seconds",
     "progress": "Question {{current}} / {{total}}",
     "prev": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "unansweredStatus": "Unanswered"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",

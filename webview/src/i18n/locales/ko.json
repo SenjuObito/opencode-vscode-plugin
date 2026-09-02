@@ -853,7 +853,8 @@
     "timeoutWarning": "곧 답변해 주세요. {{seconds}}초 후 자동으로 건너뜁니다",
     "progress": "질문 {{current}} / {{total}}",
     "prev": "이전",
-    "next": "다음"
+    "next": "다음",
+    "unansweredStatus": "미답변"
   },
   "planApproval": {
     "title": "계획 승인 대기 중",

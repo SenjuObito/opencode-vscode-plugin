@@ -813,7 +813,8 @@
     "timeoutWarning": "जल्दी उत्तर दें, प्रश्न {{seconds}} सेकंड में छोड़ दिया जाएगा",
     "progress": "प्रश्न {{current}} / {{total}}",
     "prev": "पिछला",
-    "next": "अगला"
+    "next": "अगला",
+    "unansweredStatus": "बिना उत्तर"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
