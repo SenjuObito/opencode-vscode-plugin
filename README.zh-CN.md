@@ -1,4 +1,4 @@
-# opencode-x
+# opencode-buddy
 
 一个将 **opencode** agent 带入完整聊天 GUI 的 VS Code 扩展。开发初衷是已有vs code opencode插件太难用了。在github上搜索到cc-gui开源项目。这是 IntelliJ 插件 [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui) 的全新移植版本：React webview 原样保留，Java 后端用 TypeScript 重写，仅保留 **opencode** provider（已移除 Claude / Codex / Grok / Kimi / PI 分支）。
 

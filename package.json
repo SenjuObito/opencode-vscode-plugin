@@ -1,8 +1,8 @@
 {
-  "name": "opencode-x-gui",
-  "displayName": "OpenCode X",
+  "name": "opencode-buddy",
+  "displayName": "OpenCode Buddy",
   "publisher": "SenjuObito",
-  "description": "opencode gui",
+  "description": "OpenCode Buddy — AI coding panel for VS Code",
   "version": "0.0.1",
   "repository": {
     "type": "git",
@@ -27,53 +27,53 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "opencode-x",
-          "title": "OpenCode",
+          "id": "opencode-buddy",
+          "title": "OpenCode Buddy",
           "icon": "media/opencode-activity.svg"
         }
       ],
       "secondarySidebar": [
         {
-          "id": "opencode-x-chat",
-          "title": "OpenCode",
+          "id": "opencode-buddy-panel",
+          "title": "OpenCode Buddy",
           "icon": "media/opencode-activity.svg"
         }
       ]
     },
     "views": {
-      "opencode-x": [
+      "opencode-buddy": [
         {
           "type": "webview",
-          "id": "opencode-x.left",
-          "name": "OpenCode"
+          "id": "opencode-buddy.left",
+          "name": "OpenCode Buddy"
         }
       ],
-      "opencode-x-chat": [
+      "opencode-buddy-panel": [
         {
           "type": "webview",
-          "id": "opencode-x.right",
-          "name": "OpenCode"
+          "id": "opencode-buddy.right",
+          "name": "OpenCode Buddy"
         }
       ]
     },
     "menus": {
       "editor/title": [
         {
-          "command": "opencode-x.openChat",
+          "command": "opencode-buddy.openChat",
           "group": "navigation"
         }
       ]
     },
     "commands": [
       {
-        "command": "opencode-x.openLeft",
-        "title": "打开 OpenCode 面板（左侧）",
-        "category": "OpenCode"
+        "command": "opencode-buddy.openLeft",
+        "title": "打开 OpenCode Buddy 面板（左侧）",
+        "category": "OpenCode Buddy"
       },
       {
-        "command": "opencode-x.openChat",
-        "title": "在编辑器分栏打开 OpenCode",
-        "category": "OpenCode",
+        "command": "opencode-buddy.openChat",
+        "title": "在编辑器分栏打开 OpenCode Buddy",
+        "category": "OpenCode Buddy",
         "icon": {
           "light": "media/opencode-activity-light.svg",
           "dark": "media/opencode-activity-dark.svg"

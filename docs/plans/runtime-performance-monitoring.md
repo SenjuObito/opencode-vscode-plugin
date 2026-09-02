@@ -1,4 +1,4 @@
-# opencode-x 运行时性能数据采集方案
+# opencode-buddy 运行时性能数据采集方案
 
 ## 1. 背景与目标
 

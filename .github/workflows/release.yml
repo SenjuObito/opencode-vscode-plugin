@@ -112,6 +112,6 @@ jobs:
             gh release upload "$TAG" "$ASSET" --clobber
           else
             gh release create "$TAG" "$ASSET" \
-              --title "OpenCode X $TAG" \
+              --title "OpenCode Buddy $TAG" \
               --notes-file release-notes.md
           fi

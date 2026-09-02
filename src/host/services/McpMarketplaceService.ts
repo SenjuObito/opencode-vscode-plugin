@@ -107,7 +107,7 @@ interface CacheEntry {
 
 export class McpMarketplaceService {
 	private readonly sources: McpMarketplaceSource[] = [
-		{ id: 'built-in', name: 'Built-in Presets', type: 'BUILT_IN', url: 'opencode-x://built-in-mcp-presets', enabled: true },
+		{ id: 'built-in', name: 'Built-in Presets', type: 'BUILT_IN', url: 'opencode-buddy://built-in-mcp-presets', enabled: true },
 		{ id: 'official-registry', name: 'Official MCP Registry', type: 'REGISTRY', url: 'https://registry.modelcontextprotocol.io', enabled: true },
 	];
 
@@ -822,7 +822,7 @@ function parseJsonSafe(text: string): Record<string, unknown> | null {
 
 /** 磁盘缓存目录：放在 tmpdir，随系统清理，不污染用户配置。 */
 function cacheDir(): string {
-	return join(tmpdir(), 'opencode-x-mcp-marketplace');
+	return join(tmpdir(), 'opencode-buddy-mcp-marketplace');
 }
 
 function cacheFilePath(cacheKey: string): string {
@@ -863,7 +863,7 @@ function httpGetText(url: string, redirectsLeft = 3): Promise<string> {
 		const isHttps = url.startsWith('https:');
 		const transport = isHttps ? httpsGet : httpGet;
 		const request = transport(url, {
-			headers: { Accept: 'application/json', 'User-Agent': 'opencode-x-vscode' },
+			headers: { Accept: 'application/json', 'User-Agent': 'opencode-buddy-vscode' },
 		}, (response: IncomingMessage) => {
 			const status = response.statusCode ?? 0;
 			if (status >= 300 && status < 400 && response.headers.location && redirectsLeft > 0) {

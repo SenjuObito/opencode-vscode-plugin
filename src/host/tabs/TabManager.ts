@@ -7,7 +7,7 @@
  * `createChatInstance` 装配一套独立 channel/context/session/handlers。
  *
  *   create_new_tab（webview）→ TabManager.createNewTab()
- *     → createWebviewPanel('opencode-x.tab', name)
+ *     → createWebviewPanel('opencode-buddy.tab', name)
  *     → SingleWebviewChannel(panel) → ChatInstance → HTML → message 路由
  *     → TabStateService.saveTabName / saveTabSessionState
  */
@@ -21,7 +21,7 @@ import { ChatInstance, createChatInstance, ChatInstanceDeps } from '../session/C
 import { BridgeMessage } from '../types';
 import { parseWirePayload } from '../webview/OpenCodeViewProvider';
 
-const TAB_VIEW_TYPE = 'opencode-x.tab';
+const TAB_VIEW_TYPE = 'opencode-buddy.tab';
 
 export interface TabManagerOptions {
 	readonly extensionUri: vscode.Uri;
