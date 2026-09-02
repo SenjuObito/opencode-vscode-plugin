@@ -470,9 +470,9 @@
         "invalidValue": "最大上下文必须是正整数（单位 K）",
         "summary": "上下文：{{value}} tokens"
       },
-      "configuredSectionTitle": "已配置的 Claude 模型",
-      "configuredSectionDesc": "这些模型来自当前 Claude 供应商或 settings.json，已经会显示在模型选择器中。这里仅可修改价格。",
-      "configuredEditHint": "此模型由当前 Claude 供应商或 settings.json 管理，只能在这里修改价格。",
+      "configuredSectionTitle": "已配置的 OpenCode 模型",
+      "configuredSectionDesc": "这些模型来自当前 OpenCode 供应商或 settings.json，已经会显示在模型选择器中。这里仅可修改价格。",
+      "configuredEditHint": "此模型由当前 OpenCode 供应商或 settings.json 管理，只能在这里修改价格。",
       "customSectionTitle": "自定义模型",
       "editPricing": "编辑价格"
     },
@@ -651,7 +651,7 @@
         "editDescription": "更新配置后将立即应用到 ~/.codex/ 目录",
         "officialPreset": "OpenAI 官方直连",
         "officialSectionHint": "使用您手动填写的 OPENAI_API_KEY，并直接连接到官方端点 https://api.openai.com/v1。",
-        "presetHint": "以下预设仅包含与 Claude Code 供应商一致的第三方或代理端点。",
+        "presetHint": "以下预设仅包含与 OpenCode 供应商一致的第三方或代理端点。",
         "providerName": "供应商名称",
         "providerNamePlaceholder": "例如：Codex 官方",
         "configJson": "配置",
@@ -791,7 +791,7 @@
     "loading": "加载历史记录中...",
     "loadFailed": "加载失败",
     "noSessions": "暂无历史会话",
-    "noSessionsDesc": "当前项目下没有找到 Claude 会话记录",
+    "noSessionsDesc": "当前项目下没有找到 OpenCode 会话记录",
     "totalSessions": "共 {{count}} 个会话 · {{total}} 条消息",
     "messageCount": "{{count}} 条消息",
     "searchPlaceholder": "搜索会话标题...",
@@ -809,19 +809,21 @@
     "entrypointLabel": {
       "sdk-cli": "SDK会话",
       "claude-vscode": "VS Code",
-      "remote": "远程"
+      "remote": "远程",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "此会话由插件通过 SDK 创建，CLI 默认不显示。点击「转为CLI」可使其出现在终端 CLI 的 /resume 列表中",
       "claude-vscode": "此会话由 VS Code 插件创建，CLI 默认不显示。点击「转为CLI」可使其出现在终端 CLI 的 /resume 列表中",
-      "remote": "此会话由远程 Claude Code 实例创建"
+      "remote": "此会话由远程 OpenCode 实例创建",
+      "sdk": "此会话由 OpenCode 插件通过 SDK 创建。"
     },
     "convertToCliSession": "转换为 CLI 可识别会话",
     "convertButton": "转为CLI",
     "convertSuccess": "会话已转换，现在可在 CLI 的 /resume 中显示",
     "convertFailed": "转换失败",
     "confirmConvert": "转换为 CLI 会话？",
-    "convertConfirmMessage": "此操作将修改会话的 entrypoint，使其在 Claude Code CLI 的 /resume 列表中显示。",
+    "convertConfirmMessage": "此操作将修改会话的 entrypoint，使其在 OpenCode CLI 的 /resume 列表中显示。",
     "conversionErrors": {
       "INVALID_SESSION_ID": "无效的会话 ID",
       "SESSION_ACTIVE": "无法转换当前活跃的会话，请先开启新会话后再转换",
@@ -884,10 +886,10 @@
   },
   "planApproval": {
     "title": "计划已准备就绪",
-    "subtitle": "Claude 已完成规划，准备执行。",
+    "subtitle": "OpenCode 已完成规划，准备执行。",
     "requestedPermissions": "请求的权限",
     "executionMode": "执行模式",
-    "executionModeDescription": "选择 Claude 执行计划的方式：",
+    "executionModeDescription": "选择 OpenCode 执行计划的方式：",
     "approve": "批准并执行",
     "reject": "拒绝",
     "toApprove": "批准",
@@ -1280,7 +1282,7 @@
     "undoChanges": "撤销更改",
     "undoConfirmTitle": "撤销文件更改",
     "undoWillDelete": "此文件是新创建的，撤销将删除该文件。",
-    "undoWillRestore": "将恢复此文件到 Claude 修改之前的状态。",
+    "undoWillRestore": "将恢复此文件到 OpenCode 修改之前的状态。",
     "undoCannotUndo": "此操作无法撤销。",
     "confirmUndo": "确认撤销",
     "undoSuccess": "已撤销 {{fileName}} 的更改",
@@ -1718,8 +1720,8 @@
     "helpText": "如果问题持续存在，请复制错误信息并在 GitHub 上提交 Issue，或在社区群中分享。"
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code 运行被中断（可能是响应超时或用户取消）：",
-    "claudeCodeError": "Claude Code 出现错误：",
+    "claudeCodeInterrupted": "OpenCode 运行被中断（可能是响应超时或用户取消）：",
+    "claudeCodeError": "OpenCode 出现错误：",
     "errorMessage": "错误信息",
     "currentApiKeySource": "当前 API Key 来源",
     "currentApiKeyPreview": "当前 API Key 预览",
@@ -1730,7 +1732,7 @@
     "defaultBaseUrl": "默认值（https://api.anthropic.com）",
     "configTip": "提示：CLI 可以读取环境变量或 settings.json 两种方式；本插件为了避免产生问题，只支持读取 settings.json 内容，您可以在本插件右上角设置 - 供应商管理配置下即可使用",
     "apiError": "API 错误",
-    "apiErrorCauses": "可能的原因：\n1. API Key 配置不正确\n2. 第三方代理服务配置问题\n3. 请检查 ~/.claude/settings.json 中的配置",
+    "apiErrorCauses": "可能的原因：\n1. API Key 配置不正确\n2. 第三方代理服务配置问题\n3. 请检查 ~/.config/opencode/opencode.json 中的配置",
     "codexAuthError": "Codex 认证错误：",
     "codexAuthErrorChecks": "请检查以下配置：\n1. 插件设置中的 Codex API Key 是否正确\n2. API Key 是否有足够的权限\n3. 如果使用自定义 Base URL，请确认地址正确",
     "codexAuthTip": "提示：Codex 需要有效的 OpenAI API Key",

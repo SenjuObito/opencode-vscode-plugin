@@ -294,7 +294,7 @@
         "label": "질문 시스템 알림",
         "enabled": "활성화",
         "disabled": "비활성화",
-        "hint": "활성화하면 Claude가 질문할 때 시스템 알림을 표시하여 놓치지 않도록 합니다. 비활성화하면 알림이 표시되지 않습니다."
+        "hint": "활성화하면 OpenCode가 질문할 때 시스템 알림을 표시하여 놓치지 않도록 합니다. 비활성화하면 알림이 표시되지 않습니다."
       },
       "detailedOutput": {
         "label": "자세한 출력 정보",
@@ -306,7 +306,7 @@
         "label": "질문 알림음",
         "enabled": "활성화",
         "disabled": "비활성화",
-        "hint": "활성화하면 Claude가 질문할 때 설정된 알림음을 재생합니다. 아래의 사운드 선택과 포커스 규칙을 사용합니다."
+        "hint": "활성화하면 OpenCode가 질문할 때 설정된 알림음을 재생합니다. 아래의 사운드 선택과 포커스 규칙을 사용합니다."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "IDE가 포커스되지 않았을 때만 시스템 알림 표시",
@@ -324,7 +324,7 @@
       "permissionDialogTimeout": {
         "label": "권한 및 질문 대화 상자 제한 시간",
         "unit": "초",
-        "hint": "Claude 질문 대화 상자와 권한 요청 대화 상자의 제한 시간을 설정합니다(30~3600초). 제한 시간이 지나면 대화 상자가 자동으로 닫히고 Claude가 계속 진행합니다."
+        "hint": "OpenCode 질문 대화 상자와 권한 요청 대화 상자의 제한 시간을 설정합니다(30~3600초). 제한 시간이 지나면 대화 상자가 자동으로 닫히고 OpenCode가 계속 진행합니다."
       },
       "chatBgColor": {
         "label": "채팅 배경",
@@ -405,9 +405,9 @@
         "invalidValue": "최대 컨텍스트는 K 단위의 양의 정수여야 합니다",
         "summary": "컨텍스트: {{value}} 토큰"
       },
-      "configuredSectionTitle": "구성된 Claude 모델",
-      "configuredSectionDesc": "현재 Claude 제공자 또는 settings.json의 모델은 이미 모델 선택기에 표시됩니다. 여기서는 가격만 변경할 수 있습니다.",
-      "configuredEditHint": "이 모델은 현재 Claude 제공자 또는 settings.json에서 관리됩니다. 여기서는 가격만 변경할 수 있습니다.",
+      "configuredSectionTitle": "구성된 OpenCode 모델",
+      "configuredSectionDesc": "현재 OpenCode 제공자 또는 settings.json의 모델은 이미 모델 선택기에 표시됩니다. 여기서는 가격만 변경할 수 있습니다.",
+      "configuredEditHint": "이 모델은 현재 OpenCode 제공자 또는 settings.json에서 관리됩니다. 여기서는 가격만 변경할 수 있습니다.",
       "customSectionTitle": "사용자 지정 모델",
       "editPricing": "가격 편집"
     },
@@ -580,7 +580,7 @@
         "editDescription": "변경 사항은 즉시 ~/.codex/ 디렉토리에 적용됩니다",
         "officialPreset": "OpenAI 공식 직접 연결",
         "officialSectionHint": "직접 입력한 OPENAI_API_KEY를 사용하고 공식 엔드포인트 https://api.openai.com/v1에 연결합니다.",
-        "presetHint": "아래 프리셋은 Claude Code 제공자 세트와 일치하는 타사 또는 프록시 엔드포인트만 포함합니다.",
+        "presetHint": "아래 프리셋은 OpenCode 제공자 세트와 일치하는 타사 또는 프록시 엔드포인트만 포함합니다.",
         "providerName": "제공자 이름",
         "providerNamePlaceholder": "예: Codex 공식",
         "configJson": "설정",
@@ -762,7 +762,7 @@
     "loading": "히스토리 로딩 중...",
     "loadFailed": "로딩 실패",
     "noSessions": "히스토리 세션 없음",
-    "noSessionsDesc": "현재 프로젝트에서 Claude 세션 기록을 찾을 수 없습니다",
+    "noSessionsDesc": "현재 프로젝트에서 OpenCode 세션 기록을 찾을 수 없습니다",
     "totalSessions": "{{count}}개 세션 · {{total}}개 메시지",
     "messageCount": "{{count}}개 메시지",
     "searchPlaceholder": "세션 제목 검색...",
@@ -782,7 +782,7 @@
     "convertSuccess": "세션이 CLI 인식 가능으로 변환되었습니다",
     "convertFailed": "변환 실패",
     "confirmConvert": "CLI 세션으로 변환하시겠습니까?",
-    "convertConfirmMessage": "세션의 entrypoint를 수정하여 Claude Code CLI의 /resume 목록에 표시되도록 합니다.",
+    "convertConfirmMessage": "세션의 entrypoint를 수정하여 OpenCode CLI의 /resume 목록에 표시되도록 합니다.",
     "timeAgo": {
       "yearsAgo": "년 전",
       "monthsAgo": "개월 전",
@@ -804,12 +804,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK 세션",
       "claude-vscode": "VS Code",
-      "remote": "원격"
+      "remote": "원격",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "이 세션은 SDK를 통해 플러그인에서 생성되었으며 CLI에 기본적으로 표시되지 않습니다. 터미널 CLI의 /resume 목록에 표시하려면 'CLI로 변환'을 클릭하세요",
       "claude-vscode": "이 세션은 VS Code 확장에서 생성되었으며 CLI에 기본적으로 표시되지 않습니다. 터미널 CLI의 /resume 목록에 표시하려면 'CLI로 변환'을 클릭하세요",
-      "remote": "이 세션은 원격 Claude Code 인스턴스에서 생성되었습니다"
+      "remote": "이 세션은 원격 OpenCode 인스턴스에서 생성되었습니다",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -855,10 +857,10 @@
   },
   "planApproval": {
     "title": "계획 승인 대기 중",
-    "subtitle": "Claude가 계획을 완료했으며 실행할 준비가 되었습니다.",
+    "subtitle": "OpenCode가 계획을 완료했으며 실행할 준비가 되었습니다.",
     "requestedPermissions": "요청된 권한",
     "executionMode": "실행 모드",
-    "executionModeDescription": "Claude가 계획을 실행하는 방식을 선택하세요:",
+    "executionModeDescription": "OpenCode가 계획을 실행하는 방식을 선택하세요:",
     "approve": "승인 및 실행",
     "reject": "거부",
     "toApprove": "승인하려면",
@@ -1233,7 +1235,7 @@
     "undoChanges": "변경 취소",
     "undoConfirmTitle": "파일 변경 취소",
     "undoWillDelete": "이 파일은 새로 생성되었습니다. 취소하면 이 파일이 삭제됩니다.",
-    "undoWillRestore": "Claude의 수정 이전 상태로 파일을 복원합니다.",
+    "undoWillRestore": "OpenCode의 수정 이전 상태로 파일을 복원합니다.",
     "undoCannotUndo": "이 작업은 되돌릴 수 없습니다.",
     "confirmUndo": "취소 확인",
     "undoSuccess": "{{fileName}}의 변경 사항이 취소되었습니다",
@@ -1601,8 +1603,8 @@
     "helpText": "문제가 지속되면 오류 정보를 복사하여 GitHub에 이슈로 제출하거나 커뮤니티 그룹에서 공유해주세요."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code가 중단되었습니다 (응답 시간 초과 또는 사용자 취소일 수 있음):",
-    "claudeCodeError": "Claude Code 오류:",
+    "claudeCodeInterrupted": "OpenCode가 중단되었습니다 (응답 시간 초과 또는 사용자 취소일 수 있음):",
+    "claudeCodeError": "OpenCode 오류:",
     "errorMessage": "오류 메시지",
     "currentApiKeySource": "현재 API 키 소스",
     "currentApiKeyPreview": "현재 API 키 미리보기",
@@ -1613,7 +1615,7 @@
     "defaultBaseUrl": "기본값 (https://api.anthropic.com)",
     "configTip": "팁: CLI는 환경 변수 또는 settings.json에서 읽을 수 있지만, 이 플러그인은 문제 방지를 위해 settings.json에서만 읽도록 지원합니다. 플러그인 우측 상단 설정 > 제공자 관리에서 설정할 수 있습니다",
     "apiError": "API 오류",
-    "apiErrorCauses": "가능한 원인:\n1. API 키가 올바르게 설정되지 않았습니다\n2. 타사 프록시 서비스 설정 문제\n3. ~/.claude/settings.json의 설정을 확인해주세요",
+    "apiErrorCauses": "가능한 원인:\n1. API 키가 올바르게 설정되지 않았습니다\n2. 타사 프록시 서비스 설정 문제\n3. ~/.config/opencode/opencode.json의 설정을 확인해주세요",
     "codexAuthError": "Codex 인증 오류:",
     "codexAuthErrorChecks": "다음을 확인해주세요:\n1. 플러그인 설정의 Codex API 키가 올바른지\n2. API 키에 충분한 권한이 있는지\n3. 사용자 지정 Base URL을 사용하는 경우 주소가 올바른지",
     "codexAuthTip": "팁: Codex에는 유효한 OpenAI API 키가 필요합니다",

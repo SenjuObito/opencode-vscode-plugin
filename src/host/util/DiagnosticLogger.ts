@@ -1,6 +1,6 @@
 /**
- * DiagnosticLogger — VS Code 输出通道「OpenCode Buddy」。
- * 用户可在 输出窗口 → 下拉选择「OpenCode Buddy」查看分享/撤销/分叉等
+ * DiagnosticLogger — VS Code 输出通道「OpenCode」。
+ * 用户可在 输出窗口 → 下拉选择「OpenCode」查看分享/撤销/分叉等
  * 操作的全链路诊断日志；同时镜像到扩展宿主 console（Debug Console 可见）。
  */
 import * as vscode from 'vscode';
@@ -9,7 +9,7 @@ let channel: vscode.OutputChannel | null = null;
 
 function getChannel(): vscode.OutputChannel {
 	if (!channel) {
-		channel = vscode.window.createOutputChannel('OpenCode Buddy');
+		channel = vscode.window.createOutputChannel('OpenCode');
 	}
 	return channel;
 }

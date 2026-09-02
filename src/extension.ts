@@ -43,7 +43,7 @@ import { TokenTrackerHandler } from './host/handlers/TokenTrackerHandler.js';
 import { logDiagnostic } from './host/util/DiagnosticLogger.js';
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('[extension] OpenCode Buddy activating...');
+	console.log('[extension] OpenCode activating...');
 
 	// ── 1. 设置存储 ──────────────────────────────────────────────────────────
 	const store = new MementoSettingsStore(context.workspaceState, context.globalState);
@@ -263,7 +263,7 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.commands.executeCommand('workbench.view.extension.opencode-buddy'),
 		),
 		vscode.commands.registerCommand('opencode-buddy.openChat', () => {
-			// 在编辑器区域分栏打开 OpenCode Buddy（ViewColumn.Beside），与左/右侧边栏无关。
+			// 在编辑器区域分栏打开 OpenCode（ViewColumn.Beside），与左/右侧边栏无关。
 			// 说明：原先这里用 `opencode-buddy.right.focus` 聚焦副侧边栏，但该命令只聚焦
 			// 已可见的视图、不会展开隐藏的次要侧边栏，且不抛异常，导致点击后毫无反应。
 			editorPanel.open();
@@ -275,7 +275,7 @@ export function activate(context: vscode.ExtensionContext) {
 	void warmupDaemon(daemon, handlerContext, settings, cliModelsHandler)
 		.catch((err) => console.warn(`[extension] Daemon warmup failed: ${(err as Error).message}`));
 
-	console.log('[extension] OpenCode Buddy activated');
+	console.log('[extension] OpenCode activated');
 }
 
 /** 常驻 daemon 启动 + `opencode.preconnect` 预热 serve。 */
@@ -326,5 +326,5 @@ function pushDaemonStatus(channel: BroadcastChannel, alive: boolean): void {
 }
 
 export function deactivate() {
-	console.log('[extension] OpenCode Buddy deactivating...');
+	console.log('[extension] OpenCode deactivating...');
 }

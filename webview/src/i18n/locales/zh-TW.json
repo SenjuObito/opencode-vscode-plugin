@@ -294,7 +294,7 @@
         "label": "提問系統通知",
         "enabled": "已開啟",
         "disabled": "已關閉",
-        "hint": "開啟後，當 Claude 向你提問時顯示系統通知提醒，避免錯過。關閉後不顯示通知。"
+        "hint": "開啟後，當 OpenCode 向你提問時顯示系統通知提醒，避免錯過。關閉後不顯示通知。"
       },
       "detailedOutput": {
         "label": "詳細輸出資訊",
@@ -306,7 +306,7 @@
         "label": "提問提示音",
         "enabled": "已開啟",
         "disabled": "已關閉",
-        "hint": "開啟後，當 Claude 向你提問時播放已設定的提示音。會使用下方的音效選擇與焦點規則。"
+        "hint": "開啟後，當 OpenCode 向你提問時播放已設定的提示音。會使用下方的音效選擇與焦點規則。"
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "僅在 IDE 未聚焦時顯示系統通知",
@@ -346,7 +346,7 @@
       "permissionDialogTimeout": {
         "label": "權限與提問對話框超時時間",
         "unit": "秒",
-        "hint": "設定 Claude 提問對話框和權限請求對話框的超時時間（30~3600 秒）。超時後對話框將自動關閉，Claude 會繼續執行。"
+        "hint": "設定 OpenCode 提問對話框和權限請求對話框的超時時間（30~3600 秒）。超時後對話框將自動關閉，OpenCode 會繼續執行。"
       },
       "chatBgColor": {
         "label": "聊天背景色",
@@ -405,9 +405,9 @@
         "invalidValue": "最大上下文必須是正整數（單位 K）",
         "summary": "上下文：{{value}} tokens"
       },
-      "configuredSectionTitle": "已設定的 Claude 模型",
-      "configuredSectionDesc": "這些模型來自目前 Claude 供應商或 settings.json，已經會顯示在模型選擇器中。這裡只能修改價格。",
-      "configuredEditHint": "此模型由目前 Claude 供應商或 settings.json 管理，只能在這裡修改價格。",
+      "configuredSectionTitle": "已設定的 OpenCode 模型",
+      "configuredSectionDesc": "這些模型來自目前 OpenCode 供應商或 settings.json，已經會顯示在模型選擇器中。這裡只能修改價格。",
+      "configuredEditHint": "此模型由目前 OpenCode 供應商或 settings.json 管理，只能在這裡修改價格。",
       "customSectionTitle": "自訂模型",
       "editPricing": "編輯價格"
     },
@@ -582,7 +582,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI 官方直連",
         "officialSectionHint": "使用您手動填寫的 OPENAI_API_KEY，並直接連接到官方端點 https://api.openai.com/v1。",
-        "presetHint": "以下預設僅包含與 Claude Code 供應商一致的第三方或代理端點。",
+        "presetHint": "以下預設僅包含與 OpenCode 供應商一致的第三方或代理端點。",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -727,7 +727,7 @@
     "loading": "載入歷史記錄中...",
     "loadFailed": "載入失敗",
     "noSessions": "暫無歷史會話",
-    "noSessionsDesc": "目前專案下沒有找到 Claude 會話記錄",
+    "noSessionsDesc": "目前專案下沒有找到 OpenCode 會話記錄",
     "totalSessions": "共 {{count}} 個會話 · {{total}} 條訊息",
     "messageCount": "{{count}} 條訊息",
     "searchPlaceholder": "搜尋會話標題...",
@@ -747,7 +747,7 @@
     "convertSuccess": "會話已轉換為 CLI 可辨識",
     "convertFailed": "轉換失敗",
     "confirmConvert": "轉換為 CLI 會話？",
-    "convertConfirmMessage": "此操作將修改會話的 entrypoint，使其在 Claude Code CLI 的 /resume 列表中顯示。",
+    "convertConfirmMessage": "此操作將修改會話的 entrypoint，使其在 OpenCode CLI 的 /resume 列表中顯示。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "個月前",
@@ -769,12 +769,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK會話",
       "claude-vscode": "VS Code",
-      "remote": "遠程"
+      "remote": "遠程",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "此會話由插件通過 SDK 創建，CLI 默認不顯示。點擊「轉為CLI」可使其出現在終端 CLI 的 /resume 列表中",
       "claude-vscode": "此會話由 VS Code 插件創建，CLI 默認不顯示。點擊「轉為CLI」可使其出現在終端 CLI 的 /resume 列表中",
-      "remote": "此會話由遠程 Claude Code 實例創建"
+      "remote": "此會話由遠程 OpenCode 實例創建",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -820,10 +822,10 @@
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1197,7 +1199,7 @@
     "undoChanges": "撤銷更改",
     "undoConfirmTitle": "撤銷檔案更改",
     "undoWillDelete": "此檔案是新建立的，撤銷將刪除該檔案。",
-    "undoWillRestore": "將恢復此檔案到 Claude 修改之前的狀態。",
+    "undoWillRestore": "將恢復此檔案到 OpenCode 修改之前的狀態。",
     "undoCannotUndo": "此操作無法撤銷。",
     "confirmUndo": "確認撤銷",
     "undoSuccess": "已撤銷 {{fileName}} 的更改",
@@ -1570,8 +1572,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code 運行被中斷（可能是響應超時或用戶取消）：",
-    "claudeCodeError": "Claude Code 出現錯誤：",
+    "claudeCodeInterrupted": "OpenCode 運行被中斷（可能是響應超時或用戶取消）：",
+    "claudeCodeError": "OpenCode 出現錯誤：",
     "errorMessage": "錯誤訊息",
     "currentApiKeySource": "目前 API Key 來源",
     "currentApiKeyPreview": "目前 API Key 預覽",
@@ -1582,7 +1584,7 @@
     "defaultBaseUrl": "預設值（https://api.anthropic.com）",
     "configTip": "提示：CLI 可以讀取環境變數或 settings.json 兩種方式；本外掛為了避免產生問題，只支援讀取 settings.json 內容，您可以在本外掛右上角設定 - 供應商管理配置下即可使用",
     "apiError": "API 錯誤",
-    "apiErrorCauses": "可能的原因：\n1. API Key 配置不正確\n2. 第三方代理服務配置問題\n3. 請檢查 ~/.claude/settings.json 中的配置",
+    "apiErrorCauses": "可能的原因：\n1. API Key 配置不正確\n2. 第三方代理服務配置問題\n3. 請檢查 ~/.config/opencode/opencode.json 中的配置",
     "codexAuthError": "Codex 認證錯誤：",
     "codexAuthErrorChecks": "請檢查以下配置：\n1. 外掛設定中的 Codex API Key 是否正確\n2. API Key 是否有足夠的權限\n3. 如果使用自訂 Base URL，請確認地址正確",
     "codexAuthTip": "提示：Codex 需要有效的 OpenAI API Key",

@@ -321,6 +321,7 @@ export const HistoryListItem = memo(({
               <span className={`codicon ${
                 session.entrypoint === 'sdk-cli' ? 'codicon-symbol-namespace' :
                 session.entrypoint === 'claude-vscode' ? 'codicon-extensions' :
+                session.entrypoint === 'sdk' ? 'codicon-symbol-method' :
                 'codicon-debug-alt'
               }`}></span>
               {t(`history.entrypointLabel.${session.entrypoint}`, { defaultValue: session.entrypoint })}

@@ -294,7 +294,7 @@
         "label": "Notificación del sistema por pregunta",
         "enabled": "Activado",
         "disabled": "Desactivado",
-        "hint": "Cuando está activado, muestra una notificación del sistema cuando Claude te hace una pregunta, para que no la pierdas. Cuando está desactivado, no aparece ninguna notificación."
+        "hint": "Cuando está activado, muestra una notificación del sistema cuando OpenCode te hace una pregunta, para que no la pierdas. Cuando está desactivado, no aparece ninguna notificación."
       },
       "detailedOutput": {
         "label": "Información de salida detallada",
@@ -306,7 +306,7 @@
         "label": "Sonido de alerta por pregunta",
         "enabled": "Activado",
         "disabled": "Desactivado",
-        "hint": "Cuando está activado, reproduce el sonido de alerta configurado cuando Claude te hace una pregunta. Usa la selección de sonido y las reglas de foco de abajo."
+        "hint": "Cuando está activado, reproduce el sonido de alerta configurado cuando OpenCode te hace una pregunta. Usa la selección de sonido y las reglas de foco de abajo."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "Mostrar notificaciones del sistema solo cuando el IDE no tenga el foco",
@@ -346,7 +346,7 @@
       "permissionDialogTimeout": {
         "label": "Tiempo de espera de diálogos de permisos y preguntas",
         "unit": "segundos",
-        "hint": "Establece el tiempo de espera para los diálogos de preguntas de Claude y los diálogos de solicitud de permisos (30~3600 segundos). Después del tiempo de espera, el diálogo se cerrará automáticamente y Claude continuará."
+        "hint": "Establece el tiempo de espera para los diálogos de preguntas de OpenCode y los diálogos de solicitud de permisos (30~3600 segundos). Después del tiempo de espera, el diálogo se cerrará automáticamente y OpenCode continuará."
       },
       "chatBgColor": {
         "label": "Color de fondo del chat",
@@ -405,9 +405,9 @@
         "invalidValue": "El contexto máximo debe ser un entero positivo en unidades K",
         "summary": "Contexto: {{value}} tokens"
       },
-      "configuredSectionTitle": "Modelos de Claude configurados",
-      "configuredSectionDesc": "Los modelos del proveedor de Claude activo o settings.json ya aparecen en el selector. Aquí solo se puede modificar el precio.",
-      "configuredEditHint": "Este modelo está gestionado por el proveedor de Claude activo o settings.json. Aquí solo se puede modificar el precio.",
+      "configuredSectionTitle": "Modelos de OpenCode configurados",
+      "configuredSectionDesc": "Los modelos del proveedor de OpenCode activo o settings.json ya aparecen en el selector. Aquí solo se puede modificar el precio.",
+      "configuredEditHint": "Este modelo está gestionado por el proveedor de OpenCode activo o settings.json. Aquí solo se puede modificar el precio.",
       "customSectionTitle": "Modelos personalizados",
       "editPricing": "Editar precio"
     },
@@ -577,7 +577,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -722,7 +722,7 @@
     "loading": "Cargando historial...",
     "loadFailed": "Error al cargar",
     "noSessions": "Sin sesiones históricas",
-    "noSessionsDesc": "No se encontraron registros de sesión de Claude en el proyecto actual",
+    "noSessionsDesc": "No se encontraron registros de sesión de OpenCode en el proyecto actual",
     "totalSessions": "{{count}} sesiones · {{total}} mensajes",
     "messageCount": "{{count}} mensajes",
     "searchPlaceholder": "Buscar título de sesión...",
@@ -742,7 +742,7 @@
     "convertSuccess": "Sesión convertida para ser reconocida por CLI",
     "convertFailed": "Error en la conversión",
     "confirmConvert": "¿Convertir a sesión CLI?",
-    "convertConfirmMessage": "Esto modificará el entrypoint de la sesión para que sea visible en la lista /resume del CLI de Claude Code.",
+    "convertConfirmMessage": "Esto modificará el entrypoint de la sesión para que sea visible en la lista /resume del CLI de OpenCode.",
     "timeAgo": {
       "yearsAgo": "hace años",
       "monthsAgo": "hace meses",
@@ -764,12 +764,14 @@
     "entrypointLabel": {
       "sdk-cli": "Sesión SDK",
       "claude-vscode": "VS Code",
-      "remote": "Remoto"
+      "remote": "Remoto",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "Esta sesión fue creada por el plugin via SDK y no se muestra en CLI por defecto. Haz clic en 'Convertir a CLI' para que aparezca en la lista /resume del CLI del terminal",
       "claude-vscode": "Esta sesión fue creada por la extensión de VS Code y no se muestra en CLI por defecto. Haz clic en 'Convertir a CLI' para que aparezca en la lista /resume del CLI del terminal",
-      "remote": "Esta sesión fue creada por una instancia remota de Claude Code"
+      "remote": "Esta sesión fue creada por una instancia remota de OpenCode",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -815,10 +817,10 @@
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1192,7 +1194,7 @@
     "undoChanges": "Deshacer cambios",
     "undoConfirmTitle": "Deshacer cambios del archivo",
     "undoWillDelete": "Este archivo fue recién creado. Deshacer eliminará este archivo.",
-    "undoWillRestore": "Esto restaurará el archivo a su estado antes de las modificaciones de Claude.",
+    "undoWillRestore": "Esto restaurará el archivo a su estado antes de las modificaciones de OpenCode.",
     "undoCannotUndo": "Esta acción no se puede deshacer.",
     "confirmUndo": "Confirmar deshacer",
     "undoSuccess": "Cambios de {{fileName}} deshechos",
@@ -1560,8 +1562,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code fue interrumpido (posiblemente tiempo de espera de respuesta o cancelación del usuario):",
-    "claudeCodeError": "Error de Claude Code:",
+    "claudeCodeInterrupted": "OpenCode fue interrumpido (posiblemente tiempo de espera de respuesta o cancelación del usuario):",
+    "claudeCodeError": "Error de OpenCode:",
     "errorMessage": "Mensaje de error",
     "currentApiKeySource": "Fuente actual de API Key",
     "currentApiKeyPreview": "Vista previa de API Key actual",
@@ -1572,7 +1574,7 @@
     "defaultBaseUrl": "Predeterminado (https://api.anthropic.com)",
     "configTip": "Consejo: CLI puede leer de variables de entorno o settings.json; este plugin solo admite lectura de settings.json para evitar problemas. Puede configurarlo en Configuración > Gestión de proveedores en la esquina superior derecha del plugin",
     "apiError": "Error de API",
-    "apiErrorCauses": "Posibles causas:\n1. API Key no está configurada correctamente\n2. Problema de configuración del servicio proxy de terceros\n3. Por favor verifique la configuración en ~/.claude/settings.json",
+    "apiErrorCauses": "Posibles causas:\n1. API Key no está configurada correctamente\n2. Problema de configuración del servicio proxy de terceros\n3. Por favor verifique la configuración en ~/.config/opencode/opencode.json",
     "codexAuthError": "Error de autenticación de Codex:",
     "codexAuthErrorChecks": "Por favor verifique lo siguiente:\n1. ¿Es correcta la API Key de Codex en la configuración del plugin?\n2. ¿Tiene la API Key permisos suficientes?\n3. Si usa una Base URL personalizada, confirme que la dirección sea correcta",
     "codexAuthTip": "Consejo: Codex requiere una API Key válida de OpenAI",

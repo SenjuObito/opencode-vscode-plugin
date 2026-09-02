@@ -81,7 +81,7 @@ export class OpenCodeEditorPanel {
 		const { extensionUri } = this.options;
 		const panel = vscode.window.createWebviewPanel(
 			VIEW_TYPE,
-			'OpenCode Buddy',
+			'OpenCode',
 			// Beside = 在当前编辑器旁边分栏，而不是占用左/右侧边栏。
 			{ viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
 			{
@@ -119,7 +119,7 @@ export class OpenCodeEditorPanel {
 			if (!type) {
 				return;
 			}
-			// Webview debug logs — 转发到 «OpenCode Buddy» 输出通道。
+			// Webview debug logs — 转发到 «OpenCode» 输出通道。
 			if (type === 'cardDebug') {
 				logDiagnostic(`[Webview] ${content}`);
 				return;

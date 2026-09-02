@@ -17,6 +17,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as readline from 'readline';
 import * as fs from 'fs';
+import * as path from 'path';
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -307,7 +308,7 @@ export class OpenCodeDaemonBridge {
 
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
-		this.cwd = options.cwd ?? require('path').dirname(options.daemonScriptPath);
+		this.cwd = options.cwd ?? path.dirname(options.daemonScriptPath);
 		this.lifecycleListener = options.lifecycleListener;
 		this.onLog = options.onLog;
 		this.additionalEnv = options.additionalEnv;
@@ -361,10 +362,35 @@ export class OpenCodeDaemonBridge {
 		return true;
 	}
 
+	/**
+	 * daemon 依赖自检（只告警，不阻塞启动）。
+	 *
+	 * ai-bridge 是独立的 npm 项目（被 pnpm-workspace 有意排除在 workspace 之外），
+	 * 忘记 `cd ai-bridge && npm install` 时 daemon 会在 ESM import 阶段直接崩溃，
+	 * UI 症状却是「模型列表加载失败」这类与依赖毫无关联的报错——几乎无法定位。
+	 * 这里提前探测并给出可执行的修复命令。
+	 */
+	private checkDependencies(): void {
+		try {
+			const sdkDir = path.join(this.cwd, 'node_modules', '@opencode-ai', 'sdk');
+			if (fs.existsSync(sdkDir)) {
+				return;
+			}
+			this.log(
+				`Missing ai-bridge dependencies (${sdkDir}). Run "cd ${this.cwd} && npm install". ` +
+				'Without them the daemon crashes on import and every daemon-backed request ' +
+				'(model list, chat, history) fails.',
+			);
+		} catch {
+			// 探测失败不应阻塞 daemon 启动
+		}
+	}
+
 	private launchProcess(): ChildProcess {
 		if (!fs.existsSync(this.daemonScriptPath)) {
 			throw new Error(`daemon.js not found at: ${this.daemonScriptPath}`);
 		}
+		this.checkDependencies();
 		this.log(`Launching: ${process.execPath} ${this.daemonScriptPath} (cwd=${this.cwd})`);
 		const extraEnv = this.additionalEnv?.() ?? {};
 		const extraEnvEntries = Object.entries(extraEnv).filter(([, v]) => v !== undefined && v !== '');

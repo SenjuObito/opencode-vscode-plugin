@@ -294,7 +294,7 @@
         "label": "Системное уведомление о вопросе",
         "enabled": "Включено",
         "disabled": "Выключено",
-        "hint": "При включении показывает системное уведомление, когда Claude задаёт вопрос, чтобы вы его не пропустили. При выключении уведомление не появляется."
+        "hint": "При включении показывает системное уведомление, когда OpenCode задаёт вопрос, чтобы вы его не пропустили. При выключении уведомление не появляется."
       },
       "detailedOutput": {
         "label": "Подробная информация о выводе",
@@ -306,7 +306,7 @@
         "label": "Звуковой сигнал при вопросе",
         "enabled": "Включено",
         "disabled": "Выключено",
-        "hint": "При включении воспроизводит настроенный звуковой сигнал, когда Claude задаёт вопрос. Использует выбор звука и правила фокуса ниже."
+        "hint": "При включении воспроизводит настроенный звуковой сигнал, когда OpenCode задаёт вопрос. Использует выбор звука и правила фокуса ниже."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "Показывать системные уведомления только когда IDE не в фокусе",
@@ -346,7 +346,7 @@
       "permissionDialogTimeout": {
         "label": "Таймаут диалогов разрешений и вопросов",
         "unit": "секунд",
-        "hint": "Установите таймаут для диалогов вопросов Claude и диалогов запроса разрешений (30~3600 секунд). После таймаута диалог закроется автоматически, и Claude продолжит работу."
+        "hint": "Установите таймаут для диалогов вопросов OpenCode и диалогов запроса разрешений (30~3600 секунд). После таймаута диалог закроется автоматически, и OpenCode продолжит работу."
       },
       "chatBgColor": {
         "label": "Цвет фона чата",
@@ -405,9 +405,9 @@
         "invalidValue": "Максимальный контекст должен быть положительным целым числом в единицах K",
         "summary": "Контекст: {{value}} токенов"
       },
-      "configuredSectionTitle": "Настроенные модели Claude",
-      "configuredSectionDesc": "Модели активного провайдера Claude или settings.json уже отображаются в списке выбора. Здесь можно изменить только стоимость.",
-      "configuredEditHint": "Эта модель управляется активным провайдером Claude или settings.json. Здесь можно изменить только стоимость.",
+      "configuredSectionTitle": "Настроенные модели OpenCode",
+      "configuredSectionDesc": "Модели активного провайдера OpenCode или settings.json уже отображаются в списке выбора. Здесь можно изменить только стоимость.",
+      "configuredEditHint": "Эта модель управляется активным провайдером OpenCode или settings.json. Здесь можно изменить только стоимость.",
       "customSectionTitle": "Пользовательские модели",
       "editPricing": "Изменить стоимость"
     },
@@ -589,7 +589,7 @@
         "editDescription": "Изменения будут немедленно применены к ~/.codex/",
         "officialPreset": "Прямое подключение OpenAI",
         "officialSectionHint": "Используйте вручную введенный OPENAI_API_KEY с официальной конечной точкой https://api.openai.com/v1.",
-        "presetHint": "Эти пресеты включают только сторонние или прокси-конечные точки, совпадающие с набором провайдеров Claude Code.",
+        "presetHint": "Эти пресеты включают только сторонние или прокси-конечные точки, совпадающие с набором провайдеров OpenCode.",
         "providerName": "Имя провайдера",
         "providerNamePlaceholder": "например, Codex Official",
         "configJson": "Конфигурация",
@@ -734,7 +734,7 @@
     "loading": "Загрузка истории...",
     "loadFailed": "Ошибка загрузки",
     "noSessions": "Нет чатов в истории",
-    "noSessionsDesc": "В текущем проекте не найдено чатов с Claude",
+    "noSessionsDesc": "В текущем проекте не найдено чатов с OpenCode",
     "totalSessions": "{{count}} чатов · {{total}} сообщений",
     "messageCount": "{{count}} сообщений",
     "searchPlaceholder": "Поиск по чатам...",
@@ -754,7 +754,7 @@
     "convertSuccess": "Сессия преобразована для распознавания CLI",
     "convertFailed": "Ошибка преобразования",
     "confirmConvert": "Преобразовать в сессию CLI?",
-    "convertConfirmMessage": "Это изменит entrypoint сессии, чтобы она отображалась в списке /resume CLI Claude Code.",
+    "convertConfirmMessage": "Это изменит entrypoint сессии, чтобы она отображалась в списке /resume CLI OpenCode.",
     "timeAgo": {
       "yearsAgo_one": "{{count}} год назад",
       "yearsAgo_other": "{{count}} лет назад",
@@ -791,12 +791,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK сеанс",
       "claude-vscode": "VS Code",
-      "remote": "Удаленный"
+      "remote": "Удаленный",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "Этот сеанс был создан плагином через SDK и по умолчанию не отображается в CLI. Нажмите 'Преобразовать в CLI', чтобы он появился в списке /resume терминала CLI",
       "claude-vscode": "Этот сеанс был создан расширением VS Code и по умолчанию не отображается в CLI. Нажмите 'Преобразовать в CLI', чтобы он появился в списке /resume терминала CLI",
-      "remote": "Этот сеанс был создан удаленным экземпляром Claude Code"
+      "remote": "Этот сеанс был создан удаленным экземпляром OpenCode",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -842,10 +844,10 @@
   },
   "planApproval": {
     "title": "План готов к утверждению",
-    "subtitle": "Claude составил план и ждёт одобрения.",
+    "subtitle": "OpenCode составил план и ждёт одобрения.",
     "requestedPermissions": "Запрашиваемые разрешения",
     "executionMode": "Режим выполнения",
-    "executionModeDescription": "Как Claude будет выполнять план:",
+    "executionModeDescription": "Как OpenCode будет выполнять план:",
     "approve": "Утвердить и выполнить",
     "reject": "Отклонить",
     "toApprove": "чтобы утвердить",
@@ -1217,8 +1219,8 @@
     "collapse": "Свернуть панель статуса",
     "undoChanges": "Отменить изменения",
     "undoConfirmTitle": "Отмена изменений файла",
-    "undoWillDelete": "Файл был создан Claude. Отмена удалит его.",
-    "undoWillRestore": "Файл вернётся к состоянию до изменений Claude.",
+    "undoWillDelete": "Файл был создан OpenCode. Отмена удалит его.",
+    "undoWillRestore": "Файл вернётся к состоянию до изменений OpenCode.",
     "undoCannotUndo": "Это действие необратимо.",
     "confirmUndo": "Подтвердить отмену",
     "undoSuccess": "Изменения {{fileName}} отменены",
@@ -1586,8 +1588,8 @@
     "helpText": "Если проблема не уходит — скопируйте ошибку и создайте issue на GitHub."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code прерван (таймаут или отмена):",
-    "claudeCodeError": "Ошибка Claude Code:",
+    "claudeCodeInterrupted": "OpenCode прерван (таймаут или отмена):",
+    "claudeCodeError": "Ошибка OpenCode:",
     "errorMessage": "Сообщение об ошибке",
     "currentApiKeySource": "Источник API-ключа",
     "currentApiKeyPreview": "Превью API-ключа",
@@ -1598,7 +1600,7 @@
     "defaultBaseUrl": "По умолчанию (https://api.anthropic.com)",
     "configTip": "CLI может читать из env или settings.json, но плагин поддерживает только settings.json. Настроить: Настройки → Управление провайдерами",
     "apiError": "Ошибка API",
-    "apiErrorCauses": "Возможные причины:\n1. Неверный API-ключ\n2. Проблема прокси-сервиса\n3. Проверьте ~/.claude/settings.json",
+    "apiErrorCauses": "Возможные причины:\n1. Неверный API-ключ\n2. Проблема прокси-сервиса\n3. Проверьте ~/.config/opencode/opencode.json",
     "codexAuthError": "Ошибка аутентификации Codex:",
     "codexAuthErrorChecks": "Проверьте:\n1. API-ключ Codex в настройках\n2. Разрешения ключа\n3. Правильность Base URL (если кастомный)",
     "codexAuthTip": "Codex требует действующий OpenAI API-ключ",

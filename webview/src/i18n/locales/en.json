@@ -470,9 +470,9 @@
         "invalidValue": "Maximum context must be a positive integer in K units",
         "summary": "Context: {{value}} tokens"
       },
-      "configuredSectionTitle": "Configured Claude models",
-      "configuredSectionDesc": "Models from the active Claude provider/settings.json are already in the selector. Only pricing can be changed here.",
-      "configuredEditHint": "This model is managed by the active Claude provider/settings.json. Only pricing can be changed here.",
+      "configuredSectionTitle": "Configured OpenCode models",
+      "configuredSectionDesc": "Models from the active OpenCode provider/settings.json are already in the selector. Only pricing can be changed here.",
+      "configuredEditHint": "This model is managed by the active OpenCode provider/settings.json. Only pricing can be changed here.",
       "customSectionTitle": "Custom models",
       "editPricing": "Edit pricing"
     },
@@ -646,7 +646,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -786,7 +786,7 @@
     "loading": "Loading history...",
     "loadFailed": "Load failed",
     "noSessions": "No history sessions",
-    "noSessionsDesc": "No Claude session records found in current project",
+    "noSessionsDesc": "No OpenCode session records found in current project",
     "totalSessions": "{{count}} sessions · {{total}} messages",
     "messageCount": "{{count}} messages",
     "searchPlaceholder": "Search session titles...",
@@ -804,19 +804,21 @@
     "entrypointLabel": {
       "sdk-cli": "SDK Session",
       "claude-vscode": "VS Code",
-      "remote": "Remote"
+      "remote": "Remote",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "This session was created by the plugin via SDK and is not shown in CLI by default. Click 'Convert to CLI' to make it appear in terminal CLI's /resume list",
       "claude-vscode": "This session was created by VS Code extension and is not shown in CLI by default. Click 'Convert to CLI' to make it appear in terminal CLI's /resume list",
-      "remote": "This session was created by a remote Claude Code instance"
+      "remote": "This session was created by a remote OpenCode instance",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     },
     "convertToCliSession": "Convert to CLI-recognizable session",
     "convertButton": "Convert to CLI",
     "convertSuccess": "Session converted, now visible in CLI /resume",
     "convertFailed": "Conversion failed",
     "confirmConvert": "Convert to CLI Session?",
-    "convertConfirmMessage": "This will modify the session's entrypoint to make it visible in Claude Code CLI's /resume list.",
+    "convertConfirmMessage": "This will modify the session's entrypoint to make it visible in OpenCode CLI's /resume list.",
     "conversionErrors": {
       "INVALID_SESSION_ID": "Invalid session ID",
       "SESSION_ACTIVE": "Cannot convert the currently active session. Start a new session first, then convert this one",
@@ -879,10 +881,10 @@
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1275,7 +1277,7 @@
     "undoChanges": "Undo Changes",
     "undoConfirmTitle": "Undo File Changes",
     "undoWillDelete": "This file was newly created. Undo will delete this file.",
-    "undoWillRestore": "This will restore the file to its state before Claude's modifications.",
+    "undoWillRestore": "This will restore the file to its state before OpenCode's modifications.",
     "undoCannotUndo": "This action cannot be undone.",
     "confirmUndo": "Confirm Undo",
     "undoSuccess": "Undone changes to {{fileName}}",
@@ -1713,8 +1715,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code was interrupted (possibly response timeout or user cancellation):",
-    "claudeCodeError": "Claude Code error:",
+    "claudeCodeInterrupted": "OpenCode was interrupted (possibly response timeout or user cancellation):",
+    "claudeCodeError": "OpenCode error:",
     "errorMessage": "Error message",
     "currentApiKeySource": "Current API Key source",
     "currentApiKeyPreview": "Current API Key preview",
@@ -1725,7 +1727,7 @@
     "defaultBaseUrl": "Default (https://api.anthropic.com)",
     "configTip": "Tip: CLI can read from environment variables or settings.json; this plugin only supports reading from settings.json to avoid issues. You can configure it in the plugin's top-right Settings > Provider Management",
     "apiError": "API error",
-    "apiErrorCauses": "Possible causes:\n1. API Key is not configured correctly\n2. Third-party proxy service configuration issue\n3. Please check the configuration in ~/.claude/settings.json",
+    "apiErrorCauses": "Possible causes:\n1. API Key is not configured correctly\n2. Third-party proxy service configuration issue\n3. Please check the configuration in ~/.config/opencode/opencode.json",
     "codexAuthError": "Codex authentication error:",
     "codexAuthErrorChecks": "Please check the following:\n1. Is the Codex API Key in plugin settings correct\n2. Does the API Key have sufficient permissions\n3. If using a custom Base URL, please confirm the address is correct",
     "codexAuthTip": "Tip: Codex requires a valid OpenAI API Key",

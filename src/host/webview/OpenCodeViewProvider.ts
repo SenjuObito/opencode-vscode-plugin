@@ -155,7 +155,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		_token: vscode.CancellationToken,
 	): void {
 		this.view = webviewView;
-		webviewView.title = this.host === 'left' ? 'OpenCode Buddy' : 'OpenCode Buddy';
+		webviewView.title = 'OpenCode';
 
 		webviewView.webview.options = {
 			enableScripts: true,
@@ -190,7 +190,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 		// Webview debug logs — forwarded here from the webview via the cardDebug
-		// bridge event so they appear in the «OpenCode Buddy» Output channel.
+		// bridge event so they appear in the «OpenCode» Output channel.
 		if (type === 'cardDebug') {
 			logDiagnostic(`[Webview] ${content}`);
 			return;

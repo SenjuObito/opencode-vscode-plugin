@@ -294,7 +294,7 @@
         "label": "प्रश्न सिस्टम सूचना",
         "enabled": "सक्षम",
         "disabled": "अक्षम",
-        "hint": "सक्षम होने पर, Claude द्वारा प्रश्न पूछने पर सिस्टम सूचना दिखाता है ताकि आप इसे मिस न करें। अक्षम होने पर, कोई सूचना नहीं दिखती।"
+        "hint": "सक्षम होने पर, OpenCode द्वारा प्रश्न पूछने पर सिस्टम सूचना दिखाता है ताकि आप इसे मिस न करें। अक्षम होने पर, कोई सूचना नहीं दिखती।"
       },
       "detailedOutput": {
         "label": "विस्तृत आउटपुट जानकारी",
@@ -306,7 +306,7 @@
         "label": "प्रश्न चेतावनी ध्वनि",
         "enabled": "सक्षम",
         "disabled": "अक्षम",
-        "hint": "सक्षम होने पर, Claude द्वारा प्रश्न पूछने पर कॉन्फ़िगर की गई चेतावनी ध्वनि चलती है। नीचे दिए गए ध्वनि चयन और फोकस नियमों का उपयोग करता है."
+        "hint": "सक्षम होने पर, OpenCode द्वारा प्रश्न पूछने पर कॉन्फ़िगर की गई चेतावनी ध्वनि चलती है। नीचे दिए गए ध्वनि चयन और फोकस नियमों का उपयोग करता है."
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "सिस्टम सूचनाएं केवल तब दिखाएं जब IDE फोकस में न हो",
@@ -346,7 +346,7 @@
       "permissionDialogTimeout": {
         "label": "अनुमति और प्रश्न संवाद टाइमआउट",
         "unit": "सेकंड",
-        "hint": "Claude प्रश्न संवाद और अनुमति अनुरोध संवाद के लिए टाइमआउट सेट करें (30~3600 सेकंड)। टाइमआउट के बाद, संवाद स्वचालित रूप से बंद हो जाएगा और Claude जारी रहेगा।"
+        "hint": "OpenCode प्रश्न संवाद और अनुमति अनुरोध संवाद के लिए टाइमआउट सेट करें (30~3600 सेकंड)। टाइमआउट के बाद, संवाद स्वचालित रूप से बंद हो जाएगा और OpenCode जारी रहेगा।"
       },
       "chatBgColor": {
         "label": "चैट पृष्ठभूमि रंग",
@@ -405,9 +405,9 @@
         "invalidValue": "अधिकतम कॉन्टेक्स्ट K इकाइयों में एक धनात्मक पूर्णांक होना चाहिए",
         "summary": "कॉन्टेक्स्ट: {{value}} टोकन"
       },
-      "configuredSectionTitle": "कॉन्फ़िगर किए गए Claude मॉडल",
-      "configuredSectionDesc": "सक्रिय Claude प्रदाता या settings.json के मॉडल पहले से ही चयनकर्ता में दिखते हैं। यहाँ केवल मूल्य बदला जा सकता है।",
-      "configuredEditHint": "यह मॉडल सक्रिय Claude प्रदाता या settings.json द्वारा प्रबंधित है। यहाँ केवल मूल्य बदला जा सकता है।",
+      "configuredSectionTitle": "कॉन्फ़िगर किए गए OpenCode मॉडल",
+      "configuredSectionDesc": "सक्रिय OpenCode प्रदाता या settings.json के मॉडल पहले से ही चयनकर्ता में दिखते हैं। यहाँ केवल मूल्य बदला जा सकता है।",
+      "configuredEditHint": "यह मॉडल सक्रिय OpenCode प्रदाता या settings.json द्वारा प्रबंधित है। यहाँ केवल मूल्य बदला जा सकता है।",
       "customSectionTitle": "कस्टम मॉडल",
       "editPricing": "मूल्य संपादित करें"
     },
@@ -577,7 +577,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -722,7 +722,7 @@
     "loading": "इतिहास लोड हो रहा है...",
     "loadFailed": "लोड विफल",
     "noSessions": "कोई इतिहास सत्र नहीं",
-    "noSessionsDesc": "वर्तमान परियोजना में Claude सत्र रिकॉर्ड नहीं मिले",
+    "noSessionsDesc": "वर्तमान परियोजना में OpenCode सत्र रिकॉर्ड नहीं मिले",
     "totalSessions": "कुल {{count}} सत्र · {{total}} संदेश",
     "messageCount": "{{count}} संदेश",
     "searchPlaceholder": "सत्र शीर्षक खोजें...",
@@ -742,7 +742,7 @@
     "convertSuccess": "सेशन CLI पहचान में बदल दिया गया",
     "convertFailed": "रूपांतरण विफल",
     "confirmConvert": "CLI सेशन में बदलें?",
-    "convertConfirmMessage": "यह सत्र का entrypoint संशोधित करेगा ताकि यह Claude Code CLI की /resume सूची में दिखाई दे।",
+    "convertConfirmMessage": "यह सत्र का entrypoint संशोधित करेगा ताकि यह OpenCode CLI की /resume सूची में दिखाई दे।",
     "timeAgo": {
       "yearsAgo": "साल पहले",
       "monthsAgo": "महीने पहले",
@@ -764,12 +764,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDK सत्र",
       "claude-vscode": "VS Code",
-      "remote": "रिमोट"
+      "remote": "रिमोट",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "यह सत्र प्लगइन द्वारा SDK के माध्यम से बनाया गया था और CLI में डिफ़ॉल्ट रूप से नहीं दिखाया गया है। टर्मिनल CLI की /resume सूची में इसे दिखाने के लिए 'CLI में कनवर्ट करें' पर क्लिक करें",
       "claude-vscode": "यह सत्र VS Code एक्सटेंशन द्वारा बनाया गया था और CLI में डिफ़ॉल्ट रूप से नहीं दिखाया गया है। टर्मिनल CLI की /resume सूची में इसे दिखाने के लिए 'CLI में कनवर्ट करें' पर क्लिक करें",
-      "remote": "यह सत्र Claude Code के रिमोट इंस्टेंस द्वारा बनाया गया था"
+      "remote": "यह सत्र OpenCode के रिमोट इंस्टेंस द्वारा बनाया गया था",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -815,10 +817,10 @@
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1191,7 +1193,7 @@
     "undoChanges": "परिवर्तन पूर्ववत करें",
     "undoConfirmTitle": "फ़ाइल परिवर्तन पूर्ववत करें",
     "undoWillDelete": "यह फ़ाइल नई बनाई गई थी। पूर्ववत करने से यह फ़ाइल हटा दी जाएगी।",
-    "undoWillRestore": "यह फ़ाइल को Claude के संशोधनों से पहले की स्थिति में वापस लाएगा।",
+    "undoWillRestore": "यह फ़ाइल को OpenCode के संशोधनों से पहले की स्थिति में वापस लाएगा।",
     "undoCannotUndo": "यह कार्रवाई पूर्ववत नहीं की जा सकती।",
     "confirmUndo": "पूर्ववत की पुष्टि करें",
     "undoSuccess": "{{fileName}} के परिवर्तन पूर्ववत किए गए",
@@ -1559,8 +1561,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code बाधित हुआ (संभवतः प्रतिक्रिया समय समाप्त या उपयोगकर्ता रद्दीकरण):",
-    "claudeCodeError": "Claude Code त्रुटि:",
+    "claudeCodeInterrupted": "OpenCode बाधित हुआ (संभवतः प्रतिक्रिया समय समाप्त या उपयोगकर्ता रद्दीकरण):",
+    "claudeCodeError": "OpenCode त्रुटि:",
     "errorMessage": "त्रुटि संदेश",
     "currentApiKeySource": "वर्तमान API Key स्रोत",
     "currentApiKeyPreview": "वर्तमान API Key पूर्वावलोकन",
@@ -1571,7 +1573,7 @@
     "defaultBaseUrl": "डिफ़ॉल्ट (https://api.anthropic.com)",
     "configTip": "सुझाव: CLI पर्यावरण चर या settings.json से पढ़ सकता है; यह प्लगइन समस्याओं से बचने के लिए केवल settings.json से पढ़ने का समर्थन करता है। आप इसे प्लगइन के ऊपरी दाएं कोने में सेटिंग्स > प्रदाता प्रबंधन में कॉन्फ़िगर कर सकते हैं",
     "apiError": "API त्रुटि",
-    "apiErrorCauses": "संभावित कारण:\n1. API Key सही ढंग से कॉन्फ़िगर नहीं है\n2. तृतीय-पक्ष प्रॉक्सी सेवा कॉन्फ़िगरेशन समस्या\n3. कृपया ~/.claude/settings.json में कॉन्फ़िगरेशन जांचें",
+    "apiErrorCauses": "संभावित कारण:\n1. API Key सही ढंग से कॉन्फ़िगर नहीं है\n2. तृतीय-पक्ष प्रॉक्सी सेवा कॉन्फ़िगरेशन समस्या\n3. कृपया ~/.config/opencode/opencode.json में कॉन्फ़िगरेशन जांचें",
     "codexAuthError": "Codex प्रमाणीकरण त्रुटि:",
     "codexAuthErrorChecks": "कृपया निम्नलिखित जांचें:\n1. क्या प्लगइन सेटिंग्स में Codex API Key सही है\n2. क्या API Key के पास पर्याप्त अनुमतियां हैं\n3. यदि कस्टम Base URL का उपयोग कर रहे हैं, तो कृपया पता सही होने की पुष्टि करें",
     "codexAuthTip": "सुझाव: Codex को एक वैध OpenAI API Key की आवश्यकता है",

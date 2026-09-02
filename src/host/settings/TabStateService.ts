@@ -3,7 +3,7 @@
  *
  * Persists per-tab metadata across restarts. cc-gui stores a `Map<index, name>`
  * and `Map<index, TabSessionState>` in project state; VS Code 用 workspaceState
- * 的同一 shape。opencode 前缀沿用品牌（"OpenCode Buddy"）。
+ * 的同一 shape。opencode 前缀沿用品牌（"OpenCode"）。
  */
 import { SettingsStore } from './SettingsService';
 
@@ -101,6 +101,6 @@ export class TabStateService {
 	/** 生成下一个标签页标题（cc-gui getNextTabName 的 "AI{n}" 版 → "OpenCode {n}"）。 */
 	getNextTabName(): string {
 		const index = this.getNextTabIndex();
-		return index === '1' ? 'OpenCode Buddy' : `OpenCode Buddy ${index}`;
+		return index === '1' ? 'OpenCode' : `OpenCode ${index}`;
 	}
 }

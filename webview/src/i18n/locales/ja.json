@@ -294,7 +294,7 @@
         "label": "質問システム通知",
         "enabled": "有効",
         "disabled": "無効",
-        "hint": "有効にすると、Claude が質問した時にシステム通知を表示し、見逃しを防ぎます。無効の場合、通知は表示されません。"
+        "hint": "有効にすると、OpenCode が質問した時にシステム通知を表示し、見逃しを防ぎます。無効の場合、通知は表示されません。"
       },
       "detailedOutput": {
         "label": "詳細な出力情報",
@@ -306,7 +306,7 @@
         "label": "質問アラート音",
         "enabled": "有効",
         "disabled": "無効",
-        "hint": "有効にすると、Claude が質問した時に設定済みのアラート音を再生します。下のサウンド選択とフォーカス規則を使用します。"
+        "hint": "有効にすると、OpenCode が質問した時に設定済みのアラート音を再生します。下のサウンド選択とフォーカス規則を使用します。"
       },
       "systemNotificationOnlyWhenUnfocused": {
         "label": "IDE がフォーカスされていない時だけシステム通知を表示",
@@ -346,7 +346,7 @@
       "permissionDialogTimeout": {
         "label": "権限と質問ダイアログのタイムアウト",
         "unit": "秒",
-        "hint": "Claudeの質問ダイアログと権限リクエストダイアログのタイムアウト時間を設定します（30~3600秒）。タイムアウト後、ダイアログは自動的に閉じられ、Claudeは続行します。"
+        "hint": "OpenCodeの質問ダイアログと権限リクエストダイアログのタイムアウト時間を設定します（30~3600秒）。タイムアウト後、ダイアログは自動的に閉じられ、OpenCodeは続行します。"
       },
       "chatBgColor": {
         "label": "チャット背景色",
@@ -405,9 +405,9 @@
         "invalidValue": "最大コンテキストはK単位の正の整数で入力してください",
         "summary": "コンテキスト: {{value}} トークン"
       },
-      "configuredSectionTitle": "設定済みの Claude モデル",
-      "configuredSectionDesc": "現在の Claude プロバイダーまたは settings.json のモデルは既にモデル選択リストに表示されています。ここでは料金のみ変更できます。",
-      "configuredEditHint": "このモデルは現在の Claude プロバイダーまたは settings.json で管理されています。ここでは料金のみ変更できます。",
+      "configuredSectionTitle": "設定済みの OpenCode モデル",
+      "configuredSectionDesc": "現在の OpenCode プロバイダーまたは settings.json のモデルは既にモデル選択リストに表示されています。ここでは料金のみ変更できます。",
+      "configuredEditHint": "このモデルは現在の OpenCode プロバイダーまたは settings.json で管理されています。ここでは料金のみ変更できます。",
       "customSectionTitle": "カスタムモデル",
       "editPricing": "料金を編集"
     },
@@ -582,7 +582,7 @@
         "editDescription": "Changes will be applied immediately to ~/.codex/ directory",
         "officialPreset": "OpenAI Official Direct",
         "officialSectionHint": "Use your manually entered OPENAI_API_KEY with the official endpoint https://api.openai.com/v1.",
-        "presetHint": "These presets include only third-party or proxy endpoints that match the Claude Code provider set.",
+        "presetHint": "These presets include only third-party or proxy endpoints that match the OpenCode provider set.",
         "providerName": "Provider Name",
         "providerNamePlaceholder": "e.g., Codex Official",
         "configJson": "Config",
@@ -727,7 +727,7 @@
     "loading": "履歴を読み込み中...",
     "loadFailed": "読み込み失敗",
     "noSessions": "履歴セッションなし",
-    "noSessionsDesc": "現在のプロジェクトにClaudeセッション記録が見つかりません",
+    "noSessionsDesc": "現在のプロジェクトにOpenCodeセッション記録が見つかりません",
     "totalSessions": "{{count}}セッション · {{total}}メッセージ",
     "messageCount": "{{count}}メッセージ",
     "searchPlaceholder": "セッションタイトルを検索...",
@@ -747,7 +747,7 @@
     "convertSuccess": "セッションをCLI認識可能に変換しました",
     "convertFailed": "変換に失敗しました",
     "confirmConvert": "CLIセッションに変換しますか？",
-    "convertConfirmMessage": "セッションのentrypointを変更し、Claude Code CLIの/resumeリストに表示されるようにします。",
+    "convertConfirmMessage": "セッションのentrypointを変更し、OpenCode CLIの/resumeリストに表示されるようにします。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "ヶ月前",
@@ -769,12 +769,14 @@
     "entrypointLabel": {
       "sdk-cli": "SDKセッション",
       "claude-vscode": "VS Code",
-      "remote": "リモート"
+      "remote": "リモート",
+      "sdk": "SDK"
     },
     "entrypointTooltip": {
       "sdk-cli": "このセッションはSDK経由でプラグインによって作成されており、CLIではデフォルトで表示されません。ターミナルCLIの/resumeリストに表示するには「CLIに変換」をクリックしてください",
       "claude-vscode": "このセッションはVS Code拡張機能によって作成されており、CLIではデフォルトで表示されません。ターミナルCLIの/resumeリストに表示するには「CLIに変換」をクリックしてください",
-      "remote": "このセッションはリモートのClaude Codeインスタンスによって作成されました"
+      "remote": "このセッションはリモートのOpenCodeインスタンスによって作成されました",
+      "sdk": "This session was created by the OpenCode plugin via the SDK."
     }
   },
   "permission": {
@@ -820,10 +822,10 @@
   },
   "planApproval": {
     "title": "Plan Ready for Approval",
-    "subtitle": "Claude has finished planning and is ready to execute.",
+    "subtitle": "OpenCode has finished planning and is ready to execute.",
     "requestedPermissions": "Requested Permissions",
     "executionMode": "Execution Mode",
-    "executionModeDescription": "Select how Claude should execute the plan:",
+    "executionModeDescription": "Select how OpenCode should execute the plan:",
     "approve": "Approve & Execute",
     "reject": "Reject",
     "toApprove": "to approve",
@@ -1197,7 +1199,7 @@
     "undoChanges": "変更を元に戻す",
     "undoConfirmTitle": "ファイル変更を元に戻す",
     "undoWillDelete": "このファイルは新規作成されました。元に戻すとファイルが削除されます。",
-    "undoWillRestore": "Claude が変更する前の状態にファイルを復元します。",
+    "undoWillRestore": "OpenCode が変更する前の状態にファイルを復元します。",
     "undoCannotUndo": "この操作は取り消せません。",
     "confirmUndo": "元に戻す",
     "undoSuccess": "{{fileName}} の変更を元に戻しました",
@@ -1565,8 +1567,8 @@
     "helpText": "If the problem persists, please copy the error information and submit it as an issue on GitHub, or share it in the community group."
   },
   "aiBridge": {
-    "claudeCodeInterrupted": "Claude Code が中断されました（レスポンスタイムアウトまたはユーザーキャンセルの可能性）：",
-    "claudeCodeError": "Claude Code エラー：",
+    "claudeCodeInterrupted": "OpenCode が中断されました（レスポンスタイムアウトまたはユーザーキャンセルの可能性）：",
+    "claudeCodeError": "OpenCode エラー：",
     "errorMessage": "エラーメッセージ",
     "currentApiKeySource": "現在の API Key ソース",
     "currentApiKeyPreview": "現在の API Key プレビュー",
@@ -1577,7 +1579,7 @@
     "defaultBaseUrl": "デフォルト（https://api.anthropic.com）",
     "configTip": "ヒント：CLI は環境変数または settings.json から読み取れますが、このプラグインは問題を避けるため settings.json からの読み取りのみサポートしています。プラグイン右上の設定 > プロバイダー管理で設定できます",
     "apiError": "API エラー",
-    "apiErrorCauses": "考えられる原因：\n1. API Key が正しく設定されていない\n2. サードパーティプロキシサービスの設定問題\n3. ~/.claude/settings.json の設定を確認してください",
+    "apiErrorCauses": "考えられる原因：\n1. API Key が正しく設定されていない\n2. サードパーティプロキシサービスの設定問題\n3. ~/.config/opencode/opencode.json の設定を確認してください",
     "codexAuthError": "Codex 認証エラー：",
     "codexAuthErrorChecks": "以下を確認してください：\n1. プラグイン設定の Codex API Key は正しいですか\n2. API Key に十分な権限がありますか\n3. カスタム Base URL を使用している場合、アドレスが正しいか確認してください",
     "codexAuthTip": "ヒント：Codex には有効な OpenAI API Key が必要です",

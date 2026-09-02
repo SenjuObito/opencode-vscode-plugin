@@ -156,7 +156,7 @@ const PlanApprovalDialog = ({
               {t('planApproval.title', '计划已准备就绪')}
             </h3>
             <p className="plan-approval-dialog-subtitle">
-              {t('planApproval.subtitle', 'Claude 已完成规划，准备执行。')}
+              {t('planApproval.subtitle', 'OpenCode 已完成规划，准备执行。')}
             </p>
           </div>
           <div className="header-right">
@@ -189,7 +189,7 @@ const PlanApprovalDialog = ({
             {t('planApproval.executionMode', '执行模式')}
           </h4>
           <p className="mode-description">
-            {t('planApproval.executionModeDescription', '选择 Claude 执行计划的方式：')}
+            {t('planApproval.executionModeDescription', '选择 OpenCode 执行计划的方式：')}
           </p>
           <div className="mode-options">
             {EXECUTION_MODES.map((mode) => (
