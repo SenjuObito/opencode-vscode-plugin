@@ -257,14 +257,14 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider('opencode-gui.left', leftProvider),
-		vscode.window.registerWebviewViewProvider('opencode-gui.right', rightProvider),
-		vscode.commands.registerCommand('opencode-gui.openLeft', () =>
-			vscode.commands.executeCommand('workbench.view.extension.opencode-gui'),
+		vscode.window.registerWebviewViewProvider('opencode-x.left', leftProvider),
+		vscode.window.registerWebviewViewProvider('opencode-x.right', rightProvider),
+		vscode.commands.registerCommand('opencode-x.openLeft', () =>
+			vscode.commands.executeCommand('workbench.view.extension.opencode-x'),
 		),
-		vscode.commands.registerCommand('opencode-gui.openChat', () => {
+		vscode.commands.registerCommand('opencode-x.openChat', () => {
 			// 在编辑器区域分栏打开 OpenCode（ViewColumn.Beside），与左/右侧边栏无关。
-			// 说明：原先这里用 `opencode-gui.right.focus` 聚焦副侧边栏，但该命令只聚焦
+			// 说明：原先这里用 `opencode-x.right.focus` 聚焦副侧边栏，但该命令只聚焦
 			// 已可见的视图、不会展开隐藏的次要侧边栏，且不抛异常，导致点击后毫无反应。
 			editorPanel.open();
 		}),

@@ -1,5 +1,5 @@
 {
-  "name": "opencode-gui",
+  "name": "opencode-x",
   "displayName": "OpenCode X",
   "publisher": "SenjuObito",
   "description": "opencode gui",
@@ -27,31 +27,31 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "opencode-gui",
+          "id": "opencode-x",
           "title": "OpenCode",
           "icon": "media/opencode-activity.svg"
         }
       ],
       "secondarySidebar": [
         {
-          "id": "opencode-gui-chat",
+          "id": "opencode-x-chat",
           "title": "OpenCode",
           "icon": "media/opencode-activity.svg"
         }
       ]
     },
     "views": {
-      "opencode-gui": [
+      "opencode-x": [
         {
           "type": "webview",
-          "id": "opencode-gui.left",
+          "id": "opencode-x.left",
           "name": "OpenCode"
         }
       ],
-      "opencode-gui-chat": [
+      "opencode-x-chat": [
         {
           "type": "webview",
-          "id": "opencode-gui.right",
+          "id": "opencode-x.right",
           "name": "OpenCode"
         }
       ]
@@ -59,19 +59,19 @@
     "menus": {
       "editor/title": [
         {
-          "command": "opencode-gui.openChat",
+          "command": "opencode-x.openChat",
           "group": "navigation"
         }
       ]
     },
     "commands": [
       {
-        "command": "opencode-gui.openLeft",
+        "command": "opencode-x.openLeft",
         "title": "打开 OpenCode 面板（左侧）",
         "category": "OpenCode"
       },
       {
-        "command": "opencode-gui.openChat",
+        "command": "opencode-x.openChat",
         "title": "在编辑器分栏打开 OpenCode",
         "category": "OpenCode",
         "icon": {

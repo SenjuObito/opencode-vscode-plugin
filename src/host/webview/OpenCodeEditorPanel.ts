@@ -23,7 +23,7 @@ import {
 import { DEFAULT_UI_PREFERENCES, type UiPreferences } from '../settings/SettingsService';
 
 /** 分栏窗口的 viewType（也用于 package.json 之外的实例识别）。 */
-const VIEW_TYPE = 'opencode-gui.editorChat';
+const VIEW_TYPE = 'opencode-x.editorChat';
 
 export interface OpenCodeEditorPanelOptions {
 	readonly extensionUri: vscode.Uri;

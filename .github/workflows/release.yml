@@ -74,14 +74,13 @@ jobs:
       - name: Extract release notes
         run: node tools/extract-release-notes.mjs "${{ steps.meta.outputs.version }}" release-notes.md
 
-      - name: Package VSIX for all platforms
+      # The extension is pure JavaScript everywhere (no native modules, no
+      # platform binaries — ai-bridge's only runtime dep @opencode-ai/sdk is
+      # pure JS too), so ONE universal VSIX installs on all platforms/arches.
+      - name: Package universal VSIX
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
-          TARGETS=(darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64)
-          for t in "${TARGETS[@]}"; do
-            echo "Packaging target: $t"
-            npx --yes @vscode/vsce@latest package --target "$t" --no-dependencies -o "opencode-gui-$VERSION-$t.vsix"
-          done
+          npx --yes @vscode/vsce@latest package --no-dependencies -o "opencode-x-$VERSION.vsix"
 
       # Guard against the packaging defect where ai-bridge/node_modules gets
       # stripped: if the daemon SDK is missing, fail loudly instead of shipping
@@ -89,7 +88,7 @@ jobs:
       - name: Verify daemon dependency is packaged
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
-          unzip -l "opencode-gui-$VERSION-linux-x64.vsix" | grep -q "ai-bridge/node_modules/@opencode-ai/sdk" \
+          unzip -l "opencode-x-$VERSION.vsix" | grep -q "ai-bridge/node_modules/@opencode-ai/sdk" \
             && echo "OK: @opencode-ai/sdk shipped in VSIX" \
             || { echo "ERROR: @opencode-ai/sdk missing from VSIX"; exit 1; }
 
@@ -99,12 +98,12 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           VERSION="${{ steps.meta.outputs.version }}"
-          mapfile -t ASSETS < <(ls opencode-gui-"$VERSION"-*.vsix 2>/dev/null)
+          ASSET="opencode-x-$VERSION.vsix"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists, uploading assets..."
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            echo "Release $TAG already exists, uploading asset..."
+            gh release upload "$TAG" "$ASSET" --clobber
           else
-            gh release create "$TAG" "${ASSETS[@]}" \
-              --title "OpenCode GUI $TAG" \
+            gh release create "$TAG" "$ASSET" \
+              --title "OpenCode X $TAG" \
               --notes-file release-notes.md
           fi

@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+.workbuddy/**
+.github/**
 out/**
 **/node_modules/**
 webview/src/**

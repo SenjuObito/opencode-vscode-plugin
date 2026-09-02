@@ -3,7 +3,7 @@
  *
  * Thin wrapper around the @opencode-ai/sdk v2 client for the persistent bridge.
  * Ported from the reference implementation
- * (opencode-gui/src/webviewHost/services/OpenCodeClient.ts).
+ * (opencode-x/src/webviewHost/services/OpenCodeClient.ts).
  *
  * The v2 SDK uses FLAT parameter format:
  *   { sessionID, directory, model, agent, parts, ... }
