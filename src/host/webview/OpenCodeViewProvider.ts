@@ -108,10 +108,21 @@ export function buildWebviewHtml(rawHtml: string, isDark: boolean, uiPreferences
 		'</script>',
 	].join('');
 
-	const headTag = '<head>';
-	const headIndex = rawHtml.indexOf(headTag);
-	if (headIndex >= 0) {
-		const insertAt = headIndex + headTag.length;
+	// 必须用正则匹配开标签，不能写死 '<head>'：构建产物里 <head> 常带属性
+	//（如 <head data-page-node-id="...">），此时 indexOf('<head>') 会落空，
+	// 转而匹配到 webview bundle 里某个字面量 '<head>'（HTML 处理库的字符串）。
+	// 引导脚本含 '</script>'，一旦插进脚本区就会把 bundle 拦腰截断，
+	// 之后的压缩代码被浏览器当成普通文本渲染出来（表现为“整页乱码”）。
+	const headMatch = /<head(?:\s[^>]*)?>/i.exec(rawHtml);
+	if (headMatch) {
+		const insertAt = headMatch.index + headMatch[0].length;
+		return rawHtml.slice(0, insertAt) + bootstrap + rawHtml.slice(insertAt);
+	}
+	// 退化路径：没有 head 就插在 <html> 之后，避免把内容顶到 doctype 之前
+	// （会触发 quirks mode，样式与布局都会走样）。
+	const htmlMatch = /<html(?:\s[^>]*)?>/i.exec(rawHtml);
+	if (htmlMatch) {
+		const insertAt = htmlMatch.index + htmlMatch[0].length;
 		return rawHtml.slice(0, insertAt) + bootstrap + rawHtml.slice(insertAt);
 	}
 	return bootstrap + rawHtml;
