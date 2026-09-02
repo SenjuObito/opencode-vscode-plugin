@@ -6,6 +6,15 @@
 # `pnpm install` fails with ERR_PNPM_IGNORED_BUILDS and `node esbuild.js`
 # breaks in CI. @swc/core (pulled in by the webview's react-swc plugin) is
 # listed too so its build script is allowed when the webview is installed.
+#
+# `packages` is limited to the repo root so webview/ and ai-bridge/ are treated
+# as standalone projects. Without this, the root workspace install hoists their
+# dependencies and `cd webview && pnpm install` reports "Already up to date"
+# without creating webview/node_modules, which breaks the webview `tsc` build
+# (Cannot find type definition file for 'vite/client').
+packages:
+  - '.'
+
 allowBuilds:
   esbuild: true
   "@swc/core": true

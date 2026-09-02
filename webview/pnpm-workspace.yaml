@@ -1,0 +1,17 @@
+# webview is built as a standalone project (the CI does `cd webview && pnpm
+# install` separately from the root). Its own pnpm-workspace.yaml makes pnpm
+# treat this directory as the workspace root instead of falling back to the
+# repo-root workspace, so `pnpm install` actually creates webview/node_modules.
+#
+# pnpm 11 reads build-script approvals only from a pnpm-workspace.yaml via the
+# `allowBuilds` map (onlyBuiltDependencies was removed in v11).
+packages:
+  - '.'
+
+allowBuilds:
+  esbuild: true
+  "@swc/core": true
+  # Transitive polyfill pulled in via the vite/swc toolchain. Its postinstall is
+  # an optional optimization and is not needed for the build, so deny it
+  # explicitly (keeps strictDepBuilds from failing the install).
+  core-js: false
