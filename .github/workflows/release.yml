@@ -44,6 +44,11 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Read the extension id from package.json so the VSIX filename always
+          # tracks `name`. vsce's -o flag overrides its default
+          # "<name>-<version>.vsix", so a hardcoded name here silently goes
+          # stale whenever the extension id is renamed.
+          echo "extname=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
           VERSION="$VERSION" node -e "const fs=require('fs');const p='package.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.version=process.env.VERSION;fs.writeFileSync(p,JSON.stringify(d,null,2)+'\n');console.log('package.json version ->',process.env.VERSION);"
 
       - name: Install root dependencies
@@ -80,7 +85,9 @@ jobs:
       - name: Package universal VSIX
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
-          npx --yes @vscode/vsce@latest package --no-dependencies -o "opencode-x-$VERSION.vsix"
+          EXTNAME="${{ steps.meta.outputs.extname }}"
+          echo "Packaging $EXTNAME v$VERSION"
+          npx --yes @vscode/vsce@latest package --no-dependencies -o "$EXTNAME-$VERSION.vsix"
 
       # Guard against the packaging defect where ai-bridge/node_modules gets
       # stripped: if the daemon SDK is missing, fail loudly instead of shipping
@@ -88,7 +95,8 @@ jobs:
       - name: Verify daemon dependency is packaged
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
-          unzip -l "opencode-x-$VERSION.vsix" | grep -q "ai-bridge/node_modules/@opencode-ai/sdk" \
+          EXTNAME="${{ steps.meta.outputs.extname }}"
+          unzip -l "$EXTNAME-$VERSION.vsix" | grep -q "ai-bridge/node_modules/@opencode-ai/sdk" \
             && echo "OK: @opencode-ai/sdk shipped in VSIX" \
             || { echo "ERROR: @opencode-ai/sdk missing from VSIX"; exit 1; }
 
@@ -98,7 +106,7 @@ jobs:
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           VERSION="${{ steps.meta.outputs.version }}"
-          ASSET="opencode-x-$VERSION.vsix"
+          ASSET="${{ steps.meta.outputs.extname }}-$VERSION.vsix"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists, uploading asset..."
             gh release upload "$TAG" "$ASSET" --clobber
