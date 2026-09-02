@@ -1,5 +1,11 @@
-# pnpm 10+ / 11: onlyBuiltDependencies whitelists build scripts (esbuild's
-# postinstall downloads its platform binary). Without this, `pnpm install`
-# blocks the build and `node esbuild.js` fails in CI.
-onlyBuiltDependencies:
-  - esbuild
+# pnpm 11: the old `onlyBuiltDependencies` key was REMOVED in v11 and replaced
+# by `allowBuilds` (a package-name -> bool map). v11 also no longer reads these
+# settings from package.json's `pnpm` field — only from this file.
+#
+# esbuild's postinstall downloads its platform binary; if it is blocked,
+# `pnpm install` fails with ERR_PNPM_IGNORED_BUILDS and `node esbuild.js`
+# breaks in CI. @swc/core (pulled in by the webview's react-swc plugin) is
+# listed too so its build script is allowed when the webview is installed.
+allowBuilds:
+  esbuild: true
+  "@swc/core": true
