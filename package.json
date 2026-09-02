@@ -4,6 +4,14 @@
   "publisher": "SenjuObito",
   "description": "opencode gui",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SenjuObito/opencode-vscode-plugin.git"
+  },
+  "homepage": "https://github.com/SenjuObito/opencode-vscode-plugin",
+  "bugs": {
+    "url": "https://github.com/SenjuObito/opencode-vscode-plugin/issues"
+  },
   "icon": "media/opencode.png",
   "engines": {
     "vscode": "^1.125.0"
