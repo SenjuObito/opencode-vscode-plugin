@@ -124,7 +124,7 @@ webview/ (React SPA)  ⇄  src/ extension host (TS)  ⇄  ai-bridge/daemon.js (N
 
 | 微信 | 支付宝 | PayPal |
 |:---:|:---:|:---:|
-| ![微信赞赏](media/wallet.png) | ![支付宝赞赏](media/wallet-alipay.png) | ![PayPal赞赏](media/wallet-paypal.png) |
+| ![微信赞赏](media/wallet.png) | ![支付宝赞赏](media/wallet-alipay.png) | <img src="media/wallet-paypal.png" width="600" /> |
 
 ## 致谢
 

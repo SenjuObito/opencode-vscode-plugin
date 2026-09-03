@@ -142,7 +142,7 @@ If you find this useful, consider supporting:
 
 | WeChat | Alipay | PayPal |
 |:---:|:---:|:---:|
-| ![WeChat](media/wallet.png) | ![Alipay](media/wallet-alipay.png) | ![PayPal](media/wallet-paypal.png) |
+| ![WeChat](media/wallet.png) | ![Alipay](media/wallet-alipay.png) | <img src="media/wallet-paypal.png" width="600" /> |
 
 ## Acknowledgements
 
