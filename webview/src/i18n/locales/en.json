@@ -878,7 +878,8 @@
     "progress": "Question {{current}} / {{total}}",
     "prev": "Previous",
     "next": "Next",
-    "unansweredStatus": "Unanswered"
+    "unansweredStatus": "Unanswered",
+    "cancelledStatus": "Cancelled"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",

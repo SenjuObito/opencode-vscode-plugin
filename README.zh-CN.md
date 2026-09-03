@@ -1,4 +1,4 @@
-# opencode-buddy
+# OpenCode Buddy
 
 一个将 **opencode** agent 带入完整聊天 GUI 的 VS Code 扩展。开发初衷是已有vs code opencode插件太难用了。在github上搜索到cc-gui开源项目。这是 IntelliJ 插件 [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui) 的全新移植版本：React webview 原样保留，Java 后端用 TypeScript 重写，仅保留 **opencode** provider（已移除 Claude / Codex / Grok / Kimi / PI 分支）。
 
@@ -17,20 +17,49 @@
 
 大部分开发使用免费额度，Deepseek 成本 65.34 元人民币。
 
-## 赞赏
-
-如果使用体验不错，欢迎赞赏支持：
-
-| 微信 | 支付宝 | PayPal |
-|:---:|:---:|:---:|
-| ![微信赞赏](media/wallet.png) | ![支付宝赞赏](media/wallet-alipay.png) | ![PayPal赞赏](media/wallet-paypal.png) |
-
 ## 功能特性
 
 - **持久化 opencode 守护进程** — 无需为每条消息生成进程。`opencode serve` 在激活时预热，跨请求复用，崩溃时自动重启（≤3 次）。
 - **双聊天界面** — 活动栏面板（左侧）和辅助侧边栏面板（右侧），加上**多标签页**编辑器会话（每个标签页是独立的 `createWebviewPanel`，拥有自己的对话）。
 - **完整 cc-gui UI** — 流式文本/思考/工具调用及差异显示、模型/模式/斜杠命令选择器、token 使用量环形图、附件和文件上下文、对话历史、MCP 服务器、agent/skill/prompt 管理、权限/问题/计划审批对话框，以及设置面板。
 - **仅支持 opencode** — webview、宿主处理器和 CLI 工具已精简为仅支持 opencode。
+
+## 使用教程
+
+### 1. 打开聊天面板
+
+安装插件后，点击 VS Code 侧栏的 OpenCode 图标即可打开聊天界面。或者通过命令面板执行 `OpenCode: 在编辑器分栏打开 OpenCode`，在编辑器分栏中打开一个独立的标签页（每个标签页都是一个独立的会话）。
+
+![聊天主界面](media/home.png)
+
+界面区域一览：
+
+- **顶部 tab**：`聊天 / Claude Code / Codex / OpenCode` —— 快速切换不同会话。
+- **右上角**：新建会话 / 搜索 / 历史 / 设置。
+- **底部三栏**：
+  - `任务 / 子代理 / 编辑` —— 切换输入模式。
+  - `Build` —— 选择工作模式（Build / Plan 等）。
+  - **模型选择** —— 切换当前模型（例如 `Nemotron-3.5-Lightning-Free`）。
+  - **推理深度** —— 例如 `medium`，控制模型思考深度。
+- **输入框**：支持 `@文件名` 引用文件、`/bash 命令`、`/opencode 命令`，回车发送。
+
+### 2. 个性化设置
+
+点击聊天界面右上角的齿轮图标打开设置面板：
+
+![设置页面](media/settings.png)
+
+**基础配置 → 外观** 主要选项：
+
+| 项 | 说明 |
+|---|---|
+| 界面主题 | 跟随 VS Code / 亮色 / 暗色 |
+| 界面语言 | 跟随 VS Code |
+| 字体大小 / UI 字体 / 代码字体 | 控制 webview 内的字号与字体 |
+| Diff 主题 | 控制 diff 视图的明暗主题 |
+| 聊天背景色 / 标题栏与状态栏颜色 | 自定义聊天区域的颜色（支持自定义十六进制） |
+
+设置页顶部还有 `外观 / 行为 / 环境` 三个标签，分别用于外观定制、代理行为和运行时环境配置。
 
 ## 环境要求
 
@@ -88,6 +117,14 @@ webview/ (React SPA)  ⇄  src/ extension host (TS)  ⇄  ai-bridge/daemon.js (N
 - webview 通过 `sendToJava("type:content")` 与宿主通信；宿主通过 `postMessage({ type: fn, args })` 调用 `window[fn](...args)` 回复。所有 webview 面板（左侧栏、右侧栏、编辑器分栏）共享同一个 `BroadcastChannel`。
 - `ai-bridge/daemon.js` 通过 stdio 传输 NDJSON：`{id, method, params}` 请求、`{id, line}` 流式输出、`{type:'daemon', event}` 生命周期事件。宿主请求为非阻塞。并发请求使用 `AsyncLocalStorage` 进行上下文隔离。
 - 扩展宿主（`src/host/`）镜像 cc-gui 的 Java 模块布局：`router/`、`handlers/`、`session/`、`provider/`、`settings/`、`tabs/`、`util/`、`services/`、`context/`、`notifications/`、`fonts/`。
+
+## 赞赏
+
+如果使用体验不错，欢迎赞赏支持：
+
+| 微信 | 支付宝 | PayPal |
+|:---:|:---:|:---:|
+| ![微信赞赏](media/wallet.png) | ![支付宝赞赏](media/wallet-alipay.png) | ![PayPal赞赏](media/wallet-paypal.png) |
 
 ## 致谢
 

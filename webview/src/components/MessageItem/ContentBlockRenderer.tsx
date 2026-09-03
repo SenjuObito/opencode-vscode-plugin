@@ -327,6 +327,7 @@ export function ContentBlockRenderer({
       const storedQA = getQuestionAnswer(blockId);
       console.log(`[ContentBlockRenderer] askuserquestion blockId="${blockId}" storedQA=${!!storedQA} block.input.questions=${JSON.stringify(block.input?.questions ?? []).substring(0, 300)}`);
       let answerBlock: ToolResultBlock | null = null;
+      let storedAnswers: Map<string, string> | undefined;
       if (storedQA) {
         const answerText = Object.entries(storedQA.answers)
           .map(([question, value]) => {
@@ -335,13 +336,31 @@ export function ContentBlockRenderer({
           })
           .join('\n\n');
         answerBlock = { type: 'tool_result', tool_use_id: blockId, content: answerText };
+        // Build the structured answers map at the source of truth, so the
+        // card never has to re-parse our own synthetic content string.
+        storedAnswers = new Map<string, string>();
+        for (const [question, value] of Object.entries(storedQA.answers)) {
+          const ans = Array.isArray(value) ? value.join(', ') : value;
+          storedAnswers.set(question, ans);
+        }
         console.log(`[ContentBlockRenderer] askuserquestion using storedQA, answerText=${answerText.substring(0, 200)}`);
       } else {
         answerBlock = findToolResult(blockId, messageIndex) ?? null;
         console.log(`[ContentBlockRenderer] askuserquestion fallback findToolResult blockId="${blockId}" found=${!!answerBlock}`);
       }
-      // 仅当答案文本非空才算「已回答」；否则（用户跳过 / 弹窗仍待回答 / 答案为空）
-      // 渲染为「未回答」，避免把未作答的提问卡片误标成「已回答」。
+      // Resolve the card lifecycle status from the tool_result shape:
+      //   1. opencode flagged the tool as errored (rejectQuestion → failTool
+      //      "question rejected")  → 'cancelled'. We can't distinguish user
+      //      skip from daemon-side timeout (same `failTool` path), so both
+      //      render as "已取消" per the agreed fallback.
+      //   2. parsed `"q"="a"` pairs present                → 'answered'
+      //   3. otherwise (no tool_result yet, or empty text) → 'unanswered'
+      //
+      // opencode's `failTool(state, ask.ref, "question rejected")` writes that
+      // exact string into `state.error`, which the bridge emits as the
+      // tool_result's content. We fall back on that literal so the cancelled
+      // badge shows even if the `is_error` flag is missing on the wire (older
+      // daemon builds, partial messages, etc.).
       const answerBlockText = answerBlock
         ? (typeof answerBlock.content === 'string'
             ? answerBlock.content
@@ -352,7 +371,36 @@ export function ContentBlockRenderer({
                   .join('\n')
               : '')
         : '';
-      const hasAnswer = answerBlockText.trim().length > 0;
+      const isCancelled = answerBlock?.is_error === true
+        || answerBlockText.includes('question rejected');
+      // Count real answer pairs. storedQA (from the host's onQuestionAnswered
+      // callback) is the structured source of truth and wins over the parser;
+      // otherwise we count `"q"="a"` pairs in the opencode wire format, with
+      // a storedQA-flavoured "question\nanswer" round-trip fallback so the
+      // card never falsely reports "未回答" when the user actually replied.
+      const parsedAnswerCount = (() => {
+        if (storedAnswers && storedAnswers.size > 0) return storedAnswers.size;
+        const map = new Map<string, string>();
+        const regex = /"([^"]+)"\s*=\s*"([^"]+)"/g;
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(answerBlockText)) !== null) {
+          map.set(m[1], m[2]);
+        }
+        if (map.size > 0) return map.size;
+        for (const pair of answerBlockText.split(/\n\n+/)) {
+          const newlineIdx = pair.indexOf('\n');
+          if (newlineIdx <= 0) continue;
+          const q = pair.slice(0, newlineIdx).trim();
+          const a = pair.slice(newlineIdx + 1).trim();
+          if (q && a) map.set(q, a);
+        }
+        return map.size;
+      })();
+      const status: 'answered' | 'cancelled' | 'unanswered' = isCancelled
+        ? 'cancelled'
+        : parsedAnswerCount > 0
+          ? 'answered'
+          : 'unanswered';
       return (
         <QuestionAnswerSummary
           questions={
@@ -361,7 +409,8 @@ export function ContentBlockRenderer({
               ?? []) as QuestionSummaryItem[]
           }
           answer={answerBlock}
-          answered={hasAnswer}
+          answers={storedAnswers}
+          status={status}
           t={t}
         />
       );

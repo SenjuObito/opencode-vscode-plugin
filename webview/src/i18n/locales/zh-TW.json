@@ -819,7 +819,8 @@
     "progress": "問題 {{current}} / {{total}}",
     "prev": "上一題",
     "next": "下一題",
-    "unansweredStatus": "未回答"
+    "unansweredStatus": "未回答",
+    "cancelledStatus": "已取消"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",

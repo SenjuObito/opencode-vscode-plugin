@@ -1,4 +1,4 @@
-# opencode-buddy
+# OpenCode Buddy
 
 A VS Code extension that brings the **opencode** agent into a full chat GUI. The original motivation was that the existing VS Code opencode plugin was too difficult to use, and the cc-gui open source project was found on GitHub. It is a greenfield port of the
 IntelliJ plugin [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui): the React webview is
@@ -22,14 +22,6 @@ This project is primarily developed with AI assistance:
 
 Most development used free tiers. Deepseek cost was 65.34 CNY.
 
-## Support
-
-If you find this useful, consider supporting:
-
-| WeChat | Alipay | PayPal |
-|:---:|:---:|:---:|
-| ![WeChat](media/wallet.png) | ![Alipay](media/wallet-alipay.png) | ![PayPal](media/wallet-paypal.png) |
-
 ## Features
 
 - **Persistent opencode daemon** — no per-message process spawn. `opencode serve` is prewarmed on activation,
@@ -40,6 +32,45 @@ If you find this useful, consider supporting:
   token-usage circle, attachments and file context, conversation history, MCP servers, agent/skill/prompt
   management, permission / question / plan-approval dialogs, and a settings panel.
 - **opencode-only** — the webview, host handlers, and CLI tooling are trimmed to opencode.
+
+## Usage
+
+### 1. Open the chat panel
+
+After installing the extension, click the OpenCode icon in the VS Code sidebar to open the chat panel. You can also run `OpenCode: 在编辑器分栏打开 OpenCode` from the command palette to open an independent tab in an editor split — each tab has its own conversation.
+
+![Chat main view](media/home.png)
+*The screenshot shows the UI in Simplified Chinese.*
+
+UI layout:
+
+- **Top tabs** — `聊天 / Claude Code / Codex / OpenCode` to switch between conversations.
+- **Top-right** — new conversation / search / history / settings.
+- **Bottom bar**:
+  - `任务 / 子代理 / 编辑` — switch input mode.
+  - `Build` — select the working mode (Build / Plan, etc.).
+  - **Model selector** — pick the current model (e.g. `Nemotron-3.5-Lightning-Free`).
+  - **Reasoning depth** — e.g. `medium`, controls how deeply the model thinks.
+- **Input box** — `@filename` attaches files, `/bash ...` runs shell commands, `/opencode ...` runs opencode commands. `Enter` sends.
+
+### 2. Personalise settings
+
+Click the gear icon in the top-right of the chat panel to open the settings page:
+
+![Settings page](media/settings.png)
+*`基础配置 → 外观` tab. UI labels are localised to Simplified Chinese in this screenshot.*
+
+**基础配置 → Appearance** main options:
+
+| Item | Description |
+|---|---|
+| UI theme | Follow VS Code / Light / Dark |
+| UI language | Follow VS Code |
+| Font size / UI font / Code font | Font and sizing inside the webview |
+| Diff theme | Light/dark theme for the diff view |
+| Chat background / Title-bar and status-bar colour | Custom chat-area colour (custom hex supported) |
+
+The settings page also has `外观 / 行为 / 环境` tabs at the top — Behaviour and Environment configure the agent and runtime behaviour respectively.
 
 ## Requirements
 
@@ -104,6 +135,14 @@ webview/ (React SPA)  ⇄  src/ extension host (TS)  ⇄  ai-bridge/daemon.js (N
   `AsyncLocalStorage` for context isolation.
 - The extension host (`src/host/`) mirrors cc-gui's Java module layout: `router/`, `handlers/`, `session/`,
   `provider/`, `settings/`, `tabs/`, `util/`, `services/`, `context/`, `notifications/`, `fonts/`.
+
+## Support
+
+If you find this useful, consider supporting:
+
+| WeChat | Alipay | PayPal |
+|:---:|:---:|:---:|
+| ![WeChat](media/wallet.png) | ![Alipay](media/wallet-alipay.png) | ![PayPal](media/wallet-paypal.png) |
 
 ## Acknowledgements
 

@@ -814,7 +814,8 @@
     "progress": "प्रश्न {{current}} / {{total}}",
     "prev": "पिछला",
     "next": "अगला",
-    "unansweredStatus": "बिना उत्तर"
+    "unansweredStatus": "बिना उत्तर",
+    "cancelledStatus": "रद्द किया गया"
   },
   "planApproval": {
     "title": "Plan Ready for Approval",

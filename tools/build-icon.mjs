@@ -1,34 +1,46 @@
 #!/usr/bin/env node
-// Generate a 128x128 black-on-transparent PNG that mirrors the original
-// opencode.svg logo (outer rounded-stroke frame + inner solid block) and
-// write it to media/opencode.png.
+// media/opencode.png is the VS Code marketplace icon. It is normally synced
+// from the upstream opencode repo — the canonical source lives at:
 //
-// Why a hand-rolled PNG generator? This repo is pure JS and the sandbox where
-// the icon was authored has no rsvg-convert / sharp / PIL / qlmanage. Node's
-// built-in zlib is enough to emit a valid RGBA PNG that vsce / VS Code
-// accept. To re-render from a vector source later (e.g. after redesign),
-// install librsvg (`brew install librsvg`) and run:
-//   rsvg-convert -w 128 -h 128 media/opencode.svg -o media/opencode.png
-//   (or replace this script entirely with that one-liner)
+//   packages/ui/src/assets/favicon/web-app-manifest-512x512.png
+// (in a clone of github.com/sst/opencode, e.g. /Users/obito/source/repos/opencode)
 //
-// Layout (matches viewBox 0 0 24 24 of the original SVG, scaled to 128x128):
-//   outer: rect (4,2) -> (20,22)      -> pixel (21,11) -> (107,117),   stroke ~3px
-//   inner: rect (8,6) -> (16,18)      -> pixel (43,32) -> (85,96),     solid fill
-//   corners of the outer rect are rounded (~1px in viewBox -> ~5px in pixel)
+// To refresh after an upstream icon change:
+//   cp /Users/obito/source/repos/opencode/packages/ui/src/assets/favicon/web-app-manifest-512x512.png \
+//      media/opencode.png
+//
+// The PNG is 512x512 RGBA with an opaque black background — that's by design
+// from upstream and is what shows up in the Marketplace and the VS Code
+// extension list.
+//
+// This script is kept only as a fallback generator for cases where the
+// upstream asset is unavailable. It re-creates an approximation of the
+// older design (the "回" frame) from media/opencode-activity-dark.svg,
+// viewBox 0 0 24 24, scaled to 128x128, ink colour #1A1A1A on transparent.
+//
+// To re-render the upstream vector source instead, install librsvg
+// (`brew install librsvg`) and run:
+//   rsvg-convert -w 128 -h 128 /Users/obito/source/repos/opencode/packages/ui/src/assets/favicon/favicon-v3.svg \
+//     -o media/opencode.png
 
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
 
 const W = 128, H = 128;
+const VB = 24;                 // source viewBox is 0 0 24 24
+const SCALE = W / VB;          // 1 viewBox unit ≈ 5.333 px
 
-function rgba(r, g, b, a) { return [r, g, b, a]; }
-const BLACK = rgba(0x1a, 0x1a, 0x1a, 0xff);
-const TRANSPARENT = rgba(0, 0, 0, 0);
+const INK = [0x1A, 0x1A, 0x1A, 0xFF];
+
+// Rectangles in viewBox coordinates, matching the two path subpaths.
+const OUTER = { x0: 4, y0: 2, x1: 20, y1: 22 };
+const INNER = { x0: 8, y0: 6, x1: 16, y1: 18 };
+
+const inRect = (vx, vy, r) => vx >= r.x0 && vx <= r.x1 && vy >= r.y0 && vy <= r.y1;
 
 function setPx(buf, x, y, c) {
   if (x < 0 || y < 0 || x >= W || y >= H) return;
   const i = (y * W + x) * 4;
-  // alpha-over composite
   const a = c[3] / 255;
   buf[i]     = Math.round(c[0] * a + buf[i]     * (1 - a));
   buf[i + 1] = Math.round(c[1] * a + buf[i + 1] * (1 - a));
@@ -36,58 +48,29 @@ function setPx(buf, x, y, c) {
   buf[i + 3] = Math.max(buf[i + 3], c[3]);
 }
 
-function fillRect(buf, x0, y0, x1, y1, color) {
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) setPx(buf, x, y, color);
-}
-
-function strokeRect(buf, x0, y0, x1, y1, color, thickness) {
-  fillRect(buf, x0, y0, x1, y0 + thickness - 1, color);
-  fillRect(buf, x0, y1 - thickness + 1, x1, y1, color);
-  fillRect(buf, x0, y0, x0 + thickness - 1, y1, color);
-  fillRect(buf, x1 - thickness + 1, y0, x1, y1, color);
-}
-
-// Rounded-corner approximation: clip the four corners with quarter-circles.
-function roundedStrokeRect(buf, x0, y0, x1, y1, color, thickness, radius) {
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      // find the closest corner and the distance to it
-      const cx = x < (x0 + x1) / 2 ? x0 + radius : x1 - radius;
-      const cy = y < (y0 + y1) / 2 ? y0 + radius : y1 - radius;
-      const insideOuter =
-        x >= x0 && x <= x1 && y >= y0 && y <= y1 &&
-        !(x < cx - radius || x > cx + radius || y < cy - radius || y > cy + radius);
-      const onCornerCut = (x - cx) ** 2 + (y - cy) ** 2 > radius ** 2;
-      if (insideOuter || onCornerCut) continue;
-      setPx(buf, x, y, color);
-    }
-  }
-  // overlay the simple stroke (corners will be slightly off — clipped above is
-  // good enough for an icon at 128x128, but for crispness we overwrite the
-  // straight edges with the exact stroke thickness:
-  for (let t = 0; t < thickness; t++) {
-    fillRect(buf, x0 + t, y0 + t, x1 - t, y0 + t, color);
-    fillRect(buf, x0 + t, y1 - t, x1 - t, y1 - t, color);
-    fillRect(buf, x0 + t, y0 + t, x0 + t, y1 - t, color);
-    fillRect(buf, x1 - t, y0 + t, x1 - t, y1 - t, color);
-  }
-}
-
 const buf = Buffer.alloc(W * H * 4, 0); // RGBA, fully transparent
 
-// outer frame: outer rect viewBox(4,2)->(20,22) -> px(21,11)->(107,117)
-roundedStrokeRect(buf, 21, 11, 107, 117, BLACK, 3, 4);
+for (let y = 0; y < H; y++) {
+  for (let x = 0; x < W; x++) {
+    // Sample the pixel centre, mapped back into viewBox space.
+    const vx = (x + 0.5) / SCALE;
+    const vy = (y + 0.5) / SCALE;
+    const inOuter = inRect(vx, vy, OUTER);
+    const inInner = inRect(vx, vy, INNER);
+    // fill-rule="evenodd" -> fill where the two subpaths differ (XOR).
+    if (inOuter !== inInner) setPx(buf, x, y, INK);
+  }
+}
 
-// inner solid block: viewBox(8,6)->(16,18) -> px(43,32)->(85,96)
-fillRect(buf, 43, 32, 85, 96, BLACK);
-
-// PNG encode
+// ---- PNG encode -----------------------------------------------------------
 function chunk(type, data) {
   const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
   const typeBuf = Buffer.from(type, 'ascii');
   const crc = Buffer.alloc(4);
-  const table = []; for (let n = 0; n < 256; n++) {
-    let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+  const table = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
     table[n] = c >>> 0;
   }
   let c = 0xffffffff;
@@ -114,7 +97,12 @@ for (let y = 0; y < H; y++) {
 }
 const idat = deflateSync(raw);
 
-const png = Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
+const png = Buffer.concat([
+  sig,
+  chunk('IHDR', ihdr),
+  chunk('IDAT', idat),
+  chunk('IEND', Buffer.alloc(0)),
+]);
 const out = process.argv[2] || 'media/opencode.png';
 writeFileSync(out, png);
-console.log(`Wrote ${out} (${png.length} bytes, ${W}x${H} RGBA)`);
+console.log(`Wrote ${out} (${png.length} bytes, ${W}x${H} RGBA, #1A1A1A on transparent)`);

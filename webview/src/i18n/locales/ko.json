@@ -854,7 +854,8 @@
     "progress": "질문 {{current}} / {{total}}",
     "prev": "이전",
     "next": "다음",
-    "unansweredStatus": "미답변"
+    "unansweredStatus": "미답변",
+    "cancelledStatus": "취소됨"
   },
   "planApproval": {
     "title": "계획 승인 대기 중",

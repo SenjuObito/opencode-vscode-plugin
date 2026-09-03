@@ -841,7 +841,8 @@
     "progress": "Вопрос {{current}} / {{total}}",
     "prev": "Назад",
     "next": "Далее",
-    "unansweredStatus": "Без ответа"
+    "unansweredStatus": "Без ответа",
+    "cancelledStatus": "Отменено"
   },
   "planApproval": {
     "title": "План готов к утверждению",

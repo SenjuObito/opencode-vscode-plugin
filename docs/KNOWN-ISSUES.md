@@ -16,6 +16,16 @@
     `ContentBlockRenderer` 仅在答案文本非空时才传 `answered={true}`，否则传 `false`。
   - 影响文件：`ContentBlockRenderer.tsx`、`QuestionAnswerSummary.tsx`、`.css`、10 个 i18n 语种。
 
+- **用户主动取消（已取消）的问题卡片仍然显示「已回答」**（本版本补漏）：
+  - 根因：上版修复只覆盖了「答案文本为空」这一种情形，但用户点击跳过走 `opencode.rejectQuestion` → opencode 内部 `failTool(state, ask.ref, "question rejected")`（见 `packages/opencode/src/cli/cmd/run/demo.ts:1263`），ai-bridge 在 `opencode-daemon-service.js:446` 把这个 error 分支序列化成 `emitToolResultMessage({ content: "question rejected", isError: true })`（marker-protocol 输出字段是 `is_error: Boolean(isError)`），前端 `ToolResultBlock.is_error === true` 且 `content` 非空 —— 仅看文本长度会被算成「已回答」。
+  - 修复：把 `answered?: boolean` 替换成 `status: 'answered' | 'cancelled' | 'unanswered'` 三态枚举：
+    - `is_error === true` **或** `content` 含字面量 `"question rejected"` → `'cancelled'`（⊘ + 「已取消」暖色徽章，`codicon-circle-slash`）。**字面量兜底**用于兼容老 daemon / 部分序列化路径不写 `is_error` 的场景。
+    - 解析到 `"q"="a"` 对 → `'answered'`（✓ + 「已回答」绿）
+    - 兜底 → `'unanswered'`（? + 「未回答」灰）
+  - **关键操作坑**：上一轮改完代码后发现仍未生效 —— 原因是 `webview/dist/index.html` 和 `dist/webview/index.html` 都比源文件旧得多，**webview 没重新构建**。改完代码必须跑一次 `cd webview && pnpm run build`（包含 tsc + vite build + `scripts/copy-dist.mjs` 把单文件 bundle 同步到 `../dist/webview/index.html`），光改 src/ 是没用的（webview 是 inline-打包的单 HTML，扩展宿主加载的是 dist 里那份）。
+  - 关于「超时取消」：opencode 服务端目前没有"超时自动 reject"路径，所有 reject 都走同一个 `failTool(..., "question rejected")`，前端无标记可区分主动 skip 与系统超时。按用户原话"没值就显示已取消"统一显示「已取消」，后续若 opencode 增加区分再扩展。
+  - 影响文件：`QuestionAnswerSummary.tsx`（新增 `QuestionSummaryStatus` 类型 + 状态映射表）、`ContentBlockRenderer.tsx`（新增 `isCancelled` 分支 + 答案解析 + 字面量兜底）、`QuestionAnswerSummary.css`（`.qas-cancelled-badge` 暖色样式）、`QuestionAnswerSummary.test.tsx`（新增 4 个 cancelled 用例，包含字面量兜底回归）、10 个 i18n 语种（新增 `askUserQuestion.cancelledStatus`）。
+
 - **清理失效的 `claudeCodeInterrupted` / `claudeCodeError` 映射**（原待后续 #4）：
   - 根因：`localizationUtils.ts` 的 `aiBridgeMessageMap` 按英文原串 `'Claude Code error:'` / `'Claude Code was interrupted…'` 精确匹配，但 `ai-bridge` 已不再产出这些串（仅剩注释与模型提示词里的 "Claude Code"），映射永不命中，纯死代码。
   - 修复：删除这两条死映射项。对应 i18n key（`aiBridge.claudeCodeInterrupted` / `aiBridge.claudeCodeError`）暂留（无害的孤立字符串，避免跨 10 语种改动）。
