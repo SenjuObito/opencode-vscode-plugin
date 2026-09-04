@@ -4,7 +4,7 @@ import { isTokenTrackerBridgeAvailable, ttEnsureServer, ttInstallCli } from './t
 
 /**
  * TokenTracker 本地服务状态机（移植自 desktop-cc-gui 的同名 hook，Tauri 调用
- * 换成 webview 桥接，并改为 ensure-first）：
+ * 换成 JCEF 桥接，并改为 ensure-first）：
  *
  *   checking ─→ ensure ─┬─ 服务已在运行 / 启动成功 ─→ ready
  *                       ├─ ensure 报 not_installed ─→ guide

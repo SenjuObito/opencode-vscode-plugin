@@ -98,7 +98,7 @@ export function useInputHistory({
           selection.addRange(range);
         }
       } catch {
-        // Defensive: webview/IME edge cases can throw on DOM selection APIs.
+        // Defensive: JCEF/IME edge cases can throw on DOM selection APIs.
       } finally {
         handleInput();
       }

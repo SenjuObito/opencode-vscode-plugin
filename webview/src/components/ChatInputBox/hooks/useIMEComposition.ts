@@ -35,13 +35,13 @@ interface UseIMECompositionReturn {
  * 5. A fallback timeout handles edge cases (IME cancel with no input event)
  *
  * Uses ref-only approach (no React state) to avoid triggering re-renders
- * during composition, which is critical for webview/Korean IME performance.
+ * during composition, which is critical for JCEF/Korean IME performance.
  */
 export function useIMEComposition({
   handleInput,
 }: UseIMECompositionOptions): UseIMECompositionReturn {
   // Ref-only composing state: avoids React re-renders during IME composition.
-  // In webview, re-renders during composition cause visible stutter and character duplication.
+  // In JCEF, re-renders during composition cause visible stutter and character duplication.
   const isComposingRef = useRef(false);
   const lastCompositionEndTimeRef = useRef<number>(0);
   const fallbackTimeoutRef = useRef<number | null>(null);

@@ -7,7 +7,7 @@ import CustomModelDialog from './settings/CustomModelDialog';
 import { usePluginModels } from './settings/hooks/usePluginModels';
 import { STORAGE_KEYS } from '../types/provider';
 import { fetchGithubReleases, clearReleasesCache } from '../version/githubReleases';
-import { CHANGELOG_DATA, type ChangelogEntry } from '../version/changelog';
+import type { ChangelogEntry } from '../version/changelog';
 import { useDialogs } from '../contexts/DialogContext';
 import { useUIState } from '../contexts/UIStateContext';
 import ContextUsageDialog from './ContextUsageDialog';
@@ -94,10 +94,8 @@ export const AppDialogs = ({
     }
   }, [showNewSessionConfirm]);
 
-  // First-start / version-update changelog: fetch the latest releases from the
-  // configured GitHub repository, then fall back to the bundled CHANGELOG_DATA
-  // when the network is unavailable or the repo has no releases yet. The user
-  // always sees content — never a red error banner.
+  // First-start / version-update changelog: fetch from the configured GitHub
+  // repository instead of showing the bundled cc-gui changelog history.
   // Start empty: the repo may legitimately have no releases, and the dialog
   // must never index into a list we have not loaded yet.
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
@@ -114,28 +112,13 @@ export const AppDialogs = ({
     setChangelogError(null);
     fetchGithubReleases()
       .then((result) => {
-        // Prefer the freshly-fetched GitHub releases. If the request failed or
-        // the repo has no releases yet, fall back to the bundled local
-        // CHANGELOG_DATA so the user always sees content instead of an error.
-        if (result.entries.length > 0) {
-          setChangelogEntries(result.entries);
-        } else {
-          if (result.error && !result.empty) {
-            // eslint-disable-next-line no-console -- network diagnostics
-            console.warn('Falling back to bundled changelog:', result.error);
-          }
-          setChangelogEntries(CHANGELOG_DATA);
-        }
-        // No error banner — the fallback covers the failure path.
-        setChangelogError(null);
+        setChangelogEntries(result.entries);
+        // A repo with no releases is a normal empty state, not a load failure —
+        // only surface real fetch errors in the dialog's error banner.
+        setChangelogError(result.empty ? null : result.error ?? null);
       })
       .catch((err) => {
-        // Same fallback for unexpected exceptions (e.g. localStorage quota,
-        // pre-abort errors). The dialog still renders local content.
-        // eslint-disable-next-line no-console -- network diagnostics
-        console.warn('Falling back to bundled changelog:', err);
-        setChangelogEntries(CHANGELOG_DATA);
-        setChangelogError(null);
+        setChangelogError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
         setChangelogLoading(false);

@@ -4,7 +4,7 @@
  * Detection prefers `navigator.userAgentData.platform` (modern, non-deprecated)
  * and falls back to `userAgent` sniffing — same strategy as App.tsx find
  * shortcut. `navigator.platform` is intentionally not used (deprecated,
- * inconsistent inside webview).
+ * inconsistent inside JCEF).
  */
 
 export function isMacPlatform(): boolean {

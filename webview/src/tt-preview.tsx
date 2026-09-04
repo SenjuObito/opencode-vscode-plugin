@@ -1,5 +1,5 @@
 /**
- * 独立预览入口：在纯浏览器中渲染使用统计仪表盘。
+ * 独立预览入口：在纯浏览器（无 JCEF 桥）中渲染使用统计仪表盘。
  * 用法：`npm run dev` 后访问 http://localhost:5173/tt-preview.html
  * 数据经 vite `/tt-dev` 代理转发到本机 127.0.0.1:7680 的 tokentracker 服务。
  * 加 `?theme=dark` / `?theme=light` 可固定主题（写入 documentElement data-theme）。

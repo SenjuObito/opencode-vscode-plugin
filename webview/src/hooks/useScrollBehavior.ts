@@ -118,7 +118,7 @@ export function useScrollBehavior({
     });
   }, []);
 
-  // Warm up layout after window regains focus (macOS webview drops GPU layers
+  // Warm up layout after window regains focus (macOS JCEF drops GPU layers
   // when the window is in the background, causing a scroll stutter on return)
   useEffect(() => {
     const handleVisibilityChange = () => {

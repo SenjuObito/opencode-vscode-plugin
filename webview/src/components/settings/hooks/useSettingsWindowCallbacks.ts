@@ -38,7 +38,7 @@ export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
   'get_ask_user_question_sound_notification_enabled:',
   // NOTE: commit prompt / commit AI / prompt-enhancer configs are intentionally
   // NOT bootstrapped here. Their handlers probe CLI availability (spawn processes)
-  // on the webview UI thread and freeze Settings until complete. Load on tab open.
+  // on the JCEF UI thread and freeze Settings until complete. Load on tab open.
 ] as const;
 
 export interface SettingsWindowCallbacksDeps {
@@ -84,7 +84,7 @@ export interface SettingsWindowCallbacksDeps {
 }
 
 /**
- * Registers window callbacks for host bridge communication in settings view.
+ * Registers window callbacks for Java bridge communication in settings view.
  * Handles provider, agent, prompt, config, and theme callbacks.
  */
 export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {

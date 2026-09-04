@@ -11,7 +11,7 @@
 /** Apply a font scale (e.g. '0.9', '1.4') to the whole app. */
 export function applyFontScale(scale: string): void {
   document.documentElement.style.setProperty('--font-scale', scale);
-  // 清理历史运行期可能残留的内联 zoom（旧版 webview 恢复机制的遗留），
+  // 清理历史运行期可能残留的内联 zoom（旧版 JCEF 恢复机制的遗留），
   // 让样式表里的 zoom: var(--font-scale) 接管，避免新旧缩放不一致。
   document.getElementById('app')?.style.removeProperty('zoom');
 }

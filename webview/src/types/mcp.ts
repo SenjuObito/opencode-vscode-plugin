@@ -201,7 +201,7 @@ export interface McpMarketplaceSearchResponse {
 
 /**
  * Response for an external MCP configuration import (e.g. GitHub Copilot format).
- * The servers are already mapped to internal entries by the host backend.
+ * The servers are already mapped to internal entries by the Java backend.
  */
 export interface McpImportPreviewResponse {
   servers: McpServer[];

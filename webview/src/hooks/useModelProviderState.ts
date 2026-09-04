@@ -38,7 +38,7 @@ export interface UseModelProviderStateOptions {
  * ChatScreen, AppDialogs, useMessageSender) destructure individual fields.
  *
  * `currentProviderRef` is exposed for window callbacks registered with stable
- * identity that must read the current provider when fired by the webview bridge.
+ * identity that must read the current provider when fired by the JCEF bridge.
  * The ref is updated via render-time assignment (no useEffect mirror).
  */
 export function useModelProviderState({ addToast, t }: UseModelProviderStateOptions) {
@@ -57,7 +57,7 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
   // ── Provider-specific sub-hooks ──
   // NOTE: useClaudeProvider / useCodexProvider keep their historical names, but
   // the state slots they own (long context, reasoning effort, fast mode and the
-  // model id echoed back by the host bridge) are consumed by opencode at
+  // model id echoed back by the Java bridge) are consumed by opencode at
   // runtime — see usageModeCallbacks.ts. Only grok / kimi / pi were removed.
   const claude = useClaudeProvider();
   const codex = useCodexProvider();

@@ -1,7 +1,7 @@
 /**
  * Runtime provider capabilities subscriber registry.
  *
- * The host bridge invokes `window.updateActiveCodexProvider` to deliver the
+ * The Java bridge invokes `window.updateActiveCodexProvider` to deliver the
  * active Codex provider; useCliModels reacts to it by dropping its cached
  * catalog. Registering a single dispatcher on `window` and routing events
  * through a subscriber Set keeps behavior deterministic regardless of mount

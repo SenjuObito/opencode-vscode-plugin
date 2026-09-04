@@ -1,14 +1,14 @@
 /**
  * vscodeBridge.ts
  *
- * VS Code 适配层 —— 把 cc-gui webview 的桥接层换成 acquireVsCodeApi。
+ * VS Code 适配层 —— 把 cc-gui webview 的 JCEF 桥换成 acquireVsCodeApi。
  *
- * 出站（webview → host）：宿主注入 `window.sendToJava(payload)`，payload 是
+ * 出站（webview → host）：JCEF 里注入 `window.sendToJava(payload)`，payload 是
  *   `"type:content"` 字符串。这里把 `window.sendToJava` 重定义为
  *   `vscode.postMessage({ type: 'bridge', payload })`，扩展宿主侧按同样的
  *   `"type:content"` 协议解析 —— webview 内部 bridge.ts / 组件代码零改动。
  *
- * 入站（host → webview）：宿主通过 postMessage 调用
+ * 入站（host → webview）：JCEF 里 Java 通过 executeJavaScript 调用
  *   `window.<fn>(...args)`。这里统一监听 `message`，宿主 post
  *   `{ type: '<fnName>', args: [...] }` 即调用 `window[fnName](...args)`。
  *   `window.*` 函数仍由 registerCallbacks 等原有机制挂载。
@@ -73,7 +73,7 @@ if (!window.sendToJava) {
   };
 }
 
-// 页面上下文就绪：VS Code 下桥在模块加载时同步建立（cc-gui/webview 由宿主
+// 页面上下文就绪：VS Code 下桥在模块加载时同步建立（cc-gui/JCEF 由宿主
 // 注入 HTML 时置位；这里补上等价语义），放行 useModelStatePersistence 的
 // localStorage 持久化门禁——否则模型 / 模式 / 推理力度选择永远不落盘。
 window.__CCGUI_PAGE_CONTEXT_READY__ = true;

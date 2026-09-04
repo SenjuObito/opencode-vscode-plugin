@@ -1,7 +1,7 @@
 /**
  * settingsBootstrap.ts
  *
- * Handles initial configuration requests sent to the host backend and the
+ * Handles initial configuration requests sent to the Java backend and the
  * processing of any values that arrived before the callbacks were registered
  * (stored in window.__pending* slots by main.tsx).
  */

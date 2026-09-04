@@ -30,7 +30,7 @@ The ChatInputBox is a rich text input component built with `contenteditable` div
 
 1. **Separation of Concerns** - Each hook handles a single responsibility
 2. **Performance First** - Debouncing, caching, and minimal re-renders
-3. **webview Compatibility** - Works in embedded browser environments
+3. **JCEF Compatibility** - Works in embedded browser environments
 4. **Accessibility** - Keyboard navigation and proper focus management
 
 ---
@@ -143,7 +143,7 @@ const ChatInputBox = forwardRef<ChatInputBoxHandle, ChatInputBoxProps>((props, r
 **Key Features:**
 - **Cache optimization** - Avoids repeated DOM traversal
 - **File tag handling** - Converts file tag elements back to `@path` format
-- **Newline normalization** - Handles webview-specific trailing newlines
+- **Newline normalization** - Handles JCEF-specific trailing newlines
 
 ```typescript
 const { getTextContent, invalidateCache } = useTextContent({ editableRef });
@@ -329,7 +329,7 @@ const safe = escapeHtmlAttr('path/with"quotes');
 
 ### generateId
 
-Generates unique IDs, webview compatible.
+Generates unique IDs, JCEF compatible.
 
 ```typescript
 const id = generateId();
@@ -375,7 +375,7 @@ Supports two modes:
 - **Enter mode**: Enter sends, Shift+Enter newlines
 - **Cmd+Enter mode**: Cmd/Ctrl+Enter sends, Enter newlines
 
-Detection uses multiple methods for webview compatibility:
+Detection uses multiple methods for JCEF compatibility:
 - `e.key === 'Enter'`
 - `e.keyCode === 13`
 - `e.nativeEvent.isComposing` check

@@ -1,5 +1,5 @@
 /**
- * Promise-based webview bridge client for the TokenTracker local usage server.
+ * Promise-based JCEF bridge client for the TokenTracker local usage server.
  *
  * The vendored tokentracker-dashboard was written for Tauri's `invoke()`; here
  * the same request/response semantics are implemented over the JetBrains
@@ -51,7 +51,7 @@ function installResponseHandler() {
   responseHandlerInstalled = true;
 }
 
-/** True when running inside the embedded webview with the host bridge available. */
+/** True when running inside the JCEF webview with the Java bridge available. */
 export function isTokenTrackerBridgeAvailable(): boolean {
   return typeof window !== 'undefined' && typeof window.sendToJava === 'function';
 }

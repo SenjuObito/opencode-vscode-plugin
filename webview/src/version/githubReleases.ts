@@ -4,19 +4,16 @@
  *
  * Source of truth: the user's open-source GitHub repository releases.
  *
- * Failure policy (the dialog must never crash):
- *  - releases present         -> return them (and cache them)
+ * Failure policy (the dialog must never crash and never show unrelated
+ * content):
+ *  - releases present          -> return them (and cache them)
  *  - request OK, zero releases -> empty list + `empty` flag (the repo simply
- *                                 has no releases yet; the call site may fall
- *                                 back to the bundled CHANGELOG_DATA)
- *  - request failed / timed out -> empty list + `error` (the call site may
- *                                 fall back to the bundled CHANGELOG_DATA so
- *                                 the user always sees something instead of a
- *                                 red error banner)
- *
- * This module does NOT fall back itself: it stays a focused data fetcher so
- * its result is unambiguous. The fallback policy lives at each call site
- * (AppDialogs, CommunitySection).
+ *                                 has no releases yet; the dialog shows an
+ *                                 empty state rather than any foreign changelog)
+ *  - request failed / timed out -> empty list + `error` (the dialog shows an
+ *                                 error state; we never fall back to the
+ *                                 bundled cc-gui CHANGELOG_DATA, which would
+ *                                 show unrelated version history)
  */
 
 import type { ChangelogEntry } from './changelog';
