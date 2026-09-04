@@ -9,6 +9,7 @@ import {
   formatTaskNotificationForDisplay,
   hasCommandMessageTag,
   hasTaskNotificationTag,
+  isPlaceholderMessageContent,
   isSyntheticToolMessageContent,
   HIDDEN_OUTPUT_TAGS,
   INTERNAL_METADATA_TAGS,
@@ -40,6 +41,7 @@ export {
   formatTaskNotificationForDisplay,
   createTaskNotificationBlock,
   extractCommandMessageContent,
+  isPlaceholderMessageContent,
   isSyntheticToolMessageContent,
   normalizeBlocks,
 } from './contentBlockNormalize';
@@ -642,7 +644,8 @@ export function getContentBlocks(
       !hasTextBlock &&
       message.content &&
       message.content.trim() &&
-      !isSyntheticToolMessageContent(message.content, rawBlocks)
+      !isSyntheticToolMessageContent(message.content, rawBlocks) &&
+      !isPlaceholderMessageContent(message.content)
     ) {
       return [...rawBlocks, { type: 'text', text: localizeMessage(message.content) }];
     }
@@ -770,7 +773,7 @@ export function mergeConsecutiveAssistantMessages(
       }
       if (msg.content) {
         const trimmed = msg.content.trim();
-        if (trimmed) {
+        if (trimmed && !isPlaceholderMessageContent(msg.content)) {
           contentParts.push(msg.content);
         }
       }

@@ -177,7 +177,7 @@ export function useSessionManagement({
     transitionTimeoutRef.current = setTimeout(() => {
       transitionTimeoutRef.current = null;
       if (window.__sessionTransitioning && window.__sessionTransitionToken === token) {
-        console.warn('[SessionManagement] Transition guard timed out — auto-releasing');
+        cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
         window.__sessionTransitioning = false;
         window.__sessionTransitionToken = null;
         setSessionLoading(false);
@@ -291,7 +291,14 @@ export function useSessionManagement({
         return;
       }
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
+      cardDebugLog('[SessionManagement] BEFORE: __sessionTransitioning=', window.__sessionTransitioning, 'softReload=', window.__softSessionReloadInFlight);
+      // Set transition guard so backend's clearMessages (from restoreMessages)
+      // won't reset sessionLoading to false before messages arrive — prevents
+      // the empty-state flash that occurs when __sessionTransitioning is false.
+      window.__sessionTransitioning = true;
+      window.__sessionTransitionToken = createSessionTransitionToken();
       window.__softSessionReloadInFlight = sessionId;
+      cardDebugLog('[SessionManagement] AFTER: __sessionTransitioning=', window.__sessionTransitioning, 'token set');
       if (softReloadTimeoutRef.current !== null) {
         clearTimeout(softReloadTimeoutRef.current);
       }
@@ -299,6 +306,12 @@ export function useSessionManagement({
         softReloadTimeoutRef.current = null;
         if (window.__softSessionReloadInFlight === sessionId) {
           window.__softSessionReloadInFlight = null;
+        }
+        // Safety: release transition guard if historyLoadComplete never arrived
+        if (window.__sessionTransitioning) {
+          cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
+          window.__sessionTransitioning = false;
+          window.__sessionTransitionToken = null;
         }
       }, 5_000);
       sendBridgeEvent('load_session', JSON.stringify({ sessionId }));

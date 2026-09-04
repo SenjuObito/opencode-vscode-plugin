@@ -7,6 +7,8 @@ vi.mock('../../contexts/UIStateContext', () => ({
 }));
 
 const createProps = (): ComponentProps<typeof ChatInputBoxHeader> => ({
+  daemonStatusLoaded: true,
+  daemonAlive: true,
   t: ((key: string) => key) as never,
   attachments: [],
   onRemoveAttachment: vi.fn(),

@@ -13,6 +13,7 @@ import {
   hasCommandMessageTag,
   hasTaskNotificationTag,
   isTaskNotificationOnlyMessage,
+  isPlaceholderMessageContent,
   isSyntheticToolMessageContent,
   hasNonHumanOrigin,
   shouldShowMessage,
@@ -216,6 +217,52 @@ describe('getContentBlocks', () => {
     expect(result.map((block) => block.type)).toEqual(['tool_use', 'text']);
     expect((result[1] as any).text).toBe('命令已经执行完成。');
   });
+
+  it('does not append placeholder (空响应) content for tool-only messages', () => {
+    const message: ClaudeMessage = {
+      type: 'assistant',
+      content: '(空响应)',
+      raw: {
+        content: [
+          { type: 'tool_use', id: 'tool-1', name: 'shell_command', input: { command: 'git status' } },
+        ],
+      } as any,
+    };
+
+    const result = getContentBlocks(message, normalizeBlocks, localizeMessage);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('tool_use');
+  });
+
+  it('does not append placeholder (no content) for reasoning-only messages', () => {
+    const message: ClaudeMessage = {
+      type: 'assistant',
+      content: '(no content)',
+      raw: {
+        content: [{ type: 'thinking', thinking: 'reasoning…' }],
+      } as any,
+    };
+
+    const result = getContentBlocks(message, normalizeBlocks, localizeMessage);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('thinking');
+  });
+});
+
+describe('isPlaceholderMessageContent', () => {
+  it('recognizes backend placeholder strings', () => {
+    expect(isPlaceholderMessageContent('(空响应)')).toBe(true);
+    expect(isPlaceholderMessageContent('  (空响应)  ')).toBe(true);
+    expect(isPlaceholderMessageContent('(no content)')).toBe(true);
+  });
+
+  it('rejects real text and empty values', () => {
+    expect(isPlaceholderMessageContent('命令已经执行完成。')).toBe(false);
+    expect(isPlaceholderMessageContent('')).toBe(false);
+    expect(isPlaceholderMessageContent(undefined)).toBe(false);
+  });
 });
 
 describe('isSyntheticToolMessageContent', () => {
@@ -258,6 +305,22 @@ describe('mergeConsecutiveAssistantMessages', () => {
     const result = mergeConsecutiveAssistantMessages(messages, normalizeBlocks);
     expect(result).toHaveLength(1);
     expect(result[0].__turnId).toBe(2);
+  });
+
+  it('drops placeholder (空响应) content when merging tool-only history turns', () => {
+    const messages: ClaudeMessage[] = [
+      makeMsg('assistant', '(空响应)', {
+        raw: { content: [{ type: 'tool_use', id: 'tool-1', name: 'read', input: { path: '/a' } }] } as any,
+      }),
+      makeMsg('assistant', '(空响应)', {
+        raw: { content: [{ type: 'tool_use', id: 'tool-2', name: 'glob', input: { pattern: '**/*.ts' } }] } as any,
+      }),
+    ];
+
+    const result = mergeConsecutiveAssistantMessages(messages, normalizeBlocks);
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe('');
+    expect((result[0].raw as any).content).toHaveLength(2);
   });
 
   it('does not add __turnId when first message has none', () => {

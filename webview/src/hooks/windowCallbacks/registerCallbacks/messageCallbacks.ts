@@ -153,7 +153,7 @@ export function registerMessageCallbacks(
   };
 
   const processUpdateMessages = (json: string, sequence: number | null = null) => {
-    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length);
+    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', window.__sessionTransitioning);
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
     // cannot resurrect cleared messages when a transition starts between the
@@ -452,7 +452,11 @@ export function registerMessageCallbacks(
   window.updateMessages = (json, sequenceArg) => {
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
-    if (window.__sessionTransitioning) return;
+    cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
+    if (window.__sessionTransitioning) {
+      cardDebugLog('[updateMessages] BLOCKED by sessionTransitioning');
+      return;
+    }
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
     if (sequence != null && sequence < minAcceptedSequence) {
@@ -655,6 +659,7 @@ export function registerMessageCallbacks(
 
   window.clearMessages = (barrierSequenceArg) => {
     cardDebugLog('[clearMessages] called, transitioning:', window.__sessionTransitioning, 'barrierSeq:', barrierSequenceArg);
+    cardDebugLog('[clearMessages] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     // Advance the sequence barrier so any updateMessages still in flight from
     // the previous session are rejected. Such a snapshot may already have been
     // dispatched to JS and be sitting in the JCEF IPC channel, so neither the
@@ -891,8 +896,10 @@ export function registerMessageCallbacks(
   window.codexHistoryPageRenderComplete = refreshLoadedHistoryMessages;
 
   window.historyLoadComplete = (expectedMessageCountArg) => {
-    cardDebugLog('[HistoryLoadComplete] called, releasing transition and scheduling sessionLoading=false');
+    cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', window.__sessionTransitioning, 'expectedMsgCount:', expectedMessageCountArg);
+    cardDebugLog('[HistoryLoadComplete] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     releaseSessionTransition();
+    cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', window.__sessionTransitioning);
     // Defer sessionLoading=false so the loading indicator has time to render.
     // setTimeout(0) is too fast — React 18 batches it into the same frame as
     // the message update, so the UI jumps from empty→messages with no visible

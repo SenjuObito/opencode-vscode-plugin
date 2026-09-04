@@ -46,6 +46,7 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
   return (skipSessionLoading?: boolean) => {
     const shouldSkipSS = skipSessionLoading || window.__sessionTransitioning;
     cardDebugLog('[resetTransientUiState] skipSessionLoading:', skipSessionLoading, 'transitioning:', window.__sessionTransitioning, '→ skip:', shouldSkipSS);
+    cardDebugLog('[resetTransientUiState] BEFORE: sessionLoading will', shouldSkipSS ? 'BE KEPT' : 'be SET TO false');
     opts.clearToasts();
     opts.setStatus('');
     opts.setLoading(false);
@@ -54,7 +55,10 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     opts.setStreamingActive(false);
     const shouldSkip = skipSessionLoading || window.__sessionTransitioning;
     if (!shouldSkip) {
+      cardDebugLog('[resetTransientUiState] EXECUTING: setSessionLoading(false)');
       opts.setSessionLoading(false);
+    } else {
+      cardDebugLog('[resetTransientUiState] SKIPPED: setSessionLoading not called');
     }
     opts.isStreamingRef.current = false;
     opts.useBackendStreamingRenderRef.current = false;

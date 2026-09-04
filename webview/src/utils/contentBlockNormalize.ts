@@ -256,6 +256,17 @@ export function isSyntheticToolMessageContent(
 }
 
 /**
+ * Placeholder strings produced by backend converters for messages that have no
+ * text part (tool-only / reasoning-only turns). They must never surface as
+ * visible text — the blocks (tool cards / thinking) are the real content.
+ */
+export function isPlaceholderMessageContent(content: string | undefined): boolean {
+  if (!content) return false;
+  const trimmed = content.trim();
+  return trimmed === '(空响应)' || trimmed === '(no content)';
+}
+
+/**
  * Normalize raw message content into content blocks
  */
 export function normalizeBlocks(

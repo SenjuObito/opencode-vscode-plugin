@@ -194,7 +194,7 @@ function buildUserMessage(
 	if (info.id) {
 		raw.id = info.id;
 	}
-	return createMessage(MessageType.USER, text || '[用户消息]', raw, timestamp);
+	return createMessage(MessageType.USER, text, raw, timestamp);
 }
 
 // =========================================================================
@@ -259,7 +259,7 @@ function buildAssistantMessages(
 		raw.tokens = info.tokens;
 	}
 
-	const assistant = createMessage(MessageType.ASSISTANT, text || '(空响应)', raw, timestamp);
+	const assistant = createMessage(MessageType.ASSISTANT, text, raw, timestamp);
 	return [assistant, ...toolResults];
 }
 
