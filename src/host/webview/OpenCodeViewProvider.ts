@@ -155,7 +155,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		_token: vscode.CancellationToken,
 	): void {
 		this.view = webviewView;
-		webviewView.title = 'OpenCode';
+		webviewView.title = 'OpenCode Buddy';
 
 		webviewView.webview.options = {
 			enableScripts: true,

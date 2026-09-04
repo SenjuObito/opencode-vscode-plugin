@@ -12,6 +12,9 @@
 .codicon[class*='codicon-'] {
 	font: normal normal normal 16px/1 codicon;
 	display: inline-block;
+	/* 让 inline 场景(对话框、markdown 等)下图标与右侧文字垂直居中对齐。
+	   flex 容器内该属性被忽略，由下方“图标+文字”控件的 line-height:1 兜底。 */
+	vertical-align: middle;
 	text-decoration: none;
 	text-rendering: auto;
 	text-align: center;

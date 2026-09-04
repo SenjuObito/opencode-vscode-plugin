@@ -84,7 +84,7 @@ function createBridgeHeartbeatStarter() {
       }
     };
 
-    // Explicitly cleanup timers on navigation/unload (best effort; helpful for long-running JCEF contexts).
+    // Explicitly cleanup timers on navigation/unload (best effort; helpful for long-running webview contexts).
     window.addEventListener('beforeunload', cleanup, { once: true });
     window.addEventListener('pagehide', cleanup, { once: true });
 
@@ -119,7 +119,7 @@ if (enableVConsole) {
 }
 
 /**
- * Apply IDEA editor font configuration to CSS variables
+ * Apply host editor font configuration to CSS variables
  */
 
 let latestEditorFontConfig: {

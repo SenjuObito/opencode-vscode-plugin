@@ -266,14 +266,14 @@ const EditFileItem = ({ item, onFileClick, onShowDiff, onRefresh, t }: EditFileI
       <div style={ACTIONS_STYLE}>
         <button
           onClick={(e) => onShowDiff(item, e)}
-          title={t('tools.showDiffInIdea')}
+          title={t('tools.showDiffInEditor')}
           className="edit-group-action-btn"
         >
           <span className="codicon codicon-diff" style={ACTION_ICON_STYLE} />
         </button>
         <button
           onClick={(e) => onRefresh(item.openPath, e)}
-          title={t('tools.refreshFileInIdea')}
+          title={t('tools.refreshFileInEditor')}
           className="edit-group-action-btn"
         >
           <span className="codicon codicon-refresh" style={ACTION_ICON_STYLE} />
@@ -302,7 +302,7 @@ const EditToolGroupBlock = ({ items }: EditToolGroupBlockProps) => {
       .filter((item): item is EditItem => item !== null);
   }, [items]);
 
-  // Auto-refresh completed files in IDEA
+  // Auto-refresh completed files in the editor
   useEffect(() => {
     editItems.forEach(item => {
       if (item.isCompleted && !item.isError && !refreshedFilesRef.current.has(item.filePath)) {
@@ -362,7 +362,7 @@ const EditToolGroupBlock = ({ items }: EditToolGroupBlockProps) => {
   const handleRefresh = (filePath: string, e: React.MouseEvent) => {
     e.stopPropagation();
     refreshFile(filePath);
-    window.addToast?.(t('tools.refreshFileInIdeaSuccess'), 'success');
+    window.addToast?.(t('tools.refreshFileInEditorSuccess'), 'success');
   };
 
   return (

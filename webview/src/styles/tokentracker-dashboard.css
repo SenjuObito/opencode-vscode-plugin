@@ -104,7 +104,7 @@
 
   /* Colors - Warm-tinted Neutrals (subtle green tint for cohesion)
      sRGB hex fallbacks for browsers without oklch() support (Chromium <111,
-     e.g. older JCEF builds). The @supports block at the end of this file
+     e.g. older Chromium builds). The @supports block at the end of this file
      restores the original oklch() values on modern engines. */
   --oai-gray-50: #f6f9f6;
   --oai-gray-100: #eef4ee;

@@ -6,7 +6,7 @@
  * This avoids coordinate system mismatches between scaled and unscaled values.
  *
  * Also provides a `fixedPosDivisor` to compensate for CSS zoom on position:fixed elements.
- * Different Chromium/JCEF versions handle zoom differently:
+ * Different Chromium/webview versions handle zoom differently:
  *   - Older: getBoundingClientRect() returns unzoomed CSS values, fixed positioning also unzoomed -> consistent, no fix needed.
  *   - Newer: getBoundingClientRect() returns zoomed viewport values, but fixed positioning values are scaled by zoom -> needs compensation.
  * Detection: if appRect.height ~ window.innerHeight while zoom != 1, we're in the "zoomed" variant.
@@ -35,7 +35,7 @@ export function getAppViewport(): {
 
 /**
  * Internal: detect #app CSS zoom and whether getBoundingClientRect returns
- * zoom-scaled viewport values (newer Chromium/JCEF) or unzoomed layout
+ * zoom-scaled viewport values (newer Chromium/webview) or unzoomed layout
  * values (older builds). See getAppViewport for the detection rationale.
  */
 function getZoomState(
@@ -53,7 +53,7 @@ function getZoomState(
  * `container`'s viewport. Use this instead of
  * `node.getBoundingClientRect().top - container.getBoundingClientRect().top`
  * whenever the delta is combined with `scrollTop`/`clientHeight`, which are
- * layout-space values: under #app CSS zoom != 1 on newer Chromium/JCEF,
+ * layout-space values: under #app CSS zoom != 1 on newer Chromium/webview,
  * getBoundingClientRect returns zoom-scaled viewport values, so the raw delta
  * is in the wrong unit. A scroll target computed from the raw delta lands
  * short by (1 - zoom) * remainingDistance on every click, converging only

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChangelogDialog from '../../ChangelogDialog';
-import type { ChangelogEntry } from '../../../version/changelog';
+import { CHANGELOG_DATA, type ChangelogEntry } from '../../../version/changelog';
 import {
   GITHUB_REPO_URL as GITHUB_URL,
   fetchGithubReleases,
@@ -38,18 +38,26 @@ const CommunitySection = ({ addToast }: CommunitySectionProps) => {
     setLoading(true);
     try {
       const result = await fetchGithubReleases();
-      setReleases(result.entries);
-      // A repo with no releases is a normal empty state; only a failed request
-      // should raise an error toast.
-      if (result.error && !result.empty && result.entries.length === 0) {
-        addToast(t('settings.versionHistoryLoadFailed', 'Failed to load version history'), 'error');
+      if (result.entries.length > 0) {
+        setReleases(result.entries);
+      } else {
+        // No remote releases (or the request failed) — fall back to the bundled
+        // CHANGELOG_DATA so the dialog still has content to show instead of an
+        // error banner.
+        if (result.error && !result.empty) {
+          // eslint-disable-next-line no-console -- network diagnostics
+          console.warn('Falling back to bundled changelog:', result.error);
+        }
+        setReleases(CHANGELOG_DATA);
       }
-    } catch {
-      addToast(t('settings.versionHistoryLoadFailed', 'Failed to load version history'), 'error');
+    } catch (err) {
+      // eslint-disable-next-line no-console -- network diagnostics
+      console.warn('Falling back to bundled changelog:', err);
+      setReleases(CHANGELOG_DATA);
     } finally {
       setLoading(false);
     }
-  }, [addToast, t]);
+  }, []);
 
   return (
     <div className={styles.configSection}>

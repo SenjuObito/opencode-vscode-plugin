@@ -76,7 +76,7 @@ describe('useSettingsWindowCallbacks', () => {
       expect(allMessages).toContain(message);
     }
 
-    // CLI availability probes freeze JCEF when done on open — keep off bootstrap.
+    // CLI availability probes freeze webview when done on open — keep off bootstrap.
     expect(allMessages).not.toContain('get_commit_prompt:');
     expect(allMessages).not.toContain('get_prompt_enhancer_config:');
   });

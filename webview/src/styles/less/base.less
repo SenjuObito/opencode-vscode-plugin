@@ -1,12 +1,10 @@
 /*
- * TokenTracker 仪表盘豁免：vendored 仪表盘（.tt-dashboard 子树）的 Tailwind
- * 样式位于 cascade layer 内，优先级低于未分层的全局规则。下面的全局重置
- * 通过 :not(:where(...)) 排除该子树（:where 使选择器特异性保持为 0，
- * 与应用内原有 * 规则完全一致），避免覆盖仪表盘的分层样式。
+ * 全局 box/model 重置：无条件应用到所有元素，确保在不支持 :where() 的旧引擎
+ * （Chromium < 88，例如较旧的 VS Code 版本）中也能正常生效。vendored 的 .tt-dashboard 子树自带一份完全
+ * 相同的 Tailwind preflight（box-sizing/margin/padding 均为同值），因此这里
+ * 对它同样无害；字体覆盖规则才需要保留 :where() 排除（见下方说明）。
  */
-@tt-exclude: ~"*:not(:where(.tt-dashboard, .tt-dashboard *))";
-
-@{tt-exclude} {
+* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -58,27 +56,27 @@ html {
 }
 
 /* Global Scrollbar Styles - Force Override */
-@{tt-exclude}::-webkit-scrollbar {
+*:not(:where(.tt-dashboard, .tt-dashboard *))::-webkit-scrollbar {
     width: 10px !important;
     height: 10px !important;
 }
 
-@{tt-exclude}::-webkit-scrollbar-track {
+*:not(:where(.tt-dashboard, .tt-dashboard *))::-webkit-scrollbar-track {
     background: transparent !important;
 }
 
-@{tt-exclude}::-webkit-scrollbar-thumb {
+*:not(:where(.tt-dashboard, .tt-dashboard *))::-webkit-scrollbar-thumb {
     background-color: var(--scrollbar-thumb) !important;
     border-radius: 5px !important;
     border: 2px solid transparent !important;
     background-clip: content-box !important;
 }
 
-@{tt-exclude}::-webkit-scrollbar-thumb:hover {
+*:not(:where(.tt-dashboard, .tt-dashboard *))::-webkit-scrollbar-thumb:hover {
     background-color: var(--scrollbar-thumb-hover) !important;
 }
 
-@{tt-exclude}::-webkit-scrollbar-corner {
+*:not(:where(.tt-dashboard, .tt-dashboard *))::-webkit-scrollbar-corner {
     background: transparent !important;
 }
 
@@ -88,7 +86,10 @@ html {
  * 因此代码/等宽区域必须把 font-family 直接声明在承载文本的元素自身上
  * （参考 .bash-command-block / .bash-output-text），不能依赖从父容器继承。
  * TokenTracker 仪表盘子树豁免，使用其自带的 --oai-font-sans 字体栈。 */
-@{tt-exclude} {
+/* 字体覆盖：必须排除 .tt-dashboard 子树，否则其 Tailwind 工具类设置的字体
+ * 会被未分层的 * 规则覆盖。这里保留 :where() 排除（仅影响字体；在旧引擎中该
+ * 规则整体失效时，由 body 上的 font-family 声明兜底，不会破坏布局）。 */
+*:not(:where(.tt-dashboard, .tt-dashboard *)) {
     font-family: var(--cc-gui-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, sans-serif);
 }
 
@@ -98,6 +99,60 @@ html {
 [class*='codicon-']::before,
 [class*='codicon-']::after {
     font-family: 'codicon' !important;
+    /* inline 场景下图标与文字垂直居中（flex 内由下方控件 line-height 兜底） */
+    vertical-align: middle;
+}
+
+/* ============================================================
+   图标与文字垂直对齐修复
+   ------------------------------------------------------------
+   codicon 字形居中于其 em 盒(line-height:1，盒高=字号)，而相邻文字
+   继承 line-height:normal(盒高≈1.3~1.5×字号)，且文字字形天然落在
+   line-box 上半部。当二者在 flex(inline) 中“居中”时，文字视觉中心
+   比图标偏上，表现为“图标正常、文字上偏”。
+   修复：让这些“图标+文字”型【单行】控件的文字也使用 line-height:1，
+   与图标盒对称对齐。均为单行紧凑控件，不影响多行内容(多行通常自带
+   line-height 覆盖)。
+   ============================================================ */
+.selector-button,
+.selector-option,
+.selector-search-input,
+.status-panel-tab,
+.context-item,
+.context-file-placeholder,
+.token-indicator,
+.file-tag,
+.quote-tag,
+.new-chat-button,
+.back-button,
+.session-title-edit-btn,
+.session-title-share-btn,
+.prompt-section-header,
+.prompt-enhancer-header,
+.qas-header,
+.qas-header-title,
+.plan-approval-dialog-header .header-left,
+.plan-approval-dialog-header .header-right,
+.ask-user-question-dialog-header,
+.context-usage-header,
+.permission-dialog-v3-header-row,
+.permission-dialog-v3-command-header,
+.model-selector-group-header,
+.context-panel-header,
+.settings-section-header,
+.agent-dialog-header {
+    line-height: 1;
+}
+
+/* 渐进增强(Chromium 105+，含 VS Code 1.85+ webview)：
+   图标紧邻的兄弟文字收紧行高，与图标对齐。仅作用于相邻兄弟元素，
+   不影响嵌套的多行内容；不支持 :has() 的旧引擎（旧版 Chromium 等）自动忽略，
+   由上方显式控件列表兜底。 */
+@supports selector(:has(*)) {
+    .codicon + *,
+    * + .codicon {
+        line-height: 1;
+    }
 }
 
 /* Notice Box - shared info/warning notice */

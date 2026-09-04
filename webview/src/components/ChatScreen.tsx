@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { type RefObject, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatInputBox } from './ChatInputBox';
 import type {
@@ -12,6 +12,7 @@ import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ConversationSearch } from './ConversationSearch';
 import type { MessageListRevealHandle } from './ConversationSearch/types';
+import ConfirmDialog from './ConfirmDialog';
 import {
   SessionIdContext,
   SubagentHistoryContext,
@@ -183,9 +184,20 @@ export const ChatScreen = ({
     onSubmit(content, attachments);
   }, [onSubmit]);
 
+  // Compact is destructive (opencode summarizes the conversation and prunes
+  // older messages). Prompt the user before firing the slash command so an
+  // accidental click on the token ring does not silently erase context.
+  const [showCompactConfirm, setShowCompactConfirm] = useState(false);
   const handleCompact = useCallback(() => {
+    setShowCompactConfirm(true);
+  }, []);
+  const handleCompactConfirm = useCallback(() => {
+    setShowCompactConfirm(false);
     onSubmit('/compact');
   }, [onSubmit]);
+  const handleCompactCancel = useCallback(() => {
+    setShowCompactConfirm(false);
+  }, []);
 
   // Signal that the search hook can listen to for re-scanning. Combines
   // length + last timestamp + streaming flag + last-message content size.
@@ -367,6 +379,15 @@ export const ChatScreen = ({
           onCompactClick={handleCompact}
         />
       </div>
+      <ConfirmDialog
+        isOpen={showCompactConfirm}
+        title={t('chat.compactConfirmTitle')}
+        message={t('chat.compactConfirmMessage')}
+        confirmText={t('chat.compactConfirmAction')}
+        cancelText={t('common.cancel')}
+        onConfirm={handleCompactConfirm}
+        onCancel={handleCompactCancel}
+      />
     </>
   );
 };

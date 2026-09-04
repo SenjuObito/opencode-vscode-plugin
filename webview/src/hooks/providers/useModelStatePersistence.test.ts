@@ -62,7 +62,7 @@ describe('useModelStatePersistence — boot sync does not clobber the persisted 
   });
 
   it('does NOT send set_mode on boot when localStorage was wiped (reinstall)', () => {
-    // Reinstall wipes JCEF localStorage → the hook would fall back to 'default'.
+    // Reinstall wipes webview localStorage → the hook would fall back to 'default'.
     // Pushing that to Java on boot would clobber the app-level PropertiesComponent
     // value (e.g. bypassPermissions) that survives the reinstall — the reported
     // "reinstall forgets Auto" bug. Java is the source of truth via get_mode.
@@ -91,7 +91,7 @@ describe('useModelStatePersistence — boot sync does not clobber the persisted 
     expect(bridgeEventsFor('set_mode')).toHaveLength(0);
   });
 
-  it('retries the boot sync until the JCEF bridge is ready, still without set_mode', () => {
+  it('retries the boot sync until the webview bridge is ready, still without set_mode', () => {
     // Bridge not ready yet → the hook retries every 100ms. Mode must never leak
     // into any of the retried sync attempts either.
     delete (window as unknown as { sendToJava?: unknown }).sendToJava;

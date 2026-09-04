@@ -50,7 +50,7 @@ import './styles.css';
 
 /**
  * InputEvent.inputType values that belong to an active IME composition.
- * Any other inputType arriving while isComposingRef is set means JCEF lost the
+ * Any other inputType arriving while isComposingRef is set means webview lost the
  * compositionEnd event (e.g. IME switched mid-composition) and the composing
  * state is stale.
  */
@@ -137,7 +137,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onRemoveAttachment,
     });
 
-    // Reset draft attachments + clear JCEF ghosting when the session changes, so
+    // Reset draft attachments + clear webview ghosting when the session changes, so
     // attachments don't drift into a new conversation and leave stale thumbnails.
     // SessionContext is read null-safely so this component still mounts in tests
     // without a SessionProvider.
@@ -260,7 +260,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
     // Performance optimization: Debounced onInput callback
     // Reduces parent component re-renders during rapid typing
-    // Also skips during IME composition to prevent parent re-renders that cause JCEF stutter
+    // Also skips during IME composition to prevent parent re-renders that cause webview stutter
     const debouncedOnInput = useMemo(
       () =>
         debounce((text: string) => {
@@ -270,7 +270,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             return;
           }
           // Skip during active IME composition to prevent parent re-renders
-          // that can disrupt Korean/CJK input in JCEF environments.
+          // that can disrupt Korean/CJK input in webview environments.
           // The update will be triggered after compositionEnd via handleInput.
           if (sharedComposingRef.current) {
             return;
@@ -291,12 +291,12 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         const timer = perfTimer('handleInput');
 
         // Only trust our composition-event-backed ref for IME state detection.
-        // JCEF's InputEvent.isComposing is unreliable (can be false during active
+        // webview's InputEvent.isComposing is unreliable (can be false during active
         // composition, or true after compositionEnd). The ref is set synchronously
         // by compositionStart/End. Do not restore persistent keyCode 229 state: it
         // can get stuck for Korean IMEs when no matching compositionEnd arrives.
         if (isComposingRef.current) {
-          // JCEF/OSR can drop compositionEnd entirely when the user switches the
+          // webview/OSR can drop compositionEnd entirely when the user switches the
           // input source mid-composition (e.g. Bopomofo -> English via Shift).
           // A non-composition input event while our flag is still set proves the
           // composition is over — reset the refs so completion detection and
@@ -520,7 +520,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       handleSubmit,
     });
 
-    // Listen for IDEA shortcut send event (dispatched by window.execContextAction)
+    // Listen for host shortcut send event (dispatched by window.execContextAction)
     useEffect(() => {
       const handler = () => {
         if (!isLoading && !isComposingRef.current) {
@@ -649,7 +649,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             data-placeholder={placeholder}
             data-completion-suffix={inlineCompletion.suffix || ''}
             onInput={(e) => {
-              // Don't pass browser's isComposing — it's unreliable in JCEF.
+              // Don't pass browser's isComposing — it's unreliable in webview.
               // isComposingRef (set by compositionStart/End + keyCode 229) is the
               // sole source of truth for IME state. The inputType is forwarded so
               // handleInput can detect a stale composing flag (lost compositionEnd).

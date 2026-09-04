@@ -1,19 +1,19 @@
 /**
- * Global window interface extensions for IDEA plugin communication
+ * Global window interface extensions for VS Code webview host communication
  */
 interface Window {
   /**
-   * Send message to Java backend
+   * Send message to host
    */
   sendToJava?: (message: string) => void;
 
   /**
-   * Get clipboard file path from Java
+   * Get clipboard file path from host
    */
   getClipboardFilePath?: () => Promise<string>;
 
   /**
-   * Handle file path(s) dropped from Java (supports batch files)
+   * Handle file path(s) dropped from host (supports batch files)
    */
   handleFilePathFromJava?: (filePathInput: string | string[]) => void;
 
@@ -149,7 +149,7 @@ interface Window {
 
   /**
    * SDK-to-CLI session conversion result callback.
-   * Called by the Java backend after attempting to convert entrypoint from "sdk-cli" to "cli".
+   * Called by the host backend after attempting to convert entrypoint from "sdk-cli" to "cli".
    * Payload: { success: boolean, infoCode?: string, errorCode?: string }.
    * infoCode carries extra context on success (e.g. ALREADY_CLI_SESSION);
    * errorCode identifies the failure reason for i18n lookup.
@@ -268,7 +268,7 @@ interface Window {
 
   /**
    * Force-close the open AskUserQuestion dialog matching the given requestId.
-   * Sent by the Java backend when its safety-net timer fires and resolves the
+   * Sent by the host backend when its safety-net timer fires and resolves the
    * pending future with an empty answer — the WebView dialog (if still visible)
    * must be torn down too, otherwise its open-refs stay set and every
    * subsequent showAskUserQuestionDialog call is silently enqueued behind the
@@ -527,7 +527,7 @@ interface Window {
   __pendingSessionId?: string;
 
   /**
-   * Apply IDEA editor font configuration (called from Java backend)
+   * Apply host editor font configuration (called from host backend)
    * @param config Font configuration object containing fontFamily, fontSize, lineSpacing, fallbackFonts
    */
   applyIdeaFontConfig?: (config: {
@@ -548,12 +548,12 @@ interface Window {
   };
 
   /**
-   * Apply effective plugin UI font configuration (called from Java backend)
+   * Apply effective plugin UI font configuration (called from host backend)
    */
   applyUiFontConfig?: (config: import('./types/uiFontConfig').UiFontConfig | string) => void;
 
   /**
-   * Apply effective plugin code font configuration (called from Java backend)
+   * Apply effective plugin code font configuration (called from host backend)
    */
   applyCodeFontConfig?: (config: import('./types/uiFontConfig').CodeFontConfig | string) => void;
 
@@ -568,8 +568,8 @@ interface Window {
   __pendingCodeFontConfig?: import('./types/uiFontConfig').CodeFontConfig;
 
   /**
-   * Apply IDEA language configuration (called from Java backend)
-   * @param config Language configuration object containing language code and IDEA locale
+   * Apply host language configuration (called from host backend)
+   * @param config Language configuration object containing language code and host locale
    */
   applyIdeaLanguageConfig?: (config: {
     language: string;
@@ -599,7 +599,7 @@ interface Window {
   updateSessionTitle?: (sessionId: string, title: string) => void;
 
   /**
-   * Editor font config received callback - receives IDEA editor font configuration
+   * Editor font config received callback - receives host editor font configuration
    */
   onEditorFontConfigReceived?: (json: string) => void;
 
@@ -979,12 +979,12 @@ interface Window {
   __pendingModeReceived?: string;
 
   /**
-   * Execute context action from IDEA shortcut (copy/cut/send)
+   * Execute context action from host shortcut (copy/cut/send)
    */
   execContextAction?: (action: string) => void;
 
   /**
-   * Clipboard read callback for paste from IDEA shortcut
+   * Clipboard read callback for paste from host shortcut
    */
   onClipboardRead?: (text: string) => void;
 

@@ -323,7 +323,7 @@ export function registerMessageCallbacks(
         //
         // Previously this branch only accepted snapshots containing tool_use blocks,
         // which caused ALL updateMessages to be silently dropped during pure-text
-        // streaming.  When onStreamEnd was subsequently lost (JCEF async chain),
+        // streaming.  When onStreamEnd was subsequently lost (webview async chain),
         // the UI appeared permanently frozen.
 
         let patched = [...parsed];
@@ -657,7 +657,7 @@ export function registerMessageCallbacks(
     cardDebugLog('[clearMessages] called, transitioning:', window.__sessionTransitioning, 'barrierSeq:', barrierSequenceArg);
     // Advance the sequence barrier so any updateMessages still in flight from
     // the previous session are rejected. Such a snapshot may already have been
-    // dispatched to JS and be sitting in the JCEF IPC channel, so neither the
+    // dispatched to JS and be sitting in the webview IPC channel, so neither the
     // backend's post-reset sequence check nor the __sessionTransitioning
     // time-window guard can stop it once that guard is released. The barrier is
     // the backend coalescer's post-reset updateSequence; stale snapshots carry a

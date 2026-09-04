@@ -74,6 +74,24 @@ const CopyIcon = () => (
   </svg>
 );
 
+/** Undo icon (curved left arrow) — matches Quote/Copy icon's stroke-based style. */
+const UndoIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3.5 8a4.5 4.5 0 1 1 1.318 3.182" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.4" strokeLinecap="round" fill="none"/>
+    <path d="M3.5 3.5v3.5h3.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+  </svg>
+);
+
+/** Fork icon (branching node) — matches Quote/Copy icon's stroke-based style. */
+const ForkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="4" cy="3.5" r="1.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.2" fill="none"/>
+    <circle cx="4" cy="12.5" r="1.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.2" fill="none"/>
+    <circle cx="11.5" cy="6" r="1.5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.2" fill="none"/>
+    <path d="M4 5v6M5.5 11.5c0.5 -2.5 2 -4 4 -5" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+  </svg>
+);
+
 interface CopyButtonProps {
   className?: string;
   isCopied: boolean;
@@ -155,10 +173,10 @@ interface IconActionButtonProps {
 /**
  * 用户消息气泡上的通用图标按钮。
  *
- * 与 CopyButton / QuoteButton 共用 `message-copy-btn` 的视觉样式。此前 undo /
- * fork 走 `message-action-btn`（codicon 字体图标、hover 时背景与边框变化），
- * 与同排的 quoter / copy（SVG 图标、hover 仅变透明度）不是一套外观，
- * 四个按钮看起来像是两种控件。
+ * 与 CopyButton / QuoteButton 共用 `message-copy-btn` 的视觉样式，
+ * 并通过 SVG 图标（UndoIcon / ForkIcon）保持与 quote / copy 同套外观，
+ * 四个按钮视觉一致；组内（undo/fork 为历史操作，quote/copy 为内容操作）
+ * 不再额外做样式分组，避免一行上看起来像两种控件。
  */
 const IconActionButton = memo(function IconActionButton({
   className,
@@ -838,7 +856,7 @@ export const MessageItem = memo(function MessageItem({
                 label={t('chat.undoTooltip')}
                 onClick={() => onUndo(message)}
               >
-                <span className="codicon codicon-discard" />
+                <UndoIcon />
               </IconActionButton>
             )}
             {onFork && (
@@ -848,7 +866,7 @@ export const MessageItem = memo(function MessageItem({
                 onClick={() => { if (!forkDisabled) onFork(message); }}
                 disabled={forkDisabled}
               >
-                <span className="codicon codicon-git-branch" />
+                <ForkIcon />
               </IconActionButton>
             )}
             {hasCopyableText && (

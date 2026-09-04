@@ -70,7 +70,7 @@ describe('getLogicalOffsetTop', () => {
     expect(getLogicalOffsetTop(node, container)).toBe(150);
   });
 
-  it('divides the delta by zoom on newer JCEF (appRect.height == innerHeight)', () => {
+  it('divides the delta by zoom on newer webview (appRect.height == innerHeight)', () => {
     // The user's case: 90% zoom, newer variant where gBCR returns zoomed values.
     setZoom('0.9');
     Object.defineProperty(window, 'innerHeight', {
@@ -85,7 +85,7 @@ describe('getLogicalOffsetTop', () => {
     expect(getLogicalOffsetTop(node, container)).toBeCloseTo(166.667, 2);
   });
 
-  it('returns the raw delta on older JCEF (appRect.height != innerHeight)', () => {
+  it('returns the raw delta on older webview (appRect.height != innerHeight)', () => {
     // Older builds return unzoomed layout values: appRect.height = innerHeight / zoom.
     setZoom('0.9');
     Object.defineProperty(window, 'innerHeight', {

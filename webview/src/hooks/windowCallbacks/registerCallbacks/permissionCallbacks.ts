@@ -54,7 +54,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  // The Java backend calls these when its safety-net timer fires after the
+  // The host backend calls these when its safety-net timer fires after the
   // permission/ask/plan dialog future has already been resolved with a default
   // (DENY / empty answers). Without an explicit close signal the WebView's
   // openRefs stay true, every subsequent show*Dialog enqueues silently behind

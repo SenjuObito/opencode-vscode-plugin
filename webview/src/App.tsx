@@ -216,9 +216,9 @@ const App = () => {
   //
   // Platform detection prefers `navigator.userAgentData.platform` (modern,
   // non-deprecated) and falls back to `userAgent` string sniffing for
-  // JCEF / older Chromium where userAgentData may be unavailable.
+  // older Chromium where userAgentData may be unavailable.
   // `navigator.platform` is intentionally NOT used — it is deprecated and
-  // returns inconsistent values inside JCEF.
+  // returns inconsistent values in older runtimes.
   useEffect(() => {
     if (currentView !== 'chat') return;
     const isMac = (() => {
