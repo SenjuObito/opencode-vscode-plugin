@@ -15,7 +15,6 @@ import { OpenCodeEditorPanel } from './host/webview/OpenCodeEditorPanel.js';
 import { HandlerContext, FileOps } from './host/router/HandlerContext.js';
 import { MessageDispatcher } from './host/router/MessageDispatcher.js';
 import { OpenCodeDaemonBridge } from './host/provider/OpenCodeDaemonBridge.js';
-import type { DaemonStatusPayload } from './host/provider/DaemonStatus.js';
 import { OpenCodeSession } from './host/session/OpenCodeSession.js';
 import { MementoSettingsStore, SettingsService } from './host/settings/SettingsService.js';
 import { NotificationService } from './host/notifications/NotificationService.js';
@@ -98,10 +97,7 @@ export function activate(context: vscode.ExtensionContext) {
 			},
 			onDaemonDied: () => {
 				console.warn('[extension] OpenCode daemon died; will auto-restart');
-				pushDaemonStatus(channel, false, {
-					code: 'DAEMON_DIED',
-					detail: 'opencode 桥接进程意外退出，插件正在自动重启…',
-				});
+				pushDaemonStatus(channel, false);
 			},
 		},
 		onLog: (message) => logDiagnostic(message),
@@ -322,20 +318,10 @@ function resolveDaemonScript(extensionPath: string): string {
 	return join(extensionPath, 'ai-bridge', 'daemon.js');
 }
 
-/**
- * 向 webview 推送 daemon 存活状态。
- *
- * 不带 `phase`：webview 会走旧协议兜底（alive=true 保持当前加载态），这样
- * 「daemon 死亡 → 自动重启成功」不会把界面重新打回永久转圈。只有明确的失败
- * （daemon 意外退出）才带 phase='failed' 并附带原因。
- */
-function pushDaemonStatus(channel: BroadcastChannel, alive: boolean, failure?: { code: string; detail: string }): void {
-	const payload: DaemonStatusPayload = failure
-		? { alive, serveReady: false, phase: 'failed', code: failure.code, detail: failure.detail }
-		: { alive, serveReady: false };
+function pushDaemonStatus(channel: BroadcastChannel, alive: boolean): void {
 	channel.postRaw({
 		type: 'updateDaemonStatus',
-		args: [JSON.stringify(payload)],
+		args: [JSON.stringify({ alive })],
 	});
 }
 

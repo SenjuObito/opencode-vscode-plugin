@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from '../../../utils/permissionDialogTimeout';
 import { PermissionDialogTimeoutSetting } from './PermissionDialogTimeoutSetting';
 
-/** Upward-opening custom select for sound selection (avoids webview clipping) */
+/** Upward-opening custom select for sound selection (avoids JCEF clipping) */
 const SoundSelectUpward = ({
   value,
   onChange,

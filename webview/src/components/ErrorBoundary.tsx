@@ -190,8 +190,8 @@ function getSystemInfo(): string {
   info.push(`Viewport: ${window.innerWidth}x${window.innerHeight}`);
   info.push(`DevicePixelRatio: ${window.devicePixelRatio}`);
 
-  // Check if sendTohost bridge exists (webview environment)
-  info.push(`Host Bridge: ${typeof window.sendToJava === 'function' ? 'available' : 'not available'}`);
+  // Check if sendToJava bridge exists (JCEF environment)
+  info.push(`JCEF Bridge: ${typeof window.sendToJava === 'function' ? 'available' : 'not available'}`);
 
   // Check localStorage availability
   try {

@@ -14,7 +14,7 @@ interface PendingResolveEntry {
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
-// Upper-bound on how long we wait for the webview backend to answer a
+// Upper-bound on how long we wait for the JCEF backend to answer a
 // resolve_file_path request. Without this, a dropped bridge message,
 // closed project, or backend exception would leak the callback forever
 // and let the Map grow unbounded over a long session.
@@ -273,7 +273,7 @@ export const showMultiEditDiff = (
 
 /**
  * Show editable diff view for a file
- * Opens host's native diff view where user can selectively accept/reject changes
+ * Opens IDEA's native diff view where user can selectively accept/reject changes
  * @param filePath - Absolute path to the file
  * @param operations - Array of edit operations
  * @param status - File status: 'A' (added) or 'M' (modified)

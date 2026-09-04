@@ -2,7 +2,6 @@
  * Input box component type definitions
  * Feature: 004-refactor-input-box
  */
-import type { DaemonIssue } from '../../hooks/providers/useUsageTracking';
 
 // ============================================================
 // Core Entity Types
@@ -708,8 +707,6 @@ export interface ChatInputBoxProps {
   sdkInstalled?: boolean;
   /** Daemon status loaded */
   daemonStatusLoaded?: boolean;
-  /** Concrete reason the daemon/opencode serve failed to start (null when healthy) */
-  daemonIssue?: DaemonIssue | null;
   /** Retry daemon status check callback */
   onRetryDaemonStatus?: () => void;
   /** Session loading indicator (transitioning between history sessions) */

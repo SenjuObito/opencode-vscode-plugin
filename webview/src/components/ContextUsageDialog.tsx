@@ -144,10 +144,10 @@ const ContextUsageDialog = memo(function ContextUsageDialog({
   }, [onClose]);
 
   // Use mousedown instead of click for close buttons to ensure reliable
-  // event handling in webview environments where React synthetic onClick
+  // event handling in JCEF environments where React synthetic onClick
   // may not fire consistently.
   // Unified mousedown handler for closing - used by both the overlay
-  // (click outside) and close button. Uses mousedown for reliability in webview.
+  // (click outside) and close button. Uses mousedown for reliability in JCEF.
   const handleCloseMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     closeDialog();

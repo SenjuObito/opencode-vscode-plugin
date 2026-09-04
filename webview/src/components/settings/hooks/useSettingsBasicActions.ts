@@ -165,7 +165,7 @@ export function useSettingsBasicActions({
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [savingWorkingDirectory, setSavingWorkingDirectory] = useState(false);
 
-  // host editor font configuration (read-only display)
+  // IDEA editor font configuration (read-only display)
   const [editorFontConfig, setEditorFontConfig] = useState<
     | {
         fontFamily: string;

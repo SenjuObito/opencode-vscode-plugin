@@ -9,15 +9,13 @@
   border-top: none;
   background: rgba(0, 0, 0, 0.1);
   font-family: inherit;
+  /* Enable container queries for responsive button behavior */
+  container-type: inline-size;
+  container-name: button-area;
   position: relative;
   z-index: 20;
 }
 
-/* Selector cluster sits between the status panel and the send button. Each
-   selector (mode / model / reasoning) gets an equal slice of the available
-   width and trims its label with ellipsis when the slice is too narrow —
-   prevents the cluster width from "breathing" every time the selected model
-   label changes length. */
 .button-area-left {
   display: flex;
   align-items: center;
@@ -25,17 +23,6 @@
   flex: 1;
   min-width: 0;
   overflow: visible;
-}
-
-.button-area-left .selector-button {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 220px;
-}
-
-.button-area-left .selector-button .selector-button-text {
-  flex: 1;
-  min-width: 0;
 }
 
 .button-area-right {

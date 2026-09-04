@@ -1,4 +1,4 @@
-// Vendored addition (not from upstream): webview transport for the embedded
+// Vendored addition (not from upstream): JCEF transport for the embedded
 // TokenTracker dashboard. Upstream `lib/api.ts` fetched same-origin
 // `/functions/<slug>` from the CLI's embedded HTTP server; that server sends
 // no CORS headers, so inside the IDE webview all dashboard traffic goes
@@ -15,7 +15,7 @@
 //     which we re-throw as an Error with a numeric `.status` so hooks keep
 //     working unchanged (they only ever inspect err.status / err.message).
 //
-// Browser dev fallback: when not running inside the embedded webview (no
+// Browser dev fallback: when not running inside the JCEF webview (no
 // window.sendToJava), requests go to `/tt-dev<path>` via plain fetch — the
 // vite dev proxy (see webview/vite.config.ts) forwards them to a locally
 // running `tokentracker serve` instance on 127.0.0.1:7680.
@@ -25,7 +25,7 @@ import { isTokenTrackerBridgeAvailable, ttProxy } from "../../tokentrackerBridge
 /**
  * Vendored name kept from the desktop port: true when running inside a native
  * host whose backend proxies traffic to the local tokentracker server (Tauri
- * on desktop, the webview/host bridge here).
+ * on desktop, the JCEF/Java bridge here).
  */
 export function isTauriRuntime(): boolean {
   return isTokenTrackerBridgeAvailable();

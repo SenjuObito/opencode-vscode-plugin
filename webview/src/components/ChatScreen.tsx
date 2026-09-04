@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatInputBox } from './ChatInputBox';
 import type {
@@ -12,7 +12,6 @@ import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ConversationSearch } from './ConversationSearch';
 import type { MessageListRevealHandle } from './ConversationSearch/types';
-import ConfirmDialog from './ConfirmDialog';
 import {
   SessionIdContext,
   SubagentHistoryContext,
@@ -23,7 +22,6 @@ import { useSession } from '../contexts/SessionContext';
 import { useUIState } from '../contexts/UIStateContext';
 import { extractMarkdownContent } from '../utils/copyUtils';
 import type { ClaudeMessage, TodoItem, ToolResultBlock } from '../types';
-import type { DaemonIssue } from '../hooks/providers/useUsageTracking';
 import type { useMessageProcessing, useFileChanges, useSubagents, useFileChangesManagement, useModelProviderState, useMessageQueue } from '../hooks';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 import { reconcileMessageKeys, type MessageKeySnapshot } from '../utils/messageUtils';
@@ -95,7 +93,6 @@ export interface ChatScreenProps {
   permissionMode: ProviderState['permissionMode'];
   currentSdkInstalled: ProviderState['currentSdkInstalled'];
   daemonStatusLoaded: boolean;
-  daemonIssue?: DaemonIssue | null;
   retryDaemonStatus: () => void;
   activeProviderConfig: ProviderState['activeProviderConfig'];
   claudeSettingsAlwaysThinkingEnabled: ProviderState['claudeSettingsAlwaysThinkingEnabled'];
@@ -148,7 +145,6 @@ export const ChatScreen = ({
   currentProvider, selectedModel, permissionMode,
   currentSdkInstalled,
   daemonStatusLoaded,
-  daemonIssue,
   retryDaemonStatus,
   activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
   reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
@@ -184,20 +180,9 @@ export const ChatScreen = ({
     onSubmit(content, attachments);
   }, [onSubmit]);
 
-  // Compact is destructive (opencode summarizes the conversation and prunes
-  // older messages). Prompt the user before firing the slash command so an
-  // accidental click on the token ring does not silently erase context.
-  const [showCompactConfirm, setShowCompactConfirm] = useState(false);
   const handleCompact = useCallback(() => {
-    setShowCompactConfirm(true);
-  }, []);
-  const handleCompactConfirm = useCallback(() => {
-    setShowCompactConfirm(false);
     onSubmit('/compact');
   }, [onSubmit]);
-  const handleCompactCancel = useCallback(() => {
-    setShowCompactConfirm(false);
-  }, []);
 
   // Signal that the search hook can listen to for re-scanning. Combines
   // length + last timestamp + streaming flag + last-message content size.
@@ -338,7 +323,6 @@ export const ChatScreen = ({
           placeholder={sendShortcut === 'cmdEnter' ? t('chat.inputPlaceholderCmdEnter') : t('chat.inputPlaceholderEnter')}
           sdkInstalled={currentSdkInstalled}
           daemonStatusLoaded={daemonStatusLoaded}
-          daemonIssue={daemonIssue}
           onRetryDaemonStatus={retryDaemonStatus}
           sessionLoading={sessionLoading}
           value={draftInput}
@@ -379,15 +363,6 @@ export const ChatScreen = ({
           onCompactClick={handleCompact}
         />
       </div>
-      <ConfirmDialog
-        isOpen={showCompactConfirm}
-        title={t('chat.compactConfirmTitle')}
-        message={t('chat.compactConfirmMessage')}
-        confirmText={t('chat.compactConfirmAction')}
-        cancelText={t('common.cancel')}
-        onConfirm={handleCompactConfirm}
-        onCancel={handleCompactCancel}
-      />
     </>
   );
 };

@@ -51,7 +51,7 @@ webview/src/
 ├── App.tsx                    # Main orchestration component
 ├── hooks/
 │   ├── index.ts               # Barrel exports
-│   ├── useWindowCallbacks.ts  # host bridge callbacks (~770 lines)
+│   ├── useWindowCallbacks.ts  # Java bridge callbacks (~770 lines)
 │   ├── useStreamingMessages.ts# Streaming message handling
 │   ├── useDialogManagement.ts # Dialog state management
 │   ├── useSessionManagement.ts# Session CRUD operations
@@ -78,7 +78,7 @@ webview/src/
 ## Custom Hooks
 
 ### useWindowCallbacks (~770 lines)
-Handles all `window.xxx` callback registrations for host bridge communication.
+Handles all `window.xxx` callback registrations for Java bridge communication.
 
 **Responsibilities:**
 - Message callbacks (updateMessages, clearMessages, addErrorMessage)
@@ -198,7 +198,7 @@ const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
 ### Message Flow
 1. User types in ChatInputBox
 2. `handleSubmit()` creates user message and calls `sendBridgeEvent('send_message', ...)`
-3. host backend processes and calls `window.onStreamStart()`
+3. Java backend processes and calls `window.onStreamStart()`
 4. Streaming deltas arrive via `window.onContentDelta()` / `window.onThinkingDelta()`
 5. Stream ends via `window.onStreamEnd()`
 6. Full message sync via `window.updateMessages()`

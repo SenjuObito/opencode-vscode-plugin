@@ -5,13 +5,11 @@ import { ContextBar } from './ContextBar.js';
 import { MessageQueue } from './MessageQueue.js';
 import { useUIState } from '../../contexts/UIStateContext';
 import { copyToClipboard } from '../../utils/copyUtils';
-import type { DaemonIssue } from '../../hooks/providers/useUsageTracking';
 
 const GITHUB_REPO_URL = 'https://github.com/SenjuObito/opencode-vscode-plugin';
 
 export function ChatInputBoxHeader({
   daemonStatusLoaded,
-  daemonIssue,
   daemonAlive,
   onRetryDaemonStatus,
   t,
@@ -37,7 +35,6 @@ export function ChatInputBoxHeader({
   sessionLoading,
 }: {
   daemonStatusLoaded: boolean;
-  daemonIssue?: DaemonIssue | null;
   daemonAlive: boolean;
   onRetryDaemonStatus?: () => void;
   t: TFunction;
@@ -70,17 +67,6 @@ export function ChatInputBoxHeader({
       addToast(t('chat.openSourceBannerStarToast'), 'success');
     }
   };
-
-  const handleCopyInstallCommand = async () => {
-    if (!daemonIssue?.installCmd) return;
-    const copied = await copyToClipboard(daemonIssue.installCmd);
-    addToast(t(copied ? 'chat.installCommandCopied' : 'chat.installCommandCopyFailed'), copied ? 'success' : 'error');
-  };
-
-  // 状态栏三态：启动中（转圈）/ 启动失败（原因 + 安装命令 + 重试）/ 未运行（兜底）。
-  const issueTitle = daemonIssue
-    ? t(`chat.daemonIssue.${daemonIssue.code}`, { defaultValue: t('chat.daemonNotRunning') })
-    : '';
 
   return (
     <>
@@ -115,64 +101,18 @@ export function ChatInputBoxHeader({
         </div>
       )}
 
-      {/* Daemon status bar */}
-      {!daemonStatusLoaded && (
-        <div className="sdk-warning-bar sdk-loading">
-          <span className="codicon codicon-loading codicon-modifier-spin" />
-          <span className="sdk-warning-text">{t('chat.daemonStatusLoading')}</span>
-        </div>
-      )}
-
-      {/* Startup failed: show the concrete reason instead of a bare "not running" */}
-      {daemonStatusLoaded && !daemonAlive && daemonIssue && (
-        <div className="sdk-warning-bar sdk-error">
-          <span className="codicon codicon-warning" />
-          <div className="sdk-warning-body">
-            <span className="sdk-warning-text">{issueTitle}</span>
-            {daemonIssue.installCmd && (
-              <code className="sdk-install-cmd">{t('chat.daemonIssueInstallCmd', { cmd: daemonIssue.installCmd })}</code>
-            )}
-            {!!daemonIssue.detail && (
-              <span className="sdk-warning-detail" title={daemonIssue.detail}>
-                {t('chat.daemonIssueDetail', { detail: daemonIssue.detail })}
-              </span>
-            )}
-          </div>
-          <div className="sdk-warning-actions">
-            {daemonIssue.installCmd && (
-              <button
-                className="sdk-install-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleCopyInstallCommand();
-                }}
-              >
-                <span className="codicon codicon-copy" />
-                <span>{t('chat.copyInstallCommand')}</span>
-              </button>
-            )}
-            {onRetryDaemonStatus && (
-              <button
-                className="sdk-install-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRetryDaemonStatus();
-                }}
-              >
-                <span className="codicon codicon-refresh" />
-                <span>{t('chat.retryDaemonStatus')}</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Legacy fallback: status known, daemon down, but host sent no reason */}
-      {daemonStatusLoaded && !daemonAlive && !daemonIssue && (
-        <div className="sdk-warning-bar">
-          <span className="codicon codicon-warning" />
-          <span className="sdk-warning-text">{t('chat.daemonNotRunning')}</span>
-          {onRetryDaemonStatus && (
+      {/* Daemon status warning bar */}
+      {(!daemonStatusLoaded || !daemonAlive) && (
+        <div className={`sdk-warning-bar ${!daemonStatusLoaded ? 'sdk-loading' : ''}`}>
+          <span
+            className={`codicon ${!daemonStatusLoaded ? 'codicon-loading codicon-modifier-spin' : 'codicon-warning'}`}
+          />
+          <span className="sdk-warning-text">
+            {!daemonStatusLoaded
+              ? t('chat.daemonStatusLoading')
+              : t('chat.daemonNotRunning')}
+          </span>
+          {daemonStatusLoaded && !daemonAlive && onRetryDaemonStatus && (
             <button
               className="sdk-install-btn"
               onClick={(e) => {

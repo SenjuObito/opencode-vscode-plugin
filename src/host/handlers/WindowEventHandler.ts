@@ -3,13 +3,10 @@
  * Handles window-level events: heartbeat, create_new_session, frontend_ready,
  * refresh_slash_commands, history_dom_committed.
  */
-import * as vscode from 'vscode';
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { logDiagnostic, logDiagnosticBlock } from '../util/DiagnosticLogger';
 import { pushHistoryData, upsertSessionSummary } from '../session/SessionHistoryStore';
-import { classifyServeFailure, type DaemonStatusPayload } from '../provider/DaemonStatus';
-import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { pushUserLanguageConfig, pushUiPreferences } from './SettingsHandler';
 
 const SUPPORTED_TYPES = [
@@ -34,22 +31,6 @@ const SUPPORTED_TYPES = [
 	'fork_session',
 	'compact_session',
 ];
-
-/**
- * daemon / serve 启动失败时的 VS Code 通知文案（宿主侧，不经 i18n）。
- * 只覆盖「用户需要看到并可能动手」的失败；DAEMON_DIED / NO_DAEMON 等
- * 瞬态或 webview 已说明的情况不在此列，避免误报噪声。
- */
-const DAEMON_FAILURE_TOAST: Record<string, (p: DaemonStatusPayload) => string> = {
-	NOT_INSTALLED: (p) =>
-		`未检测到 opencode，请先安装后再使用 OpenCode 服务。安装命令：${p.installCmd ?? ''}`.trim(),
-	START_TIMEOUT: (p) => `OpenCode 服务启动超时${p.detail ? `：${p.detail}` : '，请检查 opencode 是否可正常运行'}`,
-	START_FAILED: (p) => `OpenCode 服务启动失败${p.detail ? `：${p.detail}` : ''}`,
-	BRIDGE_DEPS_MISSING: (p) =>
-		`OpenCode 桥接进程依赖缺失，无法启动${p.detail ? `：${p.detail}` : ''}（请到 ai-bridge 目录执行 npm install）`,
-	BRIDGE_LAUNCH_FAILED: (p) => `OpenCode 桥接进程拉起失败${p.detail ? `：${p.detail}` : ''}`,
-	BRIDGE_START_FAILED: (p) => `OpenCode 桥接进程启动超时${p.detail ? `：${p.detail}` : ''}`,
-};
 
 export class WindowEventHandler extends BaseMessageHandler {
 	constructor(context: HandlerContext) {
@@ -633,176 +614,52 @@ export class WindowEventHandler extends BaseMessageHandler {
 	/**
 	 * 向 webview 推送 daemon / serve 状态。
 	 *
-	 * 协议见 host/provider/DaemonStatus.ts：载荷带 `phase`，webview 据此在
-	 * 「启动中（转圈）/ 已就绪（收起）/ 启动失败（展示原因）」之间切换。
+	 * 关键点：状态栏（"正在检查 opencode serve 状态..."）必须等到 serve 真正
+	 * 就绪才消失，而不是 daemon 进程一拉起就消失——否则会出现「首次加载历史会话
+	 * 时 serve 尚在预热、listMessages 打到冷 serve 返回空消息」的竞态。
 	 *
-	 * 关键约定：
-	 * - 状态栏必须等到 opencode serve 真正就绪（phase='ready'）才收起，而不是
-	 *   daemon 进程一拉起就收起——否则会出现「首次加载历史会话时 serve 尚在
-	 *   预热、listMessages 打到冷 serve 返回空消息」的竞态。
-	 * - daemon 未运行时「重试」会真正调用 daemon.start() 重新拉起，而不是只
-	 *   把当前状态再读一遍（旧行为下重试按钮等于没反应）。
-	 * - 拉不起来时必须带上失败原因（未安装 / 超时 / 意外退出 …），不能只剩一句
-	 *   「OpenCode serve 未运行」。
+	 * 协议：updateDaemonStatus 事件携带 { alive, serveReady }：
+	 * - alive=false  → 立即置 daemonStatusLoaded=true，webview 切到「未运行」态可重试；
+	 * - alive=true   → 先发 {serveReady:false}（保持 loading 转圈），再异步等待
+	 *                  opencode serve 真正就绪后才发 {serveReady:true} 让状态栏消失。
 	 */
 	private sendDaemonStatus(): void {
 		const daemon = this.context.getDaemon();
-		if (!daemon) {
-			logDiagnostic('[daemon-status] sendDaemonStatus: 没有 daemon 实例 (NO_DAEMON)');
-			this.pushDaemonStatus({
-				alive: false,
-				serveReady: false,
-				phase: 'failed',
-				code: 'NO_DAEMON',
-				detail: 'OpenCode 桥接进程尚未初始化，请重新打开窗口后重试。',
-			});
-			return;
-		}
-		if (daemon.isAlive()) {
-			logDiagnostic('[daemon-status] sendDaemonStatus: daemon 已存活 → 直接探测 serve 就绪');
-			this.waitForServeReady(daemon);
-			return;
-		}
-		logDiagnostic('[daemon-status] sendDaemonStatus: daemon 未运行 → 先拉起再等 serve');
-		void this.startDaemonThenServe(daemon);
-	}
+		const alive = daemon?.isAlive() ?? false;
 
-	/** daemon 进程不在：先把它拉起来，再等 serve 就绪；拉不起来则回传原因。 */
-	private async startDaemonThenServe(daemon: OpenCodeDaemonBridge): Promise<void> {
-		logDiagnostic('[daemon-status] startDaemonThenServe: phase=starting，调用 daemon.start()');
-		this.pushDaemonStatus({ alive: false, serveReady: false, phase: 'starting' });
-		let started = false;
-		try {
-			started = await daemon.start();
-		} catch (err) {
-			const detail = `拉起 opencode 桥接进程时出错：${(err as Error).message}`;
-			logDiagnostic(`[daemon-status] startDaemonThenServe 异常: ${detail}`);
-			console.error(`[OpenCodeGUI][daemon-status] daemon.start() 抛异常: ${detail}`);
-			this.pushDaemonStatus({
-				alive: false,
-				serveReady: false,
-				phase: 'failed',
-				code: 'BRIDGE_LAUNCH_FAILED',
-				detail,
-			});
+		if (!alive) {
+			// serve 进程都没起来，无需等待，直接进入「未运行」态。
+			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
 			return;
 		}
-		if (!started || !daemon.isAlive()) {
-			const failure = daemon.getLastFailure();
-			logDiagnostic(
-				`[daemon-status] daemon.start() 返回失败: started=${started} alive=${daemon.isAlive()} ` +
-				`failure=${failure ? `${failure.code} | ${failure.detail}` : '(无 lastFailure)'}`,
-			);
-			this.pushDaemonStatus({
-				alive: false,
-				serveReady: false,
-				phase: 'failed',
-				code: failure?.code ?? 'BRIDGE_START_FAILED',
-				detail: failure?.detail ?? 'opencode 桥接进程未能启动，且未记录到具体原因。',
-			});
-			return;
-		}
-		logDiagnostic('[daemon-status] daemon.start() 成功，转 waitForServeReady');
-		this.waitForServeReady(daemon);
-	}
 
-	/**
-	 * daemon 已就绪：异步等 opencode serve 真正就绪后再发 phase='ready'。
-	 * 复用 opencode.preconnect（内部 _ensureReady 会轮询健康检查直到 serve 可查，
-	 * 幂等、可重复调用）。
-	 */
-	private waitForServeReady(daemon: OpenCodeDaemonBridge): void {
-		this.pushDaemonStatus({ alive: true, serveReady: false, phase: 'starting' });
+		// 先发 loading 态，让状态栏继续显示「正在检查...」。
+		this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false }));
 
+		// 异步等待 serve 就绪。复用 opencode.preconnect（内部 _ensureReady 会
+		// 轮询健康检查直到 serve 真正可查，幂等、可重复调用）。
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		logDiagnostic(`[daemon-status] waitForServeReady: 发送 opencode.preconnect (cwd=${directory ?? '(无)'})`);
-		// handleDaemonOutput 会先 onError 再 onComplete，用 reported 保证带分类码的
-		// onError 结果不被随后那次无信息的 onComplete(false) 覆盖。
-		let reported = false;
-		const reportFailure = (error?: string, code?: string): void => {
-			if (reported) {
-				return;
-			}
-			reported = true;
-			if (code) {
-				logDiagnostic(`[daemon-status] serve 启动失败: code=${code} error=${error ?? '(空)'}`);
-			} else {
-				logDiagnostic(`[daemon-status] serve 启动失败（无分类码）: ${error ?? '(空)'}`);
-			}
-			this.pushDaemonStatus(classifyServeFailure(error, code));
-		};
-
-		void daemon.request('opencode.preconnect', { cwd: directory }, {
-			onLine: () => {},
-			onError: (error, code) => reportFailure(error, code),
-			onComplete: (success: boolean) => {
-				if (success) {
-					reported = true;
-					logDiagnostic('[daemon-status] serve 就绪: phase=ready');
-					this.pushDaemonStatus({ alive: true, serveReady: true, phase: 'ready' });
-					return;
-				}
-				logDiagnostic('[daemon-status] opencode.preconnect 返回未成功，按失败处理');
-				reportFailure();
-			},
-		});
-	}
-
-	private pushDaemonStatus(payload: DaemonStatusPayload): void {
-		// 成功就绪后清空「失败通知」去重标记，使下一次真正的失败仍能弹通知。
-		if (payload.phase === 'ready') {
-			this.lastDaemonFailureToastSig = undefined;
-		}
-		// 调试日志（Debug Console 可见）：把每次状态推送的完整载荷打出来，便于排查
-		// 「拉不起来却毫无提示」这类问题。失败态用 console.error 标红。
-		const summary = `phase=${payload.phase ?? '(旧协议)'} alive=${payload.alive} serveReady=${payload.serveReady}` +
-			(payload.code ? ` code=${payload.code}` : '') +
-			(payload.detail ? ` detail=${payload.detail}` : '');
-		logDiagnostic(`[daemon-status] push: ${summary}`);
-		if (payload.phase === 'failed') {
-			console.error(`[OpenCodeGUI][daemon-status] 推送失败态: ${summary}`);
-		}
-		this.callJavaScript('updateDaemonStatus', JSON.stringify(payload));
-		// 启动失败时再补一条 VS Code 警告通知，避免用户只看到输入框顶部的小条而漏掉。
-		if (payload.phase === 'failed') {
-			this.notifyDaemonFailure(payload);
-		}
-	}
-
-	/**
-	 * 把「OpenCode 服务拉不起来」的具体原因，用一条 VS Code 警告通知（toast）弹出来，
-	 * 让「未安装 / 启动超时 / 桥接进程崩溃」这类问题无法被忽略。
-	 *
-	 * DAEMON_DIED（自动重启中）/ NO_DAEMON 不打扰——它们要么会被自动恢复，
-	 * 要么 webview 小条已说明，弹通知反而像报错。
-	 * 用 `code + detail` 去重，避免重试 / 多次健康探测时同一条失败反复弹窗。
-	 */
-	private lastDaemonFailureToastSig?: string;
-
-	private notifyDaemonFailure(payload: DaemonStatusPayload): void {
-		const code = payload.code ?? 'START_FAILED';
-		const builder = DAEMON_FAILURE_TOAST[code];
-		if (!builder) {
-			return;
-		}
-		const sig = `${code}|${payload.detail ?? ''}`;
-		if (sig === this.lastDaemonFailureToastSig) {
-			return;
-		}
-		this.lastDaemonFailureToastSig = sig;
-		const message = builder(payload);
-		logDiagnostic(`[daemon-status] 弹失败通知(${code}): ${message}`);
-		if (code === 'NOT_INSTALLED' && payload.installCmd) {
-			void vscode.window
-				.showWarningMessage(message, '复制安装命令')
-				.then((choice) => {
-					if (choice === '复制安装命令') {
-						void vscode.env.clipboard.writeText(payload.installCmd ?? '');
+		daemon!.request(
+			'opencode.preconnect',
+			{ cwd: directory },
+			{
+				onLine: () => {},
+				onError: () => {
+					// serve 起不来（如二进制缺失）：落到「未运行」态，让用户可点重试，
+					// 而不是无限 loading 转圈。
+					this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				},
+				onComplete: (success: boolean) => {
+					if (success) {
+						// serve 真正就绪：发最终信号让状态栏消失。
+						this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: true }));
+					} else {
+						// serve 未能就绪：同样落到「未运行」可重试态。
+						this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
 					}
-				});
-		} else {
-			void vscode.window.showWarningMessage(message);
-		}
+				},
+			},
+		);
 	}
 
 	private sendLinkifyCapabilities(): void {

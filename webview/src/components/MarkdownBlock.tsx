@@ -1022,7 +1022,7 @@ const MarkdownBlock = ({ content = '', isStreaming = false }: MarkdownBlockProps
         ))}
       </div>
       {/* Tooltip is managed via native DOM API in handleMouseOver/handleMouseOut
-          to avoid React re-render issues that break click events in webview. */}
+          to avoid React re-render issues that break click events in JCEF. */}
       {previewSrc && (
         <div
           className="image-preview-overlay"

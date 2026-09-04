@@ -209,7 +209,7 @@ const SettingsView = ({
     }
   }, [currentTab, loadAgents]);
 
-  // Register window callbacks for host bridge communication
+  // Register window callbacks for Java bridge communication
   useSettingsWindowCallbacks({
     setClaudeCliPath,
     setSavingClaudeCliPath,

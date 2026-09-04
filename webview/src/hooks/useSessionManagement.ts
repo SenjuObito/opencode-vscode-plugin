@@ -165,7 +165,7 @@ export function useSessionManagement({
     setUsageMaxTokens(undefined);
 
     // FIX: Safety timeout to auto-release the session transition guard.
-    // If the backend's historyLoadComplete signal is lost (e.g., webview IPC failure
+    // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
     // during webview reload, or a backend error that prevents the callback),
     // __sessionTransitioning would remain true permanently, silently dropping ALL
     // message callbacks (updateMessages, onContentDelta, onStreamStart, etc.).
@@ -319,7 +319,7 @@ export function useSessionManagement({
 
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {
-    // Send delete request to host backend
+    // Send delete request to Java backend
     sendBridgeEvent('delete_session', sessionId);
     let startedSessionTransition = false;
 

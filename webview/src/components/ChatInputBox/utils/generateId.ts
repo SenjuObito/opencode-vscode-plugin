@@ -1,5 +1,5 @@
 /**
- * Generate unique ID (webview compatible)
+ * Generate unique ID (JCEF compatible)
  * Uses crypto.randomUUID when available, falls back to timestamp + random string
  */
 export function generateId(): string {

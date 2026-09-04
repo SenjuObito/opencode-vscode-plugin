@@ -61,7 +61,7 @@ export interface UseModelStatePersistenceOptions {
 /**
  * Two effects for persisting cross-slice provider/model state to localStorage:
  *  1. On mount: hydrate state from localStorage and sync the restored values
- *     to the backend (retrying until the webview bridge is ready).
+ *     to the backend (retrying until the JCEF bridge is ready).
  *  2. On change: re-save the snapshot to localStorage.
  *
  * Save uses `JSON.stringify` of the persisted keys; load applies
@@ -97,11 +97,11 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      // Per-tab restore (issue #1353): when the host backend has loaded a saved
+      // Per-tab restore (issue #1353): when the Java backend has loaded a saved
       // session for this specific tab, it injects __INITIAL_TAB_PROVIDER__ /
       // __INITIAL_TAB_MODEL__ into the HTML before React boots. Those values
       // win over the global localStorage snapshot, which is shared across every
-      // tab in the webview process and would otherwise cause every CC tab on
+      // tab in the JCEF process and would otherwise cause every CC tab on
       // restart to be set to whichever provider was last saved by ANY tab.
       const initialTabProvider = typeof window.__INITIAL_TAB_PROVIDER__ === 'string'
         ? window.__INITIAL_TAB_PROVIDER__.trim()
@@ -278,7 +278,7 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
       // React may mount before onLoadEnd/fallback establishes the runtime page
       // context. Never publish provisional HTML/default state to the localStorage
       // snapshot shared by every tab. Keep the same fast-then-slow retry policy as
-      // bridge startup so delayed remote webview initialization can still settle.
+      // bridge startup so delayed remote JCEF initialization can still settle.
       if (pageContextPending || recoveryStatePending) {
         retryCount += 1;
         retryTimer = window.setTimeout(

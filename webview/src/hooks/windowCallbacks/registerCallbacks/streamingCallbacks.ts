@@ -133,7 +133,7 @@ export function collectUnresolvedToolUseIds(
  * Timeout (ms) for detecting a stalled stream.  If no content/thinking delta
  * arrives for this duration while isStreamingRef is still true, the frontend
  * auto-recovers by forcing the stream-end cleanup.  This guards against the
- * backend onStreamEnd signal being silently dropped by webview.
+ * backend onStreamEnd signal being silently dropped by JCEF.
  *
  * Set to 60s to avoid false positives during long tool execution phases
  * (e.g., command execution, file operations) where no content deltas arrive
@@ -299,7 +299,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         return updated;
       }
       // If the last streaming assistant belongs to an OLDER turn, its onStreamEnd
-      // was likely dropped (e.g., webview async chain breakage). Handle it so new
+      // was likely dropped (e.g., JCEF async chain breakage). Handle it so new
       // deltas land on a fresh bubble rather than appending to the previous
       // turn's message. This must stay BELOW the replay branch: a replay start
       // reuses the last assistant bubble, and finalizing it here instead would
@@ -618,7 +618,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     //   This prevents race conditions where deferred updateMessages sees isStreamingRef=false
     //   but streamingMessageIndexRef still points to the old message.
     // - Benefit: More robust handling of async callback ordering, especially important
-    //   when webview async chains can reorder callbacks unpredictably.
+    //   when JCEF async chains can reorder callbacks unpredictably.
     // - Risk: Minimal, since snapshot values are used inside updater and refs are cleared
     //   synchronously before the updater is scheduled.
     //

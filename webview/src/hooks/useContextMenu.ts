@@ -88,13 +88,13 @@ export function useContextMenu() {
   return { ...state, open, close, targetFileTag: targetFileTagRef.current };
 }
 
-/** Copy saved selection text to clipboard via host bridge */
+/** Copy saved selection text to clipboard via Java bridge */
 export function copySelection(_savedRange: Range | null, text: string): void {
   if (!text) return;
   sendToJava('write_clipboard', text);
 }
 
-/** Cut saved selection text via host bridge (for contenteditable) */
+/** Cut saved selection text via Java bridge (for contenteditable) */
 export function cutSelection(
   savedRange: Range | null,
   text: string,
@@ -116,7 +116,7 @@ export function cutSelection(
   document.execCommand('delete');
 }
 
-/** Paste clipboard text at saved range via host bridge */
+/** Paste clipboard text at saved range via Java bridge */
 export function pasteAtCursor(savedRange: Range | null, el: HTMLElement, onComplete?: () => void): void {
   // Capture handler reference so timeout only clears its own registration,
   // preventing accidental cancellation of a concurrent paste call.

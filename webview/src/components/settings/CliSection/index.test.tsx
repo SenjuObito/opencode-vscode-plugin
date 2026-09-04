@@ -107,7 +107,7 @@ describe('CliSection', () => {
 
     expect(await screen.findByRole('dialog')).toBeTruthy();
     expect(screen.getByText(/curl -fsSL https:\/\/opencode\.ai\/install \| bash/)).toBeTruthy();
-    // Never triggers install via host bridge
+    // Never triggers install via Java bridge
     const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
     expect(calls.every((c) => !c.includes('install'))).toBe(true);
   });

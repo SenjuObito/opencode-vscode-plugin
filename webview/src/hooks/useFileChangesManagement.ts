@@ -116,7 +116,7 @@ export function useFileChangesManagement({
     }
   }, [currentSessionId]);
 
-  // Register window callbacks for editable diff operations from host backend
+  // Register window callbacks for editable diff operations from Java backend
   useEffect(() => {
     // Handle remove file from edits list (legacy callback)
     window.handleRemoveFileFromEdits = (jsonStr: string) => {

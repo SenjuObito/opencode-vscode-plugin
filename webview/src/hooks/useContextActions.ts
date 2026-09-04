@@ -3,7 +3,7 @@ import { sendBridgeEvent } from '../utils/bridge';
 import { insertNewlineAtCursor } from './useContextMenu';
 
 /**
- * Registers host shortcut action handler (copy/cut/send/newline from host-registered Actions).
+ * Registers IDEA shortcut action handler (copy/cut/send/newline from Java-registered Actions).
  */
 export function useContextActions() {
   useEffect(() => {
