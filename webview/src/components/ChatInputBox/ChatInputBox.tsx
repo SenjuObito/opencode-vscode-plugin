@@ -108,6 +108,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onToggleStatusPanel,
       sdkInstalled = true,
       daemonStatusLoaded = false,
+      daemonIssue = null,
       onRetryDaemonStatus,
       sessionLoading,
       addToast,
@@ -608,6 +609,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
         <ChatInputBoxHeader
           daemonStatusLoaded={daemonStatusLoaded}
+          daemonIssue={daemonIssue}
           daemonAlive={sdkInstalled}
           onRetryDaemonStatus={onRetryDaemonStatus}
           t={t}

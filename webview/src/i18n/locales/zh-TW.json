@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "已複製倉庫地址到剪貼簿，複製到瀏覽器即可訪問 ⭐",
     "openSourceBannerStarAria": "複製倉庫地址並前往 GitHub 點 Star",
     "commandNotImplemented": "`{{command}}` 功能尚未實現。",
+    "daemonStatusLoading": "正在啟動 OpenCode 服務，請稍候",
     "clearCommandDescription": "清除對話歷史並新建會話",
     "builtinCommands": {
       "compact": "摘要會話以減少上下文大小",

@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "Enlace copiado al portapapeles — pégalo en el navegador para acceder ⭐",
     "openSourceBannerStarAria": "Copiar enlace y dar una estrella en GitHub",
     "commandNotImplemented": "La función `{{command}}` aún no está implementada.",
+    "daemonStatusLoading": "Iniciando el servicio OpenCode, por favor espere",
     "clearCommandDescription": "Borrar historial de conversación e iniciar nueva sesión",
     "builtinCommands": {
       "compact": "Resumir sesión para reducir el tamaño del contexto",

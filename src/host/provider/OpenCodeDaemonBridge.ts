@@ -32,10 +32,20 @@ const STDERR_RING_CAPACITY = 40;
 export interface DaemonOutputCallback {
 	onLine(line: string): void;
 	onStderr?(text: string): void;
-	onError(error: string): void;
+	/**
+	 * 请求失败。`code` 是 ai-bridge 回传的分类码（如 OPENCODE_NOT_FOUND），
+	 * 宿主据此生成面向用户的提示；无分类码时只展示 message。
+	 */
+	onError(error: string, code?: string): void;
 	onComplete(success: boolean): void;
 	/** 用户主动中断时调用，默认按 onComplete(false) 处理（非错误）。 */
 	onAbort?(): void;
+}
+
+/** daemon/serve 启动失败原因，供 UI 提示使用。 */
+export interface DaemonFailure {
+	code: string;
+	detail: string;
 }
 
 export interface DaemonLifecycleListener {
@@ -305,6 +315,10 @@ export class OpenCodeDaemonBridge {
 	private desiredRunning = false;
 	private stopEpoch = 0;
 	private restartInProgress = false;
+	/** 进行中的 start()，避免 UI 重试/并发请求重复 spawn daemon 进程。 */
+	private startPromise: Promise<boolean> | null = null;
+	/** 最近一次启动失败的原因（成功启动后清空）。 */
+	private lastFailure: DaemonFailure | null = null;
 
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
@@ -322,6 +336,11 @@ export class OpenCodeDaemonBridge {
 	// 生命周期
 	// =========================================================================
 
+	/** 最近一次启动失败原因；启动成功或未启动过为 null。 */
+	getLastFailure(): DaemonFailure | null {
+		return this.lastFailure;
+	}
+
 	/** 启动 daemon 并阻塞等待 ready（≤30s）。返回是否成功。 */
 	start(): Promise<boolean> {
 		if (this.daemonContext?.isActive && this.daemonContext.process.exitCode === null && this.daemonContext.readySignaled) {
@@ -332,13 +351,30 @@ export class OpenCodeDaemonBridge {
 			this.log('Daemon restart cleanup still in progress');
 			return Promise.resolve(false);
 		}
+		// 并发去重：UI 的「重试」按钮与 ensureRunning 可能同时触发，去重的目的是
+		// 避免 spawn 出第二个 daemon 进程（各起一个 opencode serve，端口互抢）。
+		if (this.startPromise) {
+			this.log('Daemon start already in progress; awaiting existing attempt');
+			return this.startPromise;
+		}
 		this.desiredRunning = true;
-		return this.executeStartAttempt();
+		this.startPromise = this.executeStartAttempt().finally(() => {
+			this.startPromise = null;
+		});
+		return this.startPromise;
 	}
 
 	private async executeStartAttempt(): Promise<boolean> {
 		this.log(`Starting daemon (attempt restartAttempts=${this.restartAttempts})`);
-		const startedProcess = this.launchProcess();
+		let startedProcess: ChildProcess;
+		try {
+			startedProcess = this.launchProcess();
+		} catch (err) {
+			const detail = (err as Error).message;
+			this.log(`Daemon launch failed: ${detail}`);
+			this.lastFailure = { code: 'BRIDGE_LAUNCH_FAILED', detail };
+			return false;
+		}
 		const generation = ++this.generationCounter;
 		const nowWall = Date.now();
 		const nowNanos = performance.now();
@@ -351,15 +387,50 @@ export class OpenCodeDaemonBridge {
 		const ready = await this.awaitDaemonReady(context);
 		if (!ready) {
 			this.log(`Daemon failed to signal ready: ${context.formatStderrTail()}`);
+			this.lastFailure = this.classifyStartFailure(context);
 			this.failStartAttempt(context);
 			return false;
 		}
 
+		this.lastFailure = null;
 		context.startupPublished = true;
 		this.startHeartbeat(context);
 		this.log(`Daemon is ready. PID=${startedProcess.pid}, generation=${generation}`);
 		this.lifecycleListener?.onDaemonReady();
 		return true;
+	}
+
+	/**
+	 * 把「daemon 未在 30s 内 ready」翻译成可执行的失败原因。
+	 *
+	 * 典型场景：ai-bridge 被 pnpm-workspace 排除，忘记 `cd ai-bridge && npm install`
+	 * 时 daemon 在 ESM import 阶段就崩了，stderr 会留下 Cannot find module。
+	 * 这种情况提示用户装依赖，而不是笼统地说「启动失败」。
+	 */
+	private classifyStartFailure(context: DaemonGeneration): DaemonFailure {
+		const stderr = context.stderrRing.join(' | ').trim();
+		const exitInfo =
+			context.process.exitCode !== null
+				? `退出码 ${context.process.exitCode}`
+				: context.process.signalCode !== null
+					? `信号 ${context.process.signalCode}`
+					: '进程无响应';
+		if (/Cannot find module|ERR_MODULE_NOT_FOUND/i.test(stderr)) {
+			return {
+				code: 'BRIDGE_DEPS_MISSING',
+				detail: `插件自带的 ai-bridge 依赖缺失：${stderr.slice(0, 300)}`,
+			};
+		}
+		if (stderr) {
+			return {
+				code: 'BRIDGE_START_FAILED',
+				detail: `opencode 桥接进程启动失败（${exitInfo}）：${stderr.slice(0, 300)}`,
+			};
+		}
+		return {
+			code: 'BRIDGE_START_FAILED',
+			detail: `opencode 桥接进程在 30 秒内未就绪（${exitInfo}），stderr 无输出。`,
+		};
 	}
 
 	/**
@@ -681,7 +752,10 @@ export class OpenCodeDaemonBridge {
 		if (obj.done !== undefined) {
 			const success = obj.success === true;
 			if (!success && typeof obj.error === 'string') {
-				pending.callback.onError(obj.error);
+				// daemon.js 会原样回传 error.code（如 OPENCODE_NOT_FOUND），宿主据此
+				// 把「找不到 opencode」和「启动超时」区分成不同的用户提示。
+				const code = typeof obj.code === 'string' && obj.code !== '' ? obj.code : undefined;
+				pending.callback.onError(obj.error, code);
 			}
 			pending.callback.onComplete(success);
 			context.removeRequest(id);

@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "Ссылка скопирована в буфер обмена — вставьте её в браузере, чтобы открыть ⭐",
     "openSourceBannerStarAria": "Скопировать ссылку и поставить звезду на GitHub",
     "commandNotImplemented": "Функция `{{command}}` ещё не реализована.",
+    "daemonStatusLoading": "Запуск службы OpenCode, пожалуйста, подождите",
     "clearCommandDescription": "Очистить историю и начать новый чат",
     "builtinCommands": {
       "compact": "Сжать сессию для уменьшения размера контекста",

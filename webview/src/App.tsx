@@ -154,7 +154,7 @@ const App = () => {
   // ── Model/Provider state ──
   const {
     currentProvider, selectedModel, permissionMode,
-    daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
+    daemonStatusLoaded, daemonIssue, retryDaemonStatus, currentSdkInstalled,
     currentProviderRef,
     activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
     reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
@@ -906,6 +906,7 @@ const App = () => {
               permissionMode={permissionMode}
               currentSdkInstalled={currentSdkInstalled}
               daemonStatusLoaded={daemonStatusLoaded}
+              daemonIssue={daemonIssue}
               retryDaemonStatus={retryDaemonStatus}
               activeProviderConfig={activeProviderConfig}
               claudeSettingsAlwaysThinkingEnabled={claudeSettingsAlwaysThinkingEnabled}

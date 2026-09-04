@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "リポジトリのURLをクリップボードにコピーしました。ブラウザに貼り付けてアクセスできます ⭐",
     "openSourceBannerStarAria": "リポジトリのURLをコピーして GitHub でスター",
     "commandNotImplemented": "`{{command}}` 機能はまだ実装されていません。",
+    "daemonStatusLoading": "OpenCode サービスを起動しています。しばらくお待ちください",
     "clearCommandDescription": "会話履歴をクリアして新しいセッションを開始",
     "builtinCommands": {
       "compact": "コンテキストを減らすためにセッションを要約",

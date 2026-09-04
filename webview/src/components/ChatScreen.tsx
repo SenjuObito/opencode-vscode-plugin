@@ -23,6 +23,7 @@ import { useSession } from '../contexts/SessionContext';
 import { useUIState } from '../contexts/UIStateContext';
 import { extractMarkdownContent } from '../utils/copyUtils';
 import type { ClaudeMessage, TodoItem, ToolResultBlock } from '../types';
+import type { DaemonIssue } from '../hooks/providers/useUsageTracking';
 import type { useMessageProcessing, useFileChanges, useSubagents, useFileChangesManagement, useModelProviderState, useMessageQueue } from '../hooks';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 import { reconcileMessageKeys, type MessageKeySnapshot } from '../utils/messageUtils';
@@ -94,6 +95,7 @@ export interface ChatScreenProps {
   permissionMode: ProviderState['permissionMode'];
   currentSdkInstalled: ProviderState['currentSdkInstalled'];
   daemonStatusLoaded: boolean;
+  daemonIssue?: DaemonIssue | null;
   retryDaemonStatus: () => void;
   activeProviderConfig: ProviderState['activeProviderConfig'];
   claudeSettingsAlwaysThinkingEnabled: ProviderState['claudeSettingsAlwaysThinkingEnabled'];
@@ -146,6 +148,7 @@ export const ChatScreen = ({
   currentProvider, selectedModel, permissionMode,
   currentSdkInstalled,
   daemonStatusLoaded,
+  daemonIssue,
   retryDaemonStatus,
   activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
   reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
@@ -335,6 +338,7 @@ export const ChatScreen = ({
           placeholder={sendShortcut === 'cmdEnter' ? t('chat.inputPlaceholderCmdEnter') : t('chat.inputPlaceholderEnter')}
           sdkInstalled={currentSdkInstalled}
           daemonStatusLoaded={daemonStatusLoaded}
+          daemonIssue={daemonIssue}
           onRetryDaemonStatus={retryDaemonStatus}
           sessionLoading={sessionLoading}
           value={draftInput}

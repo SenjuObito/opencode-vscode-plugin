@@ -85,9 +85,24 @@
     "openSourceBannerStarToast": "已复制仓库地址到剪切板，复制到浏览器即可访问 ⭐",
     "openSourceBannerStarAria": "复制仓库地址并前往 GitHub 点 Star",
     "commandNotImplemented": "`{{command}}` 功能暂未实现。",
-    "daemonStatusLoading": "正在检查 opencode serve 状态...",
+    "daemonStatusLoading": "正在启动 OpenCode 服务，请稍后",
     "daemonNotRunning": "OpenCode serve 未运行",
     "retryDaemonStatus": "重试",
+    "daemonIssue": {
+      "NOT_INSTALLED": "未检测到 opencode，请先安装后重试",
+      "START_TIMEOUT": "opencode serve 启动超时",
+      "START_FAILED": "opencode serve 启动失败",
+      "BRIDGE_DEPS_MISSING": "插件依赖缺失，OpenCode 桥接进程无法启动",
+      "BRIDGE_LAUNCH_FAILED": "OpenCode 桥接进程无法启动",
+      "BRIDGE_START_FAILED": "OpenCode 桥接进程启动超时",
+      "DAEMON_DIED": "opencode 桥接进程意外退出",
+      "NO_DAEMON": "OpenCode 桥接进程未初始化"
+    },
+    "daemonIssueInstallCmd": "安装命令：{{cmd}}",
+    "copyInstallCommand": "复制安装命令",
+    "installCommandCopied": "已复制安装命令到剪贴板",
+    "installCommandCopyFailed": "复制安装命令失败",
+    "daemonIssueDetail": "详细信息：{{detail}}",
     "clearCommandDescription": "清除对话历史并新建会话",
     "builtinCommands": {
       "compact": "压缩会话以减少上下文大小",
@@ -1629,7 +1644,8 @@
     "enableTitle": "开启文件上下文？",
     "enableDescription": "开启后，编辑器中当前打开的文件路径将发送给 AI。注意：仅传递文件路径，不会传递文件内容。",
     "enable": "开启",
-    "cancel": "取消"
+    "cancel": "取消",
+    "remove": "移除文件上下文"
   },
   "contextUsage": {
     "title": "上下文使用",

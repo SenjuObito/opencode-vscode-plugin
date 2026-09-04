@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "रिपॉजिटरी लिंक क्लिपबोर्ड पर कॉपी हो गया — ब्राउज़र में पेस्ट करके खोलें ⭐",
     "openSourceBannerStarAria": "रिपॉजिटरी लिंक कॉपी करें और GitHub पर स्टार करें",
     "commandNotImplemented": "`{{command}}` सुविधा अभी तक लागू नहीं की गई है।",
+    "daemonStatusLoading": "OpenCode सेवा प्रारंभ हो रही है, कृपया प्रतीक्षा करें",
     "clearCommandDescription": "बातचीत इतिहास साफ़ करें और नया सत्र शुरू करें",
     "builtinCommands": {
       "compact": "संदर्भ आकार कम करने के लिए सत्र का सारांश बनाएं",

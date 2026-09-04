@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "저장소 주소를 클립보드에 복사했습니다. 브라우저에 붙여넣어 방문하세요 ⭐",
     "openSourceBannerStarAria": "저장소 주소 복사 후 GitHub에서 Star",
     "commandNotImplemented": "`{{command}}` 기능은 아직 구현되지 않았습니다.",
+    "daemonStatusLoading": "OpenCode 서비스를 시작하는 중입니다. 잠시만 기다려 주세요",
     "clearCommandDescription": "대화 기록을 지우고 새 세션을 시작합니다",
     "builtinCommands": {
       "compact": "컨텍스트 크기를 줄이기 위해 세션 요약",

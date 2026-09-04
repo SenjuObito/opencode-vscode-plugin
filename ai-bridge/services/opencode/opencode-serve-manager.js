@@ -36,6 +36,43 @@ export function getServeProcess() {
 }
 
 /**
+ * 失败原因分类码。宿主（OpenCodeDaemonBridge → WindowEventHandler）据此生成
+ * 面向用户的提示：NOT_INSTALLED（给安装命令）/ 超时 / 通用启动失败。
+ * daemon.js 的 catch 会把 `error.code` 一并回传给宿主。
+ */
+export const OPENCODE_NOT_FOUND = 'OPENCODE_NOT_FOUND';
+export const OPENCODE_SPAWN_ENOENT = 'OPENCODE_SPAWN_ENOENT';
+export const OPENCODE_SPAWN_ERROR = 'OPENCODE_SPAWN_ERROR';
+export const OPENCODE_EXITED = 'OPENCODE_EXITED';
+export const OPENCODE_SERVE_TIMEOUT = 'OPENCODE_SERVE_TIMEOUT';
+export const OPENCODE_SERVE_NOT_READY = 'OPENCODE_SERVE_NOT_READY';
+
+/** 创建一个带分类码的 Error（Error.code 会被 daemon.js 原样回传）。 */
+function serveError(message, code) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+/** 平台对应的 opencode 安装命令（宿主的「未安装」提示会原样展示给用户）。 */
+export function openCodeInstallCommand() {
+  return process.platform === 'win32'
+    ? 'npm install -g opencode-ai'
+    : 'curl -fsSL https://opencode.ai/install | bash';
+}
+
+/**
+ * 取 stderr 最后几行，便于把 opencode serve 的真实报错带给用户。
+ * 控制长度，避免把整段堆栈塞进状态栏。
+ */
+function stderrTail(buffer, maxChars = 300) {
+  const lines = buffer.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return '';
+  const tail = lines.slice(-3).join(' | ');
+  return tail.length > maxChars ? `${tail.slice(0, maxChars)}…` : tail;
+}
+
+/**
  * Check if a file exists (cross-platform).
  * On Windows X_OK is unreliable; F_OK is sufficient.
  */
@@ -133,27 +170,35 @@ export async function start(port = 4096) {
 }
 
 async function doStart(port) {
-  const binary = await findBinary();
-  if (!binary) {
-    const installHint = process.platform === 'win32'
-      ? '安装方法: npm install -g opencode-ai'
-      : '安装方法: curl -fsSL https://opencode.ai/install | bash';
-    throw new Error(
-      `找不到 opencode 二进制文件。请确认 opencode 已安装。\n${installHint}`
-    );
-  }
-
   const url = `http://localhost:${port}`;
 
   // If something is already serving on the port (e.g. the user started
   // `opencode serve` manually, or another daemon owns it), reuse it instead of
   // spawning a duplicate that would fail to bind. This also makes `preconnect`
   // cheap when serve is already warm.
+  //
+  // 必须先探端口再找二进制：端口上已有 serve 时，「opencode 未安装」是误报。
   if (await waitForReady(url, 1500)) {
     console.error(`[opencode-serve-manager] Reusing existing server on ${url}`);
     _serverUrl = url;
     return url;
   }
+
+  const binary = await findBinary();
+  if (!binary) {
+    // 最常见的失败：用户根本没装 opencode。宿主持此 code 直接给出安装命令。
+    console.error(
+      '[opencode-serve-manager] 找不到 opencode 可执行文件。' +
+      ` 已检查 env(OPENCODE_BIN/OPENCODE_PATH/OPENCODE_CLI_PATH)、PATH、~/.opencode/bin、~/.local/bin、~/.local/share/opencode/bin。` +
+      ` 平台=${process.platform}，安装命令=${openCodeInstallCommand()}`,
+    );
+    throw serveError(
+      `找不到 opencode 可执行文件，请确认已安装。安装命令：${openCodeInstallCommand()}`,
+      OPENCODE_NOT_FOUND,
+    );
+  }
+
+  console.error(`[opencode-serve-manager] 已解析 opencode 二进制: ${binary}`);
 
   console.error(`[opencode-serve-manager] Starting: ${binary} serve --port ${port}`);
 
@@ -171,25 +216,47 @@ async function doStart(port) {
 
     let settled = false;
 
-    const settle = (value, isError) => {
+    const killChild = () => {
+      if (child.exitCode === null && child.signalCode === null) {
+        try {
+          child.kill();
+        } catch {
+          // 进程可能已经退出
+        }
+      }
+    };
+
+    const settle = (value, isError, code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       if (isError) {
-        reject(new Error(value));
+        // 失败时不要让半死的 serve 进程残留，否则重试会撞上端口占用/僵尸进程。
+        killChild();
+        if (_process === child) {
+          _process = null;
+        }
+        _serverUrl = null;
+        reject(serveError(value, code));
       } else {
         _serverUrl = value;
         resolve(value);
       }
     };
 
+    // Log stderr for debugging（同时作为失败原因的素材，故声明在定时器之前）
+    let stderrBuf = '';
+
     // Timeout after 15 seconds
     const timeout = setTimeout(() => {
-      settle('opencode serve 启动超时（15 秒）', true);
+      const detail = stderrTail(stderrBuf);
+      settle(
+        `opencode serve 启动超时（15 秒）${detail ? `，最后输出：${detail}` : ''}`,
+        true,
+        OPENCODE_SERVE_TIMEOUT,
+      );
     }, 15_000);
 
-    // Log stderr for debugging
-    let stderrBuf = '';
     child.stderr?.on('data', (data) => {
       stderrBuf += data.toString('utf-8');
       const lines = stderrBuf.split('\n').filter((l) => l.trim());
@@ -202,9 +269,19 @@ async function doStart(port) {
     child.on('error', (err) => {
       console.error(`[opencode-serve-manager] process error: ${err.message}`);
       if (err.code === 'ENOENT') {
-        settle(`找不到可执行文件: ${binary}`, true);
+        settle(
+          `找不到可执行文件: ${binary}。请确认 opencode 已安装（${openCodeInstallCommand()}）`,
+          true,
+          OPENCODE_SPAWN_ENOENT,
+        );
+      } else if (err.code === 'EACCES') {
+        settle(
+          `没有执行权限: ${binary}。请检查文件权限（chmod +x）`,
+          true,
+          OPENCODE_SPAWN_ERROR,
+        );
       } else {
-        settle(`无法启动 opencode: ${err.message}`, true);
+        settle(`无法启动 opencode: ${err.message}`, true, OPENCODE_SPAWN_ERROR);
       }
     });
 
@@ -212,7 +289,12 @@ async function doStart(port) {
     child.on('exit', (code, signal) => {
       console.error(`[opencode-serve-manager] exited: code=${code} signal=${signal}`);
       if (!settled) {
-        settle(`opencode 意外退出（退出码: ${code ?? signal}）`, true);
+        const detail = stderrTail(stderrBuf);
+        settle(
+          `opencode 意外退出（退出码: ${code ?? signal}）${detail ? `：${detail}` : ''}`,
+          true,
+          OPENCODE_EXITED,
+        );
       } else {
         // Normal exit after a successful start (e.g. stop()) — clear state.
         if (_process === child) {
@@ -229,11 +311,16 @@ async function doStart(port) {
           _serverUrl = url;
           settle(url, false);
         } else {
-          settle('opencode serve 未能就绪（超时）', true);
+          const detail = stderrTail(stderrBuf);
+          settle(
+            `opencode serve 未能就绪（15 秒内端口 ${port} 无响应）${detail ? `，最后输出：${detail}` : ''}`,
+            true,
+            OPENCODE_SERVE_NOT_READY,
+          );
         }
       })
       .catch((err) => {
-        settle(`健康检查失败: ${err.message}`, true);
+        settle(`健康检查失败: ${err.message}`, true, OPENCODE_SERVE_NOT_READY);
       });
   });
 }

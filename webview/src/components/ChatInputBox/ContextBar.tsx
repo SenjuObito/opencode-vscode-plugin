@@ -140,7 +140,7 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
         <div
           className="context-tool-btn"
           onClick={handleAttachClick}
-          title="Add attachment"
+          title={t('chat.addAttachment')}
         >
           <span className="codicon codicon-attach" />
         </div>
@@ -196,7 +196,7 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
           <span
             className="codicon codicon-close context-close"
             onClick={onClearFile}
-            title="Remove file context"
+            title={t('fileContext.remove')}
           />
         </div>
       ) : !autoOpenFileEnabled && (

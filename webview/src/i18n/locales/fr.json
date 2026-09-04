@@ -84,6 +84,7 @@
     "openSourceBannerStarToast": "Lien copié dans le presse-papiers — collez-le dans votre navigateur pour y accéder ⭐",
     "openSourceBannerStarAria": "Copier le lien et mettre une étoile sur GitHub",
     "commandNotImplemented": "La fonctionnalité `{{command}}` n'est pas encore implémentée.",
+    "daemonStatusLoading": "Démarrage du service OpenCode, veuillez patienter",
     "clearCommandDescription": "Effacer l'historique et démarrer une nouvelle session",
     "builtinCommands": {
       "compact": "Résumer la session pour réduire la taille du contexte",

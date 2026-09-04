@@ -85,9 +85,24 @@
     "openSourceBannerStarToast": "Repo link copied to clipboard — paste it in your browser to visit ⭐",
     "openSourceBannerStarAria": "Copy repository link and star on GitHub",
     "commandNotImplemented": "`{{command}}` feature is not yet implemented.",
-    "daemonStatusLoading": "Checking opencode serve status...",
+    "daemonStatusLoading": "Starting OpenCode service, please wait",
     "daemonNotRunning": "OpenCode serve is not running",
     "retryDaemonStatus": "Retry",
+    "daemonIssue": {
+      "NOT_INSTALLED": "opencode not found — install it and try again",
+      "START_TIMEOUT": "opencode serve timed out while starting",
+      "START_FAILED": "opencode serve failed to start",
+      "BRIDGE_DEPS_MISSING": "Plugin dependencies are missing — the OpenCode bridge cannot start",
+      "BRIDGE_LAUNCH_FAILED": "The OpenCode bridge process could not be launched",
+      "BRIDGE_START_FAILED": "The OpenCode bridge process timed out while starting",
+      "DAEMON_DIED": "The OpenCode bridge process exited unexpectedly",
+      "NO_DAEMON": "The OpenCode bridge process is not initialized"
+    },
+    "daemonIssueInstallCmd": "Install command: {{cmd}}",
+    "copyInstallCommand": "Copy install command",
+    "installCommandCopied": "Install command copied to clipboard",
+    "installCommandCopyFailed": "Failed to copy install command",
+    "daemonIssueDetail": "Details: {{detail}}",
     "clearCommandDescription": "Clear conversation history and start a new session",
     "builtinCommands": {
       "compact": "Summarize session to reduce context size",
@@ -1624,7 +1639,8 @@
     "enableTitle": "Enable File Context?",
     "enableDescription": "When enabled, the currently opened file path in the editor will be sent to AI. Note: only the file path is transmitted, not the file content.",
     "enable": "Enable",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "remove": "Remove file context"
   },
   "contextUsage": {
     "title": "Context Usage",
