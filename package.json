@@ -29,14 +29,14 @@
       "activitybar": [
         {
           "id": "opencode-buddy",
-          "title": "OpenCode",
+          "title": "OpenCode Buddy",
           "icon": "media/opencode-activity.svg"
         }
       ],
       "secondarySidebar": [
         {
           "id": "opencode-buddy-panel",
-          "title": "OpenCode",
+          "title": "OpenCode Buddy",
           "icon": "media/opencode-activity.svg"
         }
       ]
@@ -46,14 +46,14 @@
         {
           "type": "webview",
           "id": "opencode-buddy.left",
-          "name": "OpenCode"
+          "name": "OpenCode Buddy"
         }
       ],
       "opencode-buddy-panel": [
         {
           "type": "webview",
           "id": "opencode-buddy.right",
-          "name": "OpenCode"
+          "name": "OpenCode Buddy"
         }
       ]
     },
@@ -68,13 +68,13 @@
     "commands": [
       {
         "command": "opencode-buddy.openLeft",
-        "title": "打开 OpenCode 面板（左侧）",
-        "category": "OpenCode"
+        "title": "打开 OpenCode Buddy 面板（左侧）",
+        "category": "OpenCode Buddy"
       },
       {
         "command": "opencode-buddy.openChat",
-        "title": "在编辑器分栏打开 OpenCode",
-        "category": "OpenCode",
+        "title": "在编辑器分栏打开 OpenCode Buddy",
+        "category": "OpenCode Buddy",
         "icon": {
           "light": "media/opencode-activity-light.svg",
           "dark": "media/opencode-activity-dark.svg"

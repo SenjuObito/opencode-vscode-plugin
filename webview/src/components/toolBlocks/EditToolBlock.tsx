@@ -308,7 +308,7 @@ const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps)
     return computeDiff(oldLines, newLines);
   }, [items.length, oldString, newString]);
 
-  // Auto-refresh file in IDEA when the tool call completes successfully
+  // Auto-refresh file in the editor when the tool call completes successfully
   const hasRefreshed = useRef(false);
   useEffect(() => {
     // Only the single-item view refreshes here; the grouped view runs its own
@@ -354,11 +354,11 @@ const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps)
     }
   };
 
-  const handleRefreshInIdea = (e: React.MouseEvent) => {
+  const handleRefreshInEditor = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (filePath) {
       refreshFile(filePath);
-      window.addToast?.(t('tools.refreshFileInIdeaSuccess'), 'success');
+      window.addToast?.(t('tools.refreshFileInEditorSuccess'), 'success');
     }
   };
 
@@ -378,7 +378,7 @@ const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps)
               e.stopPropagation();
               handleShowDiff(e);
             }}
-            title={t('tools.showDiffInIdea')}
+            title={t('tools.showDiffInEditor')}
             style={ACTION_BUTTON_STYLE}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--bg-hover)';
@@ -395,9 +395,9 @@ const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps)
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleRefreshInIdea(e);
+              handleRefreshInEditor(e);
             }}
-            title={t('tools.refreshFileInIdea')}
+            title={t('tools.refreshFileInEditor')}
             style={ACTION_BUTTON_STYLE}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--bg-hover)';

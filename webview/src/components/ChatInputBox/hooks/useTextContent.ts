@@ -119,11 +119,11 @@ export function useTextContent({
     let text = textParts.join('');
     timer.mark('join');
 
-    // Only remove trailing newline that JCEF might add (not user-entered newlines)
-    // If there are multiple trailing newlines, only remove the last one (JCEF added)
+    // Only remove trailing newline that webview might add (not user-entered newlines)
+    // If there are multiple trailing newlines, only remove the last one (webview added)
     if (text.endsWith('\n') && editableRef.current.childNodes.length > 0) {
       const lastChild = editableRef.current.lastChild;
-      // Only remove if last node is not a br tag (meaning it's JCEF added)
+      // Only remove if last node is not a br tag (meaning it's webview added)
       if (
         lastChild?.nodeType !== Node.ELEMENT_NODE ||
         (lastChild as HTMLElement).tagName?.toLowerCase() !== 'br'

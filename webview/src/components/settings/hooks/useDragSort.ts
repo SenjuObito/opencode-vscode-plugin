@@ -208,7 +208,7 @@ export function useDragSort<T extends DragSortItem>({
     draggedIdRef.current = id;
     setDraggedId(id);
     e.dataTransfer.effectAllowed = 'move';
-    // JCEF/Chromium requires setData() in dragstart for drop to fire reliably.
+    // webview/Chromium requires setData() in dragstart for drop to fire reliably.
     try {
       e.dataTransfer.setData('text/plain', id);
     } catch {

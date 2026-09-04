@@ -19,7 +19,7 @@ export interface UseNativeEventCaptureOptions {
 }
 
 /**
- * useNativeEventCapture - Native event capture for JCEF/IME edge cases
+ * useNativeEventCapture - Native event capture for webview/IME edge cases
  *
  * Uses capturing listeners to handle:
  * - IME confirm enter false trigger
@@ -72,7 +72,7 @@ export function useNativeEventCapture({
 
       // NOTE: We intentionally do NOT set isComposingRef here based on keyCode 229.
       // IME composing state is managed exclusively by compositionStart/End events.
-      // In JCEF, keyCode 229 is reported for ALL keys while the Korean IME is active,
+      // In webview, keyCode 229 is reported for ALL keys while the Korean IME is active,
       // including space, which is not an actual composition. Setting isComposingRef=true
       // here without a corresponding compositionEnd to clear it causes the ref to get
       // stuck, blocking handleInput and causing cursor jumping on space key.

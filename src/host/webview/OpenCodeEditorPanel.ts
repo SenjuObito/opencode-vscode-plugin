@@ -81,7 +81,7 @@ export class OpenCodeEditorPanel {
 		const { extensionUri } = this.options;
 		const panel = vscode.window.createWebviewPanel(
 			VIEW_TYPE,
-			'OpenCode',
+			'OpenCode Buddy',
 			// Beside = 在当前编辑器旁边分栏，而不是占用左/右侧边栏。
 			{ viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
 			{

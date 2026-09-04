@@ -1,3 +1,14 @@
+// React Testing Library auto-cleanup requires explicit `afterEach`
+// registration under happy-dom — without it the persistent `document.body`
+// accumulates nodes across tests and `getByText` matches stale renders
+// (multi-match → false negatives on suites like QuestionAnswerSummary.test).
+// Import first so the registration runs during setup, not after the file body.
+import { afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
+afterEach(() => {
+  cleanup();
+});
+
 // Node.js 22+ exposes a built-in localStorage on globalThis that lacks
 // full Storage API methods (e.g. clear) when --localstorage-file is not set.
 // This conflicts with jsdom's own localStorage implementation.
