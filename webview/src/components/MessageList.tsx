@@ -4,6 +4,7 @@ import type { ClaudeMessage, ClaudeContentBlock, CodexHistoryPageInfo, ToolResul
 import { sendBridgeEvent } from '../utils/bridge';
 import { MessageItem } from './MessageItem';
 import WaitingIndicator from './WaitingIndicator';
+import CompactingIndicator from './CompactingIndicator';
 import { ContextMenu } from './ContextMenu';
 import { useContextMenu, copySelection } from '../hooks/useContextMenu.js';
 import { quoteToChatInput } from '../utils/quoteUtils';
@@ -88,6 +89,8 @@ interface MessageListProps {
   isThinking: boolean;
   loading: boolean;
   loadingStartTime: number | null;
+  isCompacting: boolean;
+  compactingStartTime: number | null;
   t: TFunction;
   getMessageText: (message: ClaudeMessage) => string;
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];
@@ -124,6 +127,8 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   isThinking,
   loading,
   loadingStartTime,
+  isCompacting,
+  compactingStartTime,
   t,
   getMessageText,
   getContentBlocks,
@@ -419,6 +424,10 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
 
       {/* Loading indicator */}
       {loading && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
+
+      {/* Compacting indicator */}
+      {isCompacting && <CompactingIndicator startTime={compactingStartTime ?? undefined} />}
+
       <div ref={messagesEndRef} />
     </div>
   );

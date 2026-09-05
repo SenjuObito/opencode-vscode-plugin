@@ -29,7 +29,7 @@ import {
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
-import { createCompactSuccessNotice } from './utils/messageUtils';
+import { createCompactSuccessNotice, createCompactFailureNotice } from './utils/messageUtils';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
@@ -78,6 +78,8 @@ const App = () => {
     setSessionLoading,
     setSseTodos,
     sseTodos,
+    isCompacting, setIsCompacting,
+    setCompactingStartTime,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
@@ -138,7 +140,7 @@ const App = () => {
   // ── Scroll behavior ──
   const {
     messagesContainerRef, messagesEndRef, inputAreaRef,
-    isUserAtBottomRef, isAutoScrollingRef, userPausedRef,
+    isUserAtBottomRef, isAutoScrollingRef, userPausedRef, scrollToBottom,
   } = useScrollBehavior({ currentView, messages, loading, streamingActive });
 
   // ── Streaming messages ──
@@ -565,19 +567,18 @@ const App = () => {
       }
     };
     window.onCompactSuccess = () => {
-      addToast(t('chat.compactSuccess'), 'success');
-      // 在对话列表中追加一条「会话已压缩」提示（UI-only，不落盘，
-      // 重新加载历史后消失；服务端推送的摘要消息仍会正常渲染）。
+      setIsCompacting(false);
+      setCompactingStartTime(null);
       setMessages((prev) => [...prev, createCompactSuccessNotice(t('chat.compactSuccess'))]);
-      // 重载会话：压缩后消息列表已被服务端裁剪/替换为摘要，
-      // 不重载的话旧消息会一直留在界面上。
-      const sessionId = currentSessionIdRef.current;
-      if (sessionId) {
-        loadHistorySession(sessionId);
-      }
+      // Force scroll to bottom after compact completes
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
     };
     window.onCompactError = (detail?: string) => {
-      addToast(`${t('chat.compactFailed')}${detail ? `: ${detail}` : ''}`, 'error');
+      setIsCompacting(false);
+      setCompactingStartTime(null);
+      setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
     };
     return () => {
       delete window.onForkSuccess;
@@ -589,7 +590,7 @@ const App = () => {
       delete window.onCompactSuccess;
       delete window.onCompactError;
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, scrollToBottom]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
@@ -687,7 +688,7 @@ const App = () => {
     queue: messageQueue,
     enqueue: enqueueMessage,
     dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, onExecute: executeMessage });
+  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeMessage });
 
   /**
    * 发送真实消息前消费 revert 边界。与 opencode 服务端语义一致：
@@ -711,8 +712,9 @@ const App = () => {
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
     sendBridgeEvent('compact_session');
-    addToast(t('chat.compactStarted'), 'info');
-  }, [consumeRevertBoundary, addToast, t]);
+    setIsCompacting(true);
+    setCompactingStartTime(Date.now());
+  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime]);
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
     useCompactConfirm(doCompact);
 
@@ -795,13 +797,13 @@ const App = () => {
     }
     // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
     consumeRevertBoundary();
-    // If loading, add to queue
-    if (loading) {
+    // If loading or compacting, add to queue
+    if (loading || isCompacting) {
       enqueueMessage(content, attachments);
       return;
     }
     hookHandleSubmit(content, attachments);
-  }, [loading, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
+  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {

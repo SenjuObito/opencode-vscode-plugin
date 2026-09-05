@@ -51,7 +51,7 @@ export type ClaudeContentBlock =
   | { type: 'image'; src?: string; mediaType?: string; alt?: string }
   | { type: 'attachment'; fileName?: string; mediaType?: string }
   | { type: 'task_notification'; icon: string; summary: string; status: string; detail?: string }
-  | { type: 'compact_notification'; headerText: string; items: CompactNotificationItem[] }
+  | { type: 'compact_notification'; headerText: string; items: CompactNotificationItem[]; status?: 'success' | 'failure'; detail?: string }
   | { type: 'compact_summary'; title: string; content: string; metadata?: CompactSummaryMetadata };
 
 export interface ToolResultBlock {

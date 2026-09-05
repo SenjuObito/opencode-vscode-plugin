@@ -105,6 +105,12 @@
     max-width: 100%;
 }
 
+/* compact_notification 内的卡片（成功/失败）需撑满与助手消息一致的全宽，
+   抵消上方 align-items: flex-start 造成的横向收缩 */
+.message.compact_notification .message-content {
+    width: 100%;
+}
+
 .message-header-row {
     display: flex;
     align-items: center;

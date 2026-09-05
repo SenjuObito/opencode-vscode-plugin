@@ -467,23 +467,32 @@ export function ContentBlockRenderer({
     );
   }
 
-  // Compact notification block - renders as header + indented sub-items
+  // Compact notification block — success / failure card
   if (block.type === 'compact_notification') {
+    const isFailure = block.status === 'failure';
+    const cardClass = `compact-card ${isFailure ? 'compact-card--failure' : 'compact-card--success'}`;
     return (
-      <div className="compact-notification-block">
-        <div className="compact-notification-header">
-          {block.headerText}
+      <div className="compact-card-wrapper">
+        <div className={cardClass}>
+          <span className="compact-card__icon">
+            {isFailure ? '!' : '\u2713'}
+          </span>
+          <span className="compact-card__text">
+            {isFailure ? (
+              <>
+                <strong>{block.headerText}</strong>
+                {block.detail ? ` \u2014 ${block.detail}` : ''}
+              </>
+            ) : (
+              <>
+                {block.headerText}
+                {block.items.length > 0 && (
+                  <> \u2014 <strong>{block.items.length} messages</strong> summarized</>
+                )}
+              </>
+            )}
+          </span>
         </div>
-        {block.items.length > 0 && (
-          <div className="compact-notification-items">
-            {block.items.map((item, idx) => (
-              <div key={idx} className="compact-notification-item">
-                <span className="compact-notification-prefix">⎿</span>
-                <span className="compact-notification-text">{item.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   }

@@ -390,6 +390,24 @@ export function createCompactSuccessNotice(headerText: string): ClaudeMessage {
     timestamp: new Date().toISOString(),
     raw: {
       compactItems: [],
+      compactStatus: 'success',
+    },
+  };
+}
+
+/**
+ * Create a synthetic compact_notification message for a failed compact.
+ * Shows an error card in the chat list instead of a toast.
+ */
+export function createCompactFailureNotice(headerText: string, detail?: string): ClaudeMessage {
+  return {
+    type: MESSAGE_TYPES.COMPACT_NOTIFICATION,
+    content: headerText,
+    timestamp: new Date().toISOString(),
+    raw: {
+      compactItems: [],
+      compactStatus: 'failure',
+      compactDetail: detail || '',
     },
   };
 }
@@ -595,7 +613,9 @@ export function getContentBlocks(
     const rawObj = typeof message.raw === 'object' ? (message.raw as Record<string, unknown> | null) : null;
     const items = rawObj?.compactItems as CompactNotificationItem[] | undefined;
     const headerText = message.content || '';
-    return [{ type: 'compact_notification', headerText, items: items || [] }];
+    const status = (rawObj?.compactStatus as 'success' | 'failure' | undefined) || undefined;
+    const detail = (rawObj?.compactDetail as string) || undefined;
+    return [{ type: 'compact_notification', headerText, items: items || [], status, detail }];
   }
 
   // Compact summary notifications — show title + metadata subtitle + full content (expanded)

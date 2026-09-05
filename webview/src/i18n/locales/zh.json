@@ -114,6 +114,7 @@
     },
     "compactTooltip": "点击压缩会话",
     "compactStarted": "正在压缩会话…",
+    "compactingSession": "正在压缩会话",
     "compactSuccess": "会话已压缩",
     "compactFailed": "压缩会话失败",
     "compactConfirmTitle": "压缩会话",

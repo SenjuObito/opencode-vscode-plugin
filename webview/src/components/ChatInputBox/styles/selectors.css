@@ -6,6 +6,9 @@
   align-items: center;
   gap: 3px;
   padding: 4px 6px;
+  height: 24px; /* 固定高度：模型/模式/推理力度三个按钮的 hover 背景高度必须一致 */
+  box-sizing: border-box;
+  line-height: 1; /* 消除不同子元素的行高差异（codicon 14px vs 文本 11px vs svg 12px） */
   background: var(--button-bg);
   border: none;
   border-radius: 4px;
@@ -60,6 +63,13 @@
 
 .selector-button .codicon {
   font-size: 14px;
+  line-height: 1; /* 字体图标默认按 normal 行高撑高，会造成各按钮高度不一致 */
+}
+
+/* 厂商 svg 图标（@lobehub/icons）作为 flex 子项不参与基线计算，统一为块级 */
+.selector-button > svg {
+  display: block;
+  flex: none;
 }
 
 /* Responsive text hiding for selector buttons */
@@ -379,13 +389,17 @@
   gap: 4px;
   color: var(--text-secondary);
   font-size: 11px;
+  line-height: 1; /* 防止默认行高把百分比文字撑偏，导致与圆环/附件按钮不齐 */
 }
 .token-indicator-wrap {
   position: relative;
-  display: inline-block;
+  display: inline-flex; /* inline-block 会让内联 svg 带基线空隙 */
+  align-items: center;
+  justify-content: center;
 }
 
 .token-indicator-ring {
+  display: block; /* svg 默认 inline 按基线对齐，底部多出 descender 空隙使圆环偏移 */
   transform: rotate(-90deg);
 }
 

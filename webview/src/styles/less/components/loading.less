@@ -83,3 +83,121 @@
     min-width: 2em;
     text-align: left;
 }
+
+/* ── Compact Card Wrapper ── */
+.compact-card-wrapper {
+    padding: 0;
+    width: 100%;
+}
+
+/* 直接挂在消息列表底部的压缩中指示器（不在 .message 内），
+   补上与 .message 相同的左右 20px 边距，保证与压缩成功/失败卡片同宽 */
+.compact-card-wrapper--indicator {
+    padding: 0 20px;
+}
+
+/* ── Compact Card (shared base for compacting / success / failure) ── */
+.compact-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    margin: 12px 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.compact-card__icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.compact-card__text {
+    color: #b0b0b0;
+}
+
+.compact-card__text strong {
+    color: #e0e0e0;
+    font-weight: 500;
+}
+
+.compact-card__time {
+    font-size: 11px;
+    color: #666;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+
+/* Compacting state */
+.compact-card--compacting {
+    background: rgba(14, 99, 156, 0.07);
+    border-color: rgba(14, 99, 156, 0.18);
+}
+
+/* Pulsing dots for compacting state */
+.compact-card__dots {
+    display: inline-block;
+    min-width: 2em;
+    text-align: left;
+    flex-shrink: 0;
+}
+
+/* Success state */
+.compact-card--success {
+    background: rgba(46, 125, 79, 0.07);
+    border-color: rgba(46, 125, 79, 0.18);
+}
+
+.compact-card--success .compact-card__icon {
+    background: rgba(46, 125, 79, 0.15);
+    color: #6abf69;
+}
+
+.compact-card__stats {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.compact-card__stat {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: #666;
+    background: rgba(46, 125, 79, 0.08);
+}
+
+.compact-card__stat--hl {
+    color: #6abf69;
+    background: rgba(46, 125, 79, 0.14);
+}
+
+/* Failure state */
+.compact-card--failure {
+    background: rgba(197, 69, 59, 0.06);
+    border-color: rgba(197, 69, 59, 0.18);
+}
+
+.compact-card--failure .compact-card__icon {
+    background: rgba(197, 69, 59, 0.15);
+    color: #f48771;
+}
+
+.compact-card__detail {
+    font-size: 11px;
+    color: #666;
+    margin-left: 4px;
+    flex-shrink: 0;
+}

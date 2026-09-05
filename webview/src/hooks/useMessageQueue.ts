@@ -11,6 +11,8 @@ export interface QueuedMessage {
 export interface UseMessageQueueOptions {
   /** Whether AI is currently processing */
   isLoading: boolean;
+  /** Whether session is currently compacting */
+  isCompacting?: boolean;
   /** Callback to execute a message */
   onExecute: (content: string, attachments?: Attachment[]) => void;
 }
@@ -34,10 +36,12 @@ export interface UseMessageQueueReturn {
  */
 export function useMessageQueue({
   isLoading,
+  isCompacting = false,
   onExecute,
 }: UseMessageQueueOptions): UseMessageQueueReturn {
   const [queue, setQueue] = useState<QueuedMessage[]>([]);
   const prevLoadingRef = useRef(isLoading);
+  const prevCompactingRef = useRef(isCompacting);
   const isExecutingFromQueueRef = useRef(false);
 
   // Generate unique ID
@@ -66,14 +70,19 @@ export function useMessageQueue({
     setQueue([]);
   }, []);
 
-  // Auto-execute next message when loading completes
+  // Auto-execute next message when loading or compacting completes
   useEffect(() => {
     // Detect transition from loading to not loading
     const wasLoading = prevLoadingRef.current;
     prevLoadingRef.current = isLoading;
 
-    // If just finished loading and queue has items, execute next
-    if (wasLoading && !isLoading && !isExecutingFromQueueRef.current && queue.length > 0) {
+    // Detect transition from compacting to not compacting
+    const wasCompacting = prevCompactingRef.current;
+    prevCompactingRef.current = isCompacting;
+
+    // If just finished loading/compacting and queue has items, execute next
+    const justFinishedProcessing = (wasLoading && !isLoading) || (wasCompacting && !isCompacting);
+    if (justFinishedProcessing && !isExecutingFromQueueRef.current && queue.length > 0) {
       const nextMessage = queue[0];
       isExecutingFromQueueRef.current = true;
 
@@ -86,7 +95,7 @@ export function useMessageQueue({
         isExecutingFromQueueRef.current = false;
       }, 50);
     }
-  }, [isLoading, queue, onExecute]);
+  }, [isLoading, isCompacting, queue, onExecute]);
 
   return {
     queue,

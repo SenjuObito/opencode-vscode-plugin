@@ -23,6 +23,10 @@ export interface MessagesContextValue {
   /** Authoritative todo list from opencode's `todo.updated` SSE event. */
   sseTodos: TodoItem[] | null;
   setSseTodos: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
+  isCompacting: boolean;
+  setIsCompacting: React.Dispatch<React.SetStateAction<boolean>>;
+  compactingStartTime: number | null;
+  setCompactingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
 }
 
 const MessagesContext = createContext<MessagesContextValue | null>(null);
@@ -49,6 +53,8 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const [streamingActive, setStreamingActive] = useState<boolean>(false);
   const [sessionLoading, setSessionLoading] = useState<boolean>(false);
   const [sseTodos, setSseTodos] = useState<TodoItem[] | null>(null);
+  const [isCompacting, setIsCompacting] = useState<boolean>(false);
+  const [compactingStartTime, setCompactingStartTime] = useState<number | null>(null);
 
   const value = useMemo<MessagesContextValue>(
     () => ({
@@ -70,8 +76,12 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       setSessionLoading,
       sseTodos,
       setSseTodos,
+      isCompacting,
+      setIsCompacting,
+      compactingStartTime,
+      setCompactingStartTime,
     }),
-    [messages, subagentHistories, status, loading, loadingStartTime, isThinking, streamingActive, sessionLoading, sseTodos],
+    [messages, subagentHistories, status, loading, loadingStartTime, isThinking, streamingActive, sessionLoading, sseTodos, isCompacting, compactingStartTime],
   );
 
   return <MessagesContext.Provider value={value}>{children}</MessagesContext.Provider>;
