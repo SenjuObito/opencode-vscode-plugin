@@ -155,8 +155,9 @@
 }
 
 /* Share button — same visual language as the edit button: icon-only,
-   transparent, revealed on wrapper hover. A shared session keeps the
-   button pinned visible so it can be unshared without hovering. */
+   transparent, revealed on wrapper hover. The shared-state copy/close
+   buttons also stay hidden until the wrapper is hovered (consistency with
+   the edit/fork/share buttons). */
 .session-title-share-btn {
     background: transparent;
     border: none;
@@ -184,7 +185,6 @@
     }
 
     &.shared {
-        opacity: 1;
         color: var(--accent-primary);
     }
 }
