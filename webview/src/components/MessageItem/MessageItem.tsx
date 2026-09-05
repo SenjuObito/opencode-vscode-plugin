@@ -66,13 +66,8 @@ type GroupedBlock =
   | { type: 'search_group'; blocks: ClaudeContentBlock[]; startIndex: number }
   | { type: 'agent_group'; agentBlock: ClaudeContentBlock; followingBlocks: ClaudeContentBlock[]; startIndex: number };
 
-/** Shared copy icon SVG used by both user and assistant message copy buttons */
-const CopyIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 4l0 8a2 2 0 0 0 2 2l8 0a2 2 0 0 0 2 -2l0 -8a2 2 0 0 0 -2 -2l-8 0a2 2 0 0 0 -2 2zm2 0l8 0l0 8l-8 0l0 -8z" fill="currentColor" fillOpacity="0.9"/>
-    <path d="M2 2l0 8l-2 0l0 -8a2 2 0 0 1 2 -2l8 0l0 2l-8 0z" fill="currentColor" fillOpacity="0.6"/>
-  </svg>
-);
+/** Shared copy icon (codicon font) used by both user and assistant message copy buttons */
+const CopyIcon = () => <span className="codicon codicon-copy" />;
 
 interface CopyButtonProps {
   className?: string;
@@ -105,13 +100,8 @@ const CopyButton = memo(function CopyButton({
   );
 });
 
-/** Quote icon (chat bubble with a right-arrow) used by the message quote button */
-const QuoteIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 3v-3H3a1 1 0 0 1-1-1z" fill="currentColor" fillOpacity="0.6"/>
-    <path d="M7.5 4.5l2.5 2.5-2.5 2.5M5 7h5" stroke="var(--bg-secondary)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
+/** Quote icon (codicon font) used by the message quote button */
+const QuoteIcon = () => <span className="codicon codicon-quote" />;
 
 interface QuoteButtonProps {
   className?: string;

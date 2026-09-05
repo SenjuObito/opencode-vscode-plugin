@@ -247,9 +247,18 @@
     visibility: visible;
     padding: 2px;
 
+    /* 四个操作按钮统一使用 codicon 字体图标（撤销/派生/引用/复制）。
+       codicon 默认 16px 会几乎撑满 16px 内容区，统一收敛到 14px 保证图标
+       与按钮边框的间距一致，同时字体图标比 SVG 更清晰 */
+    .copy-icon .codicon {
+        font-size: 14px;
+        line-height: 1;
+    }
+
+    /* 兼容残留的 SVG 图标（如未来重新引入），保持与 codicon 一致的视觉尺寸 */
     .copy-icon svg {
-        width: 12px;
-        height: 12px;
+        width: 13px;
+        height: 13px;
     }
 
     /* fork may be disabled (e.g. mid-stream); keep the dimmed look on hover too */
