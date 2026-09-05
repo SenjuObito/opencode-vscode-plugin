@@ -15,6 +15,7 @@ export { useMessageSender } from './useMessageSender';
 export { useFileChangesManagement } from './useFileChangesManagement';
 export { useModelProviderState } from './useModelProviderState';
 export { useChatComputations } from './useChatComputations';
+export { useCompactConfirm } from './useCompactConfirm';
 export type { UseWindowCallbacksOptions, ContextInfo } from './useWindowCallbacks';
 export type { UseHistoryLoaderOptions } from './useHistoryLoader';
 export type { QueuedMessage, UseMessageQueueOptions, UseMessageQueueReturn } from './useMessageQueue';

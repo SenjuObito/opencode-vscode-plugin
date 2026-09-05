@@ -33,6 +33,15 @@ const SUPPORTED_TYPES = [
 ];
 
 export class WindowEventHandler extends BaseMessageHandler {
+	/** 压缩请求超时上限：opencode 的 summarize 是一次 LLM 调用，大会话可达数分钟。 */
+	private static readonly COMPACT_TIMEOUT_MS = 5 * 60 * 1000;
+
+	private compactPending = false;
+	private compactSessionId: string | null = null;
+	private compactTimer: ReturnType<typeof setTimeout> | null = null;
+	private compactSettled = false;
+	private daemonListenerRegistered = false;
+
 	constructor(context: HandlerContext) {
 		super(context);
 	}
@@ -358,20 +367,105 @@ export class WindowEventHandler extends BaseMessageHandler {
 			return;
 		}
 
+		this.compactPending = true;
+		this.compactSessionId = sessionId;
+		this.compactSettled = false;
+		this.registerCompactResultListener(daemon);
+
+		// 结果统一从 settleCompact 走：SSE marker（session.compacted /
+		// session.error）、daemon done 信号、超时三者先到先得，只结算一次。
+		this.compactTimer = setTimeout(() => {
+			this.settleCompact(false, '压缩超时，请稍后查看会话状态或重试');
+		}, WindowEventHandler.COMPACT_TIMEOUT_MS);
+
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+
 		void daemon.request('opencode.summarize', {
 			sessionId,
+			directory,
+			// summarize 端点要求 body { providerID, modelID }；null（使用 opencode
+			// 默认模型）时不传，由 daemon 回退到会话运行时记录的模型。
+			model: session.state.getModel() ?? undefined,
 		}, {
 			onLine: () => {},
-			onError: () => {
-				console.error('[WindowEventHandler] Failed to compact session');
-				this.callJavaScript('showError', 'Failed to compact session');
+			onError: (error) => {
+				console.error('[WindowEventHandler] Failed to compact session:', error);
+				// daemon 返回 error 时会同时回调 onError + onComplete(false)，
+				// settleCompact 去重。
+				this.settleCompact(false, error);
 			},
 			onComplete: (success) => {
 				if (!success) {
 					console.error('[WindowEventHandler] Compact session failed');
+					this.settleCompact(false);
 					return;
 				}
-				this.callJavaScript('onCompactSuccess', '');
+				this.settleCompact(true);
+			},
+		});
+	}
+
+	private clearCompactState(): void {
+		this.compactPending = false;
+		this.compactSessionId = null;
+		if (this.compactTimer) {
+			clearTimeout(this.compactTimer);
+			this.compactTimer = null;
+		}
+	}
+
+	private settleCompact(success: boolean, detail?: string): void {
+		if (this.compactSettled) {
+			return;
+		}
+		this.compactSettled = true;
+		this.clearCompactState();
+		if (success) {
+			this.callJavaScript('onCompactSuccess', '');
+		} else {
+			// showError 只在设置视图注册；对话视图用 onCompactError toast。
+			this.callJavaScript('onCompactError', detail ?? '');
+		}
+	}
+
+	/**
+	 * 压缩没有活跃 turn 承载 done 信号，opencode 的 session.compacted /
+	 * session.error 事件经 daemon 越权 marker 上报（daemon log 事件载体）。
+	 * 懒注册一个共享监听器解析该 marker；只有当前存在 pending 压缩且
+	 * sessionId 匹配时才结算。
+	 */
+	private registerCompactResultListener(daemon: NonNullable<ReturnType<HandlerContext['getDaemon']>>): void {
+		if (this.daemonListenerRegistered) {
+			return;
+		}
+		this.daemonListenerRegistered = true;
+		daemon.addEventListener({
+			onDaemonEvent: (event, data) => {
+			if (event !== 'log' || !this.compactPending) {
+				return;
+			}
+			const message = typeof data.message === 'string' ? data.message : '';
+			if (!message.startsWith('[SESSION_COMPACT_RESULT]')) {
+				return;
+			}
+			try {
+				const payload = JSON.parse(message.substring('[SESSION_COMPACT_RESULT]'.length).trim()) as {
+					sessionID?: string;
+					success?: boolean;
+					error?: string;
+				};
+				if (!payload.success && payload.sessionID !== this.compactSessionId) {
+					// 其他会话的错误与本窗口的压缩无关。
+					return;
+				}
+				if (payload.success) {
+					this.settleCompact(true);
+				} else {
+					this.settleCompact(false, payload.error ?? '压缩失败');
+				}
+			} catch {
+				// 忽略无法解析的 marker
+			}
 			},
 		});
 	}

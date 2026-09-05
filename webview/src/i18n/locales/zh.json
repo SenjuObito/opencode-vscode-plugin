@@ -115,6 +115,7 @@
     "compactTooltip": "点击压缩会话",
     "compactStarted": "正在压缩会话…",
     "compactSuccess": "会话已压缩",
+    "compactFailed": "压缩会话失败",
     "compactConfirmTitle": "压缩会话",
     "compactConfirmMessage": "压缩会让 opencode 对当前对话做摘要并裁掉较旧的消息，从而腾出上下文空间。这是一个不可撤销的操作，确认要继续吗？",
     "compactConfirmAction": "确认压缩",

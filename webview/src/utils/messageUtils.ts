@@ -379,6 +379,22 @@ export function buildCompactNotification(group: ClaudeMessage[]): ClaudeMessage 
 }
 
 /**
+ * Create a synthetic compact_notification message (e.g. "Session compacted")
+ * appended locally after a successful /compact summarize. The notice is
+ * UI-only — it is not persisted in the session and disappears on reload.
+ */
+export function createCompactSuccessNotice(headerText: string): ClaudeMessage {
+  return {
+    type: MESSAGE_TYPES.COMPACT_NOTIFICATION,
+    content: headerText,
+    timestamp: new Date().toISOString(),
+    raw: {
+      compactItems: [],
+    },
+  };
+}
+
+/**
  * Get text content from a message
  */
 export function getMessageText(

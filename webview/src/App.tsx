@@ -18,6 +18,7 @@ import {
   useMessageSender,
   useModelProviderState,
   useChatComputations,
+  useCompactConfirm,
 } from './hooks';
 import {
   NEW_SESSION_COMMANDS,
@@ -28,6 +29,7 @@ import {
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
+import { createCompactSuccessNotice } from './utils/messageUtils';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
@@ -461,45 +463,6 @@ const App = () => {
     return undefined;
   }, [messages, getMessageId]);
 
-  // Handle opencode builtin session commands typed as slash commands
-  // (mirror the TUI: /compact /undo /redo /fork /share /unshare).
-  const handleBuiltinCommand = useCallback((command: string) => {
-    switch (command) {
-      case '/compact':
-        sendBridgeEvent('compact_session');
-        addToast(t('chat.compactStarted'), 'info');
-        break;
-      case '/undo': {
-        const id = findLatestUserMessageId();
-        if (id) {
-          handleUndoMessage({ type: 'user', id } as ClaudeMessage);
-        } else {
-          // 本地无 id —— 交给宿主通过 listMessages 解析
-          handleUndoMessage({ type: 'user' } as ClaudeMessage);
-        }
-        break;
-      }
-      case '/redo':
-        handleRedoMessage();
-        break;
-      case '/fork':
-        handleForkFull();
-        break;
-      case '/share':
-        void handleShare();
-        break;
-      case '/unshare':
-        void handleUnshare();
-        break;
-    }
-  }, [addToast, t, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
-
-  // Reset revert / share state on session switch
-  useEffect(() => {
-    applyRevertState(false);
-    resetShareState();
-  }, [applyRevertState, resetShareState, currentSessionId]);
-
   // Register bridge callbacks for share / fork / revert / compact results
   useEffect(() => {
     window.onForkSuccess = (json: string) => {
@@ -603,6 +566,18 @@ const App = () => {
     };
     window.onCompactSuccess = () => {
       addToast(t('chat.compactSuccess'), 'success');
+      // 在对话列表中追加一条「会话已压缩」提示（UI-only，不落盘，
+      // 重新加载历史后消失；服务端推送的摘要消息仍会正常渲染）。
+      setMessages((prev) => [...prev, createCompactSuccessNotice(t('chat.compactSuccess'))]);
+      // 重载会话：压缩后消息列表已被服务端裁剪/替换为摘要，
+      // 不重载的话旧消息会一直留在界面上。
+      const sessionId = currentSessionIdRef.current;
+      if (sessionId) {
+        loadHistorySession(sessionId);
+      }
+    };
+    window.onCompactError = (detail?: string) => {
+      addToast(`${t('chat.compactFailed')}${detail ? `: ${detail}` : ''}`, 'error');
     };
     return () => {
       delete window.onForkSuccess;
@@ -612,8 +587,9 @@ const App = () => {
       delete window.onRevertError;
       delete window.onRevertStateUpdate;
       delete window.onCompactSuccess;
+      delete window.onCompactError;
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
@@ -731,6 +707,55 @@ const App = () => {
     applyRevertState(false);
   }, [messages, getMessageId, applyRevertState, setMessages]);
 
+  // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
+  const doCompact = useCallback(() => {
+    consumeRevertBoundary();
+    sendBridgeEvent('compact_session');
+    addToast(t('chat.compactStarted'), 'info');
+  }, [consumeRevertBoundary, addToast, t]);
+  const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
+    useCompactConfirm(doCompact);
+
+  // Handle opencode builtin session commands typed as slash commands
+  // (mirror the TUI: /compact /undo /redo /fork /share /unshare).
+  const handleBuiltinCommand = useCallback((command: string) => {
+    switch (command) {
+      case '/compact':
+        // 先弹确认框；确认后 doCompact 才发送（不可撤销操作）。
+        requestCompact();
+        break;
+      case '/undo': {
+        const id = findLatestUserMessageId();
+        if (id) {
+          handleUndoMessage({ type: 'user', id } as ClaudeMessage);
+        } else {
+          // 本地无 id —— 交给宿主通过 listMessages 解析
+          handleUndoMessage({ type: 'user' } as ClaudeMessage);
+        }
+        break;
+      }
+      case '/redo':
+        handleRedoMessage();
+        break;
+      case '/fork':
+        handleForkFull();
+        break;
+      case '/share':
+        void handleShare();
+        break;
+      case '/unshare':
+        void handleUnshare();
+        break;
+    }
+  }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
+
+  // Reset revert / share / compact-confirm state on session switch
+  useEffect(() => {
+    applyRevertState(false);
+    resetShareState();
+    handleCancelCompact();
+  }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact]);
+
   // handleSubmit with queue support (new session and local commands bypass loading check)
   const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -762,11 +787,8 @@ const App = () => {
       }
       // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
       if (BUILTIN_SESSION_COMMANDS.has(command)) {
-        // /compact 走 summarize 端点，服务端同样先 revert.cleanup —— 一并消费边界。
+        // /compact 在用户确认后才发送，revert 边界在确认时（doCompact）消费；
         // 其余（undo/redo/fork/share）是纯客户端操作，不影响服务端 revert 状态。
-        if (command === '/compact') {
-          consumeRevertBoundary();
-        }
         handleBuiltinCommand(command);
         return;
       }
@@ -967,6 +989,16 @@ const App = () => {
         cancelText={t('common.cancel')}
         onConfirm={handleConfirmInterruptRevert}
         onCancel={handleCancelInterruptRevert}
+      />
+
+      <ConfirmDialog
+        isOpen={showCompactConfirm}
+        title={t('chat.compactConfirmTitle')}
+        message={t('chat.compactConfirmMessage')}
+        confirmText={t('chat.compactConfirmAction')}
+        cancelText={t('common.cancel')}
+        onConfirm={handleCompactConfirmed}
+        onCancel={handleCancelCompact}
       />
     </>
   );

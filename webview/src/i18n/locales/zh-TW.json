@@ -97,6 +97,7 @@
     "compactTooltip": "點擊壓縮會話",
     "compactStarted": "正在壓縮會話…",
     "compactSuccess": "會話已壓縮",
+    "compactFailed": "壓縮會話失敗",
     "compactConfirmTitle": "壓縮會話",
     "compactConfirmMessage": "壓縮會請 opencode 對目前對話做摘要並裁掉較舊的訊息，藉此騰出上下文空間。這是一個不可撤銷的操作，確認要繼續嗎？",
     "compactConfirmAction": "確認壓縮",

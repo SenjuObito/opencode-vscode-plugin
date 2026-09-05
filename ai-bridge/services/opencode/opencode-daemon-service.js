@@ -300,12 +300,35 @@ function _handleEvent(evt) {
     case 'session.idle':
       if (turn) _settleTurn(turn, { success: true });
       break;
-    case 'session.error':
+    case 'session.compacted': {
+      // 压缩完成信号。压缩不是 turn（无 active turn / done 信号可达 UI），
+      // 必须经 marker 越权上报，宿主才能把结果送到对话列表。
+      const compactSessionID = sessionID || props?.info?.id || '';
+      logDebug('session.compacted:', compactSessionID);
+      emitJsonStringMarker('[SESSION_COMPACT_RESULT]', JSON.stringify({
+        sessionID: compactSessionID,
+        success: true,
+      }));
+      break;
+    }
+    case 'session.error': {
+      const err = props?.error || { message: 'session.error' };
       if (turn) {
-        const err = props?.error || { message: 'session.error' };
         _settleTurn(turn, { success: false, error: err });
       }
+      // 无 active turn 时的错误（如压缩失败）没有其他上报通道，
+      // 同样走 marker，宿主按 sessionID + pending 状态过滤。有 active turn
+      // 时错误属于当前对话 turn，不能误报为压缩失败。
+      if (!turn) {
+        logDebug('session.error (no turn):', sessionID || '', JSON.stringify(err).substring(0, 200));
+        emitJsonStringMarker('[SESSION_COMPACT_RESULT]', JSON.stringify({
+          sessionID: sessionID || props?.info?.id || '',
+          success: false,
+          error: err?.message || String(err),
+        }));
+      }
       break;
+    }
     // Permission / question prompts — normalize v1+v2 event shapes into a
     // canonical payload the host can hand straight to the webview dialogs.
     case 'permission.asked':

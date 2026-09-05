@@ -115,6 +115,7 @@
     "compactTooltip": "Click to compact session",
     "compactStarted": "Compacting session…",
     "compactSuccess": "Session compacted",
+    "compactFailed": "Failed to compact session",
     "compactConfirmTitle": "Compact session",
     "compactConfirmMessage": "Compacting asks opencode to summarize the current conversation and prune older messages to free up context space. This cannot be undone — are you sure you want to continue?",
     "compactConfirmAction": "Compact",

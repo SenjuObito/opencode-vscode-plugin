@@ -97,6 +97,7 @@
     "compactTooltip": "クリックでセッションを圧縮",
     "compactStarted": "セッションを要約中…",
     "compactSuccess": "セッションを要約しました",
+    "compactFailed": "セッションの圧縮に失敗しました",
     "compactConfirmTitle": "セッションを圧縮",
     "compactConfirmMessage": "圧縮を実行すると、opencode が現在の会話を要約し古いメッセージを削除してコンテキスト領域を確保します。この操作は取り消せません。続行しますか?",
     "compactConfirmAction": "圧縮を実行",

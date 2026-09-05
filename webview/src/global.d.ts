@@ -702,6 +702,11 @@ interface Window {
   onCompactSuccess?: () => void;
 
   /**
+   * Compact (summarize) session failure callback (detail = daemon error text)
+   */
+  onCompactError?: (detail?: string) => void;
+
+  /**
    * Update project info
    */
   updateProjectInfo?: (json: string) => void;

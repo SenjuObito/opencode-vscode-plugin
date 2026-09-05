@@ -250,17 +250,78 @@ export async function abort(sessionId, directory) {
 
 /**
  * Summarize a session to reduce context size (opencode `/compact` semantics).
+ *
+ * 服务端 summarize 端点要求请求体 `{ providerID, modelID }`（缺省时返回
+ * BadRequest "Expected object, got undefined"），因此这里必须先解析出会话
+ * 实际使用的模型（见 resolveSummarizeModel）。
+ *
  * @param {string} sessionId
  * @param {string} [directory]
+ * @param {string} [model] host UI 选择的模型（"provider/model"，缺省表示用 opencode 默认）
  * @returns {Promise<void>}
  */
-export async function summarizeSession(sessionId, directory) {
+export async function summarizeSession(sessionId, directory, model) {
+  const resolved = await resolveSummarizeModel(model, sessionId, directory);
+  console.error(`[summarize] model resolved: ${resolved ? `${resolved.providerID}/${resolved.modelID}` : 'FAILED (null)'}`);
+  if (!resolved) {
+    throw new Error('Summarize failed: cannot resolve model for session');
+  }
   const params = { sessionID: sessionId };
   if (directory) params.directory = directory;
+  // v2 flat 参数格式：providerID/modelID 由 SDK 归入请求体 body。
+  params.providerID = resolved.providerID;
+  params.modelID = resolved.modelID;
+  console.error(`[summarize] POST /session/${sessionId}/summarize — waiting for LLM completion...`);
+  const startedAt = Date.now();
   const result = await getClient().session.summarize(params);
+  console.error(`[summarize] HTTP returned after ${Date.now() - startedAt}ms, error=${result.error ? JSON.stringify(result.error) : 'none'}`);
   if (result.error) {
     throw new Error(`Summarize failed: ${JSON.stringify(result.error)}`);
   }
+}
+
+/**
+ * Resolve the model to summarize with, in priority order:
+ *   1. host UI 选择（"provider/model" 字符串）；
+ *   2. 会话运行时记录的模型（opencode 权威来源，session.model = { providerID, id }）；
+ *   3. 最后一条 assistant 消息实际使用的模型。
+ * 全部缺失（理论上仅空会话）时返回 null，由调用方报错。
+ *
+ * @param {string|undefined} model
+ * @param {string} sessionId
+ * @param {string} [directory]
+ * @returns {Promise<{ providerID: string, modelID: string } | null>}
+ */
+async function resolveSummarizeModel(model, sessionId, directory) {
+  if (typeof model === 'string') {
+    const trimmed = model.trim();
+    if (trimmed) {
+      const slash = trimmed.indexOf('/');
+      if (slash > 0 && slash < trimmed.length - 1) {
+        return { providerID: trimmed.slice(0, slash), modelID: trimmed.slice(slash + 1) };
+      }
+    }
+  }
+
+  const session = await getSession(sessionId, directory);
+  const sessionProviderID = typeof session?.model?.providerID === 'string' ? session.model.providerID.trim() : '';
+  const sessionModelID = typeof session?.model?.id === 'string' ? session.model.id.trim() : '';
+  if (sessionProviderID && sessionModelID) {
+    return { providerID: sessionProviderID, modelID: sessionModelID };
+  }
+
+  const messages = await listMessages(sessionId, directory);
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const info = messages[i]?.info;
+    if (
+      info?.role === 'assistant'
+      && typeof info.providerID === 'string' && info.providerID
+      && typeof info.modelID === 'string' && info.modelID
+    ) {
+      return { providerID: info.providerID, modelID: info.modelID };
+    }
+  }
+  return null;
 }
 
 /**

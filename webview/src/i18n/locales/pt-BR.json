@@ -97,6 +97,7 @@
     "compactTooltip": "Clique para compactar a sessão",
     "compactStarted": "Compactando sessão…",
     "compactSuccess": "Sessão compactada",
+    "compactFailed": "Falha ao compactar a sessão",
     "compactConfirmTitle": "Compactar sessão",
     "compactConfirmMessage": "Compactar faz o opencode resumir a conversa atual e remover mensagens mais antigas para liberar espaço de contexto. Essa ação não pode ser desfeita — tem certeza de que quer continuar?",
     "compactConfirmAction": "Compactar",

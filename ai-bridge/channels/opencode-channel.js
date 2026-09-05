@@ -194,9 +194,20 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
     }
 
     case 'summarize': {
-      const { sessionId, directory } = stdinData || {};
-      await openCodeSummarizeSession(sessionId, directory || undefined);
-      console.log(JSON.stringify({ success: true, provider: 'opencode' }));
+      const { sessionId, directory, model } = stdinData || {};
+      // summarize 需要项目目录来运行摘要任务；宿主未传时回退到 daemon 记录的会话目录。
+      // 与 listMessages 同因：resolveSummarizeModel 要查 session.get，冷 serve 会静默失败。
+      console.error(`[summarize] start sessionId=${sessionId} directory=${directory || '-'} model=${model || '(session default)'} pid=${process.pid}`);
+      try {
+        await ensureServerReady();
+        console.error('[summarize] server ready, calling summarizeSession');
+        await openCodeSummarizeSession(sessionId, directory || getSessionDirectory(sessionId), model);
+        console.error('[summarize] summarizeSession resolved OK');
+        console.log(JSON.stringify({ success: true, provider: 'opencode' }));
+      } catch (err) {
+        console.error(`[summarize] failed: ${err?.message || err}`);
+        throw err;
+      }
       break;
     }
 

@@ -97,6 +97,7 @@
     "compactTooltip": "클릭하여 세션 압축",
     "compactStarted": "세션 압축 중…",
     "compactSuccess": "세션이 압축되었습니다",
+    "compactFailed": "세션 압축에 실패했습니다",
     "compactConfirmTitle": "세션 압축",
     "compactConfirmMessage": "압축을 실행하면 opencode가 현재 대화를 요약하고 오래된 메시지를 잘라내어 컨텍스트 공간을 확보합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?",
     "compactConfirmAction": "압축 실행",

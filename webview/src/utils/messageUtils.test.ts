@@ -22,6 +22,7 @@ import {
   isCompactRelatedMessage,
   extractCompactItems,
   buildCompactNotification,
+  createCompactSuccessNotice,
   TASK_STATUS_COLORS,
 } from './messageUtils';
 
@@ -1200,6 +1201,29 @@ describe('buildCompactNotification', () => {
     const result = buildCompactNotification(messages);
     expect(result).not.toBeNull();
     expect(result!.content).toBe('/compact');
+  });
+});
+
+describe('createCompactSuccessNotice', () => {
+  it('builds a compact_notification message with the given header text', () => {
+    const result = createCompactSuccessNotice('会话已压缩');
+    expect(result.type).toBe('compact_notification');
+    expect(result.content).toBe('会话已压缩');
+    expect(typeof result.timestamp).toBe('string');
+    expect(result.timestamp).not.toBe('');
+    const compactItems = (result.raw as any)?.compactItems;
+    expect(compactItems).toEqual([]);
+  });
+
+  it('renders via getContentBlocks as a compact_notification block', () => {
+    const message = createCompactSuccessNotice('Session compacted');
+    const blocks = getContentBlocks(
+      message,
+      (raw: any) => raw?.content ?? null,
+      (text: string) => text,
+    );
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({ type: 'compact_notification', headerText: 'Session compacted', items: [] });
   });
 });
 
