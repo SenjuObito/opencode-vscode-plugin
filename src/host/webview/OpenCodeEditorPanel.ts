@@ -13,7 +13,7 @@
 import * as vscode from 'vscode';
 import { MessageDispatcher } from '../router/MessageDispatcher';
 import { BridgeMessage, ViewHost } from '../types';
-import { logDiagnostic } from '../util/DiagnosticLogger';
+import { logVerbose } from '../util/DiagnosticLogger';
 import {
 	BroadcastChannel,
 	buildWebviewHtml,
@@ -120,8 +120,9 @@ export class OpenCodeEditorPanel {
 				return;
 			}
 			// Webview debug logs — 转发到 «OpenCode» 输出通道。
+			// 高频路径（流式期间每次 updateMessages 都触发），走 verbose 门控。
 			if (type === 'cardDebug') {
-				logDiagnostic(`[Webview] ${content}`);
+				logVerbose(`[Webview] ${content}`);
 				return;
 			}
 			this.options.dispatcher.dispatch(type, content);

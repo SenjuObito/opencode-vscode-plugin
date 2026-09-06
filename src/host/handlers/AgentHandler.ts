@@ -10,10 +10,16 @@ import { HandlerContext } from '../router/HandlerContext';
 
 const SUPPORTED_TYPES = ['get_agents'];
 
-interface AgentItem {
+	interface AgentItem {
 	id: string;
 	name: string;
 	prompt?: string;
+	/** opencode agent mode: 'primary' = 主代理(Build/Plan/自定义), 'subagent' = 子代理(General/Explore/Scout), 'all' = 聚合 */
+	mode?: 'primary' | 'subagent' | 'all' | string;
+	/** 隐藏的系统代理(Compaction/Title/Summary) 不对外暴露 */
+	hidden?: boolean;
+	/** SDK 自带的简短描述，优先用于下拉展示 */
+	description?: string;
 }
 
 export class AgentHandler extends BaseMessageHandler {
@@ -61,11 +67,14 @@ export class AgentHandler extends BaseMessageHandler {
 						if (!name) {
 							return null;
 						}
-						return {
-							id: typeof agent.id === 'string' ? agent.id : name,
-							name,
-							prompt: typeof agent.prompt === 'string' ? agent.prompt : undefined,
-						} as AgentItem;
+					return {
+						id: typeof agent.id === 'string' ? agent.id : name,
+						name,
+						prompt: typeof agent.prompt === 'string' ? agent.prompt : undefined,
+						mode: typeof agent.mode === 'string' ? agent.mode : undefined,
+						hidden: typeof agent.hidden === 'boolean' ? agent.hidden : undefined,
+						description: typeof agent.description === 'string' ? agent.description : undefined,
+					} as AgentItem;
 					})
 					.filter((a): a is AgentItem => a !== null);
 				this.pushAgents(agents);

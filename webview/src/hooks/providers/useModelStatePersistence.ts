@@ -5,7 +5,6 @@ import {
   CODEX_MODELS,
   DEFAULT_CLAUDE_MODEL_ID,
   OPENCODE_DEFAULT_MODEL_ID,
-  isValidPermissionMode,
   normalizeClaudeModelId,
   apply1MContextSuffix,
   strip1MContextSuffix,
@@ -120,7 +119,7 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
       let restoredClaudePermissionMode: PermissionMode = 'default';
       let restoredCodexPermissionMode: PermissionMode = 'default';
       let restoredOpenCodeModel = OPENCODE_DEFAULT_MODEL_ID;
-      let restoredOpenCodePermissionMode: PermissionMode = 'default';
+      let restoredOpenCodePermissionMode: PermissionMode = 'build';
       let restoredLongContextEnabled = true;
 
       // Model validation helpers — close over the restored* lets so both
@@ -167,17 +166,19 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
           setCurrentProvider(providerCandidate);
         }
 
-        if (isValidPermissionMode(state.claudePermissionMode)) {
+        if (typeof state.claudePermissionMode === 'string' && state.claudePermissionMode.length > 0) {
           restoredClaudePermissionMode = state.claudePermissionMode;
         }
-        if (isValidPermissionMode(state.codexPermissionMode)) {
+        if (typeof state.codexPermissionMode === 'string' && state.codexPermissionMode.length > 0) {
           restoredCodexPermissionMode = state.codexPermissionMode === 'plan'
             ? 'default'
             : state.codexPermissionMode;
         }
-        if (isValidPermissionMode(state.openCodePermissionMode)) {
-          // OpenCode 支持原生 plan agent，保留 plan 不做归一。
-          restoredOpenCodePermissionMode = state.openCodePermissionMode;
+        if (typeof state.openCodePermissionMode === 'string' && state.openCodePermissionMode.length > 0) {
+          // Backward compatibility: old 'default' maps to opencode 'build' agent.
+          restoredOpenCodePermissionMode = state.openCodePermissionMode === 'default'
+            ? 'build'
+            : state.openCodePermissionMode;
         }
 
         if (typeof state.longContextEnabled === 'boolean') {

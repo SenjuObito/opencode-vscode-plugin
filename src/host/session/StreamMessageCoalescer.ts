@@ -77,6 +77,12 @@ export class StreamMessageCoalescer {
 		this.clearHeartbeat();
 		this.streamActive = false;
 		this.lastPayloadChars = 0;
+		// 流结束即释放挂起/已送达快照引用：数组的消息对象与 SessionState 共享，
+		// 释放的只是引用数组，但长会话下多份 300+ 条的引用数组会一直驻留到
+		// 会话切换。下一次流式 push 时 selectMessageTransport 会退回全量传输，
+		// 代价是每 turn 一次全量序列化（已被传输层截断兜底）。
+		this.pendingMessages = null;
+		this.lastDeliveredSnapshot = null;
 		this.target.onStreamEnded?.();
 	}
 

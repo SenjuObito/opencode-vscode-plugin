@@ -182,7 +182,9 @@
     "forkFailed": "Failed to fork session",
     "forkAllTooltip": "Fork entire session to a new session",
     "shareLinkCreated": "Share link created",
-    "retryCopy": "Copy again"
+    "retryCopy": "Copy again",
+    "subagentsSection": "Subagents",
+    "filesSection": "Files"
   },
   "settings": {
     "title": "Settings",

@@ -67,12 +67,32 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
       // 会话消息列表为空、二次及以后正常」。这里显式等待 serve 就绪再查询。
       await ensureServerReady();
       const messages = await openCodeListMessages(sessionId || '', directory || undefined);
-      // 与 listModels 相同输出约定：单行 JSON（daemon 模式下被包装为 {id,line}）。
+      // 逐条输出（NDJSON）：此前整包单行 JSON 会被 daemon stdout 拦截器再次
+      // stringify（转义膨胀），宿主侧还要 chunks 累积 + join + 全文提取——
+      // 长会话恢复时内存峰值放大 5-8 倍。逐条输出每行都是小字符串，宿主
+      // ListMessagesCollector 逐行解析只保留 entry 对象。
+      const entries = Array.isArray(messages) ? messages : [];
       console.log(JSON.stringify({
         success: true,
         provider: 'opencode',
         sessionId: sessionId || '',
-        messages: Array.isArray(messages) ? messages : [],
+        messagesStart: true,
+        count: entries.length,
+      }));
+      for (const entry of entries) {
+        console.log(JSON.stringify({
+          success: true,
+          provider: 'opencode',
+          sessionId: sessionId || '',
+          messageEntry: entry,
+        }));
+      }
+      console.log(JSON.stringify({
+        success: true,
+        provider: 'opencode',
+        sessionId: sessionId || '',
+        messagesDone: true,
+        count: entries.length,
       }));
       break;
     }

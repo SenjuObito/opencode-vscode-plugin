@@ -182,7 +182,9 @@
     "forkFailed": "分叉会话失败",
     "forkAllTooltip": "分叉整个会话到新会话",
     "shareLinkCreated": "分享链接已创建",
-    "retryCopy": "重试复制"
+    "retryCopy": "重试复制",
+    "subagentsSection": "子代理",
+    "filesSection": "文件"
   },
   "settings": {
     "title": "设置",

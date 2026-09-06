@@ -13,7 +13,7 @@ import { readFileSync } from 'fs';
 import { MessageDispatcher } from '../router/MessageDispatcher';
 import { WebviewChannel } from '../router/HandlerContext';
 import { ViewHost, BridgeMessage } from '../types';
-import { logDiagnostic } from '../util/DiagnosticLogger';
+import { logDiagnostic, logVerbose } from '../util/DiagnosticLogger';
 import { DEFAULT_UI_PREFERENCES, type UiPreferences } from '../settings/SettingsService';
 
 /**
@@ -179,23 +179,27 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.webview.onDidReceiveMessage((message: unknown) => {
 			const bridge = message as BridgeMessage | null;
-			logDiagnostic(`[OpenCodeViewProvider] RAW message: type=${typeof bridge?.type} keys=${bridge && typeof bridge === 'object' ? Object.keys(bridge).join(',') : 'N/A'} payloadPreview=${String(bridge?.payload).substring(0, 80)}`);
+			// 高频路径：每条 webview→host 消息都会走到这里（含 200 字符 payload
+			// 预览），常驻写 OutputChannel 会无界累积宿主内存——仅 verbose 开启
+			// 时写入（见 DiagnosticLogger）。
+			logVerbose(`[OpenCodeViewProvider] RAW message: type=${typeof bridge?.type} keys=${bridge && typeof bridge === 'object' ? Object.keys(bridge).join(',') : 'N/A'} payloadPreview=${String(bridge?.payload).substring(0, 80)}`);
 			if (!bridge || bridge.type !== 'bridge' || typeof bridge.payload !== 'string') {
-				logDiagnostic(`[OpenCodeViewProvider] non-bridge message: type=${typeof bridge?.type} payload=${String(bridge?.payload).substring(0, 100)}`);
+				logVerbose(`[OpenCodeViewProvider] non-bridge message: type=${typeof bridge?.type} payload=${String(bridge?.payload).substring(0, 100)}`);
 				return;
 			}
 			const { type, content } = parseWirePayload(bridge.payload);
 			if (!type) {
-				logDiagnostic(`[OpenCodeViewProvider] empty type from payload: ${bridge.payload.substring(0, 200)}`);
+				logVerbose(`[OpenCodeViewProvider] empty type from payload: ${bridge.payload.substring(0, 200)}`);
 				return;
 			}
-		// Webview debug logs — forwarded here from the webview via the cardDebug
-		// bridge event so they appear in the «OpenCode» Output channel.
-		if (type === 'cardDebug') {
-			logDiagnostic(`[Webview] ${content}`);
-			return;
-		}
-		logDiagnostic(`[OpenCodeViewProvider] dispatch type=${type} content=${content.substring(0, 200)}`);
+			// Webview debug logs — forwarded here from the webview via the cardDebug
+			// bridge event so they appear in the «OpenCode» Output channel.
+			// 同为高频路径（流式期间每次 updateMessages 都会触发），走 verbose 门控。
+			if (type === 'cardDebug') {
+				logVerbose(`[Webview] ${content}`);
+				return;
+			}
+			logVerbose(`[OpenCodeViewProvider] dispatch type=${type} content=${content.substring(0, 200)}`);
 			this.dispatcher.dispatch(type, content);
 		});
 

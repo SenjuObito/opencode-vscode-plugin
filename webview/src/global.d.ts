@@ -27,6 +27,25 @@ interface Window {
     baseIndex: string | number,
     sequence?: string | number,
   ) => void;
+  /**
+   * Prepend an earlier history page (opencode restore paging) to the top of
+   * the message list, preserving scroll position. Pushed in response to the
+   * `load_earlier_messages` bridge event.
+   */
+  updateMessagesPrepend?: (json: string) => void;
+  /**
+   * Backend push describing the restore window: whether older pages exist
+   * (hasEarlier), the window start index into the host's full history, and
+   * the total host-side message count.
+   */
+  onHistoryWindowInfo?: (json: string) => void;
+  /** Latest restore-window state pushed by the host (see onHistoryWindowInfo). */
+  __opencodeHistoryWindow?: {
+    sessionId: string | null;
+    hasEarlier: boolean;
+    windowStart: number;
+    total: number;
+  };
 
   /**
    * Patch a single message UUID without re-sending the full message list.

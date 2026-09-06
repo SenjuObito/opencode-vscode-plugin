@@ -65,6 +65,16 @@
         }
       ]
     },
+    "configuration": {
+      "title": "OpenCode Buddy",
+      "properties": {
+        "openCodeBuddy.verboseDiagnostics": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用高频诊断日志（webview 消息、daemon stderr 等）写入「OpenCode」输出通道。关闭可降低扩展宿主内存占用。"
+        }
+      }
+    },
     "commands": [
       {
         "command": "opencode-buddy.openLeft",

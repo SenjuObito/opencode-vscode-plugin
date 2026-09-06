@@ -163,7 +163,9 @@
     "forkFailed": "フォークセッションの作成に失敗しました",
     "forkAllTooltip": "セッション全体を新しいセッションにフォーク",
     "shareLinkCreated": "共有リンクを作成しました",
-    "retryCopy": "再コピー"
+    "retryCopy": "再コピー",
+    "subagentsSection": "サブエージェント",
+    "filesSection": "ファイル"
   },
   "settings": {
     "title": "設定",

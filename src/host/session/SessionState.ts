@@ -5,11 +5,20 @@
 import { randomUUID } from 'crypto';
 import { ChatMessage, MessageType } from './types';
 
-/** Canonical permission-mode whitelist (opencode permission modes). */
-const VALID_PERMISSION_MODES = new Set(['default', 'plan', 'acceptEdits', 'autoEdit', 'bypassPermissions']);
-
+/** Canonical permission-mode validator (opencode primary agent ids).
+ * Any non-empty string is accepted; the legacy 'default' value is mapped to
+ * 'build' for backward compatibility.
+ */
 export function isValidPermissionMode(mode: string | null | undefined): boolean {
-	return mode != null && VALID_PERMISSION_MODES.has(mode.trim());
+	return mode != null && mode.trim().length > 0;
+}
+
+export function normalizePermissionMode(mode: string | null | undefined): string | null {
+	if (mode == null) return null;
+	const trimmed = mode.trim();
+	if (trimmed.length === 0) return null;
+	// Backward compatibility: old UI value 'default' maps to opencode 'build'.
+	return trimmed === 'default' ? 'build' : trimmed;
 }
 
 const VALID_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -126,10 +135,11 @@ export class SessionState {
 		this.cwd = cwd;
 	}
 	setPermissionMode(mode: string): void {
-		if (mode != null && !VALID_PERMISSION_MODES.has(mode.trim())) {
-			return; // 拒绝未识别的模式，防止注入任意字符串
+		const normalized = normalizePermissionMode(mode);
+		if (normalized == null) {
+			return; // 拒绝空字符串
 		}
-		this.permissionMode = mode;
+		this.permissionMode = normalized;
 	}
 	setModel(model: string | null): void {
 		this.model = model;

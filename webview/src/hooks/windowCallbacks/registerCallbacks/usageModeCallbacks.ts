@@ -11,7 +11,6 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { CodexFastMode, PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
 import {
   has1MContextSuffix,
-  isValidPermissionMode,
   normalizeClaudeModelId,
   strip1MContextSuffix,
 } from '../../../components/ChatInputBox/types';
@@ -85,7 +84,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
 
   const updateMode = (mode?: PermissionMode, providerOverride?: string) => {
     const activeProvider = providerOverride || currentProviderRef.current;
-    if (isValidPermissionMode(mode)) {
+    if (typeof mode === 'string' && mode.length > 0) {
       const nextMode: PermissionMode =
         activeProvider === 'codex' && mode === 'plan' ? 'default' : mode;
       setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));
@@ -138,7 +137,7 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
         setSelectedOpenCodeModel(model);
       }
       const mode = state.permissionMode;
-      if (isValidPermissionMode(mode)) {
+      if (typeof mode === 'string' && mode.length > 0) {
         const nextMode = mode as PermissionMode;
         setOpenCodePermissionMode((prev) => (prev === nextMode ? prev : nextMode));
         setPermissionMode((prev) => (prev === nextMode ? prev : nextMode));

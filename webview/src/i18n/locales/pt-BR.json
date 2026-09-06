@@ -163,7 +163,9 @@
     "forkFailed": "Falha ao bifurcar a sessão",
     "forkAllTooltip": "Bifurcar toda a sessão em uma nova sessão",
     "shareLinkCreated": "Link de compartilhamento criado",
-    "retryCopy": "Copiar novamente"
+    "retryCopy": "Copiar novamente",
+    "subagentsSection": "Subagentes",
+    "filesSection": "Arquivos"
   },
   "settings": {
     "title": "Configurações",

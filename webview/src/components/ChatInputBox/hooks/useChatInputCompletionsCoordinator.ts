@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type MutableRefObject, type RefObject } from 'react';
-import type { CommandItem, FileItem, TriggerQuery } from '../types.js';
+import type { CommandItem, TriggerQuery } from '../types.js';
 import { useCompletionDropdown } from './useCompletionDropdown.js';
 import { useCompletionTriggerDetection } from './useCompletionTriggerDetection.js';
 import { useInlineHistoryCompletion } from './useInlineHistoryCompletion.js';
@@ -7,9 +7,11 @@ import {
   commandToDropdownItem,
   dollarCommandProvider,
   dollarCommandToDropdownItem,
-  fileReferenceProvider,
-  fileToDropdownItem,
+  mentionProvider,
+  mentionToDropdownItem,
   slashCommandProvider,
+  ensureAgentsLoaded,
+  type MentionItem,
 } from '../providers/index.js';
 import { setCursorOffset } from '../utils/selectionUtils.js';
 
@@ -54,12 +56,28 @@ export function useChatInputCompletionsCoordinator({
 }: UseChatInputCompletionsCoordinatorOptions) {
   const renderFileTagsRef = useRef<() => void>(() => {});
 
-  const fileCompletion = useCompletionDropdown<FileItem>({
+  const fileCompletion = useCompletionDropdown<MentionItem>({
     trigger: '@',
-    provider: fileReferenceProvider,
-    toDropdownItem: fileToDropdownItem,
-    onSelect: (file, query) => {
+    provider: mentionProvider,
+    toDropdownItem: mentionToDropdownItem,
+    onSelect: (item, query) => {
       if (!editableRef.current || !query) return;
+
+      // 子代理：插入纯文本 @name，不渲染为 file-tag，也不登记 pathMapping
+      if (item.kind === 'subagent') {
+        const text = getTextContent();
+        const replacement = `@${item.name} `;
+        const newText = fileCompletion.replaceText(text, replacement, query);
+        editableRef.current.innerText = newText;
+        const cursorPos = query.start + replacement.length;
+        setCursorOffset(editableRef.current, cursorPos);
+        handleInputRef.current();
+        return;
+      }
+
+      // 仅处理文件（跳过 section 标题，理论上不会被选中）
+      if (item.kind !== 'file') return;
+      const file = item;
 
       const text = getTextContent();
       const path = file.absolutePath || file.path;
@@ -127,6 +145,11 @@ export function useChatInputCompletionsCoordinator({
   useEffect(() => {
     closeAllCompletionsRef.current = closeAllCompletions;
   }, [closeAllCompletions, closeAllCompletionsRef]);
+
+  // 预拉取 opencode 子代理列表，使 @ 下拉在用户首次输入时即可显示，无需先打开设置面板。
+  useEffect(() => {
+    ensureAgentsLoaded();
+  }, []);
 
   const inlineCompletion = useInlineHistoryCompletion({
     debounceMs: 100,

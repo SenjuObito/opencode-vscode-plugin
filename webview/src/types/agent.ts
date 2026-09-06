@@ -10,6 +10,12 @@ export interface AgentConfig {
   prompt?: string;
   /** Creation timestamp */
   createdAt?: number;
+  /** opencode agent mode: 'primary' = 主代理, 'subagent' = 子代理, 'all' = 聚合 */
+  mode?: 'primary' | 'subagent' | 'all' | string;
+  /** 隐藏的系统代理(Compaction/Title/Summary) */
+  hidden?: boolean;
+  /** 简短描述 */
+  description?: string;
 }
 
 /**

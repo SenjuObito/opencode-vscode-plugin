@@ -6,6 +6,7 @@
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { logDiagnostic, logDiagnosticBlock } from '../util/DiagnosticLogger';
+import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { pushHistoryData, upsertSessionSummary } from '../session/SessionHistoryStore';
 import { pushUserLanguageConfig, pushUiPreferences } from './SettingsHandler';
 
@@ -578,9 +579,10 @@ export class WindowEventHandler extends BaseMessageHandler {
 		}
 		logDiagnostic(`[${label}] messageId empty — resolving latest user message via listMessages`);
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		const chunks: string[] = [];
+		// 逐行解析（daemon listMessages 为逐条 NDJSON 输出），不缓存原始行。
+		const collector = new ListMessagesCollector();
 		void daemon.request('opencode.listMessages', { sessionId, directory }, {
-			onLine: (line) => chunks.push(line),
+			onLine: (line) => collector.onLine(line),
 			onError: (error) => {
 				logDiagnostic(`[${label}] listMessages FAILED error=${error}`);
 			},
@@ -589,10 +591,9 @@ export class WindowEventHandler extends BaseMessageHandler {
 					logDiagnostic(`[${label}] listMessages failed — abort`);
 					return;
 				}
-				const payload = this.extractJsonObject(chunks.join('\n'));
-				const entries = payload && Array.isArray(payload.messages) ? payload.messages : [];
+				collector.reconcileFallback();
 				let latestUserId: string | null = null;
-				for (const entry of entries as Array<Record<string, unknown>>) {
+				for (const entry of collector.getEntries() as Array<Record<string, unknown>>) {
 					const info = entry?.info as Record<string, unknown> | undefined;
 					if (info && info.role === 'user' && typeof info.id === 'string' && info.id) {
 						latestUserId = info.id;

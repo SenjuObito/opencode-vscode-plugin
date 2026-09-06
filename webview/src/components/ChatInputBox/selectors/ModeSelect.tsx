@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AVAILABLE_MODES, OPENCODE_MODES, type PermissionMode } from '../types';
+import { getPrimaryAgentsSync, subscribeAgents } from '../providers/agentProvider';
+import type { PermissionMode } from '../types';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
 
 const RELATIVE_INLINE_BLOCK_STYLE: React.CSSProperties = { position: 'relative', display: 'inline-block' };
@@ -51,10 +52,13 @@ interface ModeSelectProps {
 }
 
 /**
- * ModeSelect - Mode selector component
- * Supports switching between default, agent, plan, and auto modes
+ * ModeSelect - Mode selector component.
+ *
+ * For opencode the "mode" is the selected primary agent. The list is populated
+ * dynamically from `getPrimaryAgentsSync()` (mode==='primary' && !hidden).
+ * Until the backend responds we fall back to the built-in build/plan agents.
  */
-export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
+export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -65,24 +69,38 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
     preferredAlignment: 'right',
   });
 
+  // Keep local snapshot in sync with the agent cache without prop drilling.
+  const [primaryAgents, setPrimaryAgents] = useState(() => getPrimaryAgentsSync());
+  useEffect(() => {
+    return subscribeAgents(() => setPrimaryAgents(getPrimaryAgentsSync()));
+  }, []);
+
   const modeOptions = useMemo(() => {
-    if (provider === 'opencode') {
-      // OpenCode: native build/plan agents only.
-      return OPENCODE_MODES;
-    }
-    return AVAILABLE_MODES;
-  }, [provider]);
+    return primaryAgents.map(agent => {
+      const i18nKey = agent.id === 'build' ? 'default' : agent.id;
+      return {
+        id: agent.id,
+        label: agent.name,
+        icon: agent.id === 'plan' ? 'codicon-tasklist' : 'codicon-tools',
+        tooltip: agent.description || t(`openCodeModes.${i18nKey}.tooltip`),
+        description: agent.description || t(`openCodeModes.${i18nKey}.description`),
+        disabled: false,
+      };
+    });
+  }, [primaryAgents, t]);
 
-  const currentMode = modeOptions.find(m => m.id === value) || modeOptions[0];
+  // Backward compatibility: old persisted value 'default' maps to 'build'.
+  const normalizedValue = value === 'default' ? 'build' : value;
 
-  // Helper function to get translated mode text
-  const getModeText = (modeId: PermissionMode, field: 'label' | 'tooltip' | 'description') => {
-    if (provider === 'opencode') {
-      return t(`openCodeModes.${modeId}.${field}`);
-    }
-
-    return t(`modes.${modeId}.${field}`);
-  };
+  const currentMode = useMemo(() => {
+    return modeOptions.find(m => m.id === normalizedValue) || modeOptions[0] || {
+      id: normalizedValue,
+      label: normalizedValue,
+      icon: 'codicon-tools',
+      tooltip: '',
+      description: '',
+    };
+  }, [modeOptions, normalizedValue]);
 
   /**
    * Toggle dropdown
@@ -139,16 +157,40 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
     }
   }, [isOpen, recalculate]);
 
+  // If the current value disappears from the list (e.g. agent deleted), fall
+  // back to the first available primary agent. Only do this once per value
+  // change to avoid clobbering the user's selection while the agent cache
+  // is still settling.
+  const hasAutoCorrectedRef = useRef(false);
+  useEffect(() => {
+    hasAutoCorrectedRef.current = false;
+  }, [value]);
+  useEffect(() => {
+    if (modeOptions.length === 0 || hasAutoCorrectedRef.current) return;
+
+    const ids = modeOptions.map(m => m.id);
+    const candidates = [
+      normalizedValue,
+      normalizedValue === 'default' ? 'build' : undefined,
+      normalizedValue === 'build' ? 'default' : undefined,
+    ].filter((id): id is string => typeof id === 'string');
+
+    if (!candidates.some(id => ids.includes(id))) {
+      hasAutoCorrectedRef.current = true;
+      onChange(modeOptions[0].id);
+    }
+  }, [modeOptions, normalizedValue, onChange]);
+
   return (
     <div style={RELATIVE_INLINE_BLOCK_STYLE}>
       <button
         ref={buttonRef}
         className={`selector-button${value === 'bypassPermissions' ? ' mode-auto-active' : ''}`}
         onClick={handleToggle}
-        title={getModeText(currentMode.id, 'tooltip') || `${t('chat.currentMode', { mode: getModeText(currentMode.id, 'label') })}`}
+        title={currentMode.tooltip || `${t('chat.currentMode', { mode: currentMode.label })}`}
       >
         <span className={`codicon ${currentMode.icon}`} />
-        <span className="selector-button-text">{getModeText(currentMode.id, 'label')}</span>
+        <span className="selector-button-text">{currentMode.label}</span>
         <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={CHEVRON_ICON_STYLE} />
       </button>
 
@@ -167,17 +209,17 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
             <div
               key={mode.id}
               data-testid={`mode-option-${mode.id}`}
-              className={`selector-option ${mode.id === value ? 'selected' : ''} ${mode.disabled ? 'disabled' : ''}`}
+              className={`selector-option ${mode.id === normalizedValue ? 'selected' : ''} ${mode.disabled ? 'disabled' : ''}`}
               onClick={() => handleSelect(mode.id, mode.disabled)}
-              title={getModeText(mode.id, 'tooltip')}
+              title={mode.tooltip}
               style={getModeOptionStyle(!!mode.disabled)}
             >
               <span className={`codicon ${mode.icon}`} />
               <div style={MODE_INFO_STYLE}>
-                <span style={MODE_TEXT_STYLE}>{getModeText(mode.id, 'label')}</span>
-                <span className="mode-description" style={MODE_TEXT_STYLE}>{getModeText(mode.id, 'description')}</span>
+                <span style={MODE_TEXT_STYLE}>{mode.label}</span>
+                <span className="mode-description" style={MODE_TEXT_STYLE}>{mode.description}</span>
               </div>
-              {mode.id === value && (
+              {mode.id === normalizedValue && (
                 <span className="codicon codicon-check check-mark" />
               )}
             </div>

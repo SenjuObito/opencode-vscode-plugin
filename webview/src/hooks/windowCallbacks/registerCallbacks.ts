@@ -15,6 +15,7 @@ import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
 import { parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
+import type { SubagentHistoryResponse } from '../../types/subagent';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -106,6 +107,10 @@ export function registerWindowCallbacks(
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 
   window.onSubagentHistoryLoaded = (json: string) => {
+    // 子代理 transcript 上限：Record 按插入序保留最近 MAX_SUBAGENT_HISTORIES
+    // 条。每条持有完整子代理消息数组，agent 重度会话里无界累积会把渲染进程
+    // 内存拖高；被裁掉的条目可由用户重新展开该 Agent 行（触发重新拉取）。
+    const MAX_SUBAGENT_HISTORIES = 50;
     try {
       if (!options.setSubagentHistories) return;
       const result = JSON.parse(json);
@@ -128,7 +133,17 @@ export function registerWindowCallbacks(
           && areSubagentMessagesEquivalent(existing.messages, result.messages)) {
           return prev;
         }
-        return { ...prev, [key]: result };
+        const next: Record<string, SubagentHistoryResponse> = { ...prev, [key]: result as SubagentHistoryResponse };
+        if (Object.keys(next).length <= MAX_SUBAGENT_HISTORIES) {
+          return next;
+        }
+        // 超限：丢掉最旧的条目（先重建为删除序，再保留最近 N 条）。
+        const oldestFirst = Object.keys(next).filter((k) => k !== key);
+        const keep = new Set([...oldestFirst.slice(oldestFirst.length - (MAX_SUBAGENT_HISTORIES - 1)), key]);
+        for (const k of Object.keys(next)) {
+          if (!keep.has(k)) delete next[k];
+        }
+        return next;
       });
     } catch {
       // Ignore malformed callback payloads; the request can be retried by reopening the Agent row.

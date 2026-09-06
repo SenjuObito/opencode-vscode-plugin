@@ -48,7 +48,7 @@
 .dropdown-item-icon {
   font-size: 16px;
   color: var(--text-secondary);
-  width: 20px;
+  width: 16px;
   height: 16px;
   flex-shrink: 0;
   display: inline-flex;
@@ -63,11 +63,16 @@
   display: block;
 }
 
+/* Codicon icons must sit exactly inside the 16x16 box without extra line-height. */
+.dropdown-item-icon.codicon {
+  line-height: 1;
+}
+
 .dropdown-item-content {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
 }
 
@@ -88,6 +93,18 @@
   flex: 1;
   direction: rtl;
   text-overflow: ellipsis;
+}
+
+.dropdown-section-header {
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: transparent;
+  cursor: default;
+  user-select: none;
 }
 
 /* Portal tooltip animation */

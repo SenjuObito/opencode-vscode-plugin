@@ -163,7 +163,9 @@
     "forkFailed": "Échec de la duplication de session",
     "forkAllTooltip": "Dupliquer toute la session dans une nouvelle session",
     "shareLinkCreated": "Lien de partage créé",
-    "retryCopy": "Copier à nouveau"
+    "retryCopy": "Copier à nouveau",
+    "subagentsSection": "Sous-agents",
+    "filesSection": "Fichiers"
   },
   "settings": {
     "title": "Paramètres",

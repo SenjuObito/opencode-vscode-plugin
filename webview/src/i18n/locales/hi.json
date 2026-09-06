@@ -163,7 +163,9 @@
     "forkFailed": "फ़ोर्क सत्र बनाने में विफल",
     "forkAllTooltip": "पूरे सत्र को नए सत्र में फ़ोर्क करें",
     "shareLinkCreated": "साझा लिंक बनाया गया",
-    "retryCopy": "फिर से कॉपी करें"
+    "retryCopy": "फिर से कॉपी करें",
+    "subagentsSection": "सबएजेंट",
+    "filesSection": "फ़ाइलें"
   },
   "settings": {
     "title": "सेटिंग्स",

@@ -40,10 +40,22 @@ import { TabHandler } from './host/handlers/TabHandler.js';
 import { TokenTrackerHandler } from './host/handlers/TokenTrackerHandler.js';
 	import { TabManager } from './host/tabs/TabManager.js';
 	import { EditorContextTracker } from './host/context/EditorContextTracker.js';
-import { logDiagnostic } from './host/util/DiagnosticLogger.js';
+import { logDiagnostic, setDiagnosticVerbose } from './host/util/DiagnosticLogger.js';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('[extension] OpenCode activating...');
+
+	// ── 0. 诊断日志开关（OutputChannel 常驻内存，高频日志默认关闭）────────────
+	const readVerboseDiagnostics = (): boolean =>
+		vscode.workspace.getConfiguration('openCodeBuddy').get<boolean>('verboseDiagnostics', false);
+	setDiagnosticVerbose(readVerboseDiagnostics());
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((event) => {
+			if (event.affectsConfiguration('openCodeBuddy.verboseDiagnostics')) {
+				setDiagnosticVerbose(readVerboseDiagnostics());
+			}
+		}),
+	);
 
 	// ── 1. 设置存储 ──────────────────────────────────────────────────────────
 	const store = new MementoSettingsStore(context.workspaceState, context.globalState);

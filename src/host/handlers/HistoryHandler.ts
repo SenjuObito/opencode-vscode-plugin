@@ -9,7 +9,10 @@
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
-import { convertSdkMessages, extractSubagentTranscript, SdkMessageEntry } from '../session/SdkMessageConverter';
+import { convertSdkMessages, extractSubagentTranscript } from '../session/SdkMessageConverter';
+import { truncateRawForTransport } from '../util/MessageJsonConverter';
+import { ListMessagesCollector } from '../util/ListMessagesCollector';
+import { RESTORE_PAGE_MESSAGES } from '../session/OpenCodeSession';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import {
 	getFavorites,
@@ -29,6 +32,7 @@ const SUPPORTED_TYPES = [
 	'toggle_favorite',
 	'update_title',
 	'load_subagent_session',
+	'load_earlier_messages',
 ];
 
 /** 与 webview ReasoningEffort 取值一致（variant → 推理力度为恒等映射）。 */
@@ -65,6 +69,9 @@ export class HistoryHandler extends BaseMessageHandler {
 			return true;
 		case 'load_subagent_session':
 			this.handleLoadSubagentSession(content);
+			return true;
+		case 'load_earlier_messages':
+			this.handleLoadEarlierMessages(content);
 			return true;
 		default:
 			return false;
@@ -201,28 +208,28 @@ export class HistoryHandler extends BaseMessageHandler {
 		const EMPTY_RETRY_DELAY_MS = 600;
 
 		const doRequest = (retriesLeft: number): Promise<void> => {
-			const chunks: string[] = [];
+			// 逐行解析、只保留 entry 对象：不缓存原始行字符串，
+			// 避免 daemon 分片输出被二次整包累积（OOM 主因之一）。
+			const collector = new ListMessagesCollector();
 			return new Promise<void>((resolve) => {
 				const ok = daemon.request('opencode.listMessages', { sessionId, directory }, {
-					onLine: (line) => chunks.push(line),
+					onLine: (line) => collector.onLine(line),
 					onError: () => resolve(),
 					onComplete: (success) => {
-						if (success) {
-							const payload = this.extractJsonObject(chunks.join('\n'));
-							const entries = payload && Array.isArray(payload.messages) ? payload.messages : [];
-							const messages = convertSdkMessages(entries as SdkMessageEntry[]);
-							if (messages.length > 0) {
-								session.restoreMessages(messages);
-								resolve();
-								return;
-							}
-							// Empty messages + retries remaining → delay and retry
-							if (retriesLeft > 0) {
-								setTimeout(() => {
-									doRequest(retriesLeft - 1).then(resolve);
-								}, EMPTY_RETRY_DELAY_MS);
-								return;
-							}
+						collector.reconcileFallback();
+						const entries = collector.getEntries();
+						const messages = convertSdkMessages(entries);
+						if (messages.length > 0) {
+							session.restoreMessages(messages);
+							resolve();
+							return;
+						}
+						// Empty messages + retries remaining → delay and retry
+						if (success && retriesLeft > 0) {
+							setTimeout(() => {
+								doRequest(retriesLeft - 1).then(resolve);
+							}, EMPTY_RETRY_DELAY_MS);
+							return;
 						}
 						// 恢复会话后同步 revert（redo）状态，供前端渲染撤销占位条 / 恢复按钮
 						const revertState = session.state.getRevertState();
@@ -377,6 +384,35 @@ export class HistoryHandler extends BaseMessageHandler {
 		return null;
 	}
 
+	/**
+	 * webview 上滚到顶请求更早的历史（opencode 恢复分页）。
+	 * payload: { sessionId?, count? }——sessionId 不匹配当前会话时忽略。
+	 */
+	private handleLoadEarlierMessages(content: string): void {
+		const session = this.context.getSession();
+		if (!session) {
+			return;
+		}
+		let sessionId = '';
+		let count = RESTORE_PAGE_MESSAGES;
+		try {
+			const json = JSON.parse(content ?? '{}') as Record<string, unknown>;
+			if (typeof json?.sessionId === 'string') {
+				sessionId = json.sessionId;
+			}
+			if (typeof json?.count === 'number' && Number.isFinite(json.count) && json.count > 0) {
+				count = Math.min(Math.floor(json.count), 1000);
+			}
+		} catch {
+			// 无 payload / 非 JSON —— 使用默认页大小
+		}
+		const current = session.state.getSessionId();
+		if (sessionId && current && sessionId !== current) {
+			return;
+		}
+		session.loadEarlierMessages(count);
+	}
+
 	private handleDeleteSession(content: string): void {
 		const sessionId = (content ?? '').trim();
 		if (!sessionId) {
@@ -493,7 +529,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		}
 
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		const chunks: string[] = [];
+		const collector = new ListMessagesCollector();
 		let finished = false;
 		const finish = (payload: Record<string, unknown>): void => {
 			if (finished) { return; }
@@ -502,7 +538,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		};
 
 		daemon.request('opencode.listMessages', { sessionId, directory }, {
-			onLine: (line) => chunks.push(line),
+			onLine: (line) => collector.onLine(line),
 			// request() (OpenCodeDaemonBridge) fires onError then onComplete on a
 			// terminal failure, or onError only on a synchronous failure. The
 			// `finished` guard guarantees exactly one response to the webview.
@@ -528,9 +564,8 @@ export class HistoryHandler extends BaseMessageHandler {
 					});
 					return;
 				}
-				const payload = this.extractJsonObject(chunks.join('\n'));
-				const entries = payload && Array.isArray(payload.messages) ? payload.messages : [];
-				const messages = convertSdkMessages(entries as SdkMessageEntry[]);
+				collector.reconcileFallback();
+				const messages = convertSdkMessages(collector.getEntries());
 				const transcript = extractSubagentTranscript(messages, toolUseId);
 				if (transcript.messages.length === 0) {
 					// Subagent not present in the session transcript yet (still
@@ -544,7 +579,11 @@ export class HistoryHandler extends BaseMessageHandler {
 					success: true,
 					status: 'completed',
 					completed: true,
-					messages: transcript.messages,
+					// 与消息恢复路径同因：子代理 transcript 可能携带大 tool_result，
+					// 推送前按传输截断规则裁剪（tool_result 20K / 错误文本 1K）。
+					messages: transcript.messages.map((m) =>
+						m && typeof m === 'object' ? truncateRawForTransport(m as Record<string, unknown>) : m,
+					),
 					resultText: transcript.resultText,
 				});
 			},

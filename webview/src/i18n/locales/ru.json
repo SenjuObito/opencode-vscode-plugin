@@ -163,7 +163,9 @@
     "forkFailed": "Не удалось создать форк сеанса",
     "forkAllTooltip": "Форкнуть весь сеанс в новый сеанс",
     "shareLinkCreated": "Ссылка создана",
-    "retryCopy": "Копировать снова"
+    "retryCopy": "Копировать снова",
+    "subagentsSection": "Субагенты",
+    "filesSection": "Файлы"
   },
   "settings": {
     "title": "Настройки",

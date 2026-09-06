@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { DropdownItemProps } from '../types';
 
@@ -30,24 +30,66 @@ export const DropdownItem = ({
   });
 
   /**
+   * Estimate tooltip size from the description text.
+   * Used to pick a placement that fits inside the viewport.
+   */
+  const estimateTooltipSize = useCallback((): { width: number; height: number } => {
+    const text = item.description || '';
+    const maxWidth = Math.min(400, window.innerWidth * 0.8);
+    const charWidth = 6.5; // average char width at 12px
+    const lineHeight = 17; // 12px * 1.4 + padding allowance
+    const charsPerLine = Math.max(20, Math.floor(maxWidth / charWidth));
+    const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+    const contentHeight = lines * lineHeight + 16; // 8px vertical padding
+    return {
+      width: Math.min(maxWidth, Math.max(200, text.length * charWidth)),
+      height: Math.min(200, contentHeight),
+    };
+  }, [item.description]);
+
+  /**
    * Handle mouse enter to show tooltip
    */
   const handleMouseEnterItem = () => {
     if (!itemRef.current || !item.description) return;
 
     const rect = itemRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
+    const { width: estimatedWidth, height: estimatedHeight } = estimateTooltipSize();
+
     const spaceBelow = viewportHeight - rect.bottom;
-    const tooltipEstimatedHeight = 100;
+    const spaceAbove = rect.top;
+    const arrowHeight = 10;
 
-    // Determine tooltip placement
-    const placement = spaceBelow < tooltipEstimatedHeight ? 'top' : 'bottom';
+    // Prefer bottom; only flip to top when bottom is too tight AND top has room.
+    let placement: 'top' | 'bottom' =
+      spaceBelow >= estimatedHeight + arrowHeight || spaceAbove < estimatedHeight + arrowHeight
+        ? 'bottom'
+        : 'top';
 
-    setTooltipPosition({
-      top: placement === 'bottom' ? rect.bottom + 8 : rect.top - 8,
-      left: rect.left + rect.width / 2,
-      placement
-    });
+    // If neither side has enough room, prefer the larger side.
+    if (
+      spaceBelow < estimatedHeight + arrowHeight &&
+      spaceAbove < estimatedHeight + arrowHeight
+    ) {
+      placement = spaceBelow >= spaceAbove ? 'bottom' : 'top';
+    }
+
+    // Center horizontally on the item, then clamp so the whole tooltip stays in viewport.
+    const halfWidth = estimatedWidth / 2;
+    const itemCenter = rect.left + rect.width / 2;
+    const padding = 8;
+    const minLeft = padding + halfWidth;
+    const maxLeft = viewportWidth - padding - halfWidth;
+    const left = Math.max(minLeft, Math.min(maxLeft, itemCenter));
+
+    const top =
+      placement === 'bottom'
+        ? rect.bottom + arrowHeight / 2
+        : rect.top - arrowHeight / 2;
+
+    setTooltipPosition({ top, left, placement });
     setShowTooltip(true);
   };
 
@@ -114,9 +156,11 @@ export const DropdownItem = ({
         : { bottom: viewportHeight - tooltipPosition.top, transform: 'translateX(-50%)' }
       ),
       zIndex: 9999,
-      maxWidth: '400px',
+      maxWidth: 'min(400px, 80vw)',
       minWidth: '200px',
       width: 'max-content',
+      maxHeight: '200px',
+      overflowY: 'auto',
       background: 'var(--dropdown-bg)',
       color: 'var(--text-primary)',
       border: '1px solid var(--dropdown-border)',

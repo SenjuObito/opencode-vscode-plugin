@@ -83,6 +83,22 @@ const _activeTurns = new Map();
 /** @type {Map<string, { directory?: string }>} sessionID → session state */
 const _sessions = new Map();
 
+/** session 目录注册表上限：超限按插入序丢最旧（近似 LRU）。条目极小，但
+ * 常驻 daemon 生命周期内无界增长没有任何收益。 */
+const MAX_TRACKED_SESSIONS = 1000;
+
+function trackSession(sessionId, info) {
+  if (!sessionId || typeof sessionId !== 'string') return;
+  // 重新插入以刷新序（同一会话重复 touch 时视为最新）。
+  _sessions.delete(sessionId);
+  _sessions.set(sessionId, info);
+  while (_sessions.size > MAX_TRACKED_SESSIONS) {
+    const oldest = _sessions.keys().next().value;
+    if (oldest === undefined) break;
+    _sessions.delete(oldest);
+  }
+}
+
 // =============================================================================
 // Small helpers
 // =============================================================================
@@ -273,7 +289,7 @@ function _handleEvent(evt) {
       const id = sessionID || props?.info?.id;
       if (id && _sessions.has(id)) {
         const revert = props?.info?.revert;
-        _sessions.set(id, { 
+        trackSession(id, {
           directory: props?.info?.directory || _sessions.get(id)?.directory,
           revert,
         });
@@ -542,7 +558,7 @@ async function _resolveSession(requestedId, directory) {
     try {
       const existing = await sdk.getSession(requestedId, directory);
       if (existing?.id) {
-        _sessions.set(existing.id, { directory, revert: existing.revert });
+        trackSession(existing.id, { directory, revert: existing.revert });
         return { id: existing.id, created: false };
       }
     } catch (err) {
@@ -554,7 +570,7 @@ async function _resolveSession(requestedId, directory) {
   if (!id) {
     throw new Error(`opencode createSession returned no id: ${JSON.stringify(created)}`);
   }
-  _sessions.set(id, { directory, revert: created.revert });
+  trackSession(id, { directory, revert: created.revert });
   return { id, created: true };
 }
 
@@ -673,6 +689,8 @@ export async function sendMessagePersistent(params = {}) {
     return;
   } finally {
     _activeTurns.delete(sessionId);
+    // 本回合产生了新的 token 用量，context usage 缓存失效。
+    _contextUsageCache.delete(`${sessionId}::${directory || ''}`);
     try {
       await cleanupMaterializedImagePaths(imagePaths);
     } catch (err) {
@@ -681,7 +699,12 @@ export async function sendMessagePersistent(params = {}) {
   }
 
   // ── Success: usage + full message + end markers ─────────────────────────
-  const finalMessage = await _fetchFinalAssistantMessage(sessionId, directory);
+  // turn.lastInfo 由 SSE message.updated 积累（含 tokens）。它就绪时直接用，
+  // 只有缺失才回退全量 listMessages——长会话每回合结束做一次 O(全部历史)
+  // 的拉取是内存峰值与延迟的稳定增长点。
+  const finalMessage = (turn.lastInfo && turn.lastInfo.tokens)
+    ? turn.lastInfo
+    : await _fetchFinalAssistantMessage(sessionId, directory);
   const usage = tokensToUsage(finalMessage?.tokens ?? turn.stepTokens);
   if (usage) emitUsage(usage);
   endStream({ sessionId, message: finalMessage || turn.lastInfo || { sessionID: sessionId } });
@@ -764,7 +787,12 @@ export async function sendShellPersistent(params = {}) {
   }
 
   // ── Success: usage + full message + end markers ─────────────────────────
-  const finalMessage = await _fetchFinalAssistantMessage(sessionId, directory);
+  // turn.lastInfo 由 SSE message.updated 积累（含 tokens）。它就绪时直接用，
+  // 只有缺失才回退全量 listMessages——长会话每回合结束做一次 O(全部历史)
+  // 的拉取是内存峰值与延迟的稳定增长点。
+  const finalMessage = (turn.lastInfo && turn.lastInfo.tokens)
+    ? turn.lastInfo
+    : await _fetchFinalAssistantMessage(sessionId, directory);
   const usage = tokensToUsage(finalMessage?.tokens ?? turn.stepTokens);
   if (usage) emitUsage(usage);
   endStream({ sessionId, message: finalMessage || turn.lastInfo || { sessionID: sessionId } });
@@ -831,10 +859,15 @@ export async function abortCurrentTurn() {
   }
 }
 
+/** @type {Map<string, { usedTokens: number|null, maxTokens: number|null, at: number }>} */
+const _contextUsageCache = new Map();
+const CONTEXT_USAGE_CACHE_TTL_MS = 30_000;
+
 /**
  * Best-effort context usage for a session. opencode does not expose a context
  * window the way claude does — surface token usage from the last assistant
- * message (used/max when known).
+ * message (used/max when known). 结果按 sessionId+directory 做 30s TTL 缓存：
+ * 该查询可能被前端频繁触发，而全量 listMessages 在长会话上代价很高。
  *
  * @param {object} [params] - { sessionId?, cwd? }
  */
@@ -848,21 +881,33 @@ export async function getContextUsagePersistent(params = {}) {
     : null;
   if (sessionId) {
     const directory = selectWorkingDirectory(safeParams.cwd || null);
-    try {
-      const messages = await sdk.listMessages(sessionId, directory);
-      if (Array.isArray(messages)) {
-        for (let i = messages.length - 1; i >= 0; i -= 1) {
-          const m = messages[i];
-          const info = m && typeof m.info === 'object' ? m.info : m;
-          if (info?.role === 'assistant' && info?.tokens) {
-            usedTokens = (Number(info.tokens.input) || 0) + (Number(info.tokens.output) || 0);
-            maxTokens = info.tokens.total ?? null;
-            break;
+    const cacheKey = `${sessionId}::${directory || ''}`;
+    const cached = _contextUsageCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < CONTEXT_USAGE_CACHE_TTL_MS) {
+      usedTokens = cached.usedTokens;
+      maxTokens = cached.maxTokens;
+    } else {
+      try {
+        const messages = await sdk.listMessages(sessionId, directory);
+        if (Array.isArray(messages)) {
+          for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const m = messages[i];
+            const info = m && typeof m.info === 'object' ? m.info : m;
+            if (info?.role === 'assistant' && info?.tokens) {
+              usedTokens = (Number(info.tokens.input) || 0) + (Number(info.tokens.output) || 0);
+              maxTokens = info.tokens.total ?? null;
+              break;
+            }
           }
         }
+        _contextUsageCache.set(cacheKey, { usedTokens, maxTokens, at: Date.now() });
+        if (_contextUsageCache.size > 100) {
+          const oldest = _contextUsageCache.keys().next().value;
+          if (oldest !== undefined) _contextUsageCache.delete(oldest);
+        }
+      } catch (err) {
+        logDebug('getContextUsage listMessages failed:', err?.message || err);
       }
-    } catch (err) {
-      logDebug('getContextUsage listMessages failed:', err?.message || err);
     }
   }
   console.log(JSON.stringify({ success: true, data: { usedTokens, maxTokens, sessionId: sessionId || null } }));

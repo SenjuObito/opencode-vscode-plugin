@@ -6,12 +6,13 @@
  */
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { HandlerContext } from '../router/HandlerContext';
-import { SessionState, createMessage } from './SessionState';
+import { SessionState, createMessage, normalizePermissionMode } from './SessionState';
 import { CallbackHandler } from './CallbackHandler';
 import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
 import { SessionCallbackAdapter } from './SessionCallbackAdapter';
 import { MessageType } from './types';
+import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import type { ChatMessage, PermissionRequest } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
@@ -48,6 +49,11 @@ export interface TurnCompletedInfo {
 	status: TurnCompletedStatus;
 }
 
+/** 恢复时 webview 只保留最近 N 条消息（更早的经 load_earlier_messages 按需前插）。 */
+export const RESTORE_WINDOW_MESSAGES = 200;
+/** 每次「加载更早消息」前插的条数。 */
+export const RESTORE_PAGE_MESSAGES = 200;
+
 export class OpenCodeSession {
 	readonly state = new SessionState();
 	private readonly context: HandlerContext;
@@ -68,6 +74,11 @@ export class OpenCodeSession {
 		lastNodeError: null,
 		wasAborted: false,
 	};
+
+	// 分页窗口记账：restoreMessages 设置（webview 已装 [start, total) 窗口）；
+	// 本会话发生新 turn 后作废（coalescer 快照已接管列表内容）。
+	private restoreWindowStart = 0;
+	private restoreWindowTotal = 0;
 
 	constructor(options: OpenCodeSessionOptions) {
 		this.context = options.context;
@@ -140,6 +151,9 @@ export class OpenCodeSession {
 		// 并立即推给前端（乐观气泡由内容+时间窗口匹配归位），再建立会话摘要。
 		const userMessage = buildUserMessage(payload.text, payload.attachments);
 		this.state.addMessage(userMessage);
+		// 发送后列表由 coalescer 快照接管，恢复窗口记账作废。
+		this.restoreWindowStart = 0;
+		this.restoreWindowTotal = 0;
 		this.state.setError(null);
 		this.state.setBusy(true);
 		this.state.setLoading(true);
@@ -165,7 +179,7 @@ export class OpenCodeSession {
 				? { command: slashCommand.command, commandArguments: slashCommand.arguments }
 				: { message: text }),
 			model: this.state.getModel() ?? undefined,
-			mode: mapPermissionModeToAgent(this.state.getPermissionMode()),
+			mode: normalizePermissionMode(this.state.getPermissionMode()) ?? undefined,
 			reasoningEffort: this.state.getReasoningEffort() ?? undefined,
 			cwd: cwd ?? undefined,
 			attachments: attachments.length > 0 ? attachments : undefined,
@@ -222,6 +236,8 @@ export class OpenCodeSession {
 			{ type: 'user', message: { content: [{ type: 'text', text: `!${trimmed}` }] } },
 		);
 		this.state.addMessage(userMessage);
+		this.restoreWindowStart = 0;
+		this.restoreWindowTotal = 0;
 		this.adapter.onMessageUpdate(this.state.getMessages());
 		this.adapter.onStateChange(true, true, null);
 
@@ -236,7 +252,7 @@ export class OpenCodeSession {
 			sessionId: this.state.getSessionId() ?? undefined,
 			command: trimmed,
 			model: this.state.getModel() ?? undefined,
-			mode: mapPermissionModeToAgent(this.state.getPermissionMode()),
+			mode: normalizePermissionMode(this.state.getPermissionMode()) ?? undefined,
 			cwd: cwd ?? undefined,
 		};
 
@@ -272,6 +288,9 @@ export class OpenCodeSession {
 		this.state.setBusy(false);
 		this.state.setLoading(false);
 		this.state.updateLastModifiedTime();
+		// 本会话已有新消息，恢复窗口记账作废（见 loadEarlierMessages）。
+		this.restoreWindowStart = 0;
+		this.restoreWindowTotal = 0;
 		const status: TurnCompletedStatus = this.streamCtx.wasAborted
 			? 'aborted'
 			: this.streamCtx.hadSendError
@@ -300,6 +319,8 @@ export class OpenCodeSession {
 		this.context.callJavaScript('clearMessages', String(seq));
 		this.state.clearMessages();
 		this.messageHandler.resetTurnState();
+		this.restoreWindowStart = 0;
+		this.restoreWindowTotal = 0;
 		this.state.setSessionId(null);
 		this.state.setBusy(false);
 		this.state.setLoading(false);
@@ -322,8 +343,67 @@ export class OpenCodeSession {
 		for (const m of messages) {
 			this.state.addMessage(m as ChatMessage);
 		}
+		// 分页窗口：宿主保留完整历史（send 快照 / undo / fork 的消息 id 解析
+		// 都依赖），webview 只装最近窗口，更早的经 load_earlier_messages 按需
+		// 前插。长会话恢复时 webview 的 parse/state/渲染内存从 O(全部) 降到
+		// O(窗口)。
+		const total = messages.length;
+		this.restoreWindowStart = Math.max(0, total - RESTORE_WINDOW_MESSAGES);
+		this.restoreWindowTotal = total;
+		const window = messages.slice(this.restoreWindowStart);
 		this.context.callJavaScript('clearMessages', String(seq));
-		this.context.callJavaScript('updateMessages', JSON.stringify(messages), String(seq));
+		// 推送必须走 convertMessagesToJson（与流式路径同一截断：tool_result
+		// 20K 上限 + 错误文本 1K）。此前直接 JSON.stringify(messages) 会把
+		// 含大工具输出/base64 的会话整包原样推给 webview，长会话恢复时
+		// 宿主与渲染进程内存同时爆炸（OOM 主因之一）。
+		this.context.callJavaScript(
+			'updateMessages',
+			convertMessagesToJson(window as ChatMessage[]),
+			String(seq),
+		);
+		this.pushHistoryWindowInfo(total);
+	}
+
+	/**
+	 * webview 请求更早的历史：把 [newStart, windowStart) 截断后前插到
+	 * webview 列表头，并回推窗口状态（hasEarlier）。
+	 *
+	 * 仅在「恢复后、本会话尚无新 turn」期间有效：一旦本会话发生过发送，
+	 * coalescer 的全量/尾部快照已让 webview 拿到最新列表，窗口记账作废
+	 * （继续按旧 windowStart 前插会造成重复），置 0 表示无可加载的更早页。
+	 */
+	loadEarlierMessages(count = RESTORE_PAGE_MESSAGES): void {
+		if (this.restoreWindowStart <= 0 || !this.restoreWindowTotal) {
+			return;
+		}
+		const all = this.state.getMessages();
+		if (all.length !== this.restoreWindowTotal) {
+			this.restoreWindowStart = 0;
+			this.pushHistoryWindowInfo(all.length);
+			return;
+		}
+		const newStart = Math.max(0, this.restoreWindowStart - Math.max(1, count));
+		const page = all.slice(newStart, this.restoreWindowStart);
+		this.restoreWindowStart = newStart;
+		if (page.length > 0) {
+			this.context.callJavaScript(
+				'updateMessagesPrepend',
+				convertMessagesToJson(page as ChatMessage[]),
+			);
+		}
+		this.pushHistoryWindowInfo(all.length);
+	}
+
+	private pushHistoryWindowInfo(total: number): void {
+		this.context.callJavaScript(
+			'onHistoryWindowInfo',
+			JSON.stringify({
+				sessionId: this.state.getSessionId(),
+				hasEarlier: this.restoreWindowStart > 0,
+				windowStart: this.restoreWindowStart,
+				total,
+			}),
+		);
 	}
 
 	dispose(): void {
@@ -393,21 +473,6 @@ function parseSlashCommand(text: string): { command: string; arguments: string }
 		return null;
 	}
 	return { command: m[1], arguments: (m[2] ?? '').trim() };
-}
-
-/**
- * 把 UI 的 permissionMode（opencode 专属模式列表，见 webview OPENCODE_MODES）
- * 映射为 opencode agent 名（SDK 语义）。opencode 内置 agent：
- * build（默认全权限开发）/ plan（只读规划）。
- */
-function mapPermissionModeToAgent(mode: string): string | undefined {
-	switch (mode) {
-		case 'plan':
-			return 'plan';
-		default:
-			// 显式指定 build：从 plan 切回时确保恢复默认开发 agent。
-			return 'build';
-	}
 }
 
 /** cc-gui summary 截断（45 字符 + 省略号）。 */

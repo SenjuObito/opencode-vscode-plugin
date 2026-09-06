@@ -167,90 +167,23 @@ export interface TriggerQuery {
 // ============================================================
 
 /**
- * Permission mode for conversations
+ * Permission mode for conversations.
+ * For opencode this is simply the selected primary agent id (e.g. 'build', 'plan',
+ * or a user-defined primary agent). The old 'default' value is mapped to 'build'
+ * for backward compatibility.
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+export type PermissionMode = string;
 
 /**
- * Mode information
+ * Mode information — now derived from opencode primary agents at runtime.
  */
 export interface ModeInfo {
-  id: PermissionMode;
+  id: string;
   label: string;
   icon: string;
   disabled?: boolean;
   tooltip?: string;
   description?: string;
-}
-
-/**
- * Available permission modes
- */
-export const AVAILABLE_MODES: ModeInfo[] = [
-  {
-    id: 'default',
-    label: 'Default Mode',
-    icon: 'codicon-comment-discussion',
-    tooltip: 'Standard permission behavior',
-    description: 'Requires manual confirmation for each operation',
-  },
-  {
-    id: 'plan',
-    label: 'Plan Mode',
-    icon: 'codicon-tasklist',
-    tooltip: 'Plan mode - read-only analysis',
-    description: 'Read-only tools only, generates plan for user approval',
-  },
-  {
-    id: 'acceptEdits',
-    label: 'Agent Mode',
-    icon: 'codicon-robot',
-    tooltip: 'Auto-accept file edits',
-    description: 'Auto-accept file creation/editing, fewer confirmations',
-  },
-  {
-    id: 'bypassPermissions',
-    label: 'Auto Mode',
-    icon: 'codicon-zap',
-    tooltip: 'Bypass all permission checks',
-    description: 'Fully automated, bypasses all permission checks [use with caution]',
-  },
-];
-
-/**
- * Set of valid permission mode IDs, derived from AVAILABLE_MODES.
- * Use isValidPermissionMode() for validation instead of inline checks.
- */
-export const VALID_PERMISSION_MODE_IDS: ReadonlySet<string> = new Set(
-  AVAILABLE_MODES.map((m) => m.id)
-);
-
-/**
- * OpenCode provider modes — map to opencode's built-in agents.
- * 'default' → build agent, 'plan' → plan agent (see host mapPermissionModeToAgent).
- */
-export const OPENCODE_MODES: ModeInfo[] = [
-  {
-    id: 'default',
-    label: 'Build',
-    icon: 'codicon-tools',
-    tooltip: 'OpenCode build agent',
-    description: 'Full-access development agent (opencode default)',
-  },
-  {
-    id: 'plan',
-    label: 'Plan',
-    icon: 'codicon-tasklist',
-    tooltip: 'OpenCode plan agent',
-    description: 'Read-only analysis, plans before writing code',
-  },
-];
-
-/**
- * Check whether a string is a recognized PermissionMode.
- */
-export function isValidPermissionMode(mode: string | undefined | null): mode is PermissionMode {
-  return typeof mode === 'string' && VALID_PERMISSION_MODE_IDS.has(mode);
 }
 
 /**

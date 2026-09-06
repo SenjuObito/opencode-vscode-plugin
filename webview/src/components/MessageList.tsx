@@ -19,6 +19,8 @@ import {
 /** Keep pagination aligned to complete user turns so assistant/tool chains are never split. */
 const INITIAL_VISIBLE_TURNS = 5;
 const REVEAL_TURN_PAGE_SIZE = 5;
+/** opencode 恢复分页页大小（与宿主 RESTORE_PAGE_MESSAGES 对齐）。 */
+const OPENCODE_HISTORY_PAGE_SIZE = 200;
 const HISTORY_DISK_PAGE_SIZE = 30;
 
 function isHumanUserMessage(message: ClaudeMessage): boolean {
@@ -150,6 +152,9 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const [historyPageInfo, setHistoryPageInfo] = useState<CodexHistoryPageInfo | null>(null);
   const [loadingEarlierHistory, setLoadingEarlierHistory] = useState(false);
   const loadingEarlierHistoryRef = useRef(false);
+  /** opencode 恢复分页：宿主推送的窗口状态（hasEarlier = 还有更早的页）。 */
+  const [opencodeWindowInfo, setOpencodeWindowInfo] = useState<NonNullable<Window['__opencodeHistoryWindow']> | null>(() =>
+    window.__opencodeHistoryWindow ?? null);
   const [detailedOutputEnabled, setDetailedOutputEnabled] = useState(() =>
     getDetailedOutputEnabled()
   );
@@ -198,6 +203,12 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       setHistoryPageInfo(
         currentProvider === 'codex' && cached?.sessionId === currentSessionId ? cached ?? null : null,
       );
+      const cachedWindow = window.__opencodeHistoryWindow;
+      setOpencodeWindowInfo(
+        cachedWindow && cachedWindow.sessionId && cachedWindow.sessionId === currentSessionId
+          ? cachedWindow
+          : null,
+      );
     }
     previousSessionRef.current = currentSessionId;
     firstMessageBoundaryRef.current = currentBoundary;
@@ -219,6 +230,16 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       }
     };
 
+    // opencode 恢复分页：宿主在 restore/load_earlier_messages 后推送窗口状态
+    const handleOpencodeWindowInfo = (event: Event) => {
+      const info = (event as CustomEvent<NonNullable<Window['__opencodeHistoryWindow']>>).detail;
+      if (!info || (info.sessionId && info.sessionId !== currentSessionId)) return;
+      setOpencodeWindowInfo(info);
+      setLoadingEarlierHistory(false);
+      loadingEarlierHistoryRef.current = false;
+    };
+    window.addEventListener('opencode-history-window-info', handleOpencodeWindowInfo);
+
     window.addEventListener('codex-history-page-info', handlePageInfo);
     window.addEventListener('codex-history-page-error', handlePageError);
     const cached = window.__codexHistoryPageInfo;
@@ -228,6 +249,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
     return () => {
       window.removeEventListener('codex-history-page-info', handlePageInfo);
       window.removeEventListener('codex-history-page-error', handlePageError);
+      window.removeEventListener('opencode-history-window-info', handleOpencodeWindowInfo);
     };
   }, [currentProvider, currentSessionId]);
 
@@ -286,26 +308,44 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const canLoadEarlierFromDisk = Boolean(currentProvider === 'codex'
     && historyPageInfo?.sessionId === currentSessionId
     && historyPageInfo?.hasMore);
+  // opencode 恢复分页：宿主 restore 只装了最近窗口，还有更早的页可前插。
+  const canLoadEarlierOpencode = Boolean(
+    currentSessionId
+    && opencodeWindowInfo
+    && opencodeWindowInfo.hasEarlier
+    && opencodeWindowInfo.sessionId === currentSessionId,
+  );
   const handleRevealMore = useCallback(() => {
     if (hiddenTurnCount > 0) {
       setRevealedTurnCount((prev) => prev + REVEAL_TURN_PAGE_SIZE);
       return;
     }
-    if (!canLoadEarlierFromDisk || loadingEarlierHistoryRef.current || !currentSessionId || !historyPageInfo) {
+    if (canLoadEarlierFromDisk && !loadingEarlierHistoryRef.current && currentSessionId && historyPageInfo) {
+      loadingEarlierHistoryRef.current = true;
+      setLoadingEarlierHistory(true);
+      const sent = sendBridgeEvent('load_codex_history_page', JSON.stringify({
+        sessionId: currentSessionId,
+        beforeTurn: historyPageInfo.fromTurn,
+      }));
+      if (!sent) {
+        loadingEarlierHistoryRef.current = false;
+        setLoadingEarlierHistory(false);
+      }
       return;
     }
-
-    loadingEarlierHistoryRef.current = true;
-    setLoadingEarlierHistory(true);
-    const sent = sendBridgeEvent('load_codex_history_page', JSON.stringify({
-      sessionId: currentSessionId,
-      beforeTurn: historyPageInfo.fromTurn,
-    }));
-    if (!sent) {
-      loadingEarlierHistoryRef.current = false;
-      setLoadingEarlierHistory(false);
+    if (canLoadEarlierOpencode && !loadingEarlierHistoryRef.current) {
+      loadingEarlierHistoryRef.current = true;
+      setLoadingEarlierHistory(true);
+      const sent = sendBridgeEvent('load_earlier_messages', JSON.stringify({
+        sessionId: currentSessionId,
+        count: OPENCODE_HISTORY_PAGE_SIZE,
+      }));
+      if (!sent) {
+        loadingEarlierHistoryRef.current = false;
+        setLoadingEarlierHistory(false);
+      }
     }
-  }, [canLoadEarlierFromDisk, currentSessionId, hiddenTurnCount, historyPageInfo]);
+  }, [canLoadEarlierFromDisk, canLoadEarlierOpencode, currentSessionId, hiddenTurnCount, historyPageInfo]);
 
   // Imperative API so the in-page search can expand everything before scanning.
   // Returns the number of messages that were just revealed (0 when nothing
@@ -354,7 +394,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
           ]}
         />
       )}
-      {(shouldCollapse || canLoadEarlierFromDisk) && (
+      {(shouldCollapse || canLoadEarlierFromDisk || canLoadEarlierOpencode) && (
         <div
           className="collapsed-messages-indicator"
           onClick={handleRevealMore}
@@ -367,11 +407,17 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
                 remaining: hiddenTurnCount,
                 total: historyPageInfo?.totalTurns,
               })
-              : t('chat.loadEarlierTurns', {
-                count: Math.min(HISTORY_DISK_PAGE_SIZE, historyPageInfo?.fromTurn ?? 0),
-                remaining: historyPageInfo?.fromTurn ?? 0,
-                total: historyPageInfo?.totalTurns ?? 0,
-              })}
+              : canLoadEarlierFromDisk
+                ? t('chat.loadEarlierTurns', {
+                  count: Math.min(HISTORY_DISK_PAGE_SIZE, historyPageInfo?.fromTurn ?? 0),
+                  remaining: historyPageInfo?.fromTurn ?? 0,
+                  total: historyPageInfo?.totalTurns ?? 0,
+                })
+                : t('chat.loadEarlierTurns', {
+                  count: Math.min(OPENCODE_HISTORY_PAGE_SIZE, opencodeWindowInfo?.windowStart ?? 0),
+                  remaining: opencodeWindowInfo?.windowStart ?? 0,
+                  total: opencodeWindowInfo?.total ?? 0,
+                })}
         </div>
       )}
 

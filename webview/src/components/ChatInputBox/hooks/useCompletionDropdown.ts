@@ -25,6 +25,26 @@ function fuzzySubsequenceMatchLocal(text: string, query: string): boolean {
   return qi === query.length;
 }
 
+/**
+ * Indices into `rawItems` that are actually selectable (exclude separators and
+ * section headers). Lets the dropdown show grouping headers while keyboard /
+ * mouse selection still indexes the flat selectable subset. Identity mapping
+ * (i.e. [0,1,2,...]) when there are no headers, preserving prior behavior.
+ */
+function computeSelectableIndices<T>(
+  raw: T[],
+  toDropdownItem: (item: T) => DropdownItemData
+): number[] {
+  const idx: number[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const di = toDropdownItem(raw[i]);
+    if (di.type !== 'separator' && di.type !== 'section-header') {
+      idx.push(i);
+    }
+  }
+  return idx;
+}
+
 interface CompletionDropdownOptions<T> {
   /** Trigger symbol */
   trigger: string;
@@ -50,6 +70,12 @@ interface CompletionDropdownState {
    * without waiting for Java, and so backspace can widen results again.
    */
   sourceRawItems: unknown[];
+  /**
+   * Indices into `rawItems` that are selectable (exclude separators / section
+   * headers). `activeIndex` is an index into THIS subset, so selection maps
+   * back to the right raw item even when headers are interleaved.
+   */
+  selectableRawIndices: number[];
   activeIndex: number;
   position: DropdownPosition | null;
   triggerQuery: TriggerQuery | null;
@@ -76,6 +102,7 @@ export function useCompletionDropdown<T>({
     items: [],
     rawItems: [],
     sourceRawItems: [],
+    selectableRawIndices: [],
     activeIndex: 0,
     position: null,
     triggerQuery: null,
@@ -111,6 +138,7 @@ export function useCompletionDropdown<T>({
       items: [],
       rawItems: [],
       sourceRawItems: [],
+      selectableRawIndices: [],
       loading: true, // Set loading immediately on open
     }));
   }, []);
@@ -157,6 +185,7 @@ export function useCompletionDropdown<T>({
         items: [],
         rawItems: [],
         sourceRawItems: [],
+        selectableRawIndices: [],
         loading: false,
       }));
       return;
@@ -186,6 +215,7 @@ export function useCompletionDropdown<T>({
         items,
         rawItems: results as unknown[],
         sourceRawItems: results as unknown[],
+        selectableRawIndices: computeSelectableIndices(results, toDropdownItem),
         loading: false,
         activeIndex: 0,
       }));
@@ -208,6 +238,7 @@ export function useCompletionDropdown<T>({
         items: [],
         rawItems: [],
         sourceRawItems: [],
+        selectableRawIndices: [],
         loading: false,
       }));
     }
@@ -256,6 +287,7 @@ export function useCompletionDropdown<T>({
           triggerQuery,
           items: source.map(toDropdownItem),
           rawItems: source as unknown[],
+          selectableRawIndices: computeSelectableIndices(source, toDropdownItem),
           activeIndex: 0,
         };
       }
@@ -299,6 +331,7 @@ export function useCompletionDropdown<T>({
         triggerQuery,
         items: filteredItems,
         rawItems: filteredRaw as unknown[],
+        selectableRawIndices: computeSelectableIndices(filteredRaw, toDropdownItem),
         activeIndex: 0,
       };
     });
@@ -310,9 +343,10 @@ export function useCompletionDropdown<T>({
    * Select active item
    */
   const selectActive = useCallback(() => {
-    const { activeIndex, rawItems, triggerQuery } = stateRef.current;
-    if (activeIndex >= 0 && activeIndex < rawItems.length) {
-      const item = rawItems[activeIndex] as T;
+    const { activeIndex, selectableRawIndices, rawItems, triggerQuery } = stateRef.current;
+    const rawIdx = selectableRawIndices[activeIndex];
+    if (rawIdx !== undefined && rawIdx >= 0 && rawIdx < rawItems.length) {
+      const item = rawItems[rawIdx] as T;
       onSelect(item, triggerQuery);
       close();
     }
@@ -322,9 +356,10 @@ export function useCompletionDropdown<T>({
    * Select item by index
    */
   const selectIndex = useCallback((index: number) => {
-    const { rawItems, triggerQuery } = stateRef.current;
-    if (index >= 0 && index < rawItems.length) {
-      const item = rawItems[index] as T;
+    const { selectableRawIndices, rawItems, triggerQuery } = stateRef.current;
+    const rawIdx = selectableRawIndices[index];
+    if (rawIdx !== undefined && rawIdx >= 0 && rawIdx < rawItems.length) {
+      const item = rawItems[rawIdx] as T;
       onSelect(item, triggerQuery);
       close();
     }

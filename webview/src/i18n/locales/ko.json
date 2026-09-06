@@ -163,7 +163,9 @@
     "forkFailed": "포크 세션 생성 실패",
     "forkAllTooltip": "전체 세션을 새 세션으로 포크",
     "shareLinkCreated": "공유 링크가 생성되었습니다",
-    "retryCopy": "다시 복사"
+    "retryCopy": "다시 복사",
+    "subagentsSection": "하위 에이전트",
+    "filesSection": "파일"
   },
   "settings": {
     "title": "설정",

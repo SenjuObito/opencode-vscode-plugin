@@ -512,6 +512,48 @@ export function registerMessageCallbacks(
 
   window.updateMessageTail = processMessageTail;
 
+  // ── opencode 恢复分页：前插更早的历史页 ──
+  // 宿主 restoreMessages 只推最近窗口（onHistoryWindowInfo 带 hasEarlier），
+  // webview 上滚到顶时发 `load_earlier_messages`，宿主回推本回调前插。
+  // 前插不更新 __prependedHistoryMessageCount：opencode 的后续全量快照
+  // （send 触发）本就包含全部历史，保留前缀反而会重复（与 Codex 磁盘分页
+  // 的语义不同——那里宿主快照不含更早的页）。
+  window.updateMessagesPrepend = (json) => {
+    if (window.__sessionTransitioning) return;
+    if (isStreamingRef.current) return;
+    let parsed: ClaudeMessage[];
+    try {
+      parsed = JSON.parse(json) as ClaudeMessage[];
+    } catch (error) {
+      console.error('[Frontend] Failed to parse earlier messages page:', error);
+      return;
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+    const container = messagesContainerRef.current;
+    const oldScrollHeight = container?.scrollHeight ?? 0;
+    const oldScrollTop = container?.scrollTop ?? 0;
+    setMessages((prev) => [...parsed, ...prev]);
+    if (container) {
+      requestAnimationFrame(() => {
+        const currentContainer = messagesContainerRef.current;
+        if (!currentContainer) return;
+        currentContainer.scrollTop = oldScrollTop + currentContainer.scrollHeight - oldScrollHeight;
+      });
+    }
+  };
+
+  window.onHistoryWindowInfo = (json) => {
+    try {
+      window.__opencodeHistoryWindow = JSON.parse(json) as NonNullable<Window['__opencodeHistoryWindow']>;
+      window.dispatchEvent(new CustomEvent('opencode-history-window-info', {
+        detail: window.__opencodeHistoryWindow,
+      }));
+    } catch (error) {
+      console.error('[Frontend] Failed to parse history window info:', error);
+    }
+  };
+
+
   const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
   if (typeof pendingMessages === 'string' && pendingMessages.length > 0) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
@@ -687,6 +729,7 @@ export function registerMessageCallbacks(
     }
     window.__deniedToolIds?.clear();
     window.__codexHistoryPageInfo = undefined;
+    window.__opencodeHistoryWindow = undefined;
     for (const pending of pendingCodexHistoryPages.values()) {
       clearTimeout(pending.timeoutId);
     }
