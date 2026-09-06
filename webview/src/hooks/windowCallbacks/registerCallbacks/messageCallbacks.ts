@@ -97,6 +97,7 @@ export function registerMessageCallbacks(
   let pendingUpdateJson: string | null = null;
   let pendingUpdateRaf: number | null = null;
   let pendingUpdateSequence: number | null = null;
+  let pendingUpdateBaseIndex: string | number | null | undefined = null;
   const pendingCodexHistoryPages = new Map<string, {
     sessionId: string;
     mode: 'replace' | 'prepend';
@@ -132,6 +133,7 @@ export function registerMessageCallbacks(
     pendingUpdateRaf = null;
     pendingUpdateJson = null;
     pendingUpdateSequence = null;
+    pendingUpdateBaseIndex = null;
     window.__pendingUpdateRaf = null;
     window.__pendingUpdateJson = null;
     window.__pendingUpdateSequence = null;
@@ -152,7 +154,7 @@ export function registerMessageCallbacks(
     requestNativeHistoryRefresh();
   };
 
-  const processUpdateMessages = (json: string, sequence: number | null = null) => {
+  const processUpdateMessages = (json: string, sequence: number | null = null, baseIndexArg?: string | number | null) => {
     cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', window.__sessionTransitioning);
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
@@ -182,7 +184,42 @@ export function registerMessageCallbacks(
       if (sequence != null) {
         window.__minAcceptedUpdateSequence = Math.max(minAcceptedSequence, sequence);
       }
-      window.__messageBaseIndex = 0;
+
+      // ── 窗口语义（opencode 活跃会话滑动窗口）──
+      // 第三个参数是快照对应的宿主窗口基址（全局序号）。基址变化意味着宿主
+      // 窗口滑动（头部逐出）：此时做「窗口精确拼接」——保留 webview 列表中
+      // 全局序号位于新基址之前的内容（分页前插的更早页 + 旧窗口头部），
+      // 用新快照替换窗口部分。禁用 smart-merge / 收缩保护：索引已整体位移，
+      // 按下标对齐的合并是错的。
+      const baseIndex = baseIndexArg != null && baseIndexArg !== ''
+        ? Number(baseIndexArg)
+        : null;
+      const hasWindowBase = baseIndex != null && Number.isSafeInteger(baseIndex) && baseIndex >= 0;
+      const prevWindowBase = window.__messageBaseIndex ?? 0;
+      const windowChanged = hasWindowBase && (baseIndex as number) !== prevWindowBase;
+      if (windowChanged) {
+        const newBase = baseIndex as number;
+        window.__messageBaseIndex = newBase;
+        setMessages((prev) => {
+          const listStart = window.__opencodeListStart ?? 0;
+          // 保留 prev 中全局序号 < newBase 的头部（分页内容 + 旧窗口头部），
+          // 弥合窗口滑动造成的空档，保证全局连续。
+          const keepCount = Math.max(0, Math.min(newBase - listStart, prev.length));
+          const merged = keepCount > 0
+            ? [...prev.slice(0, keepCount), ...backendMessages]
+            : backendMessages;
+          const result = reconstructTurnMetadata(
+            merged,
+            { skipTrailingTurn: isStreamingRef.current },
+          );
+          return finalizeMessageList(prev, result);
+        });
+        window.__lastAcceptedMessageCount = backendMessages.length;
+        refreshRestoredHistoryIfPending(backendMessages.length);
+        return;
+      }
+
+      window.__messageBaseIndex = hasWindowBase ? (baseIndex as number) : 0;
 
       setMessages((prev) => {
         const prependedCount = getPrependedHistoryMessageCount(prev.length);
@@ -449,7 +486,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (json, sequenceArg) => {
+  window.updateMessages = (json, sequenceArg, baseIndexArg) => {
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
     cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
@@ -478,6 +515,7 @@ export function registerMessageCallbacks(
     if (isStreamingRef.current) {
       pendingUpdateJson = json;
       pendingUpdateSequence = sequence;
+      pendingUpdateBaseIndex = baseIndexArg ?? null;
       window.__pendingUpdateJson = json;
       window.__pendingUpdateSequence = sequence;
       if (pendingUpdateRaf === null) {
@@ -486,8 +524,10 @@ export function registerMessageCallbacks(
           window.__pendingUpdateRaf = null;
           const latestJson = pendingUpdateJson;
           const latestSequence = pendingUpdateSequence;
+          const latestBaseIndex = pendingUpdateBaseIndex;
           pendingUpdateJson = null;
           pendingUpdateSequence = null;
+          pendingUpdateBaseIndex = null;
           window.__pendingUpdateJson = null;
           window.__pendingUpdateSequence = null;
           // A session transition may have begun while this frame was buffered.
@@ -498,7 +538,7 @@ export function registerMessageCallbacks(
           // by beginSessionTransition) and resurrect the cleared messages.
           if (window.__sessionTransitioning) return;
           if (latestJson) {
-            processUpdateMessages(latestJson, latestSequence);
+            processUpdateMessages(latestJson, latestSequence, latestBaseIndex);
           }
         }, 16);
         pendingUpdateRaf = timerId as unknown as number;
@@ -507,18 +547,18 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processUpdateMessages(json, sequence);
+    processUpdateMessages(json, sequence, baseIndexArg);
   };
 
   window.updateMessageTail = processMessageTail;
 
-  // ── opencode 恢复分页：前插更早的历史页 ──
-  // 宿主 restoreMessages 只推最近窗口（onHistoryWindowInfo 带 hasEarlier），
-  // webview 上滚到顶时发 `load_earlier_messages`，宿主回推本回调前插。
-  // 前插不更新 __prependedHistoryMessageCount：opencode 的后续全量快照
-  // （send 触发）本就包含全部历史，保留前缀反而会重复（与 Codex 磁盘分页
-  // 的语义不同——那里宿主快照不含更早的页）。
-  window.updateMessagesPrepend = (json) => {
+  // ── opencode 恢复分页/回源：前插更早的历史页 ──
+  // 宿主窗口（恢复或活跃会话逐出）之外的历史经 `load_earlier_messages` 回源，
+  // 宿主回推本回调前插。第二个参数是页起点全局序号：webview 用它维护
+  // __opencodeListStart（列表首条的全局序号），后续窗口快照据此拼接。
+  // __prependedHistoryMessageCount 同步累加：基址不变的同代快照走 legacy
+  // 合并路径时，靠它保留已前插的页（Codex 既有机制）。
+  window.updateMessagesPrepend = (json, pageStartArg) => {
     if (window.__sessionTransitioning) return;
     if (isStreamingRef.current) return;
     let parsed: ClaudeMessage[];
@@ -529,10 +569,42 @@ export function registerMessageCallbacks(
       return;
     }
     if (!Array.isArray(parsed) || parsed.length === 0) return;
+    const pageStart = pageStartArg != null && pageStartArg !== ''
+      ? Number(pageStartArg)
+      : null;
     const container = messagesContainerRef.current;
     const oldScrollHeight = container?.scrollHeight ?? 0;
     const oldScrollTop = container?.scrollTop ?? 0;
-    setMessages((prev) => [...parsed, ...prev]);
+
+    // ── 分页累积上限：页区域超过 MAX_PAGED_MESSAGES 时丢最老的页 ──
+    // 大型会话用户连点分页会让 webview state 无界增长；被裁掉的区间经
+    // set_earlier_cursor 回报宿主回滚游标，下次「加载更早」可重新回源，
+    // 不产生取不到的空档。
+    const MAX_PAGED_MESSAGES = 800;
+    let drop = 0;
+    let newStart = pageStart != null && Number.isSafeInteger(pageStart) && (pageStart as number) >= 0
+      ? pageStart as number
+      : (window.__opencodeListStart ?? 0);
+    const windowBase = window.__messageBaseIndex ?? 0;
+    if (windowBase > newStart) {
+      const pagedCount = windowBase - newStart;
+      if (pagedCount > MAX_PAGED_MESSAGES) {
+        drop = pagedCount - MAX_PAGED_MESSAGES;
+        newStart += drop;
+      }
+    }
+
+    setMessages((prev) => (drop > 0 ? [...parsed, ...prev].slice(drop) : [...parsed, ...prev]));
+    window.__opencodeListStart = newStart;
+    const prevPrepended = window.__prependedHistoryMessageCount;
+    window.__prependedHistoryMessageCount =
+      Math.max(0, (typeof prevPrepended === 'number' ? prevPrepended : 0) + parsed.length - drop);
+    if (drop > 0) {
+      sendBridgeEvent('set_earlier_cursor', JSON.stringify({
+        sessionId: currentSessionIdRef.current,
+        cursor: newStart,
+      }));
+    }
     if (container) {
       requestAnimationFrame(() => {
         const currentContainer = messagesContainerRef.current;
@@ -734,6 +806,7 @@ export function registerMessageCallbacks(
       clearTimeout(pending.timeoutId);
     }
     pendingCodexHistoryPages.clear();
+    window.__opencodeListStart = 0;
     window.__prependedHistoryMessageCount = 0;
     window.__messageBaseIndex = 0;
     window.__lastAcceptedMessageCount = undefined;

@@ -226,6 +226,63 @@ function truncateString(s: string): string {
 	return s.substring(0, head) + marker + s.substring(s.length - tail);
 }
 
+/** 宿主 state 准入的单字符串上限（独立于传输层 20K 预算）。 */
+const MAX_STATE_STRING_CHARS = 32_000;
+/** 准入截断跳过的字段：标识符与 base64 图片数据（后者由专门的附件方案处理）。 */
+const STATE_PRESERVE_KEYS = new Set(['id', 'uuid', 'tool_use_id', 'callID', 'messageID', 'data']);
+
+/**
+ * 宿主 state 准入截断：消息进入 SessionState 长期驻留前，把 raw 里的超长
+ * 字符串（工具输出/长文本块）截断为头尾保留的占位。传输层展示本就走
+ * convertMessagesToJson 的 20K 截断，全量内容需要时经回源按需取回——
+ * state 若不截断，400 条窗口 × 每条 1MB 工具输出可达数百 MB。
+ * 返回原对象（未截断时）或浅拷贝（截断时），不修改调用方数据。
+ */
+export function truncateMessageRawForState(msg: ChatMessage): ChatMessage {
+	if (msg.raw == null || typeof msg.raw !== 'object') {
+		return msg;
+	}
+	const truncated = truncateStringsDeep(msg.raw as JsonObject, '') as JsonObject;
+	if (truncated === msg.raw) {
+		return msg;
+	}
+	return { ...msg, raw: truncated };
+}
+
+function truncateStringsDeep(el: unknown, key: string): unknown {
+	if (typeof el === 'string') {
+		if (el.length > MAX_STATE_STRING_CHARS && !STATE_PRESERVE_KEYS.has(key)) {
+			return truncateString(el);
+		}
+		return el;
+	}
+	if (el == null || typeof el !== 'object') {
+		return el;
+	}
+	if (Array.isArray(el)) {
+		let changed = false;
+		const next = el.map((item) => {
+			const t = truncateStringsDeep(item, '');
+			if (t !== item) {
+				changed = true;
+			}
+			return t;
+		});
+		return changed ? next : el;
+	}
+	const obj = el as JsonObject;
+	let changed = false;
+	const next: JsonObject = {};
+	for (const [k, v] of Object.entries(obj)) {
+		const t = truncateStringsDeep(v, k);
+		if (t !== v) {
+			changed = true;
+		}
+		next[k] = t;
+	}
+	return changed ? next : el;
+}
+
 /** 从消息列表里找最后的 usage，推给前端（SessionCallbackAdapter 兜底用）。 */
 export function findLastUsage(messages: ChatMessage[]): JsonObject | null {
 	for (let i = messages.length - 1; i >= 0; i--) {

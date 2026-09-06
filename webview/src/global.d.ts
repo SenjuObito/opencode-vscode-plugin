@@ -20,7 +20,14 @@ interface Window {
   /**
    * Update messages from backend
    */
-  updateMessages?: (json: string, sequence?: string | number) => void;
+  /**
+   * Update messages from backend.
+   * The optional third argument is the host window base index (global message
+   * ordinal of snapshot[0], see SessionState windowing). When it changes
+   * between snapshots the webview performs a windowed splice instead of the
+   * legacy index-aligned merge. Absent = legacy semantics (base 0).
+   */
+  updateMessages?: (json: string, sequence?: string | number, baseIndex?: string | number) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
     json: string,
@@ -28,15 +35,15 @@ interface Window {
     sequence?: string | number,
   ) => void;
   /**
-   * Prepend an earlier history page (opencode restore paging) to the top of
-   * the message list, preserving scroll position. Pushed in response to the
-   * `load_earlier_messages` bridge event.
+   * Prepend an earlier history page (opencode restore paging / live window
+   * recall) to the top of the message list, preserving scroll position.
+   * `pageStart` is the global message ordinal of page[0].
    */
-  updateMessagesPrepend?: (json: string) => void;
+  updateMessagesPrepend?: (json: string, pageStart?: string | number) => void;
   /**
-   * Backend push describing the restore window: whether older pages exist
-   * (hasEarlier), the window start index into the host's full history, and
-   * the total host-side message count.
+   * Backend push describing the message window: whether older pages exist
+   * (hasEarlier), the earliest loaded ordinal (windowStart), and the total
+   * host-side message count.
    */
   onHistoryWindowInfo?: (json: string) => void;
   /** Latest restore-window state pushed by the host (see onHistoryWindowInfo). */
@@ -46,6 +53,8 @@ interface Window {
     windowStart: number;
     total: number;
   };
+  /** Global message ordinal of the webview list's first entry (window paging). */
+  __opencodeListStart?: number;
 
   /**
    * Patch a single message UUID without re-sending the full message list.

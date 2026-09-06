@@ -178,6 +178,9 @@ export const sendBridgeEvent = (event: string, content = '') => {
 /** Send a debug log from the webview to the Extension Host Debug Console. */
 export const cardDebugLog = (...args: unknown[]) => {
   try {
+    // debug 级日志：生产包不打印也不转发（否则流式期间每次 updateMessages
+    // 都会跨进程发一条 cardDebug 并写进宿主日志管道）。
+    if (!import.meta.env.DEV) return;
     const msg = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
     // F12 console output — console.error is NOT filtered by production mode
     console.error('[cardDebug]', msg);

@@ -40,9 +40,21 @@ import { TabHandler } from './host/handlers/TabHandler.js';
 import { TokenTrackerHandler } from './host/handlers/TokenTrackerHandler.js';
 	import { TabManager } from './host/tabs/TabManager.js';
 	import { EditorContextTracker } from './host/context/EditorContextTracker.js';
-import { logDiagnostic, setDiagnosticVerbose } from './host/util/DiagnosticLogger.js';
+import { logDiagnostic, logError, setDiagnosticVerbose } from './host/util/DiagnosticLogger.js';
 
 export function activate(context: vscode.ExtensionContext) {
+	// ── 0a. 生产包 console 降级：只保留 error 级 ─────────────────────────────
+	// 构建级别由 esbuild define 注入（package → production，compile/watch →
+	// development）。生产包丢弃 log/info/debug/warn——它们既刷 Debug Console
+	// 也被各处无界调用；console.error 保留，错误仍然可见。
+	if (process.env.NODE_ENV === 'production') {
+		const noop = (): void => undefined;
+		console.log = noop;
+		console.info = noop;
+		console.debug = noop;
+		console.warn = noop;
+	}
+
 	console.log('[extension] OpenCode activating...');
 
 	// ── 0. 诊断日志开关（OutputChannel 常驻内存，高频日志默认关闭）────────────
@@ -100,7 +112,12 @@ export function activate(context: vscode.ExtensionContext) {
 		// ai-bridge 的 cli-path / serve-manager 解析器会优先使用它。
 		additionalEnv: () => {
 			const value = store.getGlobal('opencode.tuiPath');
-			return typeof value === 'string' && value.trim() !== '' ? { OPENCODE_BIN: value.trim() } : {};
+			return {
+				...(typeof value === 'string' && value.trim() !== '' ? { OPENCODE_BIN: value.trim() } : {}),
+				// 生产包只保留 error 级：daemon 据此丢弃 [DEBUG] stderr 噪音
+				//（否则每条 stderr 都会被宿主桥接转发）。
+				...(process.env.NODE_ENV === 'production' ? { AI_BRIDGE_LOG_LEVEL: 'error' } : {}),
+			};
 		},
 		lifecycleListener: {
 			onDaemonReady: () => {
@@ -108,7 +125,8 @@ export function activate(context: vscode.ExtensionContext) {
 				pushDaemonStatus(channel, true);
 			},
 			onDaemonDied: () => {
-				console.warn('[extension] OpenCode daemon died; will auto-restart');
+				// error 级：daemon 意外死亡与自动重启在生产包也必须可见
+				logError('OpenCode daemon died; will auto-restart');
 				pushDaemonStatus(channel, false);
 			},
 		},

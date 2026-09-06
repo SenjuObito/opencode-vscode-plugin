@@ -369,6 +369,14 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       if (timeoutRef.current != null) return;
       timeoutRef.current = requestAnimationFrame(() => {
         timeoutRef.current = null;
+        // Guard: the turn may have ended (or been interrupted by the user)
+        // while this frame was queued. patchAssistantForStreaming reads the
+        // delta buffers unconditionally and force-sets isStreaming: true, so a
+        // stale frame would flush buffered content into whichever assistant
+        // message streamingMessageIndexRef still points at — leaking one turn's
+        // text into another's bubble. Bail out; the authoritative onStreamEnd
+        // updater owns the final write for that message.
+        if (!isStreamingRef.current) return;
         const now = Date.now();
         const elapsed = now - lastUpdateRef.current;
         if (elapsed < THROTTLE_INTERVAL) {

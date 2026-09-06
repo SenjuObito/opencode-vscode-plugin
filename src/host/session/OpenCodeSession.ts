@@ -13,6 +13,8 @@ import { MarkerStreamContext, processOutputLine } from './MarkerParser';
 import { SessionCallbackAdapter } from './SessionCallbackAdapter';
 import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
+import { ListMessagesCollector, type EntryRetention } from '../util/ListMessagesCollector';
+import { convertSdkMessages } from './SdkMessageConverter';
 import type { ChatMessage, PermissionRequest } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
@@ -49,10 +51,9 @@ export interface TurnCompletedInfo {
 	status: TurnCompletedStatus;
 }
 
-/** 恢复时 webview 只保留最近 N 条消息（更早的经 load_earlier_messages 按需前插）。 */
-export const RESTORE_WINDOW_MESSAGES = 200;
 /** 每次「加载更早消息」前插的条数。 */
 export const RESTORE_PAGE_MESSAGES = 200;
+/** 回源转换缓存 TTL：分页连点时避免重复全量拉取；超时后重新回源。 */
 
 export class OpenCodeSession {
 	readonly state = new SessionState();
@@ -75,10 +76,13 @@ export class OpenCodeSession {
 		wasAborted: false,
 	};
 
-	// 分页窗口记账：restoreMessages 设置（webview 已装 [start, total) 窗口）；
-	// 本会话发生新 turn 后作废（coalescer 快照已接管列表内容）。
-	private restoreWindowStart = 0;
-	private restoreWindowTotal = 0;
+	// ── 分页/回源状态 ──
+	// earlierCursor：webview 已加载内容的最早全局序号（分页游标）。
+	// restore 时 = transcript 窗口基址；前插后前移；逐出不改变它（webview
+	// 已装入的内容不随宿主逐出消失）；webview 裁剪分页时经 setEarlierCursor
+	// 回滚（该区间可重新回源）。
+	private earlierCursor = 0;
+	private earlierFetchInFlight = false;
 
 	constructor(options: OpenCodeSessionOptions) {
 		this.context = options.context;
@@ -96,11 +100,17 @@ export class OpenCodeSession {
 				callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
 			},
 			model: () => this.state.getModel(),
+			windowBaseIndex: () => this.state.getWindowBaseIndex(),
 			streamEndCallback: () => this.onTurnEnded(),
 			permissionHandler: (request) => this.permissionHandler?.(request),
 			permissionClosedHandler: (kind, content) => this.permissionClosedHandler?.(kind, content),
 		});
 		this.callbackHandler.setCallback(this.adapter);
+
+		// 活跃会话窗口滑动（逐出发生）→ 通知 webview 更新「加载更早」状态。
+		this.state.setOnWindowChanged(() => {
+			this.pushHistoryWindowInfo();
+		});
 	}
 
 	getAdapter(): SessionCallbackAdapter {
@@ -151,9 +161,6 @@ export class OpenCodeSession {
 		// 并立即推给前端（乐观气泡由内容+时间窗口匹配归位），再建立会话摘要。
 		const userMessage = buildUserMessage(payload.text, payload.attachments);
 		this.state.addMessage(userMessage);
-		// 发送后列表由 coalescer 快照接管，恢复窗口记账作废。
-		this.restoreWindowStart = 0;
-		this.restoreWindowTotal = 0;
 		this.state.setError(null);
 		this.state.setBusy(true);
 		this.state.setLoading(true);
@@ -236,8 +243,6 @@ export class OpenCodeSession {
 			{ type: 'user', message: { content: [{ type: 'text', text: `!${trimmed}` }] } },
 		);
 		this.state.addMessage(userMessage);
-		this.restoreWindowStart = 0;
-		this.restoreWindowTotal = 0;
 		this.adapter.onMessageUpdate(this.state.getMessages());
 		this.adapter.onStateChange(true, true, null);
 
@@ -288,9 +293,6 @@ export class OpenCodeSession {
 		this.state.setBusy(false);
 		this.state.setLoading(false);
 		this.state.updateLastModifiedTime();
-		// 本会话已有新消息，恢复窗口记账作废（见 loadEarlierMessages）。
-		this.restoreWindowStart = 0;
-		this.restoreWindowTotal = 0;
 		const status: TurnCompletedStatus = this.streamCtx.wasAborted
 			? 'aborted'
 			: this.streamCtx.hadSendError
@@ -299,7 +301,7 @@ export class OpenCodeSession {
 		this.onTurnCompleted?.({
 			sessionId: this.state.getSessionId(),
 			title: this.state.getSummary() ?? '',
-			messageCount: this.state.getMessages().length,
+			messageCount: this.state.getTotalCount(),
 			status,
 		});
 	}
@@ -319,8 +321,7 @@ export class OpenCodeSession {
 		this.context.callJavaScript('clearMessages', String(seq));
 		this.state.clearMessages();
 		this.messageHandler.resetTurnState();
-		this.restoreWindowStart = 0;
-		this.restoreWindowTotal = 0;
+		this.earlierCursor = 0;
 		this.state.setSessionId(null);
 		this.state.setBusy(false);
 		this.state.setLoading(false);
@@ -331,77 +332,124 @@ export class OpenCodeSession {
 		this.onSessionEnded?.();
 	}
 
-	/** 从历史恢复：替换当前消息列表并推送。 */
-	restoreMessages(messages: unknown[]): void {
+	/** 从历史恢复：collector 已按 tail 窗口保留，直接采纳窗口与全量元数据。 */
+	restoreMessages(
+		messages: unknown[],
+		origin?: { firstIndex: number; total: number },
+	): void {
 		// resetStreamState 会抬高 webview 的 __minAcceptedUpdateSequence 屏障，
 		// 因此 clear/update 必须复用它返回的新序号（'0' 会被屏障丢弃 → 空屏）。
 		const seq = this.adapter.coalescer.resetStreamState();
 		this.state.clearMessages();
-		// 回填宿主侧消息列表：后续 send 的快照必须包含完整历史，否则
-		// webview 的收缩保护（preserveLatestMessagesOnShrink）会把新发送的
-		// 用户气泡与历史错位重排，表现为"消息气泡出现后立即消失"。
 		for (const m of messages) {
 			this.state.addMessage(m as ChatMessage);
 		}
-		// 分页窗口：宿主保留完整历史（send 快照 / undo / fork 的消息 id 解析
-		// 都依赖），webview 只装最近窗口，更早的经 load_earlier_messages 按需
-		// 前插。长会话恢复时 webview 的 parse/state/渲染内存从 O(全部) 降到
-		// O(窗口)。
-		const total = messages.length;
-		this.restoreWindowStart = Math.max(0, total - RESTORE_WINDOW_MESSAGES);
-		this.restoreWindowTotal = total;
-		const window = messages.slice(this.restoreWindowStart);
+		if (origin) {
+			this.state.adoptTranscriptWindow(origin.firstIndex, origin.total);
+		}
+		this.earlierCursor = this.state.getWindowBaseIndex();
 		this.context.callJavaScript('clearMessages', String(seq));
-		// 推送必须走 convertMessagesToJson（与流式路径同一截断：tool_result
-		// 20K 上限 + 错误文本 1K）。此前直接 JSON.stringify(messages) 会把
-		// 含大工具输出/base64 的会话整包原样推给 webview，长会话恢复时
-		// 宿主与渲染进程内存同时爆炸（OOM 主因之一）。
+		// 推送走 convertMessagesToJson（tool_result 20K / 错误文本 1K 截断）；
+		// 第三个参数把窗口基址（全局序号）告知 webview 做窗口对齐。
 		this.context.callJavaScript(
 			'updateMessages',
-			convertMessagesToJson(window as ChatMessage[]),
+			convertMessagesToJson(this.state.getMessages()),
 			String(seq),
+			String(this.state.getWindowBaseIndex()),
 		);
-		this.pushHistoryWindowInfo(total);
+		this.pushHistoryWindowInfo();
 	}
 
 	/**
-	 * webview 请求更早的历史：把 [newStart, windowStart) 截断后前插到
-	 * webview 列表头，并回推窗口状态（hasEarlier）。
-	 *
-	 * 仅在「恢复后、本会话尚无新 turn」期间有效：一旦本会话发生过发送，
-	 * coalescer 的全量/尾部快照已让 webview 拿到最新列表，窗口记账作废
-	 * （继续按旧 windowStart 前插会造成重复），置 0 表示无可加载的更早页。
+	 * webview 请求更早的历史（异步回源）：以 range 保留模式从 daemon 拉
+	 * [pageStart, earlierCursor) 区间——全量 transcript 在解析管道中流过即弃，
+	 * 宿主只持有该页。transcript 收缩（revert/compact）时按全量总数对齐。
 	 */
-	loadEarlierMessages(count = RESTORE_PAGE_MESSAGES): void {
-		if (this.restoreWindowStart <= 0 || !this.restoreWindowTotal) {
+	async loadEarlierMessages(count = RESTORE_PAGE_MESSAGES): Promise<void> {
+		const sessionId = this.state.getSessionId();
+		if (!sessionId || this.earlierCursor <= 0 || this.earlierFetchInFlight) {
+			this.pushHistoryWindowInfo();
 			return;
 		}
-		const all = this.state.getMessages();
-		if (all.length !== this.restoreWindowTotal) {
-			this.restoreWindowStart = 0;
-			this.pushHistoryWindowInfo(all.length);
-			return;
+		this.earlierFetchInFlight = true;
+		try {
+			const pageEnd = this.earlierCursor;
+			const pageStart = Math.max(0, pageEnd - Math.max(1, count));
+			const collector = await this.requestTranscriptWindow(sessionId, {
+				mode: 'range',
+				start: pageStart,
+				end: pageEnd,
+			});
+			const windowLength = this.state.getMessages().length;
+			const safePageEnd = Math.min(pageEnd, Math.max(0, collector.getTotalMessageCount() - windowLength));
+			if (safePageEnd <= 0) {
+				this.earlierCursor = 0;
+				this.pushHistoryWindowInfo();
+				return;
+			}
+			const firstRetained = collector.getFirstRetainedMessageIndex();
+			const begin = Math.max(0, pageStart - firstRetained);
+			// range 保留按 entry 粒度，边界 entry 可能带出区间外的消息——按
+			// 全局序号精确切片。
+			const page = convertSdkMessages(collector.getEntries())
+				.slice(begin, Math.max(begin, safePageEnd - firstRetained));
+			if (page.length > 0) {
+				const servedStart = firstRetained + begin;
+				this.earlierCursor = servedStart;
+				// 第二个参数：页起点全局序号，webview 用它对齐列表起始位置。
+				this.context.callJavaScript(
+					'updateMessagesPrepend',
+					convertMessagesToJson(page),
+					String(servedStart),
+				);
+			} else {
+				this.earlierCursor = Math.min(this.earlierCursor, safePageEnd);
+			}
+			this.pushHistoryWindowInfo();
+		} finally {
+			this.earlierFetchInFlight = false;
 		}
-		const newStart = Math.max(0, this.restoreWindowStart - Math.max(1, count));
-		const page = all.slice(newStart, this.restoreWindowStart);
-		this.restoreWindowStart = newStart;
-		if (page.length > 0) {
-			this.context.callJavaScript(
-				'updateMessagesPrepend',
-				convertMessagesToJson(page as ChatMessage[]),
-			);
-		}
-		this.pushHistoryWindowInfo(all.length);
 	}
 
-	private pushHistoryWindowInfo(total: number): void {
+	/** 分页被 webview 裁剪（累积上限）时回滚游标：该区间下次可重新回源。 */
+	setEarlierCursor(cursor: number): void {
+		if (!Number.isSafeInteger(cursor) || cursor < 0) {
+			return;
+		}
+		this.earlierCursor = Math.max(this.earlierCursor, Math.min(cursor, this.state.getWindowBaseIndex()));
+		this.pushHistoryWindowInfo();
+	}
+
+	/** 按 range/tail 保留模式拉取 transcript 窗口（即弃，不缓存）。 */
+	private requestTranscriptWindow(
+		sessionId: string,
+		retention: EntryRetention,
+	): Promise<ListMessagesCollector> {
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		return new Promise((resolve) => {
+			const collector = new ListMessagesCollector(retention);
+			const ok = this.daemon.request('opencode.listMessages', { sessionId, directory }, {
+				onLine: (line) => collector.onLine(line),
+				onError: () => resolve(collector),
+				onComplete: () => {
+					collector.reconcileFallback();
+					resolve(collector);
+				},
+			});
+			if (!ok) {
+				resolve(collector);
+			}
+		});
+	}
+
+	private pushHistoryWindowInfo(): void {
 		this.context.callJavaScript(
 			'onHistoryWindowInfo',
 			JSON.stringify({
 				sessionId: this.state.getSessionId(),
-				hasEarlier: this.restoreWindowStart > 0,
-				windowStart: this.restoreWindowStart,
-				total,
+				hasEarlier: this.earlierCursor > 0,
+				windowStart: this.earlierCursor,
+				total: this.state.getTotalCount(),
 			}),
 		);
 	}

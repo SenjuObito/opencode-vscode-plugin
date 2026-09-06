@@ -44,7 +44,10 @@ export class StreamMessageCoalescer {
 	private lastPayloadChars = 0;
 	private lastPushedSequence = 0;
 	private pendingMessages: ChatMessage[] | null = null;
+	/** pendingMessages 对应的宿主窗口基址（全局索引，见 SessionState 窗口化）。 */
+	private pendingBaseIndex = 0;
 	private lastSnapshot: ChatMessage[] | null = null;
+	private lastSnapshotBaseIndex = 0;
 	private lastDeliveredSnapshot: ChatMessage[] | null = null;
 
 	private updateTimer: NodeJS.Timeout | null = null;
@@ -54,13 +57,14 @@ export class StreamMessageCoalescer {
 		this.target = target;
 	}
 
-	enqueue(messages: ChatMessage[]): void {
+	enqueue(messages: ChatMessage[], baseIndex = 0): void {
 		if (this.target.isDisposed()) {
 			console.log('[StreamMessageCoalescer] enqueue BLOCKED: target disposed');
 			return;
 		}
 		const snapshot = [...messages];
 		this.pendingMessages = snapshot;
+		this.pendingBaseIndex = baseIndex;
 		console.log('[StreamMessageCoalescer] enqueue messages:', snapshot.length, 'streamActive:', this.streamActive);
 		this.schedulePush();
 		if (this.streamActive) {
@@ -96,7 +100,9 @@ export class StreamMessageCoalescer {
 		this.streamActive = false;
 		this.updateScheduled = false;
 		this.pendingMessages = null;
+		this.pendingBaseIndex = 0;
 		this.lastSnapshot = null;
+		this.lastSnapshotBaseIndex = 0;
 		this.lastDeliveredSnapshot = null;
 		this.lastUpdateAtMs = 0;
 		this.lastPayloadChars = 0;
@@ -116,6 +122,7 @@ export class StreamMessageCoalescer {
 		this.clearUpdate();
 		this.updateScheduled = false;
 		const snapshot = this.pendingMessages ?? this.lastSnapshot;
+		const baseIndex = this.pendingMessages != null ? this.pendingBaseIndex : this.lastSnapshotBaseIndex;
 		this.pendingMessages = null;
 		const sequence = ++this.updateSequence;
 
@@ -123,7 +130,7 @@ export class StreamMessageCoalescer {
 			afterFlushOnEdt?.(sequence);
 			return;
 		}
-		this.sendToWebView(snapshot, sequence, afterFlushOnEdt);
+		this.sendToWebView(snapshot, sequence, afterFlushOnEdt, baseIndex);
 	}
 
 	dispose(): void {
@@ -168,6 +175,7 @@ export class StreamMessageCoalescer {
 			this.updateScheduled = false;
 			this.lastUpdateAtMs = Date.now();
 			const snapshot = this.pendingMessages;
+			const baseIndex = this.pendingBaseIndex;
 			this.pendingMessages = null;
 			const sequence = this.updateSequence;
 
@@ -175,7 +183,7 @@ export class StreamMessageCoalescer {
 				return;
 			}
 			if (snapshot != null) {
-				this.sendToWebView(snapshot, sequence, undefined);
+				this.sendToWebView(snapshot, sequence, undefined, baseIndex);
 			}
 			if (this.pendingMessages != null && !this.target.isDisposed()) {
 				this.schedulePush();
@@ -187,13 +195,17 @@ export class StreamMessageCoalescer {
 		messages: ChatMessage[],
 		sequence: number,
 		afterSendOnEdt?: (sequence: number) => void,
+		baseIndex = 0,
 	): void {
 		this.lastSnapshot = messages;
-		console.log('[StreamMessageCoalescer] sendToWebView called, seq:', sequence, 'lastPushed:', this.lastPushedSequence, 'messages:', messages.length);
+		this.lastSnapshotBaseIndex = baseIndex;
+		console.log('[StreamMessageCoalescer] sendToWebView called, seq:', sequence, 'lastPushed:', this.lastPushedSequence, 'messages:', messages.length, 'baseIndex:', baseIndex);
 
 		const transport = selectMessageTransport(messages, this.lastDeliveredSnapshot);
 		const tailUpdate = transport.tailUpdate;
-		const tailBaseIndex = transport.baseIndex;
+		// 尾部增量的 baseIndex 一律使用全局序号（窗口基址 + 局部偏移），
+		// webview 据此对齐自己的列表窗口。
+		const tailBaseIndex = baseIndex + transport.baseIndex;
 		const transportMessages = transport.messages;
 
 		let json: string;
@@ -224,7 +236,10 @@ export class StreamMessageCoalescer {
 			if (tailUpdate) {
 				this.target.callUpdateMessages('updateMessageTail', [json, String(tailBaseIndex), String(sequence)]);
 			} else {
-				this.target.callUpdateMessages('updateMessages', [json, String(sequence)]);
+				// 全量快照现在承载的是宿主「窗口」而非完整历史，第三个参数
+				// 把窗口基址（全局序号）告知 webview，webview 侧据此做窗口
+				// 精确替换/合并（缺省视为 0，兼容旧语义）。
+				this.target.callUpdateMessages('updateMessages', [json, String(sequence), String(baseIndex)]);
 			}
 			this.lastDeliveredSnapshot = messages;
 			this.target.pushUsageUpdate(messages);

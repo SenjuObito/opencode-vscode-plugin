@@ -220,7 +220,6 @@ function buildAssistantMessages(
 			const state = isObject(part.state) ? (part.state as Record<string, unknown>) : {};
 			const callID = typeof part.callID === 'string' ? part.callID : (part.id ?? '');
 			const toolName = typeof part.tool === 'string' ? part.tool : '';
-			console.log(`[SdkMessageConverter] tool part: tool="${toolName}" callID="${callID}" state.status=${state.status} state.input=${JSON.stringify(state.input ?? {}).substring(0, 200)}`);
 			blocks.push({
 				type: 'tool_use',
 				id: callID,

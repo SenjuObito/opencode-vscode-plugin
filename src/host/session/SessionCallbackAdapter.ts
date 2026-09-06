@@ -27,6 +27,8 @@ export interface SessionCallbackAdapterOptions {
 	streamEndCallback?: () => void;
 	isDisposed?: () => boolean;
 	model: () => string | null;
+	/** 宿主消息窗口基址（全局序号，见 SessionState 窗口化），随快照下发给 webview。 */
+	windowBaseIndex?: () => number;
 }
 
 export class SessionCallbackAdapter implements SessionCallback {
@@ -38,6 +40,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 	private readonly contentDeltaThrottler: StreamDeltaThrottler;
 	private readonly thinkingDeltaThrottler: StreamDeltaThrottler;
 	private readonly model: () => string | null;
+	private readonly windowBaseIndex: () => number;
 	private active = true;
 	private streamEndSignalSent = false;
 	private streamEndFallbackTimer: NodeJS.Timeout | null = null;
@@ -48,6 +51,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.permissionClosedHandler = options.permissionClosedHandler;
 		this.streamEndCallback = options.streamEndCallback;
 		this.model = options.model;
+		this.windowBaseIndex = options.windowBaseIndex ?? (() => 0);
 		this.streamCoalescer = new StreamMessageCoalescer({
 			callUpdateMessages: (fn, args) => this.jsTarget.callJavaScript(fn, ...args),
 			callHeartbeat: () => this.jsTarget.callJavaScript('onStreamingHeartbeat'),
@@ -106,7 +110,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 			return;
 		}
 		console.log('[SessionCallbackAdapter] onMessageUpdate called, messages:', messages.length);
-		this.streamCoalescer.enqueue(messages);
+		this.streamCoalescer.enqueue(messages, this.windowBaseIndex());
 	}
 
 	onStateChange(busy: boolean, loading: boolean, error: string | null): void {

@@ -12,6 +12,7 @@ import { HandlerContext } from '../router/HandlerContext';
 import { convertSdkMessages, extractSubagentTranscript } from '../session/SdkMessageConverter';
 import { truncateRawForTransport } from '../util/MessageJsonConverter';
 import { ListMessagesCollector } from '../util/ListMessagesCollector';
+import { HOST_WINDOW_MESSAGES } from '../session/SessionState';
 import { RESTORE_PAGE_MESSAGES } from '../session/OpenCodeSession';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import {
@@ -33,10 +34,14 @@ const SUPPORTED_TYPES = [
 	'update_title',
 	'load_subagent_session',
 	'load_earlier_messages',
+	'set_earlier_cursor',
 ];
 
 /** 与 webview ReasoningEffort 取值一致（variant → 推理力度为恒等映射）。 */
 const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** 子代理轮询的 tail 窗口（消息条数）：运行中的 task tool_result 落在 transcript 尾部。 */
+const SUBAGENT_POLL_TAIL_MESSAGES = 200;
 
 export class HistoryHandler extends BaseMessageHandler {
 	constructor(context: HandlerContext) {
@@ -72,6 +77,9 @@ export class HistoryHandler extends BaseMessageHandler {
 			return true;
 		case 'load_earlier_messages':
 			this.handleLoadEarlierMessages(content);
+			return true;
+		case 'set_earlier_cursor':
+			this.handleSetEarlierCursor(content);
 			return true;
 		default:
 			return false;
@@ -208,19 +216,24 @@ export class HistoryHandler extends BaseMessageHandler {
 		const EMPTY_RETRY_DELAY_MS = 600;
 
 		const doRequest = (retriesLeft: number): Promise<void> => {
-			// 逐行解析、只保留 entry 对象：不缓存原始行字符串，
-			// 避免 daemon 分片输出被二次整包累积（OOM 主因之一）。
-			const collector = new ListMessagesCollector();
+			// tail 窗口保留：只解析并保留最近 HOST_WINDOW_MESSAGES 条——全量
+			// transcript 在解析管道中流过即弃，宿主峰值 = 窗口而非全量。
+			const collector = new ListMessagesCollector({
+				mode: 'tail',
+				messageLimit: HOST_WINDOW_MESSAGES,
+			});
 			return new Promise<void>((resolve) => {
 				const ok = daemon.request('opencode.listMessages', { sessionId, directory }, {
 					onLine: (line) => collector.onLine(line),
 					onError: () => resolve(),
 					onComplete: (success) => {
 						collector.reconcileFallback();
-						const entries = collector.getEntries();
-						const messages = convertSdkMessages(entries);
+						const messages = convertSdkMessages(collector.getEntries());
 						if (messages.length > 0) {
-							session.restoreMessages(messages);
+							session.restoreMessages(messages, {
+								firstIndex: collector.getFirstRetainedMessageIndex(),
+								total: collector.getTotalMessageCount(),
+							});
 							resolve();
 							return;
 						}
@@ -410,7 +423,32 @@ export class HistoryHandler extends BaseMessageHandler {
 		if (sessionId && current && sessionId !== current) {
 			return;
 		}
-		session.loadEarlierMessages(count);
+		void session.loadEarlierMessages(count);
+	}
+
+	/**
+	 * webview 裁剪分页累积（超上限丢最老页）后回滚游标：被裁掉的区间
+	 * 下次「加载更早」时重新回源，保证不出现取不到的空档。
+	 */
+	private handleSetEarlierCursor(content: string): void {
+		const session = this.context.getSession();
+		if (!session) {
+			return;
+		}
+		try {
+			const json = JSON.parse(content ?? '{}') as Record<string, unknown>;
+			const sessionId = typeof json?.sessionId === 'string' ? json.sessionId : '';
+			const cursor = typeof json?.cursor === 'number' ? json.cursor : Number.NaN;
+			const current = session.state.getSessionId();
+			if (sessionId && current && sessionId !== current) {
+				return;
+			}
+			if (Number.isFinite(cursor)) {
+				session.setEarlierCursor(cursor);
+			}
+		} catch {
+			// 忽略畸形 payload
+		}
 	}
 
 	private handleDeleteSession(content: string): void {
@@ -501,6 +539,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		let agentPath = '';
 		let sessionId = '';
 		let provider = 'opencode';
+		let isPoll = false;
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			toolUseId = typeof json?.toolUseId === 'string' ? json.toolUseId : '';
@@ -508,6 +547,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			agentPath = typeof json?.agentPath === 'string' ? json.agentPath : '';
 			sessionId = typeof json?.sessionId === 'string' ? json.sessionId : '';
 			provider = typeof json?.provider === 'string' ? json.provider : 'opencode';
+			isPoll = json?.poll === true;
 		} catch {
 			// Ignore malformed payloads
 			return;
@@ -529,7 +569,12 @@ export class HistoryHandler extends BaseMessageHandler {
 		}
 
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		const collector = new ListMessagesCollector();
+		// 轮询（每 2s 一次）只保留 transcript 尾部窗口：运行中的 task 结果一定
+		// 在尾部，全量解析转换是轮询日志刷屏与内存峰值的来源。用户主动点开
+		// （可能查看很早的子代理）仍走全量。
+		const collector = isPoll
+			? new ListMessagesCollector({ mode: 'tail', messageLimit: SUBAGENT_POLL_TAIL_MESSAGES })
+			: new ListMessagesCollector();
 		let finished = false;
 		const finish = (payload: Record<string, unknown>): void => {
 			if (finished) { return; }

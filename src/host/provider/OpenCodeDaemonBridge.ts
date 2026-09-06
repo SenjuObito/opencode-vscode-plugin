@@ -18,6 +18,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
+import { logError } from '../util/DiagnosticLogger';
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -28,6 +29,10 @@ const HEARTBEAT_SCHEDULER_GAP_MS = HEARTBEAT_INTERVAL_MS + 5_000;
 const MAX_RESTART_ATTEMPTS = 3;
 const RESTART_WINDOW_MS = 30_000;
 const STDERR_RING_CAPACITY = 40;
+/** daemon 堆内存告警阈值（心跳携带 memoryUsage.heapUsed）。 */
+const DAEMON_HEAP_WARN_BYTES = 1_500_000_000;
+/** 告警解除线（滞回，避免阈值附近反复告警）。 */
+const DAEMON_HEAP_RESET_BYTES = DAEMON_HEAP_WARN_BYTES * 0.8;
 
 export interface DaemonOutputCallback {
 	onLine(line: string): void;
@@ -305,6 +310,7 @@ export class OpenCodeDaemonBridge {
 	private desiredRunning = false;
 	private stopEpoch = 0;
 	private restartInProgress = false;
+	private daemonHeapWarned = false;
 
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
@@ -662,6 +668,17 @@ export class OpenCodeDaemonBridge {
 		}
 		if (type === 'heartbeat') {
 			context.markHeartbeat(Date.now(), performance.now());
+			// P4 守门：daemon 堆超阈值时告警一次（滞回解除）。daemon 持有
+			// opencode serve 连接与 turn 状态，长会话下堆增长是崩溃前兆。
+			const heap = typeof obj.memoryUsage === 'number' ? obj.memoryUsage : 0;
+			if (heap > DAEMON_HEAP_WARN_BYTES && !this.daemonHeapWarned) {
+				this.daemonHeapWarned = true;
+				logError(
+					`Daemon heap usage high: ${(heap / 1_048_576).toFixed(0)} MB — consider /compact or restarting the session`,
+				);
+			} else if (heap > 0 && heap < DAEMON_HEAP_RESET_BYTES) {
+				this.daemonHeapWarned = false;
+			}
 			return;
 		}
 		if (type === 'status') {

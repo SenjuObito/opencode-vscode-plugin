@@ -52,6 +52,15 @@ export interface UseMessageSenderOptions {
   isUserAtBottomRef: RefObject<boolean>;
   userPausedRef: RefObject<boolean>;
   isStreamingRef: RefObject<boolean>;
+  /**
+   * Streaming buffers + throttle handles. Required by `interruptSession` so a
+   * stop mid-turn cannot leave buffered content behind for a queued rAF (or a
+   * trailing delta) to flush into the current turn's placeholder bubble.
+   */
+  streamingContentRef: RefObject<string>;
+  streamingThinkingRef: RefObject<string>;
+  contentUpdateTimeoutRef: RefObject<number | null>;
+  thinkingUpdateTimeoutRef: RefObject<number | null>;
   setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
@@ -83,6 +92,10 @@ export function useMessageSender({
   isUserAtBottomRef,
   userPausedRef,
   isStreamingRef,
+  streamingContentRef,
+  streamingThinkingRef,
+  contentUpdateTimeoutRef,
+  thinkingUpdateTimeoutRef,
   setMessages,
   setLoading,
   setLoadingStartTime,
@@ -426,8 +439,40 @@ export function useMessageSender({
     setStreamingActive(false);
     isStreamingRef.current = false;
 
+    // Cancel any rAF already queued by onContentDelta / onThinkingDelta.
+    // The scheduler callback does not re-check isStreamingRef, so a frame that
+    // was scheduled before the stop would otherwise still run patchAssistantForStreaming
+    // and flush the buffered content into the current turn's placeholder — the
+    // "stop shows the previous turn's answer" symptom.
+    if (contentUpdateTimeoutRef.current != null) {
+      cancelAnimationFrame(contentUpdateTimeoutRef.current);
+      contentUpdateTimeoutRef.current = null;
+    }
+    if (thinkingUpdateTimeoutRef.current != null) {
+      cancelAnimationFrame(thinkingUpdateTimeoutRef.current);
+      thinkingUpdateTimeoutRef.current = null;
+    }
+
+    // Drop the accumulated delta buffers. The backend may still push a few
+    // trailing deltas that were already in flight; those call
+    // ensureStreamingActive() and would resume patching on top of a buffer that
+    // no longer belongs to any visible turn.
+    //
+    // Deliberately NOT resetting streamingMessageIndexRef / streamingTurnIdRef:
+    // onStreamEnd needs both to locate the placeholder assistant message and
+    // write back the final content / raw / durationMs / __turnId. Clearing them
+    // here would make the finalized reply disappear from the UI.
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
+
     sendBridgeEvent('interrupt_session');
-  }, []);
+  }, [
+    isStreamingRef,
+    streamingContentRef,
+    streamingThinkingRef,
+    contentUpdateTimeoutRef,
+    thinkingUpdateTimeoutRef,
+  ]);
 
   return {
     handleSubmit,

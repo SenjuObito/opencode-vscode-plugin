@@ -11,6 +11,13 @@
  */
 import * as vscode from 'vscode';
 
+/**
+ * 构建级别（esbuild define 注入，见 esbuild.js）：
+ *   production（`pnpm run package`）→ info 级诊断全部静默，只留 error
+ *   development（compile/watch）    → info 级诊断正常输出
+ */
+const PROD_BUILD = process.env.NODE_ENV === 'production';
+
 let channel: vscode.OutputChannel | null = null;
 let verbose = false;
 /** 近似累计写入字符数（跨 clear 重置），用于触发通道截断。 */
@@ -50,23 +57,29 @@ function appendToChannel(line: string): void {
 	}
 }
 
-/** 输出一行诊断日志（带时间戳前缀）。 */
+/** 输出一行诊断日志（带时间戳前缀）。info 级——生产包静默。 */
 export function logDiagnostic(message: string): void {
+	if (PROD_BUILD) {
+		return;
+	}
 	const line = `[${new Date().toISOString()}] ${message}`;
 	appendToChannel(line);
 	console.log(`[OpenCodeGUI] ${message}`);
 }
 
-/** 高频诊断：仅 verbose 模式写 OutputChannel（console 镜像同样跳过）。 */
+/** 高频诊断：info 级，且开发模式下还需 verbose 开启。 */
 export function logVerbose(message: string): void {
-	if (!verbose) {
+	if (PROD_BUILD || !verbose) {
 		return;
 	}
 	logDiagnostic(message);
 }
 
-/** 输出多行内容（如 daemon 原始响应 chunks）。 */
+/** 输出多行内容（如 daemon 原始响应 chunks）。info 级——生产包静默。 */
 export function logDiagnosticBlock(title: string, body: string): void {
+	if (PROD_BUILD) {
+		return;
+	}
 	logDiagnostic(`${title}:`);
 	for (const line of body.split(/\r?\n/)) {
 		if (line.trim() === '') {
@@ -75,6 +88,13 @@ export function logDiagnosticBlock(title: string, body: string): void {
 		appendToChannel(`    ${line}`);
 		channelChars += 5;
 	}
+}
+
+/** error 级诊断：任何构建级别都输出（生产包唯一可见的通道日志）。 */
+export function logError(message: string): void {
+	const line = `[${new Date().toISOString()}] [ERROR] ${message}`;
+	appendToChannel(line);
+	console.error(`[OpenCodeGUI] ${message}`);
 }
 
 export function disposeDiagnosticLogger(): void {

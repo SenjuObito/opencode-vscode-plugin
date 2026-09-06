@@ -155,6 +155,9 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
           agentPath,
           description: typeof summary === 'string' ? summary : undefined,
           toolUseId: toolId,
+          // 轮询标记：宿主按 tail 窗口解析（运行中的 task 结果总在 transcript
+          // 尾部），避免每 2s 全量拉取+转换整段会话。
+          poll: true,
         }));
       }, SUBAGENT_POLL_INTERVAL_MS);
     }

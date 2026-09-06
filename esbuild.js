@@ -41,6 +41,12 @@ const extensionConfig = {
 	platform: 'node',
 	outfile: 'dist/extension.js',
 	external: ['vscode'],
+	// 构建级别注入：`pnpm run package`（--production）→ production，运行时
+	// 日志只保留 error；compile/watch → development，info 全量输出。
+	// 见 src/host/util/DiagnosticLogger.ts 与 extension.ts 的 console 降级。
+	define: {
+		'process.env.NODE_ENV': production ? '"production"' : '"development"',
+	},
 	logLevel: 'silent',
 	plugins: [
 		/* add to the end of plugins array */

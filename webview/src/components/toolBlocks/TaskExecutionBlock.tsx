@@ -149,6 +149,8 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
         agentPath,
         description: typeof description === 'string' ? description : undefined,
         toolUseId: toolId,
+        // 轮询标记：宿主按 tail 窗口解析，避免每 2s 全量拉取+转换整段会话。
+        poll: true,
       }));
     }, 2_000);
     return () => window.clearInterval(timer);

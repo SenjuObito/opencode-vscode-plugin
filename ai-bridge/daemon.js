@@ -261,11 +261,19 @@ console.log = function (...args) {
 
 /**
  * Override console.error to tag stderr output as well.
+ * 日志分级：AI_BRIDGE_LOG_LEVEL=error（生产包由宿主注入）时丢弃 [DEBUG]
+ * 前缀的调试输出——daemon 的 stderr 会被宿主逐行捕获转发，不分级的
+ * 话流式期间每条调试行都会进入宿主日志管道。
  */
+const DAEMON_LOG_LEVEL = process.env.AI_BRIDGE_LOG_LEVEL || 'info';
+
 console.error = function (...args) {
   const text = args
     .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
     .join(' ');
+  if (DAEMON_LOG_LEVEL === 'error' && text.startsWith('[DEBUG]')) {
+    return;
+  }
   const requestId = currentRequestId();
   if (requestId) {
     writeRawLine({ id: requestId, stderr: text });

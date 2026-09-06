@@ -653,6 +653,10 @@ const App = () => {
     daemonStatusLoaded, currentSdkInstalled,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,
+    // Streaming buffers + throttle handles — interruptSession needs them to
+    // drop buffered content and cancel queued rAFs when the user hits stop.
+    streamingContentRef, streamingThinkingRef,
+    contentUpdateTimeoutRef, thinkingUpdateTimeoutRef,
     setMessages, setLoading, setLoadingStartTime, setStreamingActive,
     setCurrentView,
     forceCreateNewSession,
