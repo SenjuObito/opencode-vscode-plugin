@@ -38,7 +38,11 @@ const SUPPORTED_TYPES = [
 
 /** VS Code workbench 默认 UI 字体栈（无 UI 字体设置项，取系统栈）。 */
 const VSCODE_UI_FONT_FAMILY = '-apple-system';
-const VSCODE_UI_FALLBACKS = ['BlinkMacSystemFont', 'Segoe WPC', 'Segoe UI', 'system-ui'];
+/* Linux 上 mac/Windows 字体全部缺席时，主字体不能直接落到 system-ui（Ubuntu/DejaVu 等
+   拉丁字体）：行盒度量只取主字体，中文按字符回退到 Noto Sans CJK 后基线偏上，
+   会放大 line-height:1 图标对齐方案的偏差。在 system-ui 前插入 Noto CJK，
+   让 Linux 主字体自带对称的中文字体度量；macOS/Windows 命中各自平台字体，不受影响。 */
+const VSCODE_UI_FALLBACKS = ['BlinkMacSystemFont', 'Segoe WPC', 'Segoe UI', 'Noto Sans CJK SC', 'Noto Sans SC', 'system-ui'];
 
 const GENERIC_FONT_KEYWORDS = new Set([
 	'monospace', 'sans-serif', 'serif', 'cursive', 'fantasy',

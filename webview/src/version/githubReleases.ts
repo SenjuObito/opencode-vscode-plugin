@@ -62,6 +62,25 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/**
+ * Release bodies may be bilingual, written as a Chinese section followed by an
+ * `### English` heading and the English section (see CHANGELOG.md and
+ * tools/extract-release-notes.mjs). Split on that marker; when the marker is
+ * absent the body is single-language, so keep it only as `zh` — returning it
+ * for both languages would render the same text twice in the dialog.
+ */
+export function splitBilingualReleaseBody(body: string): { en: string; zh: string } {
+  const lines = body.split('\n');
+  const markerIndex = lines.findIndex(line => /^#{1,6}\s*english\s*$/i.test(line.trim()));
+  if (markerIndex === -1) {
+    return { en: '', zh: body.trim() };
+  }
+  return {
+    zh: lines.slice(0, markerIndex).join('\n').trim(),
+    en: lines.slice(markerIndex + 1).join('\n').trim(),
+  };
+}
+
 function parseReleases(data: unknown): ChangelogEntry[] {
   const list = Array.isArray(data) ? data : [];
   const entries: ChangelogEntry[] = [];
@@ -75,7 +94,7 @@ function parseReleases(data: unknown): ChangelogEntry[] {
     entries.push({
       version,
       date: published.slice(0, 10),
-      content: { en: body, zh: body },
+      content: splitBilingualReleaseBody(body),
     });
   }
   return entries;

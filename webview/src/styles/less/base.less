@@ -16,8 +16,10 @@
 :root {
     /* 编辑器原始字体 */
     --cc-gui-editor-font-family: 'Menlo', 'Consolas', monospace;
-    /* 当前插件实际使用的 UI 字体（VS Code workbench 无 UI 字体设置，取系统栈） */
-    --cc-gui-ui-font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, sans-serif;
+    /* 当前插件实际使用的 UI 字体（VS Code workbench 无 UI 字体设置，取系统栈）。
+       Noto CJK 在 system-ui 之前：Linux 缺 mac/Windows 字体时以 Noto 为主字体，
+       行盒度量随中文字形对称，避免 line-height:1 下文字相对图标上偏。 */
+    --cc-gui-ui-font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;
     /* 当前插件实际使用的代码字体 */
     --cc-gui-code-font-family: 'Menlo', 'Consolas', monospace;
     /* 兼容旧样式里对 --idea-editor-font-family 的引用 */
@@ -27,7 +29,7 @@
 }
 
 body {
-    font-family: var(--cc-gui-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, sans-serif);
+    font-family: var(--cc-gui-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif);
     background: var(--bg-chat);
     color: var(--text-primary);
     height: 100vh;
@@ -89,7 +91,7 @@ html {
  * （参考 .bash-command-block / .bash-output-text），不能依赖从父容器继承。
  * TokenTracker 仪表盘子树豁免，使用其自带的 --oai-font-sans 字体栈。 */
 @{tt-exclude} {
-    font-family: var(--cc-gui-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, sans-serif);
+    font-family: var(--cc-gui-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif);
 }
 
 /* 保护字体图标 - 确保 codicon 图标正常显示 */

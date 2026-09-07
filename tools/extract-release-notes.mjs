@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 // Extract release notes for a given version, for the GitHub Release body.
 //
-// Source of truth: CHANGELOG.md (Keep a Changelog format). We look for a
-// section matching the version (e.g. `## [0.0.1]` / `## 0.0.1` / `## v0.0.1`).
+// Source of truth: CHANGELOG.md. Two section formats are supported:
+//  1. `## [0.0.1]` / `## 0.0.1` / `## v0.0.1` (Keep a Changelog style)
+//  2. `##### **2026年9月2日（v0.0.1）**` — the format webview/scripts/
+//     extract-changelog.mjs parses, with `中文：` and `English：` sub-sections.
+//
+// Bilingual sections are emitted as: Chinese content, then an `### English`
+// heading, then the English content. The in-extension changelog dialog splits
+// the release body on that `### English` heading to render one Chinese and one
+// English block (see webview/src/version/githubReleases.ts).
+//
 // If the section is missing or empty, fall back to the git commit log since
 // the previous tag (so a release always has some notes).
 //
@@ -33,10 +41,17 @@ function extractFromChangelog() {
     `^##+\\s*\\[?v?${escapeRegex(cleanVersion)}\\]?\\b`,
     'i'
   );
+  // `##### **2026年9月2日（v0.0.1）**` — the extract-changelog.mjs format.
+  const boldHeadingRe = new RegExp(
+    `^#{2,5}\\s*\\*\\*.*[（(]v?${escapeRegex(cleanVersion)}[）)]`,
+    'i'
+  );
+  // Any bold version header, used to detect where the section ends.
+  const nextBoldHeaderRe = /^#{2,5}\s+\*\*.*[（(]v?\d+\.\d+/;
 
   let start = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (headingRe.test(lines[i])) {
+    if (headingRe.test(lines[i]) || boldHeadingRe.test(lines[i])) {
       start = i;
       break;
     }
@@ -45,11 +60,39 @@ function extractFromChangelog() {
 
   const collected = [];
   for (let i = start + 1; i < lines.length; i++) {
-    // Stop at the next top-level (##) heading.
-    if (/^##\s/.test(lines[i])) break;
+    // Stop at the next version heading (either format).
+    if (/^##\s/.test(lines[i]) || nextBoldHeaderRe.test(lines[i])) break;
     collected.push(lines[i]);
   }
-  return collected.join('\n').trim();
+  return toReleaseBody(collected.join('\n').trim());
+}
+
+/**
+ * CHANGELOG sections carry `中文：` and `English：` markers. The GitHub release
+ * body instead uses an `### English` heading, which the changelog dialog splits
+ * on. Sections without both markers pass through unchanged.
+ */
+function toReleaseBody(section) {
+  const enMarker = /^English\s*[:：]\s*$/im.exec(section);
+  const zhMarker = /^中文\s*[:：]\s*$/im.exec(section);
+  if (!enMarker || !zhMarker) return section;
+
+  const sections = {
+    en: enMarker.index < zhMarker.index
+      ? sliceBetween(section, enMarker, zhMarker.index)
+      : section.slice(enMarker.index + enMarker[0].length),
+    zh: zhMarker.index < enMarker.index
+      ? sliceBetween(section, zhMarker, enMarker.index)
+      : section.slice(zhMarker.index + zhMarker[0].length),
+  };
+
+  const zh = sections.zh.trim();
+  const en = sections.en.trim();
+  return [zh, '### English', en].filter(Boolean).join('\n\n');
+}
+
+function sliceBetween(text, marker, endIndex) {
+  return text.slice(marker.index + marker[0].length, endIndex);
 }
 
 function fallbackFromGit() {
