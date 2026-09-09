@@ -41,9 +41,9 @@ import {
   emitUsage,
 } from '../../utils/marker-protocol.js';
 import {
+  ATTACHMENT_ONLY_FALLBACK_TEXT,
   GROK_IMAGE_ONLY_FALLBACK_TEXT,
-  cleanupMaterializedImagePaths,
-  materializeImageAttachments,
+  buildFileParts,
 } from '../../utils/cli-image-input.js';
 import * as serveManager from './opencode-serve-manager.js';
 import * as sdk from './opencode-sdk-client.js';
@@ -645,20 +645,35 @@ export async function sendMessagePersistent(params = {}) {
     emitSessionId(sessionId);
   }
 
-  // ── Materialize image attachments (temp files → file parts) ─────────────
-  let imagePaths = [];
+  // ── Build file parts for attachments (images + any other file type) ────
+  // opencode FilePartInput: { type:'file', mime, filename?, url }
+  // url is a `data:` URL (content travels inline, works against remote
+  // servers too) or a `file://` URL for path-only @-references.
+  let fileParts = [];
+  let attachmentErrors = [];
   try {
-    imagePaths = await materializeImageAttachments(safeParams.attachments || []);
+    const built = buildFileParts(safeParams.attachments || []);
+    fileParts = built.parts;
+    attachmentErrors = built.errors;
   } catch (err) {
-    logDebug('materialize image attachments failed:', err?.message || err);
+    logDebug('build attachment file parts failed:', err?.message || err);
+    attachmentErrors.push(`attachments: ${err?.message || err}`);
+  }
+  for (const message of attachmentErrors) {
+    console.error(`[opencode] attachment skipped — ${message}`);
+    logDebug('attachment skipped:', message);
   }
 
-  // opencode requires non-empty text even for image-only turns.
+  // opencode requires non-empty text even for attachment-only turns.
+  const onlyImages = fileParts.length > 0
+    && fileParts.every((p) => String(p.mime).startsWith('image/'));
+  const fallbackText = onlyImages
+    ? GROK_IMAGE_ONLY_FALLBACK_TEXT
+    : ATTACHMENT_ONLY_FALLBACK_TEXT;
   let promptText = rawMessage.trim();
-  if (!promptText && imagePaths.length > 0) {
-    promptText = GROK_IMAGE_ONLY_FALLBACK_TEXT;
+  if (!promptText && fileParts.length > 0) {
+    promptText = fallbackText;
   }
-  const imageParts = imagePaths.map((p) => ({ type: 'file', path: p, mediaType: 'image/png' }));
 
   // ── Register turn + emit stream-start markers ───────────────────────────
   beginStream(sessionId);
@@ -673,7 +688,8 @@ export async function sendMessagePersistent(params = {}) {
 
   logDebug(
     `send session=${sessionId} agent=${agent || '-'} model=${safeParams.model || '-'}`
-    + ` command=${safeParams.command || '-'} images=${imagePaths.length} promptLen=${promptText.length}`
+    + ` command=${safeParams.command || '-'} attachments=${fileParts.length}`
+    + ` skipped=${attachmentErrors.length} promptLen=${promptText.length}`
   );
 
   try {
@@ -688,7 +704,7 @@ export async function sendMessagePersistent(params = {}) {
         agent,
         variant,
         directory,
-        parts: imageParts,
+        parts: fileParts,
       });
     } else {
       await sdk.promptAsync(sessionId, promptText, {
@@ -696,7 +712,7 @@ export async function sendMessagePersistent(params = {}) {
         agent,
         variant,
         directory,
-        parts: imageParts,
+        parts: fileParts,
       });
     }
 
@@ -723,11 +739,6 @@ export async function sendMessagePersistent(params = {}) {
     _activeTurns.delete(sessionId);
     // 本回合产生了新的 token 用量，context usage 缓存失效。
     _contextUsageCache.delete(`${sessionId}::${directory || ''}`);
-    try {
-      await cleanupMaterializedImagePaths(imagePaths);
-    } catch (err) {
-      logDebug('image cleanup failed:', err?.message || err);
-    }
   }
 
   // ── Success: usage + full message + end markers ─────────────────────────

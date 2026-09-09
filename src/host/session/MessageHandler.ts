@@ -589,6 +589,38 @@ export class MessageHandler implements MessageCallback {
 		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
 	}
 
+	/**
+	 * 用户主动中断（停止按钮）：与 handleStreamEnd 同一收尾语义 —— 先推
+	 * 最终消息快照（含已生成的 assistant 内容），再发 onStreamEnd，最后
+	 * 同步 loading 状态。把 streamEndedThisTurn 置位后，daemon abort 引发的
+	 * onComplete/onAbort 会走「已收尾」清理分支，不会重复通知，也不会把
+	 * 用户中断误报为错误。
+	 */
+	interruptTurn(_finalMessages: unknown[]): void {
+		if (!this.isStreaming && this.streamEndedThisTurn) {
+			return;
+		}
+		this.isStreaming = false;
+		this.streamEndedThisTurn = true;
+		this.errorReportedThisTurn = false;
+		this.lastReportedError = null;
+		this.resetSegmentState();
+
+		if (this.isThinking) {
+			this.isThinking = false;
+			this.callbackHandler.notifyThinkingStatusChanged(false);
+		}
+
+		this.ensureRawBlocksConsistency();
+
+		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.callbackHandler.notifyStreamEnd();
+		this.state.setBusy(false);
+		this.state.setLoading(false);
+		this.state.updateLastModifiedTime();
+		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
+	}
+
 	private handleBlockReset(): void {
 		this.resetSegmentState();
 		this.callbackHandler.notifyBlockReset();

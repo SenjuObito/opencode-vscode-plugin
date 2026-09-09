@@ -12,9 +12,13 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 /** Soft per-image cap for base64 → ACP image blocks (decoded bytes). */
 export const GROK_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+/** Soft per-attachment cap for base64 → opencode file parts (decoded bytes). */
+export const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 
 /**
  * CLI-only text when the user attaches images with empty text.
@@ -22,6 +26,12 @@ export const GROK_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
  * UI should not treat this as user-authored display text.
  */
 export const GROK_IMAGE_ONLY_FALLBACK_TEXT = 'Please analyze the attached image(s).';
+
+/**
+ * CLI-only text when the user attaches non-image files with empty text.
+ * opencode rejects empty prompts, so a turn with only file parts needs filler.
+ */
+export const ATTACHMENT_ONLY_FALLBACK_TEXT = 'Please review the attached file(s).';
 
 /** Stable marker separating user-visible text from Kimi CLI-only image injection. */
 export const KIMI_IMAGE_INJECTION_MARKER = '\n\n<!-- mossx:kimi-image-attachments -->\n';
@@ -238,6 +248,179 @@ export async function cleanupMaterializedImagePaths(paths) {
       // Already removed or never written — best effort cleanup.
     }
   }
+}
+
+/**
+ * Extension → MIME fallback for attachments that carry no media type.
+ * Text-ish sources map to `text/plain` on purpose: opencode inlines
+ * `data:` + `text/plain` parts as readable content instead of a binary blob.
+ */
+const EXTENSION_MIME = new Map(Object.entries({
+  txt: 'text/plain',
+  log: 'text/plain',
+  md: 'text/markdown',
+  json: 'application/json',
+  csv: 'text/csv',
+  xml: 'text/xml',
+  html: 'text/html',
+  css: 'text/css',
+  pdf: 'application/pdf',
+  zip: 'application/zip',
+  gz: 'application/gzip',
+  js: 'text/plain',
+  jsx: 'text/plain',
+  ts: 'text/plain',
+  tsx: 'text/plain',
+  java: 'text/plain',
+  kt: 'text/plain',
+  py: 'text/plain',
+  go: 'text/plain',
+  rs: 'text/plain',
+  c: 'text/plain',
+  h: 'text/plain',
+  cpp: 'text/plain',
+  cs: 'text/plain',
+  rb: 'text/plain',
+  php: 'text/plain',
+  sh: 'text/plain',
+  yml: 'text/plain',
+  yaml: 'text/plain',
+  toml: 'text/plain',
+  sql: 'text/plain',
+  gradle: 'text/plain',
+}));
+
+function mimeForFileName(fileName) {
+  if (typeof fileName !== 'string') return 'text/plain';
+  const ext = path.extname(fileName).replace(/^\./, '').toLowerCase();
+  return EXTENSION_MIME.get(ext) || 'text/plain';
+}
+
+/**
+ * Resolve a MIME type for any attachment (not just images).
+ * Never returns null — unknown files fall back to `text/plain` so opencode
+ * inlines them as readable text instead of rejecting the unsupported
+ * `application/octet-stream`.
+ *
+ * @param {unknown} mediaTypeHint from mediaType / mimeType fields
+ * @param {string|null|undefined} dataUrlMime from data: URL parse
+ * @param {string|null|undefined} fileName used for extension sniffing
+ * @returns {string}
+ */
+export function resolveAttachmentMimeType(mediaTypeHint, dataUrlMime, fileName) {
+  const hint = typeof mediaTypeHint === 'string' ? mediaTypeHint.trim().toLowerCase() : '';
+  // application/octet-stream is the browser's "I don't know" value; using it
+  // makes opencode serve reject the part (especially Copilot-compatible
+  // providers), so fall through to extension sniffing.
+  if (hint && hint !== 'application/octet-stream') return hint;
+  const dm = typeof dataUrlMime === 'string' ? dataUrlMime.trim().toLowerCase() : '';
+  if (dm && dm !== 'application/octet-stream') return dm;
+  const sniffed = mimeForFileName(fileName);
+  // Final guard: if extension sniffing somehow still yields the unsupported
+  // catch-all, coerce to text/plain so opencode inlines it instead of throwing.
+  return sniffed === 'application/octet-stream' ? 'text/plain' : sniffed;
+}
+
+/**
+ * Build opencode `FilePartInput` entries from host attachments.
+ *
+ * opencode server schema (packages/schema/src/v1/session.ts — FilePartInput):
+ *   { id?, type: "file", mime: string, filename?: string, url: string, source? }
+ * `url` accepts both `data:<mime>;base64,<payload>` and `file://<abs path>`.
+ * Sending anything else (e.g. the old `{ path, mediaType }` shape) makes the
+ * server reject the whole prompt with
+ * `400 Missing key at ["parts"][n]["mime"]`.
+ *
+ * Nothing is dropped silently: every skipped attachment yields an entry in
+ * `errors` so the caller can surface it.
+ *
+ * @param {CliAttachment[]} attachments
+ * @param {{ maxBytes?: number }} [options]
+ * @returns {{ parts: Array<{ type: 'file', mime: string, filename: string, url: string }>, errors: string[] }}
+ */
+export function buildFileParts(attachments, options = {}) {
+  const maxBytes = options.maxBytes ?? MAX_ATTACHMENT_BYTES;
+  const parts = [];
+  const errors = [];
+
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return { parts, errors };
+  }
+
+  for (const att of attachments) {
+    if (!att || typeof att !== 'object') continue;
+
+    const fileName = att.fileName || att.name;
+    const label = fileName || 'attachment';
+    const hint = typeof att.mediaType === 'string'
+      ? att.mediaType
+      : (typeof att.mimeType === 'string' ? att.mimeType : '');
+    const localPath = typeof att.path === 'string' ? att.path.trim() : '';
+    // Hosts disagree on the payload field: idea/VS Code webviews send `data`,
+    // the VS Code host normalises to `imageData` (images) / `content` (files).
+    const rawData = typeof att.data === 'string'
+      ? att.data
+      : (typeof att.imageData === 'string'
+        ? att.imageData
+        : (typeof att.content === 'string' ? att.content : ''));
+    const hasData = rawData.trim() !== '';
+
+    if (!hasData && !localPath) {
+      errors.push(`${label}: no file content (missing both data and path)`);
+      continue;
+    }
+
+    // Path-only attachment (@-referenced file): hand opencode a file:// URL so
+    // it reads the current content from disk via its own Read tool.
+    if (localPath && !hasData) {
+      const mime = resolveAttachmentMimeType(hint, null, fileName);
+      parts.push({
+        type: 'file',
+        mime,
+        filename: label,
+        url: pathToFileURL(localPath).href,
+      });
+      continue;
+    }
+
+    const parsed = parseAttachmentData(rawData);
+    if (!parsed || !parsed.base64) {
+      errors.push(`${label}: empty or unreadable file data`);
+      continue;
+    }
+
+    const decodedLen = estimateBase64DecodedBytes(parsed.base64);
+    if (decodedLen > maxBytes) {
+      errors.push(`${label}: exceeds ${maxBytes} byte limit (${decodedLen})`);
+      continue;
+    }
+
+    let buffer;
+    try {
+      buffer = Buffer.from(parsed.base64, 'base64');
+    } catch (err) {
+      errors.push(`${label}: invalid base64 (${err?.message || err})`);
+      continue;
+    }
+    if (!buffer.length) {
+      errors.push(`${label}: empty file`);
+      continue;
+    }
+    if (buffer.length > maxBytes) {
+      errors.push(`${label}: exceeds ${maxBytes} byte limit (${buffer.length})`);
+      continue;
+    }
+
+    const mime = resolveAttachmentMimeType(hint, parsed.mimeType, fileName);
+    parts.push({
+      type: 'file',
+      mime,
+      filename: label,
+      url: `data:${mime};base64,${buffer.toString('base64')}`,
+    });
+  }
+
+  return { parts, errors };
 }
 
 /**

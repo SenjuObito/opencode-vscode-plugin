@@ -183,7 +183,7 @@ function buildUserMessage(
 			blocks.push({
 				type: 'attachment',
 				fileName: part.filename ?? part.url ?? part.title ?? '',
-				mediaType: typeof part.mime === 'string' ? part.mime : 'application/octet-stream',
+				mediaType: typeof part.mime === 'string' ? part.mime : '',
 			});
 		}
 	}

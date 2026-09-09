@@ -36,10 +36,19 @@ export function useAttachmentHandlers({
           const commaIndex = result.indexOf(',');
           if (commaIndex === -1) return;
           const base64 = result.substring(commaIndex + 1);
+          // Browsers report application/octet-stream (or empty) for files they
+          // don't recognise (e.g. extensionless scripts like `gradlew`). Don't
+          // pass that hint through: let the backend sniff a proper MIME from the
+          // filename/extension, otherwise it falls back to text/plain instead of
+          // the unsupported application/octet-stream.
+          const rawType = file.type || '';
+          const mediaType = rawType && rawType !== 'application/octet-stream'
+            ? rawType
+            : '';
           const attachment: Attachment = {
             id: generateId(),
             fileName: file.name,
-            mediaType: file.type || 'application/octet-stream',
+            mediaType,
             data: base64,
           };
           setInternalAttachments((prev) => [...prev, attachment]);

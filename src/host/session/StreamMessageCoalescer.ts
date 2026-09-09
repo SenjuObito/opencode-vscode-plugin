@@ -81,11 +81,13 @@ export class StreamMessageCoalescer {
 		this.clearHeartbeat();
 		this.streamActive = false;
 		this.lastPayloadChars = 0;
-		// 流结束即释放挂起/已送达快照引用：数组的消息对象与 SessionState 共享，
-		// 释放的只是引用数组，但长会话下多份 300+ 条的引用数组会一直驻留到
-		// 会话切换。下一次流式 push 时 selectMessageTransport 会退回全量传输，
-		// 代价是每 turn 一次全量序列化（已被传输层截断兜底）。
-		this.pendingMessages = null;
+		// 流结束保留 pendingMessages：SessionCallbackAdapter.onStreamEnd 随后调
+		// flush() 把它作为最终快照投递给 webview（先快照后 onStreamEnd 信号的
+		// 顺序保证）。这里若清掉它，flush 只能回退到上一次已投递的旧快照 ——
+		// 中断/异常收尾时最终内容会被旧数据覆盖（消息“消失”的根源之一）。
+		// 定时推送若还挂着，取消它，让 flush 的全量投递成为流的最后一次推送。
+		this.clearUpdate();
+		this.updateScheduled = false;
 		this.lastDeliveredSnapshot = null;
 		this.target.onStreamEnded?.();
 	}

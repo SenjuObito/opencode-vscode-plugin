@@ -309,6 +309,17 @@ export class OpenCodeSession {
 	interrupt(): void {
 		this.state.setBusy(false);
 		this.state.setLoading(false);
+		// 用户主动中断：先收尾流式状态（含最终消息快照 + onStreamEnd），
+		// 让 webview 在停止按钮生效时就把已生成的回复定住，而不是留在
+		// isStreaming 占位气泡里等一条不会再来的正常 [STREAM_END]。
+		// 快照包含本轮的用户消息（发送时已入 state）与中断前生成的
+		// assistant 内容，webview 据此完成气泡收尾。
+		this.messageHandler.interruptTurn(this.state.getMessages());
+		// 标记中断并复用正常收尾路径：登记会话历史 + aborted 状态通知，
+		// 与 daemon abort 之后回流的 onComplete(streamEndedThisTurn) 清理
+		// 分支语义一致。
+		this.streamCtx.wasAborted = true;
+		this.onTurnEnded();
 		this.daemon.sendAbort();
 	}
 

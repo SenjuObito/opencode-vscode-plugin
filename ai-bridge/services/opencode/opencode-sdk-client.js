@@ -147,6 +147,33 @@ export async function deleteSession(id, directory) {
  * @param {Array<object>} [options.parts] - extra parts (e.g. file parts for images)
  * @returns {Promise<void>}
  */
+/**
+ * File parts carry whole files as `data:` URLs. Logging them raw floods stderr,
+ * which the host forwards to the UI as node_log, so replace payloads with a
+ * size hint before serialising.
+ *
+ * @param {object} params
+ * @returns {object}
+ */
+function redactParamsForLog(params) {
+  if (!params || typeof params !== 'object' || !Array.isArray(params.parts)) {
+    return params;
+  }
+  return {
+    ...params,
+    parts: params.parts.map((part) => {
+      if (!part || typeof part !== 'object') return part;
+      if (typeof part.url === 'string') {
+        return { ...part, url: `<${part.url.split(':')[0]}: ${part.url.length} chars>` };
+      }
+      if (typeof part.text === 'string' && part.text.length > 200) {
+        return { ...part, text: `<${part.text.length} chars>` };
+      }
+      return part;
+    }),
+  };
+}
+
 export async function promptAsync(sessionId, text, options = {}) {
   const params = {
     sessionID: sessionId,
@@ -163,7 +190,7 @@ export async function promptAsync(sessionId, text, options = {}) {
     params.parts = [...params.parts, ...options.parts];
   }
 
-  console.error('[opencode-sdk-client] promptAsync:', JSON.stringify(params));
+  console.error('[opencode-sdk-client] promptAsync:', JSON.stringify(redactParamsForLog(params)));
   const result = await getClient().session.promptAsync(params);
   if (result.error) {
     throw new Error(`Prompt failed: ${JSON.stringify(result.error)}`);
@@ -223,7 +250,7 @@ export async function sendCommand(sessionId, command, options = {}) {
   if (options.directory) params.directory = options.directory;
   if (Array.isArray(options.parts) && options.parts.length > 0) params.parts = options.parts;
 
-  console.error('[opencode-sdk-client] sendCommand:', JSON.stringify(params));
+  console.error('[opencode-sdk-client] sendCommand:', JSON.stringify(redactParamsForLog(params)));
   const result = await getClient().session.command(params);
   if (result.error) {
     throw new Error(`Command failed: ${JSON.stringify(result.error)}`);

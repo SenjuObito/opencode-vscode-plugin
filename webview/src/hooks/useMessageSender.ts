@@ -92,8 +92,6 @@ export function useMessageSender({
   isUserAtBottomRef,
   userPausedRef,
   isStreamingRef,
-  streamingContentRef,
-  streamingThinkingRef,
   contentUpdateTimeoutRef,
   thinkingUpdateTimeoutRef,
   setMessages,
@@ -453,23 +451,17 @@ export function useMessageSender({
       thinkingUpdateTimeoutRef.current = null;
     }
 
-    // Drop the accumulated delta buffers. The backend may still push a few
-    // trailing deltas that were already in flight; those call
-    // ensureStreamingActive() and would resume patching on top of a buffer that
-    // no longer belongs to any visible turn.
-    //
-    // Deliberately NOT resetting streamingMessageIndexRef / streamingTurnIdRef:
-    // onStreamEnd needs both to locate the placeholder assistant message and
-    // write back the final content / raw / durationMs / __turnId. Clearing them
-    // here would make the finalized reply disappear from the UI.
-    streamingContentRef.current = '';
-    streamingThinkingRef.current = '';
+    // Deliberately NOT resetting streamingMessageIndexRef / streamingTurnIdRef /
+    // streamingContentRef / streamingThinkingRef: the host's interrupt path now
+    // pushes the final message snapshot and then fires onStreamEnd, and that
+    // onStreamEnd needs the turn refs to locate the streaming assistant bubble
+    // and the buffered content to write the final (partial) answer back onto it.
+    // Clearing them here is what made BOTH the user message and the partial AI
+    // reply vanish on stop.
 
     sendBridgeEvent('interrupt_session');
   }, [
     isStreamingRef,
-    streamingContentRef,
-    streamingThinkingRef,
     contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef,
   ]);
