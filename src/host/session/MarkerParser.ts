@@ -178,6 +178,13 @@ export function processOutputLine(
 		return;
 	}
 
+	if (line.startsWith('[SESSION_TITLE]')) {
+		const payload = decodeJsonStringPayload(line.substring('[SESSION_TITLE]'.length).trim());
+		logDiagnostic(`[MarkerParser] SESSION_TITLE payload=${payload.substring(0, 300)}`);
+		callback.onMessage('session_title', payload);
+		return;
+	}
+
 	if (line.startsWith('[TODO_UPDATED]')) {
 		// ai-bridge 调用的是
 		//   emitJsonStringMarker('[TODO_UPDATED]', JSON.stringify({ sessionID, todos }))

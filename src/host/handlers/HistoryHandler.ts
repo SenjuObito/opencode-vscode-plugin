@@ -102,18 +102,100 @@ export class HistoryHandler extends BaseMessageHandler {
 		storeFavorites(this.context.getSettingsService().getStore(), favorites);
 	}
 
-	/** 由 OpenCodeSession 在 turn 结束时调用：登记/更新会话摘要。 */
-	recordSession(sessionId: string, title: string, messageCount: number, model?: string): void {
-		upsertSessionSummary(
-			this.context.getSettingsService().getStore(),
-			sessionId,
-			title,
-			{ messageCount, ...(model ? { model } : {}) },
-		);
+	/** 由 OpenCodeSession 在 turn 结束时调用：登记/更新会话摘要（原生模式由 OpenCode 服务端接管）。 */
+	recordSession(_sessionId: string, _title: string, _messageCount: number, _model?: string): void {
+		// Native OpenCode server persists sessions automatically
 	}
 
 	private handleLoadHistoryData(): void {
-		pushHistoryData(this.context.getChannel(), this.context.getSettingsService().getStore());
+		const daemon = this.context.getDaemon();
+		if (!daemon) {
+			this.callJavaScript(
+				'setHistoryData',
+				JSON.stringify({ success: false, error: 'No daemon connection', sessions: [], total: 0, favorites: {} }),
+			);
+			return;
+		}
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		const chunks: string[] = [];
+		daemon.request('opencode.listSessions', { directory }, {
+			onLine: (line) => chunks.push(line),
+			onError: (err) => {
+				this.callJavaScript(
+					'setHistoryData',
+					JSON.stringify({ success: false, error: typeof err === 'string' ? err : 'Failed to list sessions', sessions: [], total: 0, favorites: {} }),
+				);
+			},
+			onComplete: (success) => {
+				if (!success) {
+					this.callJavaScript(
+						'setHistoryData',
+						JSON.stringify({ success: false, error: 'Failed to list sessions', sessions: [], total: 0, favorites: {} }),
+					);
+					return;
+				}
+				const payload = this.extractJsonObject(chunks.join('\n'));
+				const rawSessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+				const favorites: Record<string, { favoritedAt: number }> = {};
+				const sessions = (rawSessions as Array<Record<string, any>>).map((s) => {
+					const sessionId = String(s?.id || s?.sessionId || '');
+					const title = String(s?.title || 'Untitled session');
+					let lastTimestamp: string | undefined = undefined;
+					if (s?.time && typeof s.time === 'object') {
+						let updated = typeof s.time.updated === 'number' ? s.time.updated : (typeof s.time.created === 'number' ? s.time.created : 0);
+						if (updated > 0) {
+							if (updated < 100_000_000_000) {
+								updated *= 1000;
+							}
+							lastTimestamp = new Date(updated).toISOString();
+						}
+					} else if (typeof s?.lastTimestamp === 'string') {
+						lastTimestamp = s.lastTimestamp;
+					}
+
+					let model: string | undefined = undefined;
+					if (s?.model && typeof s.model === 'object') {
+						const p = s.model.providerID || '';
+						const m = s.model.id || '';
+						model = p && m ? `${p}/${m}` : m;
+					} else if (typeof s?.model === 'string') {
+						model = s.model;
+					}
+
+					const agent = typeof s?.agent === 'string' ? s.agent : undefined;
+					const meta = s?.metadata && typeof s.metadata === 'object' ? s.metadata : {};
+					const isFavorited = Boolean(meta.isFavorited);
+					let favoritedAt: number | undefined = undefined;
+					if (isFavorited) {
+						const favTime = typeof meta.favoritedAt === 'number' ? meta.favoritedAt : Date.now();
+						favoritedAt = favTime;
+						favorites[sessionId] = { favoritedAt: favTime };
+					}
+
+					return {
+						sessionId,
+						title,
+						messageCount: 0,
+						lastTimestamp,
+						model,
+						agent,
+						provider: 'opencode',
+						isFavorited,
+						favoritedAt,
+					};
+				});
+
+				this.callJavaScript(
+					'setHistoryData',
+					JSON.stringify({
+						success: true,
+						sessions,
+						total: sessions.length,
+						favorites,
+					}),
+				);
+			},
+		});
 	}
 
 	private handleLoadSession(content: string): void {
@@ -168,7 +250,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		this.callJavaScript('setSessionId', sessionId);
 		const summary = this.getSessions().find((s) => s.sessionId === sessionId);
 		if (summary) {
-			this.callJavaScript('updateSessionTitle', summary.title);
+			this.callJavaScript('updateSessionTitle', sessionId, summary.title);
 		}
 
 		void this.fetchAndRestoreMessages(daemon, session, sessionId, true);
@@ -315,7 +397,7 @@ export class HistoryHandler extends BaseMessageHandler {
 						const serverTitle = typeof info?.title === 'string' ? info.title.trim() : '';
 						if (serverTitle && !this.getSessions().some((s) => s.sessionId === sessionId)) {
 							upsertSessionSummary(this.context.getSettingsService().getStore(), sessionId, serverTitle);
-							this.callJavaScript('updateSessionTitle', serverTitle);
+							this.callJavaScript('updateSessionTitle', sessionId, serverTitle);
 						}
 
 						const providerId = typeof info?.model?.providerID === 'string' ? info.model.providerID.trim() : '';
@@ -360,7 +442,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		this.callJavaScript('setSessionId', sessionId);
 		const summary = this.getSessions().find((s) => s.sessionId === sessionId);
 		if (summary) {
-			this.callJavaScript('updateSessionTitle', summary.title);
+			this.callJavaScript('updateSessionTitle', sessionId, summary.title);
 		}
 		this.callJavaScript('historyLoadComplete');
 	}
@@ -456,7 +538,20 @@ export class HistoryHandler extends BaseMessageHandler {
 		if (!sessionId) {
 			return;
 		}
-		this.setSessions(this.getSessions().filter((s) => s.sessionId !== sessionId));
+		const daemon = this.context.getDaemon();
+		if (!daemon) {
+			return;
+		}
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		daemon.request('opencode.deleteSession', { sessionId, directory }, {
+			onLine: () => {},
+			onError: (err) => {
+				console.error('[HistoryHandler] Failed to delete session:', err);
+			},
+			onComplete: () => {
+				this.handleLoadHistoryData();
+			},
+		});
 	}
 
 	private handleDeleteSessions(content: string): void {
@@ -475,7 +570,23 @@ export class HistoryHandler extends BaseMessageHandler {
 		if (idSet.size === 0) {
 			return;
 		}
-		this.setSessions(this.getSessions().filter((s) => !idSet.has(s.sessionId)));
+		const daemon = this.context.getDaemon();
+		if (!daemon) {
+			return;
+		}
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		const promises = Array.from(idSet).map((sessionId) => {
+			return new Promise<void>((resolve) => {
+				daemon.request('opencode.deleteSession', { sessionId, directory }, {
+					onLine: () => {},
+					onError: () => resolve(),
+					onComplete: () => resolve(),
+				});
+			});
+		});
+		Promise.all(promises).then(() => {
+			this.handleLoadHistoryData();
+		});
 	}
 
 	private handleToggleFavorite(content: string): void {
@@ -483,30 +594,49 @@ export class HistoryHandler extends BaseMessageHandler {
 		if (!sessionId) {
 			return;
 		}
-		const favorites = this.getFavorites();
-		if (favorites[sessionId]) {
-			delete favorites[sessionId];
-		} else {
-			favorites[sessionId] = { favoritedAt: Date.now() };
+		const daemon = this.context.getDaemon();
+		if (!daemon) {
+			return;
 		}
-		this.setFavorites(favorites);
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		daemon.request('opencode.toggleFavorite', { sessionId, directory }, {
+			onLine: () => {},
+			onError: (err) => {
+				console.error('[HistoryHandler] Failed to toggle favorite:', err);
+			},
+			onComplete: (success) => {
+				if (success) {
+					console.log('[HistoryHandler] Favorite toggled successfully:', sessionId);
+				}
+			},
+		});
 	}
 
 	private handleUpdateTitle(content: string): void {
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const sessionId = typeof json?.sessionId === 'string' ? json.sessionId : '';
-			const title = typeof json?.title === 'string' ? json.title : '';
+			const title = typeof json?.title === 'string' ? json.title : (typeof json?.customTitle === 'string' ? json.customTitle : '');
 			if (!sessionId || !title) {
 				return;
 			}
-			const sessions = this.getSessions();
-			const target = sessions.find((s) => s.sessionId === sessionId);
-			if (target) {
-				target.title = title;
-				this.setSessions(sessions);
+			const daemon = this.context.getDaemon();
+			if (!daemon) {
+				return;
 			}
-			this.callJavaScript('updateSessionTitle', title);
+			const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+			daemon.request('opencode.updateSessionTitle', { sessionId, title, directory }, {
+				onLine: () => {},
+				onError: (err) => {
+					console.error('[HistoryHandler] Failed to update session title:', err);
+				},
+				onComplete: (success) => {
+					if (success) {
+						this.callJavaScript('updateSessionTitle', sessionId, title);
+						this.handleLoadHistoryData();
+					}
+				},
+			});
 		} catch {
 			// 忽略解析失败
 		}

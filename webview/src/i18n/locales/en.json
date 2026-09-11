@@ -227,11 +227,6 @@
         "invalidFileName": "Path must end with node.exe on Windows, or node on macOS/Linux",
         "cannotExecute": "File exists but cannot be executed, please check file permissions"
       },
-      "claudeCliPath": {
-        "label": "Opencode TUI Path",
-        "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
-        "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
-      },
       "workingDirectory": {
         "label": "Working Directory",
         "placeholder": "e.g. project1 or leave empty to use project root",
@@ -408,6 +403,11 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When disabled, creating a new session in a conversation with existing messages will skip the confirmation dialog."
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI Path",
+        "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
+        "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
       }
     },
     "providers": "Provider Management",
@@ -776,7 +776,34 @@
         "selectHint": "Select prompts to export",
         "confirmExport": "Confirm Export"
       }
-    }
+    },
+    "commands": {
+      "title": "Commands (Prompts)",
+      "description": "Manage opencode command markdown files. Global: ~/.config/opencode/command, project: .opencode/command. Run them in chat with /name.",
+      "library": "Prompt Library",
+      "libraryTitle": "Prompt Library — import a built-in template",
+      "new": "New",
+      "newName": "new-command",
+      "import": "Import",
+      "edit": "Edit",
+      "delete": "Delete",
+      "empty": "No commands in this scope yet.",
+      "confirmDelete": "Delete command \"{{name}}\"?",
+      "editorTitle": "Command file",
+      "namePlaceholder": "command name",
+      "scope": {
+        "global": "Global",
+        "project": "Project"
+      },
+      "templates": {
+        "review": "Review current changes for bugs and style issues",
+        "explain": "Explain a file or symbol in plain language",
+        "tests": "Generate unit tests for the target code",
+        "refactor": "Refactor code without changing behaviour",
+        "commit": "Generate a conventional commit message"
+      }
+    },
+    "prompts": "Commands (Prompts)"
   },
   "history": {
     "title": "History",
@@ -806,6 +833,9 @@
     "noSessions": "No history sessions",
     "noSessionsDesc": "No OpenCode session records found in current project",
     "totalSessions": "{{count}} sessions · {{total}} messages",
+    "totalSessionsCount": "{{count}} sessions",
+    "loadMore": "Scroll down to load more...",
+    "allLoaded": "All {{count}} sessions loaded",
     "messageCount": "{{count}} messages",
     "searchPlaceholder": "Search session titles...",
     "noSearchResults": "No matching sessions found",

@@ -114,9 +114,12 @@ const deduplicateHistorySessions = (sessions: HistorySessionSummary[]) => {
   return Array.from(deduplicated.values());
 };
 
+const PAGE_SIZE = 20;
+
 const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSession, onDeleteSession, onDeleteSessions, onExportSession, onToggleFavorite, onUpdateTitle, onConvertToCliSession }: HistoryViewProps) => {
   const { t } = useTranslation();
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight || 600);
+  const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null); // Session ID pending deletion
   const [convertingSessionId, setConvertingSessionId] = useState<string | null>(null); // Session ID pending conversion
   const [inputValue, setInputValue] = useState(''); // Immediate value of search input
@@ -161,6 +164,11 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
     return () => clearTimeout(timer);
   }, [inputValue]);
 
+  // Reset displayLimit when search query or history sessions list updates
+  useEffect(() => {
+    setDisplayLimit(PAGE_SIZE);
+  }, [searchQuery, historyData?.sessions?.length]);
+
   // When history data content updates, stop deep search state and clean up timeout timer.
   // Depend on stable content fields so an existing history list refresh also clears the spinner.
   useEffect(() => {
@@ -197,12 +205,51 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
     return [...favorited, ...unfavorited];
   }, [historyData?.sessions, searchQuery]);
 
-  const infoBar = !historyData
-    ? ''
-    : t('history.totalSessions', {
+  const handleReachBottom = useCallback(() => {
+    setDisplayLimit(prev => {
+      if (prev < sessions.length) {
+        return Math.min(prev + PAGE_SIZE, sessions.length);
+      }
+      return prev;
+    });
+  }, [sessions.length]);
+
+  const visibleSessions = useMemo(() => {
+    return sessions.slice(0, displayLimit);
+  }, [sessions, displayLimit]);
+
+  const infoBar = useMemo(() => {
+    if (!historyData) return '';
+    const totalMsgCount = sessions.reduce((sum, s) => sum + (s.messageCount || 0), 0);
+    if (totalMsgCount > 0) {
+      return t('history.totalSessions', {
         count: sessions.length,
-        total: historyData.total ?? 0,
+        total: totalMsgCount,
       });
+    }
+    return t('history.totalSessionsCount', {
+      count: sessions.length,
+      defaultValue: `${sessions.length} sessions`,
+    });
+  }, [historyData, sessions, t]);
+
+  const listFooter = useMemo(() => {
+    if (sessions.length <= PAGE_SIZE) {
+      return null;
+    }
+    if (displayLimit < sessions.length) {
+      return (
+        <div style={{ padding: '12px 0', textAlign: 'center', color: '#858585', fontSize: '12px' }}>
+          {t('history.loadMore', { defaultValue: '向下滚动加载更多...' })}
+        </div>
+      );
+    }
+    return (
+      <div style={{ padding: '12px 0', textAlign: 'center', color: '#858585', fontSize: '12px' }}>
+        {t('history.allLoaded', { count: sessions.length, defaultValue: `已加载全部 ${sessions.length} 个会话` })}
+      </div>
+    );
+  }, [displayLimit, sessions.length, t]);
 
   const selectedCount = selectedSessionIds.size;
   const allVisibleSelected = sessions.length > 0 && sessions.every(session => selectedSessionIds.has(session.sessionId));
@@ -501,12 +548,14 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       <div style={LIST_WRAPPER_STYLE}>
         {sessions.length > 0 ? (
           <VirtualList
-            items={sessions}
+            items={visibleSessions}
             itemHeight={78}
             height={listHeight}
             renderItem={renderHistoryItem}
             getItemKey={(session) => `${session.sessionId}-${session.lastTimestamp ?? '0'}`}
             className="messages-container"
+            onReachBottom={handleReachBottom}
+            footer={listFooter}
           />
         ) : (
           renderEmptyState()

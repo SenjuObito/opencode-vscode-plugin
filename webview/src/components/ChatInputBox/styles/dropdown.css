@@ -18,8 +18,8 @@
 .dropdown-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 4px;
+  padding: 4px 8px;
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -46,39 +46,49 @@
 }
 
 .dropdown-item-icon {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--text-secondary);
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  max-width: 14px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin: 0 !important;
 }
 
 /* Inline SVG icon styles */
 .dropdown-item-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   display: block;
+  margin: 0 !important;
 }
 
-/* Codicon icons must sit exactly inside the 16x16 box without extra line-height. */
+/* Codicon icons must sit exactly inside the box without extra line-height. */
 .dropdown-item-icon.codicon {
   line-height: 1;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  margin: 0 !important;
 }
 
 .dropdown-item-content {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
+  gap: 5px;
+  margin: 0 !important;
 }
 
 .dropdown-item-label {
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -88,20 +98,25 @@
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
-  margin-left: 8px;
-  text-align: right;
-  flex: 1;
-  direction: rtl;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.dropdown-separator {
+  height: 1px;
+  background: var(--dropdown-border, rgba(128, 128, 128, 0.2));
+  margin: 3px 0;
 }
 
 .dropdown-section-header {
-  padding: 6px 12px 4px;
-  font-size: 11px;
+  padding: 6px 10px 3px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
   background: transparent;
   cursor: default;
   user-select: none;

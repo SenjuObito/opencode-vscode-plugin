@@ -92,4 +92,8 @@ export class CallbackHandler {
 		console.log('[CallbackHandler] notifyTodoUpdated called, callback exists:', !!this.callback, 'onTodoUpdated exists:', !!this.callback?.onTodoUpdated);
 		this.callback?.onTodoUpdated?.(payload);
 	}
+
+	notifySessionTitleReceived(sessionId: string, title: string): void {
+		this.callback?.onSessionTitleReceived?.(sessionId, title);
+	}
 }

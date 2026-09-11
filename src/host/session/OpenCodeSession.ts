@@ -121,30 +121,22 @@ export class OpenCodeSession {
 	 * 发送一条消息。non-blocking；结果经流管道异步回传 webview。
 	 */
 	async send(payload: SendMessagePayload): Promise<void> {
-		let text = payload.text ?? '';
+		const text = payload.text ?? '';
 		const cwd = this.state.getCwd() ?? this.context.resolveEffectiveWorkingDirectory() ?? undefined;
 
 		// opencode 原生斜杠命令：'/name args...' → 走 /session/{id}/command。
 		// 与 TUI 一致，任何前导 '/' 文本都视为命令（未知命令由服务端报错）。
 		const slashCommand = parseSlashCommand(text);
 
-		// cc-gui 语义：每次发送附带当前编辑器上下文。opencode 侧等价于在消息里
-		// @ 该文件 —— 注入路径引用，agent 会自行读取文件（含选区行号提示）。
-		// 斜杠命令不注入（命令参数语义会被污染）。
-		// 发送前实时校验 autoOpenFileEnabled：resolver 缓存可能在设置关闭后
-		// 尚未被编辑器事件刷新（双保险，主清除路径在 SettingsHandler）。
 		const injectProjectPath = this.context.getSettingsService().getPrimaryWorkspaceRoot();
 		const autoOpenFileOn = !injectProjectPath
 			|| this.context.getSettingsService().getAutoOpenFileEnabled(injectProjectPath);
-		if (!slashCommand && autoOpenFileOn) {
-			const selInfo = this.editorSelectionResolver?.() ?? null;
-			if (selInfo) {
-				const m = /^@(.+?)(?:#L(\d+)(?:-(\d+))?)?$/.exec(selInfo);
-				if (m?.[1]) {
-					const lines = m[2] && m[3] && m[2] !== m[3] ? ` (lines ${m[2]}-${m[3]})` : '';
-					text = `${text}\n\n@${m[1]}${lines}`.trim();
-				}
-			}
+		const selInfo = this.editorSelectionResolver?.() ?? null;
+
+		let messageToSend = text;
+		if (!slashCommand) {
+			const contextAppend = buildContextAppend(payload, autoOpenFileOn, selInfo);
+			messageToSend = (text ? text : '') + contextAppend;
 		}
 
 		// 更新会话配置（permissionMode / reasoningEffort 来自 payload）
@@ -184,7 +176,7 @@ export class OpenCodeSession {
 			sessionId: this.state.getSessionId() ?? undefined,
 			...(slashCommand
 				? { command: slashCommand.command, commandArguments: slashCommand.arguments }
-				: { message: text }),
+				: { message: messageToSend }),
 			model: this.state.getModel() ?? undefined,
 			mode: normalizePermissionMode(this.state.getPermissionMode()) ?? undefined,
 			reasoningEffort: this.state.getReasoningEffort() ?? undefined,
@@ -489,6 +481,12 @@ function buildUserMessage(
 					type: 'image',
 					source: { type: 'base64', media_type: att.mediaType, data: att.data },
 				});
+			} else if (att?.fileName) {
+				contentBlocks.push({
+					type: 'attachment',
+					fileName: att.fileName,
+					mediaType: att.mediaType || '',
+				});
 			}
 		}
 	}
@@ -543,7 +541,7 @@ function truncateSummary(text: string): string {
 	return `${trimmed.slice(0, 45)}...`;
 }
 
-/** 把 webview 的 attachments / fileTags 归一成 daemon `opencode.send` 的附件。 */
+/** 把 webview 的 attachments 归一成 daemon `opencode.send` 的附件（fileTags 走 Referenced Files 提示词注入）。 */
 function buildAttachments(payload: SendMessagePayload): Array<Record<string, unknown>> {
 	const result: Array<Record<string, unknown>> = [];
 
@@ -558,18 +556,68 @@ function buildAttachments(payload: SendMessagePayload): Array<Record<string, unk
 		}
 	}
 
+	return result;
+}
+
+/**
+ * 组装上下文追加 markdown（## Referenced Files / ## IDE Context / ## User's Current IDE Context / ## Active Terminal Session）。
+ * 与 IDEA 宿主 SessionContextService.buildCodexContextAppend 保持完全一致的协议。
+ */
+function buildContextAppend(
+	payload: SendMessagePayload,
+	autoOpenFileOn: boolean,
+	selInfo: string | null,
+): string {
+	let contextAppend = '';
+
+	// 1. @ 引用的文件与终端
+	const regularFilePaths: string[] = [];
+	const terminalPaths: string[] = [];
 	if (Array.isArray(payload.fileTags) && payload.fileTags.length > 0) {
 		for (const tag of payload.fileTags) {
-			if (tag?.absolutePath) {
-				result.push({
-					type: 'file',
-					path: tag.absolutePath,
-					name: tag.displayPath,
-					description: 'referenced-file',
-				});
+			const p = tag?.absolutePath || tag?.displayPath;
+			if (p) {
+				if (p.startsWith('terminal://')) {
+					terminalPaths.push(p);
+				} else {
+					regularFilePaths.push(p);
+				}
 			}
 		}
 	}
 
-	return result;
+	if (terminalPaths.length > 0) {
+		contextAppend += '\n\n## Active Terminal Session\n\nThe user is working in the following terminal context:\n\n';
+		for (const terminalPath of terminalPaths) {
+			const sessionName = terminalPath.substring('terminal://'.length);
+			contextAppend += `- **Terminal**: \`${sessionName}\`\n`;
+		}
+		contextAppend += '\nCommands should be executed in this terminal context.\n';
+	}
+
+	if (regularFilePaths.length > 0) {
+		contextAppend += '\n\n## Referenced Files\n\nThe following files were referenced by the user:\n\n';
+		for (const filePath of regularFilePaths) {
+			contextAppend += `- \`${filePath}\`\n`;
+		}
+		contextAppend += "\nRead them with your file tools as needed; the user expects answers based on their content.\n";
+	}
+
+	// 2. 编辑器上下文（活动文件与选区）
+	if (autoOpenFileOn && selInfo) {
+		const m = /^@(.+?)(?:#L(\d+)(?:-(\d+))?)?$/.exec(selInfo);
+		if (m?.[1]) {
+			const activeFile = m[1];
+			const startLine = m[2];
+			const endLine = m[3] || startLine;
+			if (startLine && endLine) {
+				const lineRange = startLine === endLine ? `#L${startLine}` : `#L${startLine}-${endLine}`;
+				contextAppend += `\n\n## IDE Context\n\nActive file: \`${activeFile}${lineRange}\`\n\nThe user has selected the referenced lines in this file; the selection is the primary subject of the user's question. Read the file to see the selected code.\n`;
+			} else {
+				contextAppend += `\n\n## User's Current IDE Context\n\nThe user is viewing this file in their IDE. This is the PRIMARY SUBJECT of the user's question: \`${activeFile}\`\n\nRead it with your file tools as needed.\n`;
+			}
+		}
+	}
+
+	return contextAppend;
 }

@@ -58,4 +58,5 @@ export interface SessionCallback {
 	onTaskEvent?(eventJson: string): void;
 	onRevertStateUpdate?(hasRevert: boolean): void;
 	onTodoUpdated?(payload: string): void;
+	onSessionTitleReceived?(sessionId: string, title: string): void;
 }

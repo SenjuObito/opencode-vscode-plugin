@@ -48,8 +48,9 @@ export class AgentHandler extends BaseMessageHandler {
 			return;
 		}
 
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
 		const chunks: string[] = [];
-		void daemon.request('opencode.listAgents', {}, {
+		void daemon.request('opencode.listAgents', { directory }, {
 			onLine: (line) => chunks.push(line),
 			onError: () => this.pushAgents([]),
 			onComplete: (success) => {

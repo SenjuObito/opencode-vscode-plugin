@@ -16,6 +16,9 @@ interface VirtualListProps<T> {
   renderItem: (item: T, index: number) => ReactNode;
   getItemKey?: (item: T, index: number) => React.Key;
   className?: string;
+  onReachBottom?: () => void;
+  reachBottomThreshold?: number;
+  footer?: ReactNode;
 }
 
 const VirtualList = <T,>({
@@ -26,6 +29,9 @@ const VirtualList = <T,>({
   renderItem,
   getItemKey,
   className,
+  onReachBottom,
+  reachBottomThreshold = 60,
+  footer,
 }: VirtualListProps<T>) => {
   const [scrollTop, setScrollTop] = useState(0);
   const rafRef = useRef<number | null>(null);
@@ -36,10 +42,14 @@ const VirtualList = <T,>({
       cancelAnimationFrame(rafRef.current);
     }
 
+    const { scrollTop: newScrollTop, scrollHeight, clientHeight } = target;
     rafRef.current = requestAnimationFrame(() => {
-      setScrollTop(target.scrollTop);
+      setScrollTop(newScrollTop);
+      if (onReachBottom && scrollHeight - newScrollTop - clientHeight <= reachBottomThreshold) {
+        onReachBottom();
+      }
     });
-  }, []);
+  }, [onReachBottom, reachBottomThreshold]);
 
   useEffect(() => {
     return () => {
@@ -95,6 +105,7 @@ const VirtualList = <T,>({
           })}
         </div>
       </div>
+      {footer}
     </div>
   );
 };

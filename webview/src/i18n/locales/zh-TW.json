@@ -204,11 +204,6 @@
         "hintText": "獲取實際的 Node.js 可執行檔案路徑。為空時外掛會自動嘗試檢測 Node.js。",
         "versionTooLow": "Node.js 版本過低，外掛需要 v{{minVersion}} 或更高版本才能正常運行"
       },
-      "claudeCliPath": {
-        "label": "Opencode TUI 路徑",
-        "placeholder": "例如 /usr/local/bin/opencode — 留空則自動查找",
-        "hint": "可選的自訂 opencode 二進位路徑，用於啟動 opencode 服務。留空則按 PATH 與預設安裝位置（~/.opencode/bin）自動探測。儲存後重啟守護程序生效。"
-      },
       "workingDirectory": {
         "label": "Working Directory",
         "placeholder": "e.g. project1 or leave empty to use project root",
@@ -374,6 +369,11 @@
         "enabled": "已開啟",
         "disabled": "已關閉",
         "hint": "關閉後，在已有訊息的會話中點選新建將直接建立，不再彈出確認視窗"
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI 路徑",
+        "placeholder": "例如 /usr/local/bin/opencode — 留空則自動查找",
+        "hint": "可選的自訂 opencode 二進位路徑，用於啟動 opencode 服務。留空則按 PATH 與預設安裝位置（~/.opencode/bin）自動探測。儲存後重啟守護程序生效。"
       }
     },
     "providers": "供應商管理",
@@ -732,6 +732,9 @@
     "noSessions": "暫無歷史會話",
     "noSessionsDesc": "目前專案下沒有找到 OpenCode 會話記錄",
     "totalSessions": "共 {{count}} 個會話 · {{total}} 條訊息",
+    "totalSessionsCount": "共 {{count}} 個會話",
+    "loadMore": "向下滾動載入更多...",
+    "allLoaded": "已載入全部 {{count}} 個會話",
     "messageCount": "{{count}} 條訊息",
     "searchPlaceholder": "搜尋會話標題...",
     "noSearchResults": "未找到相符的會話",

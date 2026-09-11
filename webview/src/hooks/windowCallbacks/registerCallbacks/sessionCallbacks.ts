@@ -78,8 +78,9 @@ export function registerSessionCallbacks(
 
   window.updateSessionTitle = (sessionId: string, title: string) => {
     if (!title || !title.trim() || !sessionId) return;
-    if (currentSessionIdRef.current !== sessionId) return;
-    setCustomSessionTitle(title.trim());
+    if (currentSessionIdRef.current === sessionId) {
+      setCustomSessionTitle(title.trim());
+    }
     applyHistoryTitleLocal(sessionId, title.trim());
   };
 

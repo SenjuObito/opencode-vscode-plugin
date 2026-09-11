@@ -343,11 +343,15 @@ export function useSessionManagement({
           return prevHistoryData;
         }
 
+        const remainingSessions = prevHistoryData.sessions.filter(s => s.sessionId !== sessionId);
+        const deletedCount = prevHistoryData.sessions.length - remainingSessions.length;
         const deletedSession = prevHistoryData.sessions.find(s => s.sessionId === sessionId);
+        const deletedMsgCount = deletedSession?.messageCount || 0;
+
         return {
           ...prevHistoryData,
-          sessions: prevHistoryData.sessions.filter(s => s.sessionId !== sessionId),
-          total: Math.max(0, (prevHistoryData.total || 0) - (deletedSession?.messageCount || 0))
+          sessions: remainingSessions,
+          total: Math.max(0, (prevHistoryData.total !== undefined ? prevHistoryData.total - (deletedMsgCount > 0 ? deletedMsgCount : deletedCount) : remainingSessions.length))
         };
       });
 
@@ -385,14 +389,16 @@ export function useSessionManagement({
           return prevHistoryData;
         }
 
-        const deletedMessageCount = prevHistoryData.sessions.reduce((sum, session) => (
+        const remainingSessions = prevHistoryData.sessions.filter(session => !deletedSessionIds.has(session.sessionId));
+        const deletedCount = prevHistoryData.sessions.length - remainingSessions.length;
+        const deletedMsgCount = prevHistoryData.sessions.reduce((sum, session) => (
           deletedSessionIds.has(session.sessionId) ? sum + (session.messageCount || 0) : sum
         ), 0);
 
         return {
           ...prevHistoryData,
-          sessions: prevHistoryData.sessions.filter(session => !deletedSessionIds.has(session.sessionId)),
-          total: Math.max(0, (prevHistoryData.total || 0) - deletedMessageCount)
+          sessions: remainingSessions,
+          total: Math.max(0, (prevHistoryData.total !== undefined ? prevHistoryData.total - (deletedMsgCount > 0 ? deletedMsgCount : deletedCount) : remainingSessions.length))
         };
       });
 

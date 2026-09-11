@@ -1,20 +1,16 @@
 /**
- * DiagnosticLogger — VS Code 输出通道「OpenCode」。
- * 用户可在 输出窗口 → 下拉选择「OpenCode」查看分享/撤销/分叉等
- * 操作的全链路诊断日志；同时镜像到扩展宿主 console（Debug Console 可见）。
- *
- * 内存约束：OutputChannel 的内容常驻宿主内存且 appendLine 无界累积——
- * 高频路径（每条 webview→host 消息、daemon stderr）长期使用会累积数十 MB。
- * 两条对策：
- *   1. 高频日志走 logVerbose()，仅 verbose 模式（settings 开关）下写入；
- *   2. 通道超过 MAX_CHANNEL_CHARS 时 clear() 并写入截断标记（丢历史保内存）。
+ * DiagnosticLogger — VS Code 输出通道「OpenCode」与独立文件日志记录器。
+ * 1. 文件日志（PluginFileLogger）：默认写入 ~/Library/Logs/opencode-vscode-plugin/opencode-plugin.log
+ *    持久化记录全链路通信、Daemon 请求与异常，支持 8MB 文件大小轮转。
+ * 2. VS Code 输出通道（OutputChannel）：用户可在 输出窗口 → 下拉选择「OpenCode」查看实时诊断。
  */
 import * as vscode from 'vscode';
+import { PluginFileLogger } from './PluginFileLogger';
 
 /**
  * 构建级别（esbuild define 注入，见 esbuild.js）：
- *   production（`pnpm run package`）→ info 级诊断全部静默，只留 error
- *   development（compile/watch）    → info 级诊断正常输出
+ *   production（`pnpm run package`）→ info 级通道输出静默（文件日志仍保留记录），只留 error
+ *   development（compile/watch）    → info 级通道输出正常展示
  */
 const PROD_BUILD = process.env.NODE_ENV === 'production';
 
@@ -57,30 +53,33 @@ function appendToChannel(line: string): void {
 	}
 }
 
-/** 输出一行诊断日志（带时间戳前缀）。info 级——生产包静默。 */
-export function logDiagnostic(message: string): void {
+/** 输出一行诊断日志（写入文件日志并在开发模式输出到通道）。 */
+export function logDiagnostic(message: string, tag: string = 'Host'): void {
+	PluginFileLogger.info(tag, message);
 	if (PROD_BUILD) {
 		return;
 	}
-	const line = `[${new Date().toISOString()}] ${message}`;
+	const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
 	appendToChannel(line);
-	console.log(`[OpenCodeGUI] ${message}`);
+	console.log(`[OpenCodeGUI] [${tag}] ${message}`);
 }
 
-/** 高频诊断：info 级，且开发模式下还需 verbose 开启。 */
-export function logVerbose(message: string): void {
+/** 高频诊断：写入文件调试级别，且在开发模式 + verbose 开启时输出到通道。 */
+export function logVerbose(message: string, tag: string = 'Verbose'): void {
+	PluginFileLogger.debug(tag, message);
 	if (PROD_BUILD || !verbose) {
 		return;
 	}
-	logDiagnostic(message);
+	logDiagnostic(message, tag);
 }
 
-/** 输出多行内容（如 daemon 原始响应 chunks）。info 级——生产包静默。 */
+/** 输出多行内容（如 daemon 原始响应 chunks）。 */
 export function logDiagnosticBlock(title: string, body: string): void {
+	PluginFileLogger.info('Block', `${title}: ${body.replace(/\r?\n/g, ' ')}`);
 	if (PROD_BUILD) {
 		return;
 	}
-	logDiagnostic(`${title}:`);
+	logDiagnostic(`${title}:`, 'Block');
 	for (const line of body.split(/\r?\n/)) {
 		if (line.trim() === '') {
 			continue;
@@ -90,14 +89,25 @@ export function logDiagnosticBlock(title: string, body: string): void {
 	}
 }
 
-/** error 级诊断：任何构建级别都输出（生产包唯一可见的通道日志）。 */
-export function logError(message: string): void {
-	const line = `[${new Date().toISOString()}] [ERROR] ${message}`;
+/** warn 级诊断：写入文件与通道。 */
+export function logWarn(message: string, tag: string = 'Host'): void {
+	PluginFileLogger.warn(tag, message);
+	const line = `[${new Date().toISOString()}] [WARN] [${tag}] ${message}`;
 	appendToChannel(line);
-	console.error(`[OpenCodeGUI] ${message}`);
+	console.warn(`[OpenCodeGUI] [${tag}] ${message}`);
+}
+
+/** error 级诊断：任何构建级别都输出（写入文件并在通道与控制台显式展示）。 */
+export function logError(message: string, error?: unknown, tag: string = 'Host'): void {
+	PluginFileLogger.error(tag, message, error);
+	const errorSuffix = error ? (error instanceof Error ? ` (${error.name}: ${error.message})` : ` (${String(error)})`) : '';
+	const line = `[${new Date().toISOString()}] [ERROR] [${tag}] ${message}${errorSuffix}`;
+	appendToChannel(line);
+	console.error(`[OpenCodeGUI] [${tag}] ${message}`, error || '');
 }
 
 export function disposeDiagnosticLogger(): void {
+	PluginFileLogger.getInstance().close();
 	channel?.dispose();
 	channel = null;
 	channelChars = 0;

@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import type { DropdownItemProps } from '../types';
 
 const SVG_ICON_STYLE: React.CSSProperties = {
-  width: 16,
-  height: 16,
+  width: 14,
+  height: 14,
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',

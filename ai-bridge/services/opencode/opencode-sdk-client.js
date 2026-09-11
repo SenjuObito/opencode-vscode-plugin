@@ -90,10 +90,12 @@ export async function createSession(title, directory) {
 
 /**
  * @param {string} [directory]
+ * @param {number|string} [limit]
  * @returns {Promise<object[]>}
  */
-export async function listSessions(directory) {
+export async function listSessions(directory, limit) {
   const params = {};
+  if (limit && Number(limit) > 0) params.limit = Number(limit);
   if (directory) params.directory = directory;
   const result = await getClient().session.list(params);
   if (result.error) {
@@ -127,6 +129,66 @@ export async function deleteSession(id, directory) {
   if (result.error) {
     throw new Error(`Failed to delete session: ${JSON.stringify(result.error)}`);
   }
+}
+
+/**
+ * @param {string} id
+ * @param {string} title
+ * @param {string} [directory]
+ * @returns {Promise<object>}
+ */
+export async function updateSessionTitle(id, title, directory) {
+  const params = { sessionID: id, title };
+  if (directory) params.directory = directory;
+  const result = await getClient().session.update(params);
+  if (result.error) {
+    throw new Error(`Failed to update session title: ${JSON.stringify(result.error)}`);
+  }
+  return result.data;
+}
+
+/**
+ * @param {string} id
+ * @param {object} metadata
+ * @param {string} [directory]
+ * @returns {Promise<object>}
+ */
+export async function updateSessionMetadata(id, metadata, directory) {
+  const params = { sessionID: id, metadata };
+  if (directory) params.directory = directory;
+  const result = await getClient().session.update(params);
+  if (result.error) {
+    throw new Error(`Failed to update session metadata: ${JSON.stringify(result.error)}`);
+  }
+  return result.data;
+}
+
+/**
+ * Toggle favorite status of a session in session.metadata.
+ * @param {string} id
+ * @param {boolean} [targetState]
+ * @param {string} [directory]
+ * @returns {Promise<{ isFavorited: boolean, favoritedAt?: number }>}
+ */
+export async function toggleSessionFavorite(id, targetState, directory) {
+  const session = await getSession(id, directory);
+  const currentMeta = (session && typeof session.metadata === 'object' && session.metadata) || {};
+  const isFavorited = targetState !== undefined ? Boolean(targetState) : !Boolean(currentMeta.isFavorited);
+  const favoritedAt = isFavorited
+    ? (typeof currentMeta.favoritedAt === 'number' ? currentMeta.favoritedAt : Date.now())
+    : undefined;
+
+  const updatedMeta = {
+    ...currentMeta,
+    isFavorited,
+    ...(isFavorited ? { favoritedAt } : {}),
+  };
+  if (!isFavorited) {
+    delete updatedMeta.favoritedAt;
+  }
+
+  await updateSessionMetadata(id, updatedMeta, directory);
+  return { isFavorited, favoritedAt };
 }
 
 // ── Messaging ─────────────────────────────────────────────────────────────

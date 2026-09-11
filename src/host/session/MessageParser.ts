@@ -5,6 +5,7 @@
 import { ChatMessage, MessageType } from './types';
 import { createMessage } from './SessionState';
 import { isObject, isArray, getObj, getObjArray, getString, JsonObject, JsonArray } from './jsonUtils';
+import { sanitizeUserText } from './UserTextSanitizer';
 
 export class MessageParser {
 	/**
@@ -35,16 +36,17 @@ export class MessageParser {
 
 		if (type === 'user') {
 			const content = this.extractMessageContent(msg);
-			if (!content || content.trim() === '') {
+			const sanitized = sanitizeUserText(content);
+			if (!sanitized || sanitized.trim() === '') {
 				if (this.hasToolResult(rawMessage)) {
 					return createMessage(MessageType.USER, '[tool_result]', rawMessage);
 				}
-				if (this.hasImageContent(rawMessage)) {
+				if (this.hasImageContent(rawMessage) || this.hasAttachmentContent(rawMessage)) {
 					return createMessage(MessageType.USER, '', rawMessage);
 				}
 				return null;
 			}
-			return createMessage(MessageType.USER, content, rawMessage);
+			return createMessage(MessageType.USER, sanitized, rawMessage);
 		}
 
 		if (type === 'assistant') {
@@ -73,6 +75,10 @@ export class MessageParser {
 
 	hasImageContent(msg: JsonObject | null): boolean {
 		return this.hasContentBlockType(msg, 'image');
+	}
+
+	hasAttachmentContent(msg: JsonObject | null): boolean {
+		return this.hasContentBlockType(msg, 'attachment');
 	}
 
 	extractMessageContent(msg: JsonObject | null): string {

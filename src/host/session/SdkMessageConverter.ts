@@ -15,6 +15,7 @@
  */
 import { ChatMessage, MessageType } from './types';
 import { createMessage } from './SessionState';
+import { sanitizeUserText } from './UserTextSanitizer';
 
 export interface SdkPart {
 	id?: string;
@@ -174,19 +175,50 @@ function buildUserMessage(
 	timestamp: number,
 ): ChatMessage {
 	const blocks: Array<Record<string, unknown>> = [];
+	const attachmentBlocks: Array<Record<string, unknown>> = [];
+	const imageBlocks: Array<Record<string, unknown>> = [];
 	let text = '';
 	for (const part of parts) {
 		if (part.type === 'text' && typeof part.text === 'string') {
+			if (part.synthetic === true) {
+				continue;
+			}
 			text += part.text;
-			blocks.push({ type: 'text', text: part.text });
 		} else if (part.type === 'file') {
-			blocks.push({
-				type: 'attachment',
-				fileName: part.filename ?? part.url ?? part.title ?? '',
-				mediaType: typeof part.mime === 'string' ? part.mime : '',
-			});
+			const mime = typeof part.mime === 'string' ? part.mime : '';
+			const url = typeof part.url === 'string' ? part.url : '';
+			let filename = typeof part.filename === 'string' ? part.filename : '';
+			if (!filename && url) {
+				filename = url.split('/').pop() || '';
+			}
+			if (mime.startsWith('image/') && url.startsWith('data:')) {
+				imageBlocks.push({
+					type: 'image',
+					src: url,
+					mediaType: mime,
+				});
+			} else {
+				attachmentBlocks.push({
+					type: 'attachment',
+					fileName: filename || (typeof part.title === 'string' ? part.title : ''),
+					mediaType: mime,
+				});
+			}
 		}
 	}
+
+	const displayText = sanitizeUserText(text);
+
+	for (const block of attachmentBlocks) {
+		blocks.push(block);
+	}
+	for (const block of imageBlocks) {
+		blocks.push(block);
+	}
+	if (displayText) {
+		blocks.push({ type: 'text', text: displayText });
+	}
+
 	const raw: Record<string, unknown> = {
 		type: 'user',
 		message: { content: blocks },
@@ -194,7 +226,7 @@ function buildUserMessage(
 	if (info.id) {
 		raw.id = info.id;
 	}
-	return createMessage(MessageType.USER, text, raw, timestamp);
+	return createMessage(MessageType.USER, displayText, raw, timestamp);
 }
 
 // =========================================================================

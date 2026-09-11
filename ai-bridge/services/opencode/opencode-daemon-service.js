@@ -59,22 +59,6 @@ import { requestContext } from '../../request-context.js';
 
 const DEFAULT_PORT = Number(process.env.OPENCODE_PORT) || 4096;
 
-/** 工具输出驻留/下发预算：超限头尾保留。全量内容需要时由宿主经
- * listMessages 回源；不截断的话，一个回合内的大输出会在 turn.parts 里
- * 驻留到 session.idle，且每次 emit 都全量过管道。 */
-const MAX_TOOL_OUTPUT_CHARS = 65_536;
-
-function truncateToolOutput(text) {
-  if (typeof text !== 'string' || text.length <= MAX_TOOL_OUTPUT_CHARS) {
-    return text;
-  }
-  const marker = `\n...[truncated by daemon, original ${text.length} chars]...\n`;
-  const available = Math.max(0, MAX_TOOL_OUTPUT_CHARS - marker.length);
-  const head = Math.floor((available * 2) / 3);
-  const tail = available - head;
-  return text.substring(0, head) + marker + text.substring(text.length - tail);
-}
-
 /** @type {boolean} opencode serve has been started (or reused) */
 let _serveStarted = false;
 /** @type {boolean} SDK client ready + SSE subscribed */
@@ -313,6 +297,13 @@ function _handleEvent(evt) {
         if (turn) {
           emitJsonStringMarker('[REVERT_STATE]', JSON.stringify({ hasRevert: !!revert }));
         }
+        // Emit session title update to frontend
+        if (props?.info?.title && typeof props.info.title === 'string') {
+          const title = props.info.title.trim();
+          if (title) {
+            emitJsonStringMarker('[SESSION_TITLE]', JSON.stringify({ sessionId: id, title }));
+          }
+        }
       }
       break;
     }
@@ -428,23 +419,7 @@ function _handlePartUpdated(props, turn) {
   const part = props?.part;
   if (!part || typeof part !== 'object') return;
   const partID = part.id;
-  if (partID) {
-    // 驻留预算：state.output/error 截断后存入 turn.parts（turn 结束前一直持有）
-    const st = part.state && typeof part.state === 'object' ? part.state : null;
-    if (st && ((typeof st.output === 'string' && st.output.length > MAX_TOOL_OUTPUT_CHARS)
-      || (typeof st.error === 'string' && st.error.length > MAX_TOOL_OUTPUT_CHARS))) {
-      turn.parts.set(partID, {
-        ...part,
-        state: {
-          ...st,
-          output: truncateToolOutput(st.output),
-          error: truncateToolOutput(st.error),
-        },
-      });
-    } else {
-      turn.parts.set(partID, part);
-    }
-  }
+  if (partID) turn.parts.set(partID, part);
   const ptype = part.type;
   if (ptype === 'tool') {
     const st = part.state && typeof part.state === 'object' ? part.state : {};
@@ -514,7 +489,7 @@ export function _handleToolPart(part, turn) {
       && !turn.toolResultDone.has(callID)) {
     turn.toolResultDone.add(callID);
     const isError = status === 'error' || status === 'failed';
-    const content = truncateToolOutput(isError ? (state.error || '') : (state.output ?? ''));
+    const content = isError ? (state.error || '') : (state.output ?? '');
     logDebug('emitToolResultMessage:', 'toolUseId:', callID, 'isError:', isError,
       'contentLength:', typeof content === 'string' ? content.length : 0);
     emitToolResultMessage({ toolUseId: callID, content, isError });
@@ -673,6 +648,15 @@ export async function sendMessagePersistent(params = {}) {
   let promptText = rawMessage.trim();
   if (!promptText && fileParts.length > 0) {
     promptText = fallbackText;
+  }
+
+  if (!promptText && fileParts.length === 0) {
+    const errorMsg = attachmentErrors.length > 0
+      ? `No supported attachments: ${attachmentErrors.join('; ')}`
+      : 'Message content is empty';
+    console.log(JSON.stringify({ success: false, error: errorMsg, elapsedMs: Date.now() - startedAt }));
+    emitSendError(errorMsg, 'OpenCode');
+    return;
   }
 
   // ── Register turn + emit stream-start markers ───────────────────────────
@@ -878,9 +862,13 @@ export async function preconnectPersistent(params = {}) {
   const requestedId = (typeof safeParams.sessionId === 'string' && safeParams.sessionId.trim())
     ? safeParams.sessionId.trim()
     : null;
-  const { id: sessionId } = await _resolveSession(requestedId, directory);
-  emitSessionId(sessionId);
-  console.log(`[STATUS] preconnect ready sessionId=${sessionId} server=${serveManager.getServerUrl() || '-'}`);
+  if (requestedId) {
+    const { id: sessionId } = await _resolveSession(requestedId, directory);
+    emitSessionId(sessionId);
+    console.log(`[STATUS] preconnect ready sessionId=${sessionId} server=${serveManager.getServerUrl() || '-'}`);
+  } else {
+    console.log(`[STATUS] preconnect ready server=${serveManager.getServerUrl() || '-'}`);
+  }
 }
 
 /**

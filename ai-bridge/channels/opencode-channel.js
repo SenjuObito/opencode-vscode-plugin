@@ -21,6 +21,10 @@ import {
   forkSession as openCodeForkSession,
   summarizeSession as openCodeSummarizeSession,
   getSession as openCodeGetSession,
+  listSessions as openCodeListSessions,
+  deleteSession as openCodeDeleteSession,
+  updateSessionTitle as openCodeUpdateSessionTitle,
+  toggleSessionFavorite as openCodeToggleSessionFavorite,
 } from '../services/opencode/opencode-sdk-client.js';
 
 /**
@@ -189,11 +193,14 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
     }
 
     case 'replyPermission': {
-      const { sessionId, permissionID, reply, rejectMessage } = stdinData || {};
-      const directory = getSessionDirectory(sessionId);
+      const { sessionId, permissionID, reply, rejectMessage, directory } = stdinData || {};
+      // Reply endpoint is workspace-scoped; prefer the daemon's session
+      // registry (authoritative), fall back to an explicit `directory` param
+      // from the host (covers daemons restarted mid-turn with an empty registry).
+      const resolvedDirectory = getSessionDirectory(sessionId) || directory;
       // cc-gui vocabulary (allow/allowAlways/deny) → SDK PermissionV2Reply
       const sdkReply = reply === 'allowAlways' ? 'always' : reply === 'deny' ? 'reject' : 'once';
-      await openCodeReplyPermission(sessionId, permissionID, sdkReply, rejectMessage, directory);
+      await openCodeReplyPermission(sessionId, permissionID, sdkReply, rejectMessage, resolvedDirectory);
       break;
     }
 
@@ -272,6 +279,43 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
       break;
     }
 
+    case 'listSessions': {
+      const { directory, limit } = stdinData || {};
+      await ensureServerReady();
+      const limitNum = limit ? Number(limit) : undefined;
+      const sessions = await openCodeListSessions(directory || undefined, limitNum);
+      console.log(JSON.stringify({
+        success: true,
+        provider: 'opencode',
+        sessions: Array.isArray(sessions) ? sessions : [],
+      }));
+      break;
+    }
+
+    case 'deleteSession': {
+      const { sessionId, directory } = stdinData || {};
+      await ensureServerReady();
+      await openCodeDeleteSession(sessionId || '', directory || undefined);
+      console.log(JSON.stringify({ success: true, provider: 'opencode', sessionId }));
+      break;
+    }
+
+    case 'updateSessionTitle': {
+      const { sessionId, title, directory } = stdinData || {};
+      await ensureServerReady();
+      await openCodeUpdateSessionTitle(sessionId || '', title || '', directory || undefined);
+      console.log(JSON.stringify({ success: true, provider: 'opencode', sessionId, title }));
+      break;
+    }
+
+    case 'toggleFavorite': {
+      const { sessionId, isFavorited, directory } = stdinData || {};
+      await ensureServerReady();
+      const res = await openCodeToggleSessionFavorite(sessionId || '', isFavorited, directory || undefined);
+      console.log(JSON.stringify({ success: true, provider: 'opencode', sessionId, ...res }));
+      break;
+    }
+
     default:
       throw new Error(`Unknown OpenCode command: ${command}`);
   }
@@ -282,5 +326,6 @@ export function getOpenCodeCommandList() {
     'send', 'listModels', 'listMessages', 'getSessionInfo', 'listAgents', 'listCommands',
     'listMcpServers', 'getMcpStatus', 'replyPermission', 'replyQuestion', 'rejectQuestion',
     'shareSession', 'unshareSession', 'revert', 'unrevert', 'fork', 'summarize',
+    'listSessions', 'deleteSession', 'updateSessionTitle', 'toggleFavorite',
   ];
 }

@@ -162,6 +162,9 @@ export class MessageHandler implements MessageCallback {
 			logDiagnostic(`[MessageHandler] todo_updated content=${content.substring(0, 300)}`);
 			this.callbackHandler.notifyTodoUpdated(content);
 			break;
+		case 'session_title':
+			this.handleSessionTitle(content);
+			break;
 		}
 	}
 
@@ -878,5 +881,22 @@ export class MessageHandler implements MessageCallback {
 			return;
 		}
 		message.usage = usageJson;
+	}
+
+	private handleSessionTitle(content: string): void {
+		if (!content || content.trim() === '') {
+			return;
+		}
+		try {
+			const obj = JSON.parse(content);
+			const sessionId = typeof obj.sessionId === 'string' ? obj.sessionId : null;
+			const title = typeof obj.title === 'string' ? obj.title : null;
+			if (sessionId && title) {
+				logDiagnostic(`[MessageHandler] handleSessionTitle sessionId=${sessionId} title=${title}`);
+				this.callbackHandler.notifySessionTitleReceived(sessionId, title);
+			}
+		} catch (err) {
+			logDiagnostic(`[MessageHandler] handleSessionTitle parse error: ${err}`);
+		}
 	}
 }

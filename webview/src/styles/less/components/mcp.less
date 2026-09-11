@@ -191,25 +191,25 @@
     box-shadow: var(--shadow-md);
     z-index: 100;
     overflow: hidden;
-}
 
-.dropdown-item {
-    display: flex;
-    align-items: center;
-    padding: 10px 14px;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--text-primary);
-    .flex-gap-horizontal(8px);
-}
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--text-primary);
+        .flex-gap-horizontal(8px);
 
-.dropdown-item:hover {
-    background: var(--bg-hover);
-}
+        &:hover {
+            background: var(--bg-hover);
+        }
 
-.dropdown-item .codicon {
-    font-size: 14px;
-    opacity: 0.8;
+        .codicon {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+    }
 }
 
 /* 服务器列表 */

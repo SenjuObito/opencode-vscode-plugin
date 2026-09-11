@@ -141,6 +141,13 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.jsTarget.callJavaScript('setSessionId', sessionId);
 	}
 
+	onSessionTitleReceived(sessionId: string, title: string): void {
+		if (this.isInactive() || !sessionId || !title) {
+			return;
+		}
+		this.jsTarget.callJavaScript('updateSessionTitle', sessionId, title);
+	}
+
 	onPermissionRequested(request: PermissionRequest): void {
 		if (this.isInactive()) {
 			return;
