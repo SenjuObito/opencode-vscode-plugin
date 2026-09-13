@@ -6,14 +6,7 @@ import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 /**
  * Local command list (commands to be filtered out)
  */
-const HIDDEN_COMMANDS = new Set([
-  '/cost',
-  '/pr-comments',
-  '/release-notes',
-  '/security-review',
-  '/todo',
-  '/doctor',
-]);
+const HIDDEN_COMMANDS = new Set<string>([]);
 
 /**
  * Local new session commands (/clear, /new, /reset are aliases for the same command)
@@ -69,6 +62,36 @@ const BUILTIN_COMMANDS: CommandItem[] = [
     id: 'unshare',
     label: '/unshare',
     description: i18n.t('chat.builtinCommands.unshare'),
+    category: 'builtin',
+  },
+  {
+    id: 'review',
+    label: '/review',
+    description: i18n.t('chat.builtinCommands.review'),
+    category: 'builtin',
+  },
+  {
+    id: 'init',
+    label: '/init',
+    description: i18n.t('chat.builtinCommands.init'),
+    category: 'builtin',
+  },
+  {
+    id: 'models',
+    label: '/models',
+    description: i18n.t('chat.builtinCommands.models'),
+    category: 'builtin',
+  },
+  {
+    id: 'themes',
+    label: '/themes',
+    description: i18n.t('chat.builtinCommands.themes'),
+    category: 'builtin',
+  },
+  {
+    id: 'help',
+    label: '/help',
+    description: i18n.t('chat.builtinCommands.help'),
     category: 'builtin',
   },
 ];
@@ -284,11 +307,45 @@ function formatCommandDescription(description: string, source?: string): string 
   return `${description} ${suffix}`;
 }
 
+function normalizeCommandLabel(label: string): string {
+  const trimmed = label.trim().toLowerCase();
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+}
+
 function filterCommands(commands: CommandItem[], query: string): CommandItem[] {
   const visibleCommands = commands.filter(cmd => !isHiddenCommand(cmd.label));
   const localCommands = getLocalNewSessionCommands();
-  // Merge builtin commands, local commands, and API commands
-  const merged = [...BUILTIN_COMMANDS, ...localCommands, ...visibleCommands];
+
+  // Deduplicate by normalized label
+  const commandMap = new Map<string, CommandItem>();
+
+  // 1. Add visibleCommands (from backend / API / skills)
+  for (const cmd of visibleCommands) {
+    const key = normalizeCommandLabel(cmd.label);
+    commandMap.set(key, cmd);
+  }
+
+  // 2. Add localCommands (e.g. /clear)
+  for (const cmd of localCommands) {
+    const key = normalizeCommandLabel(cmd.label);
+    commandMap.set(key, cmd);
+  }
+
+  // 3. Add BUILTIN_COMMANDS (preserve builtin localized descriptions and category)
+  for (const cmd of BUILTIN_COMMANDS) {
+    const key = normalizeCommandLabel(cmd.label);
+    const existing = commandMap.get(key);
+    commandMap.set(key, {
+      ...cmd,
+      ...(existing || {}),
+      id: cmd.id,
+      label: cmd.label,
+      description: cmd.description || existing?.description || '',
+      category: 'builtin',
+    });
+  }
+
+  const merged = Array.from(commandMap.values());
 
   if (!query) return merged;
 

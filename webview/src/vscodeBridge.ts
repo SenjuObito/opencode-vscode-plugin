@@ -24,7 +24,22 @@ interface VSCodeWebviewApi {
 }
 
 // acquireVsCodeApi() 每个 webview 只允许调用一次 —— 模块级调用。
-const vscodeApi: VSCodeWebviewApi = acquireVsCodeApi();
+// 仅存在于 VS Code webview 宿主；IntelliJ JCEF 宿主没有这个全局函数，
+// 此时改用桥兜底：postMessage 转发到宿主注入的原生 window.sendToJava，
+// 并且不抢注 JS 版 sendToJava，让 waitForBridge 等到原生桥就绪。
+const isVsCodeHost = typeof acquireVsCodeApi === 'function';
+
+const jcefApi: VSCodeWebviewApi = {
+  postMessage(message: unknown): void {
+    if (typeof window.sendToJava === 'function') {
+      window.sendToJava(typeof message === 'string' ? message : JSON.stringify(message));
+    } else {
+      console.error('[vscodeBridge] postMessage dropped: native bridge not ready');
+    }
+  },
+};
+
+const vscodeApi: VSCodeWebviewApi = isVsCodeHost ? acquireVsCodeApi() : jcefApi;
 
 /** 宿主 → webview 的统一入站消息格式。 */
 export interface HostToWebviewMessage {
@@ -67,7 +82,9 @@ function dispatchHostMessage(message: unknown): void {
 // ── 安装桥 ───────────────────────────────────────────────────────────────
 
 // 出站注入（在 React / bridgeStartup 的 waitForBridge 轮询之前就位）。
-if (!window.sendToJava) {
+// 仅 VS Code 宿主需要：JCEF 宿主的 window.sendToJava 由 Java 原生注入，
+// 这里抢注会把消息绕回 jcefApi 造成递归，且让 waitForBridge 提前误判桥就绪。
+if (isVsCodeHost && !window.sendToJava) {
   window.sendToJava = (payload: string) => {
     postToHost(String(payload));
   };

@@ -14,10 +14,13 @@ export function useUsageTracking() {
   const [daemonStatusLoaded, setDaemonStatusLoaded] = useState(false);
 
   useEffect(() => {
-    const handler = (event: Event) => {
+    const applyStatus = (raw: unknown) => {
       try {
-        const detail = (event as CustomEvent).detail;
-        const data = typeof detail === 'string' ? JSON.parse(detail) : detail;
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        // console.error is the only console level that survives the production build
+        // (main.tsx noops log/info/warn) and it is forwarded to the host, where
+        // PluginFileLogger writes it to the trace file.
+        console.error('[Probe] updateDaemonStatus handler fired: ' + JSON.stringify(data));
         setDaemonAlive(!!data.alive);
         // 状态栏（"正在检查 opencode serve 状态..."）必须等到 serve 真正就绪
         // （serveReady=true）才消失；serve 进程都没运行（alive=false）则立即进入
@@ -32,7 +35,23 @@ export function useUsageTracking() {
         setDaemonStatusLoaded(true);
       }
     };
+
+    const handler = (event: Event) => {
+      applyStatus((event as CustomEvent).detail);
+    };
+
     window.addEventListener('updateDaemonStatus', handler as EventListener);
+    console.error('[Probe] updateDaemonStatus listener installed, window.updateDaemonStatus='
+      + (typeof window.updateDaemonStatus));
+
+    // Drain any status that arrived before this listener was attached.
+    // main.tsx stores the latest payload in window.__pendingDaemonStatus.
+    if (typeof window.__pendingDaemonStatus === 'string') {
+      const pending = window.__pendingDaemonStatus;
+      delete window.__pendingDaemonStatus;
+      applyStatus(pending);
+    }
+
     return () => window.removeEventListener('updateDaemonStatus', handler as EventListener);
   }, []);
 

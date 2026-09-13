@@ -106,7 +106,12 @@
       "redo": "Redo last undone message",
       "fork": "Fork the entire session into a new branch",
       "share": "Share session link",
-      "unshare": "Unshare session"
+      "unshare": "Unshare session",
+      "review": "Review code changes or git diff",
+      "init": "Initialize project rules and config (OPENCODE.md)",
+      "models": "View or switch available models",
+      "themes": "Switch UI theme",
+      "help": "Show help and command list"
     },
     "compactTooltip": "Click to compact session",
     "compactStarted": "Compacting session…",
@@ -129,7 +134,8 @@
     "showEarlierMessages": "Show {{count}} earlier messages",
     "showEarlierTurns": "Show {{count}} earlier turns ({{remaining}} loaded turns remaining)",
     "loadEarlierTurns": "Load {{count}} earlier turns from disk ({{remaining}} of {{total}} remaining)",
-    "loadingEarlierTurns": "Loading earlier turns...",
+    "loadEarlierMessages": "Load {{count}} earlier messages ({{remaining}} of {{total}} remaining)",
+    "loadingEarlierTurns": "Loading earlier turns",
     "totalDuration": "This reply took",
     "tokenUsage": "{{input}} in / {{output}} out",
     "tokenUsageDetail": "Turn total — input {{input}} · cache write {{cacheWrite}} · cache read {{cacheRead}} · output {{output}}",
@@ -194,8 +200,8 @@
       },
       "theme": {
         "label": "Theme",
-        "system": "Follow VS Code",
-        "systemDesc": "Automatically follow the VS Code theme",
+        "system": "Follow IDE",
+        "systemDesc": "Automatically follow IDE theme",
         "light": "Light",
         "lightDesc": "Fresh and bright, suitable for daytime use",
         "dark": "Dark",
@@ -203,7 +209,7 @@
       },
       "language": {
         "label": "Language",
-        "followIde": "Follow VS Code",
+        "followIde": "Follow IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -244,29 +250,25 @@
       "editorFont": {
         "label": "UI Font",
         "hint": "This controls the plugin UI font only. Code can use a separate code font.",
-        "followOption": "Follow VS Code UI font ({{font}})",
+        "followOption": "Follow IDEA UI font ({{font}})",
         "customOption": "Custom UI font file",
         "customPathLabel": "UI font file path",
         "customPathPlaceholder": "Choose or enter a .ttf / .otf UI font file path",
         "browse": "Browse",
-        "warningUnavailable": "UI font unavailable, currently using VS Code UI font",
-        "statusFollowEditor": "Currently following VS Code UI font: {{font}}",
-        "statusCustom": "Currently using custom UI font: {{font}}",
-        "systemFontGroup": "System fonts",
-        "systemFontLoading": "Loading system fonts…",
-        "systemFontFailed": "Failed to load system fonts.",
-        "systemFontRetry": "Retry"
+        "warningUnavailable": "UI font unavailable, currently using IDEA UI font",
+        "statusFollowEditor": "Currently following IDEA UI font: {{font}}",
+        "statusCustom": "Currently using custom UI font: {{font}}"
       },
       "codeFont": {
         "label": "Code Font",
         "hint": "Markdown code and command blocks use this font.",
-        "followOption": "Follow VS Code editor font ({{font}})",
+        "followOption": "Follow editor font ({{font}})",
         "customOption": "Custom code font file",
         "customPathLabel": "Code font file path",
         "customPathPlaceholder": "Choose or enter a .ttf / .otf code font file path",
         "browse": "Browse",
         "warningUnavailable": "Code font unavailable, currently using editor font",
-        "statusFollowEditor": "Currently following VS Code editor font: {{font}}",
+        "statusFollowEditor": "Currently following editor font: {{font}}",
         "statusCustom": "Currently using custom code font: {{font}}"
       },
       "streaming": {
@@ -330,10 +332,10 @@
         "hint": "When enabled, plays the configured alert sound when opencode asks you a question. Uses the sound selection and focus rules below."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "Show system notifications only when Visual Studio Code is unfocused",
+        "label": "Show system notifications only when IDE is unfocused",
         "enabled": "Enabled",
         "disabled": "Disabled",
-        "hint": "When enabled, task completion and question system notifications are shown only while Visual Studio Code is unfocused."
+        "hint": "When enabled, task completion and question system notifications are shown only while the IDE is unfocused."
       },
       "sendShortcut": {
         "label": "Send Shortcut",
@@ -375,8 +377,8 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When enabled, a notification sound will play when AI completes a task, so you'll know even when away from the screen.",
-        "onlyWhenUnfocused": "Play alert sounds only when Visual Studio Code is unfocused",
-        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while Visual Studio Code is unfocused.",
+        "onlyWhenUnfocused": "Play alert sounds only when IDE is unfocused",
+        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while the IDE is unfocused.",
         "selectSound": "Notification Sound",
         "soundDefault": "Default",
         "soundChime": "Chime",
@@ -403,6 +405,12 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When disabled, creating a new session in a conversation with existing messages will skip the confirmation dialog."
+      },
+      "compactConfirm": {
+        "label": "Compact Session Confirmation",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "hint": "When disabled, clicking token stats or running /compact will compact immediately without asking for confirmation."
       },
       "opencodeCliPath": {
         "label": "Opencode TUI Path",
@@ -556,7 +564,7 @@
     "communityQrAlt": "Sponsor QR code",
     "communityQrAltAlipay": "Alipay sponsor QR code",
     "communityQrAltPayPal": "PayPal sponsor QR code",
-    "projectDesc": "This project is the OpenCode Buddy VS Code extension (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "This project is the OpenCode Buddy IntelliJ IDEA plugin (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub Repository",
     "githubDesc": "This project is open source on GitHub. Star us to show your support!",
     "githubCopyBtn": "Copy Repository URL",

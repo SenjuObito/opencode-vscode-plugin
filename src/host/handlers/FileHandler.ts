@@ -26,6 +26,7 @@ const EXCLUDED_DIR_NAMES = new Set([
 	'node_modules', '.git', '.idea', '.vscode', '.vs', 'dist', 'out',
 	'build', 'target', '.next', '.nuxt', 'coverage', '__pycache__',
 ]);
+const EXCLUDED_FILE_NAMES = new Set(['.DS_Store', 'Thumbs.db']);
 
 interface FileEntry {
 	name: string;
@@ -229,7 +230,10 @@ export class FileHandler extends BaseMessageHandler {
 			}
 			seen.add(absolutePath);
 			const name = basename(absolutePath);
-			if (name.startsWith('.')) {
+			if (EXCLUDED_FILE_NAMES.has(name)) {
+				return;
+			}
+			if (type === 'directory' && (name.startsWith('.') || EXCLUDED_DIR_NAMES.has(name))) {
 				return;
 			}
 			entries.push({

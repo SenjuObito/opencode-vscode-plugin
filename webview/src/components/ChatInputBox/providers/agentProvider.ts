@@ -303,8 +303,8 @@ export function getPrimaryAgentsSync(query = '', includeFallback = true): AgentI
 }
 
 /**
- * Synchronously return subagents (mode==='subagent' && !hidden) from the cache.
- * Used by the @ mention dropdown. Returns [] until agents have loaded.
+ * Synchronously return subagents (mode === 'subagent' && !hidden) from the cache.
+ * Used by the @ mention dropdown.
  */
 export function getSubagentsSync(query = ''): AgentItem[] {
   const subs = cachedAgents.filter(
@@ -330,9 +330,7 @@ export function ensureAgentsLoaded(): void {
 }
 
 /**
- * Provider for the @ mention dropdown: returns subagents only (no create-new /
- * empty-state noise). Falls back to [] if agents failed to load — the file
- * portion of the @ dropdown still works independently.
+ * Provider for the @ mention dropdown: returns subagents only (mode === 'subagent').
  */
 export async function subagentMentionProvider(
   query: string,
@@ -351,7 +349,7 @@ export async function subagentMentionProvider(
     requestRefresh();
   }
 
-  if (loadingState !== 'success') {
+  if (loadingState !== 'success' && cachedAgents.length === 0) {
     await waitForAgents(signal, LOADING_TIMEOUT).catch(() => {});
   }
 
@@ -365,14 +363,13 @@ export async function subagentMentionProvider(
 }
 
 /**
- * Inline SVG subagent icon (14x14, AI Sparkles).
- * Uses a crystal sparkle aesthetic to distinguish subagents from regular files and tools.
+ * Inline SVG AI Agent / Sparkle icon (16x16, purple accent).
+ * Represents autonomous subagents with a modern, crisp AI glyph.
  */
 const SUBAGENT_SVG_ICON =
-  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M8 1L9.5 5.5L14 7L9.5 8.5L8 13L6.5 8.5L2 7L6.5 5.5L8 1Z" fill="#9d7cd8" />' +
-  '<path d="M12.5 10.5L13.25 12.5L15.25 13.25L13.25 14L12.5 16L11.75 14L9.75 13.25L11.75 12.5L12.5 10.5Z" fill="#c0a7f5" />' +
-  '<path d="M3.5 1.5L4 3L5.5 3.5L4 4L3.5 5.5L3 4L1.5 3.5L3 3L3.5 1.5Z" fill="#c0a7f5" />' +
+  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M7 1.5C7 4.54 4.54 7 1.5 7C4.54 7 7 9.46 7 12.5C7 9.46 9.46 7 12.5 7C9.46 7 7 4.54 7 1.5Z" fill="#9d7cd8"/>' +
+  '<path d="M12 1.5C12 2.88 10.88 4 9.5 4C10.88 4 12 5.12 12 6.5C12 5.12 13.12 4 14.5 4C13.12 4 12 2.88 12 1.5Z" fill="#c0a7f5"/>' +
   '</svg>';
 
 /**

@@ -91,11 +91,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onRemoveAttachment,
       onModeSelect,
       onModelSelect,
-      onProviderSelect,
       reasoningEffort = 'high',
       onReasoningChange,
-      codexFastMode = 'normal',
-      onCodexFastModeChange,
       activeFile,
       selectedLines,
       onClearContext,
@@ -114,8 +111,6 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onRemoveFromQueue,
       autoOpenFileEnabled,
       onAutoOpenFileEnabledChange,
-      longContextEnabled = true,
-      onLongContextChange,
       onCompactClick,
     }: ChatInputBoxProps,
     ref: React.ForwardedRef<ChatInputBoxHandle>
@@ -424,6 +419,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
     const handleSubmit = useSubmitHandler({
       getTextContent,
+      extractFileTags,
+      cancelTagRendering,
       invalidateCache,
       attachments,
       isLoading,
@@ -715,19 +712,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           permissionMode={permissionMode}
           currentProvider={currentProvider}
           reasoningEffort={reasoningEffort}
-          codexFastMode={codexFastMode}
           onSubmit={handleSubmit}
           onStop={onStop}
           onModeSelect={handleModeSelect}
           onModelSelect={handleModelSelect}
-          onProviderSelect={onProviderSelect}
           onReasoningChange={onReasoningChange}
-          onCodexFastModeChange={onCodexFastModeChange}
           alwaysThinkingEnabled={alwaysThinkingEnabled}
           onToggleThinking={onToggleThinking}
           onAddModel={onOpenModelSettings}
-          longContextEnabled={longContextEnabled}
-          onLongContextChange={onLongContextChange}
           fileCompletion={fileCompletion}
           commandCompletion={commandCompletion}
           dollarCommandCompletion={dollarCommandCompletion}

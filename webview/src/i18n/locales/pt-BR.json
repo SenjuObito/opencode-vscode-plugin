@@ -88,7 +88,12 @@
       "redo": "Refazer a última mensagem desfeita",
       "fork": "Copiar a sessão inteira para um novo fork",
       "share": "Compartilhar link da sessão",
-      "unshare": "Parar de compartilhar a sessão"
+      "unshare": "Parar de compartilhar a sessão",
+      "review": "Revisar alterações de código ou diff do git",
+      "init": "Inicializar regras e configuração do projeto (OPENCODE.md)",
+      "models": "Visualizar ou alternar modelos disponíveis",
+      "themes": "Alternar tema da interface",
+      "help": "Exibir ajuda e lista de comandos"
     },
     "compactTooltip": "Clique para compactar a sessão",
     "compactStarted": "Compactando sessão…",
@@ -110,7 +115,8 @@
     "showEarlierMessages": "Mostrar {{count}} mensagens anteriores",
     "showEarlierTurns": "Mostrar {{count}} turnos anteriores (restam {{remaining}} carregados)",
     "loadEarlierTurns": "Carregar {{count}} turnos anteriores do disco (restam {{remaining}} de {{total}})",
-    "loadingEarlierTurns": "Carregando turnos anteriores...",
+    "loadEarlierMessages": "Carregar {{count}} mensagens anteriores (restam {{remaining}} de {{total}})",
+    "loadingEarlierTurns": "Carregando turnos anteriores",
     "totalDuration": "Esta resposta levou",
     "tokenUsage": "{{input}} entrada / {{output}} saída",
     "tokenUsageDetail": "Total do turno — entrada {{input}} · gravação de cache {{cacheWrite}} · leitura de cache {{cacheRead}} · saída {{output}}",
@@ -175,8 +181,8 @@
       },
       "theme": {
         "label": "Tema",
-        "system": "Seguir o VS Code",
-        "systemDesc": "Segue automaticamente o tema do VS Code",
+        "system": "Seguir IDE",
+        "systemDesc": "Seguir automaticamente o tema da IDE",
         "light": "Claro",
         "lightDesc": "Fresco e brilhante, adequado para uso diurno",
         "dark": "Escuro",
@@ -184,7 +190,7 @@
       },
       "language": {
         "label": "Idioma",
-        "followIde": "Seguir o VS Code",
+        "followIde": "Seguir IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -204,11 +210,6 @@
         "hintText": "para obter o caminho real do executável Node.js. Deixe vazio para detecção automática.",
         "versionTooLow": "A versão do Node.js é muito baixa. O plugin requer v{{minVersion}} ou superior para funcionar corretamente"
       },
-      "claudeCliPath": {
-        "label": "Caminho do TUI do Opencode",
-        "placeholder": "ex.: /usr/local/bin/opencode — deixe vazio para detecção automática",
-        "hint": "Binário opencode personalizado (opcional) usado para iniciar o serviço do opencode. Deixe vazio para buscar no PATH e nos locais de instalação padrão (~/.opencode/bin). Tem efeito após o daemon reiniciar ao salvar."
-      },
       "workingDirectory": {
         "label": "Diretório de Trabalho",
         "placeholder": "ex: projeto1 ou deixe vazio para usar a raiz do projeto",
@@ -226,29 +227,25 @@
       "editorFont": {
         "label": "Fonte da UI",
         "hint": "Aqui você altera a fonte da interface do plugin; o código pode usar uma fonte separada.",
-        "followOption": "Seguir a fonte UI do VS Code ({{font}})",
+        "followOption": "Seguir a fonte UI do IDEA ({{font}})",
         "customOption": "Arquivo de fonte da UI personalizado",
         "customPathLabel": "Caminho do arquivo de fonte da UI",
         "customPathPlaceholder": "Escolha ou digite o caminho de um arquivo .ttf / .otf para a fonte da UI",
         "browse": "Procurar",
-        "warningUnavailable": "A fonte da UI está indisponível, usando a fonte da UI do VS Code",
-        "statusFollowEditor": "Usando atualmente a fonte da UI do VS Code: {{font}}",
-        "statusCustom": "Usando atualmente a fonte da UI personalizada: {{font}}",
-        "systemFontGroup": "Fontes do sistema",
-        "systemFontLoading": "Carregando fontes do sistema…",
-        "systemFontFailed": "Falha ao carregar as fontes do sistema.",
-        "systemFontRetry": "Tentar novamente"
+        "warningUnavailable": "A fonte da UI está indisponível, usando a fonte da UI do IDEA",
+        "statusFollowEditor": "Usando atualmente a fonte da UI do IDEA: {{font}}",
+        "statusCustom": "Usando atualmente a fonte da UI personalizada: {{font}}"
       },
       "codeFont": {
         "label": "Fonte de código",
         "hint": "O código Markdown e os blocos de comando usam esta fonte.",
-        "followOption": "Seguir a fonte do editor do VS Code ({{font}})",
+        "followOption": "Seguir a fonte do editor ({{font}})",
         "customOption": "Arquivo de fonte de código personalizado",
         "customPathLabel": "Caminho do arquivo de fonte de código",
         "customPathPlaceholder": "Escolha ou digite o caminho de um arquivo .ttf / .otf para a fonte de código",
         "browse": "Procurar",
         "warningUnavailable": "A fonte de código está indisponível, usando a fonte do editor",
-        "statusFollowEditor": "Usando atualmente a fonte do editor do VS Code: {{font}}",
+        "statusFollowEditor": "Usando atualmente a fonte do editor: {{font}}",
         "statusCustom": "Usando atualmente a fonte de código personalizada: {{font}}"
       },
       "streaming": {
@@ -385,6 +382,17 @@
         "enabled": "Ativado",
         "disabled": "Desativado",
         "hint": "Quando desativado, criar uma nova sessão em uma conversa com mensagens existentes irá pular a caixa de confirmação."
+      },
+      "compactConfirm": {
+        "label": "Confirmação ao Compactar Sessão",
+        "enabled": "Ativado",
+        "disabled": "Desativado",
+        "hint": "Quando desativado, clicar nas estatísticas de tokens ou executar /compact irá compactar diretamente sem pedir confirmação."
+      },
+      "opencodeCliPath": {
+        "label": "Caminho do TUI do Opencode",
+        "placeholder": "ex.: /usr/local/bin/opencode — deixe vazio para detecção automática",
+        "hint": "Binário opencode personalizado (opcional) usado para iniciar o serviço do opencode. Deixe vazio para buscar no PATH e nos locais de instalação padrão (~/.opencode/bin). Tem efeito após o daemon reiniciar ao salvar."
       }
     },
     "providers": "Gerenciamento de Provedores",
@@ -491,7 +499,7 @@
     "communityQrAlt": "QR code de apoio",
     "communityQrAltAlipay": "QR code de apoio Alipay",
     "communityQrAltPayPal": "QR code de apoio PayPal",
-    "projectDesc": "Este projeto é a extensão VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "Este projeto é o plugin IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "Repositório GitHub",
     "githubDesc": "Este projeto é open source no GitHub. Dê uma estrela para mostrar seu apoio!",
     "githubCopyBtn": "Copiar URL do Repositório",

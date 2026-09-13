@@ -45,9 +45,15 @@ export const CompactingIndicator = ({ startTime }: CompactingIndicatorProps) => 
   return (
     <div className="compact-card-wrapper compact-card-wrapper--indicator">
       <div className="compact-card compact-card--compacting">
-        <span className="compact-card__text">{t('chat.compactingSession')}</span>
-        <span className="compact-card__dots">{dots}</span>
-        <span className="compact-card__time">{formatTime(elapsedSeconds)}</span>
+        <div className="compact-card__spinner-dual">
+          <div className="compact-card__spinner-outer" />
+          <div className="compact-card__spinner-inner" />
+        </div>
+        <span className="compact-card__text">
+          {t('chat.compactingSession')}
+          <span className="compact-card__dots">{dots}</span>
+        </span>
+        <span className="compact-card__time-badge">{formatTime(elapsedSeconds)}</span>
       </div>
     </div>
   );

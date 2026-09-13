@@ -12,7 +12,6 @@ describe('useMessageSender - /context command', () => {
     selectedModel: 'claude-opus-4-8',
     permissionMode: 'default',
     reasoningEffort: 'high',
-    codexFastMode: 'normal',
     daemonStatusLoaded: true,
     currentSdkInstalled: true,
     sentAttachmentsRef: { current: new Map() },

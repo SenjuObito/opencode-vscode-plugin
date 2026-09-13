@@ -88,7 +88,12 @@
       "redo": "Повторить отменённое сообщение",
       "fork": "Скопировать весь сеанс в новую ветку",
       "share": "Поделиться ссылкой на сессию",
-      "unshare": "Отменить доступ к сессии"
+      "unshare": "Отменить доступ к сессии",
+      "review": "Просмотр изменений кода или git diff",
+      "init": "Инициализировать правила и конфигурацию проекта (OPENCODE.md)",
+      "models": "Просмотр или переключение доступных моделей",
+      "themes": "Переключить тему интерфейса",
+      "help": "Показать справку и список команд"
     },
     "compactTooltip": "Нажмите, чтобы сжать сессию",
     "compactStarted": "Сжатие сессии…",
@@ -110,7 +115,8 @@
     "showEarlierMessages": "Показать предыдущие сообщения ({{count}})",
     "showEarlierTurns": "Показать предыдущие ходы: {{count}} (загружено, осталось: {{remaining}})",
     "loadEarlierTurns": "Загрузить с диска предыдущие ходы: {{count}} (осталось {{remaining}} из {{total}})",
-    "loadingEarlierTurns": "Загрузка предыдущих ходов...",
+    "loadEarlierMessages": "Загрузить предыдущие сообщения: {{count}} (осталось {{remaining}} из {{total}})",
+    "loadingEarlierTurns": "Загрузка предыдущих ходов",
     "totalDuration": "Этот ответ занял",
     "tokenUsage": "вход {{input}} / выход {{output}}",
     "tokenUsageDetail": "Итог хода — вход {{input}} · запись кэша {{cacheWrite}} · чтение кэша {{cacheRead}} · выход {{output}}",
@@ -175,8 +181,8 @@
       },
       "theme": {
         "label": "Тема",
-        "system": "Как в VS Code",
-        "systemDesc": "Следует за темой VS Code",
+        "system": "Как в IDE",
+        "systemDesc": "Следует за темой IDE",
         "light": "Светлая",
         "lightDesc": "Свежая и яркая, для работы днём",
         "dark": "Тёмная",
@@ -184,7 +190,7 @@
       },
       "language": {
         "label": "Язык",
-        "followIde": "Следовать VS Code",
+        "followIde": "Следовать IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -204,11 +210,6 @@
         "hintText": "чтобы узнать путь к исполняемому файлу Node.js. Оставьте пустым для автоопределения.",
         "versionTooLow": "Версия Node.js слишком старая. Плагин требует v{{minVersion}} или выше"
       },
-      "claudeCliPath": {
-        "label": "Путь к TUI Opencode",
-        "placeholder": "напр. /usr/local/bin/opencode — оставьте пустым для автовыбора",
-        "hint": "Необязательный пользовательский бинарный файл opencode для запуска сервиса opencode. Оставьте пустым для поиска в PATH и стандартных местах установки (~/.opencode/bin). Вступает в силу после перезапуска демона при сохранении."
-      },
       "workingDirectory": {
         "label": "Рабочая директория",
         "placeholder": "например, project1 или оставьте пустым для корня проекта",
@@ -226,29 +227,25 @@
       "editorFont": {
         "label": "UI-шрифт",
         "hint": "Здесь меняется шрифт интерфейса плагина; для кода можно выбрать отдельный шрифт.",
-        "followOption": "Использовать UI-шрифт VS Code ({{font}})",
+        "followOption": "Использовать UI-шрифт IDEA ({{font}})",
         "customOption": "Пользовательский файл UI-шрифта",
         "customPathLabel": "Путь к файлу UI-шрифта",
         "customPathPlaceholder": "Выберите или введите путь к файлу .ttf / .otf для UI-шрифта",
         "browse": "Обзор",
-        "warningUnavailable": "UI-шрифт недоступен, сейчас используется UI-шрифт VS Code",
-        "statusFollowEditor": "Сейчас используется UI-шрифт VS Code: {{font}}",
-        "statusCustom": "Сейчас используется пользовательский UI-шрифт: {{font}}",
-        "systemFontGroup": "Системные шрифты",
-        "systemFontLoading": "Загрузка системных шрифтов…",
-        "systemFontFailed": "Не удалось загрузить системные шрифты.",
-        "systemFontRetry": "Повторить"
+        "warningUnavailable": "UI-шрифт недоступен, сейчас используется UI-шрифт IDEA",
+        "statusFollowEditor": "Сейчас используется UI-шрифт IDEA: {{font}}",
+        "statusCustom": "Сейчас используется пользовательский UI-шрифт: {{font}}"
       },
       "codeFont": {
         "label": "Шрифт кода",
         "hint": "Markdown-код и блоки команд используют этот шрифт.",
-        "followOption": "Следовать шрифту редактора VS Code ({{font}})",
+        "followOption": "Следовать шрифту редактора ({{font}})",
         "customOption": "Пользовательский файл шрифта кода",
         "customPathLabel": "Путь к файлу шрифта кода",
         "customPathPlaceholder": "Выберите или введите путь к файлу .ttf / .otf для шрифта кода",
         "browse": "Обзор",
         "warningUnavailable": "Шрифт кода недоступен, сейчас используется шрифт редактора",
-        "statusFollowEditor": "Сейчас используется шрифт редактора VS Code: {{font}}",
+        "statusFollowEditor": "Сейчас используется шрифт редактора: {{font}}",
         "statusCustom": "Сейчас используется пользовательский шрифт кода: {{font}}"
       },
       "streaming": {
@@ -374,6 +371,17 @@
         "enabled": "Включено",
         "disabled": "Отключено",
         "hint": "При отключении создание нового чата в существующем диалоге будет происходить напрямую, без подтверждения."
+      },
+      "compactConfirm": {
+        "label": "Подтверждение сжатия диалога",
+        "enabled": "Включено",
+        "disabled": "Отключено",
+        "hint": "При отключении нажатие на статистику токенов или выполнение /compact будет сразу сжимать диалог без подтверждения."
+      },
+      "opencodeCliPath": {
+        "label": "Путь к TUI Opencode",
+        "placeholder": "напр. /usr/local/bin/opencode — оставьте пустым для автовыбора",
+        "hint": "Необязательный пользовательский бинарный файл opencode для запуска сервиса opencode. Оставьте пустым для поиска в PATH и стандартных местах установки (~/.opencode/bin). Вступает в силу после перезапуска демона при сохранении."
       }
     },
     "providers": "Управление провайдерами",
@@ -490,7 +498,7 @@
     "communityQrAlt": "QR-код для поддержки",
     "communityQrAltAlipay": "QR-код для поддержки Alipay",
     "communityQrAltPayPal": "QR-код для поддержки PayPal",
-    "projectDesc": "Этот проект — расширение VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "Этот проект — плагин IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "Репозиторий GitHub",
     "githubDesc": "Этот проект с открытым исходным кодом на GitHub. Поставьте звезду в поддержку!",
     "githubCopyBtn": "Скопировать URL репозитория",

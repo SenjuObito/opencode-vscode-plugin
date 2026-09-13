@@ -10,14 +10,13 @@ const COPIED_INDICATOR_STYLE: React.CSSProperties = {
 
 interface SkillHelpDialogProps {
   onClose: () => void;
-  currentProvider?: string;
 }
 
 /**
  * Skills Help Dialog
  * Explains what Skills are and how to use them
  */
-export function SkillHelpDialog({ onClose, currentProvider = 'claude' }: SkillHelpDialogProps) {
+export function SkillHelpDialog({ onClose }: SkillHelpDialogProps) {
   const { t } = useTranslation();
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
@@ -38,9 +37,7 @@ export function SkillHelpDialog({ onClose, currentProvider = 'claude' }: SkillHe
     }
   }, []);
 
-  const isCodex = currentProvider === 'codex';
-  // Use provider-specific i18n key prefix
-  const hp = isCodex ? 'skills.help.codex' : 'skills.help';
+  const hp = 'skills.help';
 
   return (
     <div className="skill-dialog-backdrop" onClick={handleBackdropClick}>
@@ -94,31 +91,17 @@ export function SkillHelpDialog({ onClose, currentProvider = 'claude' }: SkillHe
               {t(`${hp}.configuration.title`)}
             </h4>
             <p>{t(`${hp}.configuration.description`)}</p>
-            {isCodex ? (
-              <ul>
-                <li>
-                  <strong>{t(`${hp}.configuration.userPath.label`)}</strong>：{t(`${hp}.configuration.userPath.description`)}
-                </li>
-                <li>
-                  <strong>{t(`${hp}.configuration.repoPath.label`)}</strong>：{t(`${hp}.configuration.repoPath.description`)}
-                </li>
-                <li>
-                  <strong>{t(`${hp}.configuration.configToml.label`)}</strong>：{t(`${hp}.configuration.configToml.description`)}
-                </li>
-              </ul>
-            ) : (
-              <ul>
-                <li>
-                  <strong>{t(`${hp}.configuration.localPath.label`)}</strong>：{t(`${hp}.configuration.localPath.description`)}
-                </li>
-                <li>
-                  <strong>{t(`${hp}.configuration.relativePath.label`)}</strong>：{t(`${hp}.configuration.relativePath.description`)}
-                </li>
-                <li>
-                  <strong>{t(`${hp}.configuration.absolutePath.label`)}</strong>：{t(`${hp}.configuration.absolutePath.description`)}
-                </li>
-              </ul>
-            )}
+            <ul>
+              <li>
+                <strong>{t(`${hp}.configuration.localPath.label`)}</strong>：{t(`${hp}.configuration.localPath.description`)}
+              </li>
+              <li>
+                <strong>{t(`${hp}.configuration.relativePath.label`)}</strong>：{t(`${hp}.configuration.relativePath.description`)}
+              </li>
+              <li>
+                <strong>{t(`${hp}.configuration.absolutePath.label`)}</strong>：{t(`${hp}.configuration.absolutePath.description`)}
+              </li>
+            </ul>
           </section>
 
           <section className="help-section">
@@ -141,35 +124,19 @@ export function SkillHelpDialog({ onClose, currentProvider = 'claude' }: SkillHe
               {t(`${hp}.learnMore.title`)}
             </h4>
             <p>{t(`${hp}.learnMore.description`)}</p>
-            {isCodex ? (
-              <ul>
-                <li>
-                  <a
-                    href="https://codex.openai.com/docs/skills"
-                    onClick={(e) => handleLinkClick(e, 'https://codex.openai.com/docs/skills')}
-                  >
-                    {t(`${hp}.learnMore.link1`)}
-                  </a>
-                  {copiedUrl === 'https://codex.openai.com/docs/skills' && (
-                    <span style={COPIED_INDICATOR_STYLE}>✓ {t('mcp.linkCopied')}</span>
-                  )}
-                </li>
-              </ul>
-            ) : (
-              <ul>
-                <li>
-                  <a
-                    href="https://opencode.ai/docs/skills/"
-                    onClick={(e) => handleLinkClick(e, 'https://opencode.ai/docs/skills/')}
-                  >
-                    {t(`${hp}.learnMore.link1`)}
-                  </a>
-                  {copiedUrl === 'https://opencode.ai/docs/skills/' && (
-                    <span style={COPIED_INDICATOR_STYLE}>✓ {t('mcp.linkCopied')}</span>
-                  )}
-                </li>
-              </ul>
-            )}
+            <ul>
+              <li>
+                <a
+                  href="https://opencode.ai/docs/skills/"
+                  onClick={(e) => handleLinkClick(e, 'https://opencode.ai/docs/skills/')}
+                >
+                  {t(`${hp}.learnMore.link1`)}
+                </a>
+                {copiedUrl === 'https://opencode.ai/docs/skills/' && (
+                  <span style={COPIED_INDICATOR_STYLE}>✓ {t('mcp.linkCopied')}</span>
+                )}
+              </li>
+            </ul>
           </section>
         </div>
 

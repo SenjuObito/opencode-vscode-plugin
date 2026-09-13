@@ -2,10 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import type { ToastAction, ToastMessage } from '../components/Toast';
 import type { SettingsTab } from '../components/settings/SettingsSidebar';
 import type { ContextInfo, ViewMode } from '../hooks';
-import { APP_VERSION } from '../version/version';
 import { DEFAULT_STATUS } from './MessagesContext';
-
-const LAST_SEEN_VERSION_KEY = 'lastSeenChangelogVersion';
 
 export interface UIStateContextValue {
   // Navigation
@@ -28,9 +25,6 @@ export interface UIStateContextValue {
   // Misc dialogs that don't belong to useDialogManagement
   addModelDialogOpen: boolean;
   setAddModelDialogOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  showChangelogDialog: boolean;
-  closeChangelogDialog: () => void;
-  openChangelogDialog: () => void;
 
   // Active editor context (file + selection)
   contextInfo: ContextInfo | null;
@@ -58,10 +52,6 @@ export function UIStateProvider({ children }: { children: ReactNode }) {
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [addModelDialogOpen, setAddModelDialogOpen] = useState<boolean>(false);
-  const [showChangelogDialog, setShowChangelogDialog] = useState<boolean>(() => {
-    const lastSeen = localStorage.getItem(LAST_SEEN_VERSION_KEY);
-    return lastSeen !== APP_VERSION;
-  });
   const [contextInfo, setContextInfo] = useState<ContextInfo | null>(null);
   const [draftInput, setDraftInput] = useState<string>('');
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
@@ -83,20 +73,12 @@ export function UIStateProvider({ children }: { children: ReactNode }) {
 
   const clearToasts = useCallback(() => { setToasts([]); }, []);
 
-  const closeChangelogDialog = useCallback(() => {
-    localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION);
-    setShowChangelogDialog(false);
-  }, []);
-
-  const openChangelogDialog = useCallback(() => { setShowChangelogDialog(true); }, []);
-
   const value = useMemo<UIStateContextValue>(
     () => ({
       currentView, setCurrentView,
       settingsInitialTab, setSettingsInitialTab,
       toasts, addToast, dismissToast, clearToasts,
       addModelDialogOpen, setAddModelDialogOpen,
-      showChangelogDialog, closeChangelogDialog, openChangelogDialog,
       contextInfo, setContextInfo,
       draftInput, setDraftInput,
       searchOpen, setSearchOpen,
@@ -105,7 +87,6 @@ export function UIStateProvider({ children }: { children: ReactNode }) {
       currentView, settingsInitialTab,
       toasts, addToast, dismissToast, clearToasts,
       addModelDialogOpen,
-      showChangelogDialog, closeChangelogDialog, openChangelogDialog,
       contextInfo, draftInput,
       searchOpen,
     ],

@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import type { TFunction } from 'i18next';
 import type { HistorySessionSummary } from '../../types';
 import { extractCommandMessageContent } from '../../utils/messageUtils';
+import { sanitizeUserText } from '../../utils/sanitizeUserText';
 import { ProviderModelIcon } from '../shared/ProviderModelIcon';
 
 // Module-level style constants (avoid breaking memoization)
@@ -194,7 +195,6 @@ export const HistoryListItem = memo(({
     onConvertToCliSession(session.sessionId);
   }, [onConvertToCliSession, session.sessionId]);
 
-  const fileSize = session.fileSize ? formatFileSize(session.fileSize) : null;
   const showEntrypointBadge = session.entrypoint && session.entrypoint !== 'cli' && session.entrypoint !== 'remote';
   // [TEMP] 下载会话按钮当前点击无响应，临时隐藏（handler / props / i18n 均保留）。详见 docs/KNOWN-ISSUES.md
   const showExportButton = false;
@@ -222,7 +222,7 @@ export const HistoryListItem = memo(({
               checked={isSelected}
               onChange={handleCheckboxChange}
               onClick={stopPropagationHandler}
-              aria-label={t('history.selectSessionWithTitle', { title: extractCommandMessageContent(session.title) })}
+              aria-label={t('history.selectSessionWithTitle', { title: extractCommandMessageContent(sanitizeUserText(session.title)) })}
             />
           </label>
         )}
@@ -264,7 +264,7 @@ export const HistoryListItem = memo(({
               </button>
             </div>
           ) : (
-            highlightText(extractCommandMessageContent(session.title), searchQuery)
+            highlightText(extractCommandMessageContent(sanitizeUserText(session.title)), searchQuery)
           )}
         </div>
         <div className="history-item-time">{formatTimeAgo(session.lastTimestamp, t)}</div>
@@ -308,16 +308,8 @@ export const HistoryListItem = memo(({
         )}
       </div>
       <div className="history-item-meta">
-        <span>{t('history.messageCount', { count: session.messageCount })}</span>
-        {fileSize && (
-          <>
-            <span className="history-meta-dot">•</span>
-            <span className={fileSize.isMB ? 'history-filesize-large' : ''}>{fileSize.text}</span>
-          </>
-        )}
         {showEntrypointBadge && (
           <>
-            <span className="history-meta-dot">•</span>
             <span
               className={`history-entrypoint-badge history-entrypoint-${session.entrypoint}`}
               title={t(`history.entrypointTooltip.${session.entrypoint}`, { defaultValue: session.entrypoint })}
@@ -330,9 +322,9 @@ export const HistoryListItem = memo(({
               }`}></span>
               {t(`history.entrypointLabel.${session.entrypoint}`, { defaultValue: session.entrypoint })}
             </span>
+            <span className="history-meta-dot">•</span>
           </>
         )}
-        <span className="history-meta-dot">•</span>
         <div className="history-session-id-container">
           <span
             className="history-session-id"

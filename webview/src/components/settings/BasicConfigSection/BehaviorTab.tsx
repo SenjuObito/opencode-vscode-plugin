@@ -89,6 +89,13 @@ export interface BehaviorTabProps {
    */
   newSessionConfirmEnabled?: boolean;
   onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
+  /**
+   * Whether the "compact session" confirm dialog is enabled (i.e. shown).
+   * Positive semantics: `true` = dialog shows, `false` = silently compact.
+   * Default `true` to preserve safer behaviour for upgrading users.
+   */
+  compactConfirmEnabled?: boolean;
+  onCompactConfirmEnabledChange?: (enabled: boolean) => void;
   soundNotificationEnabled?: boolean;
   onSoundNotificationEnabledChange?: (enabled: boolean) => void;
   soundOnlyWhenUnfocused?: boolean;
@@ -123,6 +130,8 @@ const BehaviorTab = ({
   onDiffExpandedByDefaultChange = () => {},
   newSessionConfirmEnabled = true,
   onNewSessionConfirmEnabledChange = () => {},
+  compactConfirmEnabled = true,
+  onCompactConfirmEnabledChange = () => {},
   soundNotificationEnabled = false,
   onSoundNotificationEnabledChange = () => {},
   soundOnlyWhenUnfocused = false,
@@ -282,6 +291,34 @@ const BehaviorTab = ({
         <small className={styles.formHint}>
           <span className="codicon codicon-info" />
           <span>{t('settings.basic.newSessionConfirm.hint')}</span>
+        </small>
+      </div>
+
+      {/* Compact confirm dialog toggle.
+          Positive semantics throughout (no inversions in JSX) — the storage
+          layer in utils/skipCompactConfirm.ts owns the negation. */}
+      <div className={styles.streamingSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-fold" />
+          <span className={styles.fieldLabel}>{t('settings.basic.compactConfirm.label')}</span>
+        </div>
+        <label className={styles.toggleWrapper}>
+          <input
+            type="checkbox"
+            className={styles.toggleInput}
+            checked={compactConfirmEnabled}
+            onChange={(e) => onCompactConfirmEnabledChange(e.target.checked)}
+          />
+          <span className={styles.toggleSlider} />
+          <span className={styles.toggleLabel}>
+            {compactConfirmEnabled
+              ? t('settings.basic.compactConfirm.enabled')
+              : t('settings.basic.compactConfirm.disabled')}
+          </span>
+        </label>
+        <small className={styles.formHint}>
+          <span className="codicon codicon-info" />
+          <span>{t('settings.basic.compactConfirm.hint')}</span>
         </small>
       </div>
 

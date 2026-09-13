@@ -20,10 +20,16 @@ interface BasicConfigSectionProps {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   fontSizeLevel: number;
   onFontSizeLevelChange: (level: number) => void;
-  claudeCliPath?: string;
-  onClaudeCliPathChange?: (path: string) => void;
-  onSaveClaudeCliPath?: () => void;
-  savingClaudeCliPath?: boolean;
+  nodePath?: string;
+  onNodePathChange?: (path: string) => void;
+  onSaveNodePath?: () => void;
+  savingNodePath?: boolean;
+  nodeVersion?: string | null;
+  minNodeVersion?: number;
+  opencodeCliPath?: string;
+  onOpencodeCliPathChange?: (path: string) => void;
+  onSaveOpencodeCliPath?: () => void;
+  savingOpencodeCliPath?: boolean;
   workingDirectory?: string;
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
@@ -33,14 +39,6 @@ interface BasicConfigSectionProps {
     fontSize: number;
     lineSpacing: number;
   };
-  /** Named fonts parsed from the VS Code `editor.fontFamily` setting. */
-  vscodeFontList?: string[];
-  /** All installed font families, enumerated host-side (OS font directories). */
-  systemFontList?: string[];
-  /** Non-empty when host-side font enumeration failed. */
-  systemFontError?: string | null;
-  /** Re-request the system font list from the host (retry button). */
-  onRequestSystemFontList?: () => void;
   uiFontConfig?: UiFontConfig;
   codeFontConfig?: CodeFontConfig;
   onUiFontSelectionChange?: (selection: string) => void;
@@ -73,6 +71,9 @@ interface BasicConfigSectionProps {
   // New-session confirm dialog (positive semantics: true = shown)
   newSessionConfirmEnabled?: boolean;
   onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
+  // Compact confirm dialog (positive semantics: true = shown)
+  compactConfirmEnabled?: boolean;
+  onCompactConfirmEnabledChange?: (enabled: boolean) => void;
   // Sound notification configuration
   soundNotificationEnabled?: boolean;
   onSoundNotificationEnabledChange?: (enabled: boolean) => void;
@@ -134,10 +135,6 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           fontSizeLevel={props.fontSizeLevel}
           onFontSizeLevelChange={props.onFontSizeLevelChange}
           editorFontConfig={props.editorFontConfig}
-          vscodeFontList={props.vscodeFontList}
-          systemFontList={props.systemFontList}
-          systemFontError={props.systemFontError}
-          onRequestSystemFontList={props.onRequestSystemFontList}
           uiFontConfig={props.uiFontConfig}
           codeFontConfig={props.codeFontConfig}
           onUiFontSelectionChange={props.onUiFontSelectionChange}
@@ -167,6 +164,8 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
           newSessionConfirmEnabled={props.newSessionConfirmEnabled}
           onNewSessionConfirmEnabledChange={props.onNewSessionConfirmEnabledChange}
+          compactConfirmEnabled={props.compactConfirmEnabled}
+          onCompactConfirmEnabledChange={props.onCompactConfirmEnabledChange}
           soundNotificationEnabled={props.soundNotificationEnabled}
           onSoundNotificationEnabledChange={props.onSoundNotificationEnabledChange}
           soundOnlyWhenUnfocused={props.soundOnlyWhenUnfocused}
@@ -195,10 +194,16 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
 
       {activeTab === 'environment' && (
         <EnvironmentTab
-          claudeCliPath={props.claudeCliPath}
-          onClaudeCliPathChange={props.onClaudeCliPathChange}
-          onSaveClaudeCliPath={props.onSaveClaudeCliPath}
-          savingClaudeCliPath={props.savingClaudeCliPath}
+          nodePath={props.nodePath}
+          onNodePathChange={props.onNodePathChange}
+          onSaveNodePath={props.onSaveNodePath}
+          savingNodePath={props.savingNodePath}
+          nodeVersion={props.nodeVersion}
+          minNodeVersion={props.minNodeVersion}
+          opencodeCliPath={props.opencodeCliPath}
+          onOpencodeCliPathChange={props.onOpencodeCliPathChange}
+          onSaveOpencodeCliPath={props.onSaveOpencodeCliPath}
+          savingOpencodeCliPath={props.savingOpencodeCliPath}
           workingDirectory={props.workingDirectory}
           onWorkingDirectoryChange={props.onWorkingDirectoryChange}
           onSaveWorkingDirectory={props.onSaveWorkingDirectory}

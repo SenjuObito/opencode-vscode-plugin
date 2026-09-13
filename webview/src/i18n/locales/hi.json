@@ -88,7 +88,12 @@
       "redo": "पूर्ववत किया गया अंतिम संदेश फिर से करें",
       "fork": "पूरे सत्र को नई शाखा में कॉपी करें",
       "share": "सत्र लिंक साझा करें",
-      "unshare": "सत्र साझा करना बंद करें"
+      "unshare": "सत्र साझा करना बंद करें",
+      "review": "कोड परिवर्तन या git diff की समीक्षा करें",
+      "init": "प्रोजेक्ट नियम और कॉन्फ़िग प्रारंभ करें (OPENCODE.md)",
+      "models": "उपलब्ध मॉडल देखें या बदलें",
+      "themes": "UI थीम बदलें",
+      "help": "मदद और कमांड सूची दिखाएं"
     },
     "compactTooltip": "सत्र संकुचित करने के लिए क्लिक करें",
     "compactStarted": "सत्र संकुचित हो रहा है…",
@@ -110,7 +115,8 @@
     "showEarlierMessages": "{{count}} पुराने संदेश दिखाएं",
     "showEarlierTurns": "पहले के {{count}} संवाद दौर दिखाएं ({{remaining}} लोड किए हुए शेष)",
     "loadEarlierTurns": "डिस्क से पहले के {{count}} दौर लोड करें ({{total}} में से {{remaining}} शेष)",
-    "loadingEarlierTurns": "पहले के संवाद लोड हो रहे हैं...",
+    "loadEarlierMessages": "पहले के {{count}} संदेश लोड करें ({{total}} में से {{remaining}} शेष)",
+    "loadingEarlierTurns": "पहले के संवाद लोड हो रहे हैं",
     "totalDuration": "इस जवाब में लगा समय",
     "tokenUsage": "{{input}} इन / {{output}} आउट",
     "tokenUsageDetail": "टर्न कुल — इनपुट {{input}} · कैश लेखन {{cacheWrite}} · कैश पठन {{cacheRead}} · आउटपुट {{output}}",
@@ -175,8 +181,8 @@
       },
       "theme": {
         "label": "इंटरफ़ेस थीम",
-        "system": "Follow VS Code",
-        "systemDesc": "Automatically follow the VS Code theme",
+        "system": "Follow IDE",
+        "systemDesc": "Automatically follow IDE theme",
         "light": "लाइट",
         "lightDesc": "ताज़ा और उज्ज्वल, दिन के उपयोग के लिए उपयुक्त",
         "dark": "डार्क",
@@ -184,7 +190,7 @@
       },
       "language": {
         "label": "इंटरफ़ेस भाषा",
-        "followIde": "Follow VS Code",
+        "followIde": "IDE का अनुसरण करें",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -204,11 +210,6 @@
         "hintText": "वास्तविक Node.js निष्पादन योग्य फ़ाइल पथ प्राप्त करें। खाली होने पर प्लगइन स्वचालित रूप से Node.js का पता लगाने का प्रयास करेगा।",
         "versionTooLow": "Node.js संस्करण बहुत पुराना है। प्लगइन को ठीक से चलाने के लिए v{{minVersion}} या उच्चतर की आवश्यकता है"
       },
-      "claudeCliPath": {
-        "label": "Opencode TUI पथ",
-        "placeholder": "जैसे /usr/local/bin/opencode — खाली छोड़ें तो स्वतः पहचान",
-        "hint": "वैकल्पिक कस्टम opencode बाइनरी, जो opencode सेवा शुरू करने के लिए उपयोग होती है। खाली छोड़ने पर PATH और डिफ़ॉल्ट इंस्टॉल स्थान (~/.opencode/bin) में खोजा जाएगा। सहेजने पर डेमन पुनः आरंभ होने के बाद लागू होगा।"
-      },
       "workingDirectory": {
         "label": "Working Directory",
         "placeholder": "e.g. project1 or leave empty to use project root",
@@ -226,29 +227,25 @@
       "editorFont": {
         "label": "UI फ़ॉन्ट",
         "hint": "यहाँ प्लगइन UI का फ़ॉन्ट बदला जाता है; कोड के लिए अलग फ़ॉन्ट चुना जा सकता है।",
-        "followOption": "VS Code UI फ़ॉन्ट का पालन करें ({{font}})",
+        "followOption": "IDEA UI फ़ॉन्ट का पालन करें ({{font}})",
         "customOption": "कस्टम UI फ़ॉन्ट फ़ाइल",
         "customPathLabel": "UI फ़ॉन्ट फ़ाइल पथ",
         "customPathPlaceholder": ".ttf / .otf UI फ़ॉन्ट फ़ाइल का पथ चुनें या दर्ज करें",
         "browse": "ब्राउज़ करें",
-        "warningUnavailable": "UI फ़ॉन्ट उपलब्ध नहीं है, अभी VS Code UI फ़ॉन्ट उपयोग में है",
-        "statusFollowEditor": "अभी VS Code UI फ़ॉन्ट उपयोग में है: {{font}}",
-        "statusCustom": "अभी कस्टम UI फ़ॉन्ट उपयोग में है: {{font}}",
-        "systemFontGroup": "सिस्टम फ़ॉन्ट",
-        "systemFontLoading": "सिस्टम फ़ॉन्ट लोड हो रहे हैं…",
-        "systemFontFailed": "सिस्टम फ़ॉन्ट लोड करने में विफल।",
-        "systemFontRetry": "पुनः प्रयास"
+        "warningUnavailable": "UI फ़ॉन्ट उपलब्ध नहीं है, अभी IDEA UI फ़ॉन्ट उपयोग में है",
+        "statusFollowEditor": "अभी IDEA UI फ़ॉन्ट उपयोग में है: {{font}}",
+        "statusCustom": "अभी कस्टम UI फ़ॉन्ट उपयोग में है: {{font}}"
       },
       "codeFont": {
         "label": "कोड फ़ॉन्ट",
         "hint": "Markdown कोड और कमांड ब्लॉक इस फ़ॉन्ट का उपयोग करते हैं।",
-        "followOption": "VS Code एडिटर फ़ॉन्ट का पालन करें ({{font}})",
+        "followOption": "एडिटर फ़ॉन्ट का पालन करें ({{font}})",
         "customOption": "कस्टम कोड फ़ॉन्ट फ़ाइल",
         "customPathLabel": "कोड फ़ॉन्ट फ़ाइल पथ",
         "customPathPlaceholder": ".ttf / .otf कोड फ़ॉन्ट फ़ाइल का पथ चुनें या दर्ज करें",
         "browse": "ब्राउज़ करें",
         "warningUnavailable": "कोड फ़ॉन्ट उपलब्ध नहीं है, अभी एडिटर फ़ॉन्ट उपयोग में है",
-        "statusFollowEditor": "अभी VS Code एडिटर फ़ॉन्ट उपयोग में है: {{font}}",
+        "statusFollowEditor": "अभी एडिटर फ़ॉन्ट उपयोग में है: {{font}}",
         "statusCustom": "अभी कस्टम कोड फ़ॉन्ट उपयोग में है: {{font}}"
       },
       "streaming": {
@@ -374,6 +371,17 @@
         "enabled": "सक्षम",
         "disabled": "अक्षम",
         "hint": "अक्षम होने पर, मौजूदा संदेशों वाले सत्र में नया बनाने पर पुष्टि संवाद नहीं दिखेगा।"
+      },
+      "compactConfirm": {
+        "label": "सत्र संपीड़न पुष्टि",
+        "enabled": "सक्षम",
+        "disabled": "अक्षम",
+        "hint": "अक्षम होने पर, टोकन आंकड़े क्लिक करने या /compact चलाने पर पुष्टि के बिना सीधे संपीड़न होगा।"
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI पथ",
+        "placeholder": "जैसे /usr/local/bin/opencode — खाली छोड़ें तो स्वतः पहचान",
+        "hint": "वैकल्पिक कस्टम opencode बाइनरी, जो opencode सेवा शुरू करने के लिए उपयोग होती है। खाली छोड़ने पर PATH और डिफ़ॉल्ट इंस्टॉल स्थान (~/.opencode/bin) में खोजा जाएगा। सहेजने पर डेमन पुनः आरंभ होने के बाद लागू होगा।"
       }
     },
     "providers": "प्रदाता प्रबंधन",
@@ -478,7 +486,7 @@
     "communityQrAlt": "सहायता QR कोड",
     "communityQrAltAlipay": "Alipay सहायता QR कोड",
     "communityQrAltPayPal": "PayPal सहायता QR कोड",
-    "projectDesc": "यह प्रोजेक्ट OpenCode Buddy VS Code एक्सटेंशन है (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "यह प्रोजेक्ट OpenCode Buddy IntelliJ IDEA प्लगइन है (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub रिपॉजिटरी",
     "githubDesc": "यह प्रोजेक्ट GitHub पर ओपन सोर्स है। सपोर्ट के लिए Star करें!",
     "githubCopyBtn": "रिपॉजिटरी URL कॉपी करें",

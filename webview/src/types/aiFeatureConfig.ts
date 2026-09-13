@@ -147,3 +147,20 @@ export function pickAutoAiFeatureProvider(
   if (availability.opencode) return 'opencode';
   return null;
 }
+
+// ============================================================================
+// Commit AI (opencode-only)
+// ============================================================================
+
+export type CommitAiProvider = AiFeatureProvider;
+
+export interface CommitAiConfig extends AiFeatureConfig {
+}
+
+export const DEFAULT_COMMIT_AI_CONFIG: CommitAiConfig = {
+  provider: 'opencode',
+  effectiveProvider: 'opencode',
+  resolutionSource: 'manual',
+  models: { ...DEFAULT_AI_FEATURE_MODELS },
+  availability: emptyAvailability(false),
+};

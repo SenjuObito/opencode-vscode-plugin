@@ -197,146 +197,6 @@ export interface ModelInfo {
   variants?: string[];
 }
 
-/**
- * Check if a model supports 1M context window.
- * All models support 1M except Haiku (matched by name substring).
- */
-export function modelSupports1MContext(modelId: string | undefined | null): boolean {
-  if (!modelId) {
-    return false;
-  }
-  return !modelId.replace(/\[1m\]$/i, '').toLowerCase().includes('haiku');
-}
-
-/**
- * Check if a model ID already has [1m] suffix.
- */
-export function has1MContextSuffix(modelId: string | undefined | null): boolean {
-  if (!modelId) {
-    return false;
-  }
-  return /\[1m\]$/i.test(modelId);
-}
-
-/**
- * Apply [1m] suffix to model ID if supported and enabled.
- * Returns the original model ID if the model doesn't support 1M context.
- */
-export function apply1MContextSuffix(modelId: string, enabled: boolean): string {
-  if (!enabled || !modelSupports1MContext(modelId)) {
-    // Remove any existing [1m] suffix if disabled
-    return modelId.replace(/\[1m\]$/i, '');
-  }
-  // Remove existing suffix first, then add new one
-  const baseId = modelId.replace(/\[1m\]$/i, '');
-  return `${baseId}[1m]`;
-}
-
-/**
- * Remove [1m] suffix from model ID for display/storage purposes.
- */
-export function strip1MContextSuffix(modelId: string | undefined | null): string {
-  if (!modelId) {
-    return '';
-  }
-  return modelId.replace(/\[1m\]$/i, '');
-}
-
-/**
- * Fallback Claude model when nothing valid is saved. Must stay in sync with the
- * entry marked "Use the default model" in CLAUDE_MODELS — never derive this from
- * CLAUDE_MODELS[0], which is the newest tier and the most likely to be missing
- * from a user's API relay.
- */
-export const DEFAULT_CLAUDE_MODEL_ID = 'claude-sonnet-4-7';
-
-/**
- * Retired model IDs → their current-generation replacement. Lookup happens after
- * the [1m] suffix is stripped, so keys must be base IDs. Without an entry here a
- * saved retired model fails validation and silently resets to the fallback.
- */
-const LEGACY_CLAUDE_MODEL_ID_ALIASES: Record<string, string> = {
-  'claude-sonnet-4-6': 'claude-sonnet-4-7',
-  'claude-opus-4-6': 'claude-opus-4-8',
-};
-
-export function normalizeClaudeModelId(modelId: string | undefined | null): string {
-  if (!modelId) {
-    return DEFAULT_CLAUDE_MODEL_ID;
-  }
-  // First strip any [1m] suffix
-  const stripped = strip1MContextSuffix(modelId);
-  return LEGACY_CLAUDE_MODEL_ID_ALIASES[stripped] ?? stripped;
-}
-
-/**
- * Claude model list (base IDs without [1m] suffix).
- * The 1M context suffix is applied dynamically via toggle.
- */
-export const CLAUDE_MODELS: ModelInfo[] = [
-  {
-    id: 'claude-fable-5',
-    label: 'Fable 5',
-    description: 'Fable 5 · Most powerful · Mythos-class',
-  },
-  {
-    id: 'claude-opus-5',
-    label: 'Opus 5',
-    description: 'Opus 5 · Latest Opus upgrade',
-  },
-  {
-    id: 'claude-opus-4-8',
-    label: 'Opus 4.8',
-    description: 'Opus 4.8 · Previous Opus generation',
-  },
-  {
-    id: 'claude-sonnet-5',
-    label: 'Sonnet 5',
-    description: 'Sonnet 5 · Upgraded Sonnet model',
-  },
-  {
-    id: 'claude-sonnet-4-7',
-    label: 'Sonnet 4.7',
-    description: 'Sonnet 4.7 · Use the default model',
-  },
-  {
-    id: 'claude-haiku-4-5',
-    label: 'Haiku 4.5',
-    description: 'Haiku 4.5 · Fastest for quick answers',
-  },
-];
-
-/**
- * Codex model list
- */
-export const CODEX_MODELS: ModelInfo[] = [
-  {
-    id: 'gpt-5.6-sol',
-    label: 'GPT-5.6 Sol',
-    description: 'Frontier model for complex professional work.',
-  },
-  {
-    id: 'gpt-5.6-terra',
-    label: 'GPT-5.6 Terra',
-    description: 'GPT-5.6 model that balances intelligence and cost.',
-  },
-  {
-    id: 'gpt-5.6-luna',
-    label: 'GPT-5.6 Luna',
-    description: 'GPT-5.6 model optimized for cost-sensitive workloads.',
-  },
-  {
-    id: 'gpt-5.5',
-    label: 'GPT-5.5',
-    description: 'Latest frontier model with stronger capabilities.',
-  },
-  {
-    id: 'gpt-5.4',
-    label: 'GPT-5.4',
-    description: 'Latest frontier model with enhanced capabilities.',
-  },
-];
-
 /** OpenCode default: omit `--model` so CLI resolves its own default. */
 export const OPENCODE_DEFAULT_MODEL_ID = 'opencode-default';
 
@@ -349,11 +209,6 @@ export const OPENCODE_MODELS: ModelInfo[] = [
 ];
 
 /**
- * Available models (backward compatibility)
- */
-export const AVAILABLE_MODELS = CLAUDE_MODELS;
-
-/**
  * AI provider information
  */
 export interface ProviderInfo {
@@ -361,8 +216,6 @@ export interface ProviderInfo {
   label: string;
   icon: string;
   enabled: boolean;
-  /** When true, show a Beta badge and first-click notice dialog. */
-  beta?: boolean;
 }
 
 /**
@@ -373,60 +226,10 @@ export const AVAILABLE_PROVIDERS: ProviderInfo[] = [
 ];
 
 /**
- * Claude models that support adaptive thinking with effort parameter.
- * Based on: https://code.claude.com/docs/en/model-config#adjust-effort-level
- */
-export const EFFORT_SUPPORTED_CLAUDE_MODELS = new Set([
-  'claude-fable-5',
-  'claude-opus-5',
-  'claude-opus-4-8',
-  'claude-opus-4-6',
-  'claude-opus-4-6[1m]',
-  'claude-sonnet-5',
-  'claude-sonnet-4-7',
-  'claude-sonnet-4-6',
-]);
-
-/**
- * Claude models that additionally support the 'xhigh' effort level.
- */
-export const XHIGH_EFFORT_CLAUDE_MODELS = new Set([
-  'claude-fable-5',
-  'claude-opus-5',
-  'claude-opus-4-8',
-]);
-
-/**
- * Claude models that support the 'max' effort level.
- */
-export const MAX_EFFORT_CLAUDE_MODELS = new Set([
-  'claude-fable-5',
-  'claude-opus-5',
-  'claude-opus-4-8',
-  'claude-opus-4-6',
-  'claude-opus-4-6[1m]',
-  'claude-sonnet-5',
-  'claude-sonnet-4-7',
-  'claude-sonnet-4-6',
-]);
-
-export function codexModelSupportsMaxEffort(modelId: string): boolean {
-  return modelId.trim().toLowerCase().includes('gpt-5.6');
-}
-
-/**
  * Reasoning Effort (thinking depth)
  * Controls the depth of reasoning for AI models
- * Claude API values: low, medium, high, xhigh, max
- * Codex API values: low, medium, high, xhigh; GPT-5.6 also supports max
  */
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
-/**
- * Codex execution speed mode.
- * Standard uses Codex defaults; Fast maps to service_tier=fast at send time.
- */
-export type CodexFastMode = 'normal' | 'fast';
 
 /**
  * Reasoning level information
@@ -475,15 +278,12 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
 ];
 
 /**
- * Compute the visible reasoning levels for a provider/model combination.
- *
- * opencode 的推理力度 = model variants（按模型变化，见 docs/models#variants）。
- * 当动态目录携带所选模型的 `variants` 时只显示交集；否则回退到
- * cc-gui 的 per-provider/model 规则。
+ * Compute the visible reasoning levels for a model.
+ * opencode reasoning effort = model variants (per-model, see docs/models#variants).
  */
 export function getAvailableReasoningLevels(
-  provider: string | undefined,
-  selectedModel: string | undefined,
+  _provider?: string,
+  _selectedModel?: string,
   modelVariants?: string[],
 ): ReasoningInfo[] {
   if (modelVariants && modelVariants.length > 0) {
@@ -492,24 +292,7 @@ export function getAvailableReasoningLevels(
       return known;
     }
   }
-  return REASONING_LEVELS.filter((level) => {
-    if (provider === 'codex') {
-      return level.id !== 'max' || (selectedModel !== undefined && codexModelSupportsMaxEffort(selectedModel));
-    }
-    if (provider !== 'claude') {
-      return level.id !== 'max';
-    }
-    if (!selectedModel) {
-      return true;
-    }
-    if (level.id === 'xhigh') {
-      return XHIGH_EFFORT_CLAUDE_MODELS.has(selectedModel);
-    }
-    if (level.id === 'max') {
-      return MAX_EFFORT_CLAUDE_MODELS.has(selectedModel);
-    }
-    return true;
-  });
+  return REASONING_LEVELS;
 }
 
 // ============================================================
@@ -577,6 +360,8 @@ export interface ChatInputBoxProps {
   showUsage?: boolean;
   /** Whether always thinking is enabled */
   alwaysThinkingEnabled?: boolean;
+  /** Toggle thinking mode callback */
+  onToggleThinking?: (enabled: boolean) => void;
   /** Attachment list */
   attachments?: Attachment[];
   /** Placeholder text */
@@ -611,19 +396,10 @@ export interface ChatInputBoxProps {
   onModeSelect?: (mode: PermissionMode) => void;
   /** Switch model */
   onModelSelect?: (modelId: string) => void;
-  /** Switch provider */
-  onProviderSelect?: (providerId: string) => void;
   /** Current reasoning effort */
   reasoningEffort?: ReasoningEffort;
   /** Switch reasoning effort callback */
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  /** Codex speed mode */
-  codexFastMode?: CodexFastMode;
-  /** Switch Codex speed mode callback */
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
-  /** Toggle thinking mode */
-  onToggleThinking?: (enabled: boolean) => void;
-
   /** Send shortcut setting: 'enter' = Enter sends | 'cmdEnter' = Cmd/Ctrl+Enter sends */
   sendShortcut?: 'enter' | 'cmdEnter';
 
@@ -682,19 +458,14 @@ export interface ButtonAreaProps {
   currentProvider?: string;
   /** Current reasoning effort */
   reasoningEffort?: ReasoningEffort;
-  /** Codex speed mode */
-  codexFastMode?: CodexFastMode;
 
   // Event callbacks
   onSubmit?: () => void;
   onStop?: () => void;
   onModeSelect?: (mode: PermissionMode) => void;
   onModelSelect?: (modelId: string) => void;
-  onProviderSelect?: (providerId: string) => void;
   /** Switch reasoning effort callback */
   onReasoningChange?: (effort: ReasoningEffort) => void;
-  /** Switch Codex speed mode callback */
-  onCodexFastModeChange?: (mode: CodexFastMode) => void;
   /** Whether always thinking enabled */
   alwaysThinkingEnabled?: boolean;
   /** Toggle thinking mode */

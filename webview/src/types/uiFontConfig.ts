@@ -3,7 +3,7 @@
  * Shared across global.d.ts, main.tsx, and settings hooks.
  */
 export interface ResolvedFontConfig {
-  mode: 'followEditor' | 'named' | 'customFile';
+  mode: 'followEditor' | 'customFile';
   effectiveMode: 'followEditor' | 'customFile';
   customFontPath?: string;
   fontFamily: string;

@@ -12,11 +12,9 @@ interface SkillsSettingsSectionProps {
 
 /**
  * Skills settings component
- * Manages Claude/Codex Skills
- * Claude: global/local scopes, file-move enable/disable
- * Codex: user/repo scopes, config.toml enable/disable
+ * Manages OpenCode Skills (global/local scopes)
  */
-export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSettingsSectionProps) {
+export function SkillsSettingsSection({ currentProvider: _currentProvider }: SkillsSettingsSectionProps = {}) {
   const { t } = useTranslation();
   // Skills data
   const [skills, setSkills] = useState<SkillsConfig>({ global: {}, local: {}, user: {}, repo: {} });
@@ -51,16 +49,14 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
-  const isCodex = currentProvider === 'codex';
-
-  // Compute Skills lists (provider-aware: Claude uses global/local, Codex uses user/repo)
+  // Compute Skills lists (OpenCode uses global/local)
   const primarySkillList = useMemo(
-    () => Object.values(isCodex ? (skills.user ?? {}) : (skills.global ?? {})),
-    [isCodex, skills.global, skills.user]
+    () => Object.values(skills.global ?? {}),
+    [skills.global]
   );
   const secondarySkillList = useMemo(
-    () => Object.values(isCodex ? (skills.repo ?? {}) : (skills.local ?? {})),
-    [isCodex, skills.local, skills.repo]
+    () => Object.values(skills.local ?? {}),
+    [skills.local]
   );
   const allSkillList = useMemo(() => [...primarySkillList, ...secondarySkillList], [primarySkillList, secondarySkillList]);
 
@@ -253,7 +249,7 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
     }
     setCurrentFilter('all');
     loadSkills();
-  }, [currentProvider, loadSkills]);
+  }, [loadSkills]);
 
   // Toggle expand state (accordion behavior)
   const toggleExpand = (skillId: string) => {
@@ -276,9 +272,9 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
     sendToJava('import_skill', { scope });
   };
 
-  // Get the primary/secondary scope values based on provider
-  const primaryScope: SkillScope = isCodex ? 'user' : 'global';
-  const secondaryScope: SkillScope = isCodex ? 'repo' : 'local';
+  // Get the primary/secondary scope values
+  const primaryScope: SkillScope = 'global';
+  const secondaryScope: SkillScope = 'local';
 
   // Open in editor
   const handleOpen = (skill: Skill) => {
@@ -298,7 +294,6 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
         name: deletingSkill.name,
         scope: deletingSkill.scope,
         enabled: deletingSkill.enabled,
-        ...(isCodex && deletingSkill.skillPath ? { skillPath: deletingSkill.skillPath } : {}),
       });
       setExpandedSkills((prev) => {
         const newSet = new Set(prev);
@@ -326,7 +321,6 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
       name: skill.name,
       scope: skill.scope,
       enabled: skill.enabled,
-      ...(isCodex && skill.skillPath ? { skillPath: skill.skillPath } : {}),
     });
   };
 
@@ -355,24 +349,24 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
             {t('skills.all')} <span className="count-badge">{totalCount}</span>
           </div>
           <div
-            className={`tab-item ${currentFilter === (isCodex ? 'user' : 'global') ? 'active' : ''}`}
+            className={`tab-item ${currentFilter === 'global' ? 'active' : ''}`}
             role="tab"
             tabIndex={0}
-            aria-selected={currentFilter === (isCodex ? 'user' : 'global')}
-            onClick={() => setCurrentFilter(isCodex ? 'user' : 'global')}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentFilter(isCodex ? 'user' : 'global'); } }}
+            aria-selected={currentFilter === 'global'}
+            onClick={() => setCurrentFilter('global')}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentFilter('global'); } }}
           >
-            {isCodex ? t('skills.user') : t('skills.global')} <span className="count-badge">{primaryCount}</span>
+            {t('skills.global')} <span className="count-badge">{primaryCount}</span>
           </div>
           <div
-            className={`tab-item ${currentFilter === (isCodex ? 'repo' : 'local') ? 'active' : ''}`}
+            className={`tab-item ${currentFilter === 'local' ? 'active' : ''}`}
             role="tab"
             tabIndex={0}
-            aria-selected={currentFilter === (isCodex ? 'repo' : 'local')}
-            onClick={() => setCurrentFilter(isCodex ? 'repo' : 'local')}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentFilter(isCodex ? 'repo' : 'local'); } }}
+            aria-selected={currentFilter === 'local'}
+            onClick={() => setCurrentFilter('local')}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCurrentFilter('local'); } }}
           >
-            {isCodex ? t('skills.repo') : t('skills.local')} <span className="count-badge">{secondaryCount}</span>
+            {t('skills.local')} <span className="count-badge">{secondaryCount}</span>
           </div>
           {/* Enabled status filter */}
           <div className="filter-separator"></div>
@@ -438,11 +432,11 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
               <div className="dropdown-menu">
                 <div className="dropdown-item" onClick={() => handleImport(primaryScope)}>
                   <span className="codicon codicon-globe"></span>
-                  {isCodex ? t('skills.importUserSkill') : t('skills.importGlobalSkill')}
+                  {t('skills.importGlobalSkill')}
                 </div>
                 <div className="dropdown-item" onClick={() => handleImport(secondaryScope)}>
                   <span className="codicon codicon-desktop-download"></span>
-                  {isCodex ? t('skills.importRepoSkill') : t('skills.importLocalSkill')}
+                  {t('skills.importLocalSkill')}
                 </div>
               </div>
             )}
@@ -557,16 +551,14 @@ export function SkillsSettingsSection({ currentProvider = 'claude' }: SkillsSett
 
       {/* Dialogs */}
       {showHelpDialog && (
-        <SkillHelpDialog onClose={() => setShowHelpDialog(false)} currentProvider={currentProvider} />
+        <SkillHelpDialog onClose={() => setShowHelpDialog(false)} />
       )}
 
       {showConfirmDialog && deletingSkill && (
         <SkillConfirmDialog
           title={t('skills.deleteTitle')}
           message={t('skills.deleteMessage', {
-            scope: isCodex
-              ? ((deletingSkill.scope === 'user') ? t('skills.deleteMessageUser') : t('skills.deleteMessageRepo'))
-              : ((deletingSkill.scope === 'global') ? t('skills.deleteMessageGlobal') : t('skills.deleteMessageLocal')),
+            scope: (deletingSkill.scope === 'global') ? t('skills.deleteMessageGlobal') : t('skills.deleteMessageLocal'),
             name: deletingSkill.name
           })}
           confirmText={t('common.delete')}

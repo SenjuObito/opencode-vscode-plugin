@@ -44,6 +44,7 @@ import {
   ATTACHMENT_ONLY_FALLBACK_TEXT,
   GROK_IMAGE_ONLY_FALLBACK_TEXT,
   buildFileParts,
+  formatInlinedAttachments,
 } from '../../utils/cli-image-input.js';
 import * as serveManager from './opencode-serve-manager.js';
 import * as sdk from './opencode-sdk-client.js';
@@ -624,11 +625,15 @@ export async function sendMessagePersistent(params = {}) {
   // opencode FilePartInput: { type:'file', mime, filename?, url }
   // url is a `data:` URL (content travels inline, works against remote
   // servers too) or a `file://` URL for path-only @-references.
+  // Non-multimodal text/code files are decoded to textAttachments and inlined
+  // into promptText to prevent 400 errors from LLM providers.
   let fileParts = [];
+  let textAttachments = [];
   let attachmentErrors = [];
   try {
     const built = buildFileParts(safeParams.attachments || []);
     fileParts = built.parts;
+    textAttachments = built.textAttachments || [];
     attachmentErrors = built.errors;
   } catch (err) {
     logDebug('build attachment file parts failed:', err?.message || err);
@@ -641,22 +646,61 @@ export async function sendMessagePersistent(params = {}) {
 
   // opencode requires non-empty text even for attachment-only turns.
   const onlyImages = fileParts.length > 0
+    && textAttachments.length === 0
     && fileParts.every((p) => String(p.mime).startsWith('image/'));
   const fallbackText = onlyImages
     ? GROK_IMAGE_ONLY_FALLBACK_TEXT
     : ATTACHMENT_ONLY_FALLBACK_TEXT;
   let promptText = rawMessage.trim();
-  if (!promptText && fileParts.length > 0) {
+  if (!promptText && (fileParts.length > 0 || textAttachments.length > 0)) {
     promptText = fallbackText;
   }
 
-  if (!promptText && fileParts.length === 0) {
+  if (textAttachments.length > 0) {
+    const inlined = formatInlinedAttachments(textAttachments);
+    promptText = (promptText ? promptText + inlined : inlined).trim();
+  }
+
+  // ── Normalize / Validate command parameter ──────────────────────────────
+  let validSlashCommand = null;
+  let commandArgs = '';
+  if (typeof safeParams.command === 'string' && safeParams.command.trim()) {
+    const rawCmd = safeParams.command.trim();
+    // Valid slash command identifier: letters, numbers, _, -
+    if (/^[a-zA-Z0-9_-]+$/.test(rawCmd)) {
+      validSlashCommand = rawCmd;
+      commandArgs = typeof safeParams.commandArguments === 'string' ? safeParams.commandArguments : '';
+    } else {
+      logDebug('Invalid slash command name ignored, falling back to prompt:', rawCmd);
+      const fallbackMsg = rawCmd.startsWith('/') ? rawCmd : `/${rawCmd}`;
+      const extraArgs = typeof safeParams.commandArguments === 'string' && safeParams.commandArguments.trim()
+        ? ` ${safeParams.commandArguments.trim()}`
+        : '';
+      const combined = `${fallbackMsg}${extraArgs}`;
+      promptText = promptText ? `${combined}\n${promptText}` : combined;
+    }
+  }
+
+  if (!validSlashCommand && !promptText && fileParts.length === 0) {
     const errorMsg = attachmentErrors.length > 0
       ? `No supported attachments: ${attachmentErrors.join('; ')}`
       : 'Message content is empty';
     console.log(JSON.stringify({ success: false, error: errorMsg, elapsedMs: Date.now() - startedAt }));
     emitSendError(errorMsg, 'OpenCode');
     return;
+  }
+
+  // ── Route ! shell command directly to sendShellPersistent ───────────────
+  if (!validSlashCommand && fileParts.length === 0 && textAttachments.length === 0 && promptText.startsWith('!') && promptText.length > 1) {
+    const rawShellCmd = promptText.slice(1).trim();
+    if (rawShellCmd) {
+      logDebug('sendMessagePersistent routing ! command to sendShellPersistent:', rawShellCmd);
+      return sendShellPersistent({
+        ...safeParams,
+        sessionId,
+        command: rawShellCmd,
+      });
+    }
   }
 
   // ── Register turn + emit stream-start markers ───────────────────────────
@@ -672,18 +716,18 @@ export async function sendMessagePersistent(params = {}) {
 
   logDebug(
     `send session=${sessionId} agent=${agent || '-'} model=${safeParams.model || '-'}`
-    + ` command=${safeParams.command || '-'} attachments=${fileParts.length}`
+    + ` command=${validSlashCommand || '-'} attachments=${fileParts.length}`
     + ` skipped=${attachmentErrors.length} promptLen=${promptText.length}`
   );
 
   try {
-    if (safeParams.command) {
+    if (validSlashCommand) {
       // opencode 原生斜杠命令：POST /session/{id}/command。回复经同一
       // SSE 事件流返回，turn/流式标记在上面已注册，与普通消息完全一致。
       // 注意：该端点 model 要求字符串（"provider/model"），与 promptAsync
       // 的 {providerID, modelID} 对象不同——传原始字符串。
-      await sdk.sendCommand(sessionId, safeParams.command, {
-        arguments: typeof safeParams.commandArguments === 'string' ? safeParams.commandArguments : '',
+      await sdk.sendCommand(sessionId, validSlashCommand, {
+        arguments: commandArgs,
         model: typeof safeParams.model === 'string' && safeParams.model.trim() ? safeParams.model.trim() : undefined,
         agent,
         variant,
@@ -784,11 +828,10 @@ export async function sendShellPersistent(params = {}) {
   logDebug(`shell session=${sessionId} agent=${agent || '-'} cmdLen=${rawCommand.length}`);
 
   try {
-    await sdk.promptAsync(sessionId, rawCommand, {
+    await sdk.shellAsync(sessionId, rawCommand, {
       model: model || undefined,
       agent,
       directory,
-      parts: [],
     });
 
     // Wait for session.idle / session.error / abort to settle the turn.

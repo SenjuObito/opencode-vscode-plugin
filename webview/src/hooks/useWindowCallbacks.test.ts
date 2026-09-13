@@ -38,16 +38,10 @@ describe('useWindowCallbacks integration', () => {
     setCurrentProvider: vi.fn(),
     setOpenCodePermissionMode: vi.fn(),
     setClaudePermissionMode: vi.fn(),
-    setCodexPermissionMode: vi.fn(),
     setSelectedClaudeModel: vi.fn(),
-    setSelectedCodexModel: vi.fn(),
     setSelectedOpenCodeModel: vi.fn(),
     setLongContextEnabled: vi.fn(),
     setReasoningEffort: vi.fn(),
-    setCodexFastMode: vi.fn(),
-    setProviderConfigVersion: vi.fn(),
-    setActiveProviderConfig: vi.fn(),
-    setClaudeSettingsAlwaysThinkingEnabled: vi.fn(),
     setSendShortcut: vi.fn(),
     setAutoOpenFileEnabled: vi.fn(),
     setPermissionDialogTimeoutSeconds: vi.fn(),
@@ -81,7 +75,6 @@ describe('useWindowCallbacks integration', () => {
     extractRawBlocks: () => [],
     getOrCreateStreamingAssistantIndex: () => 0,
     patchAssistantForStreaming: (msg: ClaudeMessage) => msg,
-    syncActiveProviderModelMapping: vi.fn(),
     openPermissionDialog: vi.fn(),
     openAskUserQuestionDialog: vi.fn(),
     openPlanApprovalDialog: vi.fn(),
@@ -153,7 +146,6 @@ describe('useWindowCallbacks integration', () => {
         model: 'claude-opus-4-8[1m]',
         permissionMode: 'default',
         reasoningEffort: 'high',
-        codexFastMode: 'normal',
       }));
     });
 
@@ -162,7 +154,6 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setSelectedClaudeModel).toHaveBeenCalledWith('claude-opus-4-8');
     expect(opts.setLongContextEnabled).toHaveBeenCalledWith(true);
     expect(opts.setReasoningEffort).toHaveBeenCalledWith('high');
-    expect(opts.setCodexFastMode).toHaveBeenCalledWith('normal');
     expect(window.__CCGUI_RECOVERY_STATE_APPLIED__).toBe(true);
     expect((window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length).toBe(bridgeCallsBeforeRestore);
   });
@@ -172,15 +163,13 @@ describe('useWindowCallbacks integration', () => {
       provider: 'codex',
       model: 'gpt-5.6-sol',
       permissionMode: 'default',
-      codexFastMode: 'fast',
     });
     const opts = createOptions();
 
     renderHook(() => useWindowCallbacks(opts));
 
-    expect(opts.setCurrentProvider).toHaveBeenCalledWith('codex');
-    expect(opts.setSelectedCodexModel).toHaveBeenCalledWith('gpt-5.6-sol');
-    expect(opts.setCodexFastMode).toHaveBeenCalledWith('fast');
+    expect(opts.setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(opts.setSelectedOpenCodeModel).toHaveBeenCalledWith('gpt-5.6-sol');
     expect(window.__pendingBackendTabState).toBeUndefined();
   });
 
@@ -200,52 +189,8 @@ describe('useWindowCallbacks integration', () => {
     expect(window.__pendingUsageUpdate).toBeUndefined();
   });
 
-  it('settles dependency status errors without reporting an SDK installation state', () => {
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
 
-    act(() => {
-      window.updateDependencyStatus?.(JSON.stringify({
-        success: false,
-        error: 'status unavailable',
-      }));
-    });
 
-    expect(opts.setSdkStatus).not.toHaveBeenCalled();
-    expect(opts.setSdkStatusLoaded).toHaveBeenCalledWith(false);
-    expect(opts.setSdkStatusError).toHaveBeenCalledWith('status unavailable');
-    expect(window.__dependencyStatusState).toBe('error');
-  });
-
-  it('clears a dependency status error after a valid response', () => {
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
-    const status = {
-      'codex-sdk': { status: 'installed' },
-    };
-
-    act(() => {
-      window.updateDependencyStatus?.(JSON.stringify(status));
-    });
-
-    expect(opts.setSdkStatus).toHaveBeenCalledWith(status);
-    expect(opts.setSdkStatusLoaded).toHaveBeenCalledWith(true);
-    expect(opts.setSdkStatusError).toHaveBeenCalledWith(null);
-    expect(window.__dependencyStatusState).toBe('ready');
-  });
-
-  it('settles malformed dependency status payloads as errors', () => {
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
-
-    act(() => {
-      window.updateDependencyStatus?.('{invalid');
-    });
-
-    expect(opts.setSdkStatusLoaded).toHaveBeenCalledWith(false);
-    expect(opts.setSdkStatusError).toHaveBeenCalledWith(expect.any(String));
-    expect(window.__dependencyStatusState).toBe('error');
-  });
 
   afterEach(() => {
     vi.useRealTimers();

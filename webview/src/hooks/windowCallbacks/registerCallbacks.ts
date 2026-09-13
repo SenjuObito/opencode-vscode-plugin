@@ -24,11 +24,7 @@ import {
   resetDollarCommandsState,
 } from '../../components/ChatInputBox/providers';
 import { buildResetTransientUiState } from './sessionTransition';
-import {
-  startActiveProviderRequest,
-  startModeRequest,
-  startThinkingEnabledRequest,
-} from './settingsBootstrap';
+import { startModeRequest } from './settingsBootstrap';
 import { registerMessageCallbacks } from './registerCallbacks/messageCallbacks';
 import { registerStreamingCallbacks } from './registerCallbacks/streamingCallbacks';
 import { registerSessionCallbacks } from './registerCallbacks/sessionCallbacks';
@@ -233,7 +229,5 @@ export function registerWindowCallbacks(
   // Request Initial States
   // =========================================================================
 
-  startActiveProviderRequest();
   startModeRequest();
-  startThinkingEnabledRequest();
 }

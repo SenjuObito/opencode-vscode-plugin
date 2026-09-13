@@ -17,7 +17,6 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { installRuntimeProviderDispatchers } from './utils/runtimeProviderCapabilities';
 import { sendBridgeEvent } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { debugLog } from './utils/debug';
@@ -35,12 +34,6 @@ if (!import.meta.env.DEV) {
   console.info = noop;
   console.warn = noop;
 }
-
-// Install the runtime provider dispatcher exactly once so that every
-// consumer (Settings, RuntimeProviderSelect, …) receives provider events
-// through a deterministic subscriber registry instead of overriding
-// `window.update*Provider*` callbacks ad-hoc.
-installRuntimeProviderDispatchers();
 
 function createBridgeHeartbeatStarter() {
   let started = false;
@@ -490,6 +483,14 @@ if (typeof window !== 'undefined' && !window.updateSendShortcut) {
 if (typeof window !== 'undefined' && !window.updateDaemonStatus) {
   debugLog('[Main] Pre-registering updateDaemonStatus bridge');
   window.updateDaemonStatus = (json: string) => {
+    // Keep the latest payload available for useUsageTracking to drain on mount.
+    // CustomEvents dispatched before the listener is attached are lost, so this
+    // slot prevents early daemon status pushes from being dropped.
+    window.__pendingDaemonStatus = json;
+    // console.error is forwarded to the host (PluginFileLogger, tag WEBVIEW) in
+    // dev/runIde builds; use it so the dispatcher probe lands in the same trace
+    // file as the useUsageTracking probes (listener_installed / handler_fired).
+    console.error('[Probe] updateDaemonStatus dispatcher called: ' + json);
     window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
   };
 }

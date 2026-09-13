@@ -118,28 +118,6 @@ interface Window {
    */
   addHistoryMessage?: (message: any) => void;
   onSubagentHistoryChunk?: (transferId: string, chunk: string, isFinal: string | boolean) => void;
-  beginCodexHistoryPage?: (json: string) => void;
-  appendCodexHistoryPageBatch?: (pageId: string, json: string) => void;
-  appendCodexHistoryPageChunk?: (
-    pageId: string,
-    chunk: string,
-    transferId: string,
-    isFinal: string | boolean,
-  ) => void;
-  completeCodexHistoryPage?: (json: string) => void;
-  codexHistoryPageError?: (json: string) => void;
-  codexHistoryPageRenderComplete?: () => void;
-  __codexHistoryPageInfo?: {
-    pageId: string;
-    sessionId: string;
-    mode: 'replace' | 'prepend';
-    fromTurn: number;
-    toTurn: number;
-    totalTurns: number;
-    hasMore: boolean;
-    loadedMessageCount: number;
-    cursorReset?: boolean;
-  };
 
   /**
    * History load complete callback - invoked when history messages finish loading.
@@ -251,6 +229,19 @@ interface Window {
    * Payload: `{ path: string }` — fills the custom-sound input (not saved).
    */
   onSoundFileSelected?: (json: string) => void;
+
+  /**
+   * Node.js path configuration callback
+   */
+  updateNodePath?: (path: string) => void;
+
+  /**
+   * Opencode commands / prompts callbacks
+   */
+  onCommandsList?: (json: string) => void;
+  onCommandsRead?: (json: string) => void;
+  onCommandsSaved?: (json: string) => void;
+  onCommandsDeleted?: (json: string) => void;
 
   /**
    * Session state restored callback - fired when a history session is loaded
@@ -477,7 +468,7 @@ interface Window {
   /**
    * Update custom Claude CLI path
    */
-  updateClaudeCliPath?: (path: string) => void;
+  updateOpencodeCliPath?: (path: string) => void;
 
   /**
    * Update working directory configuration
@@ -642,21 +633,6 @@ interface Window {
   onCodeFontConfigReceived?: (json: string) => void;
 
   /**
-   * VS Code editor.fontFamily font list received callback
-   */
-  onVscodeFontListReceived?: (json: string) => void;
-
-  /**
-   * System font families list received callback (host-side enumeration)
-   */
-  onSystemFontListReceived?: (json: string) => void;
-
-  /**
-   * System installed font list received callback (queryLocalFonts)
-   */
-  onSystemFontListReceived?: (json: string) => void;
-
-  /**
    * IDE theme received callback - receives IDE theme configuration
    */
   onIdeThemeReceived?: (json: string) => void;
@@ -748,21 +724,6 @@ interface Window {
    */
 
   /**
-   * Update Codex providers list
-   */
-  updateCodexProviders?: (json: string) => void;
-
-  /**
-   * Update Codex subscription quota snapshot.
-   */
-  updateCodexSubscriptionQuota?: (json: string) => void;
-
-  /**
-   * Update active Codex provider
-   */
-  updateActiveCodexProvider?: (json: string) => void;
-
-  /**
    * Update Node process management snapshot.
    * Payload: { snapshotAt, totals: { daemon, channel, orphan, all }, processes: NodeProcessInfo[] }
    */
@@ -773,11 +734,6 @@ interface Window {
    * Payload: { pid?, success?, killed?, restart?, error? }
    */
   nodeProcessKillResult?: (json: string) => void;
-
-  /**
-   * Update current Codex config (from ~/.codex/)
-   */
-  updateCurrentCodexConfig?: (json: string) => void;
 
 // ============================================================================
   // Streaming Callbacks
@@ -1012,6 +968,13 @@ interface Window {
   __pendingModeReceived?: string;
 
   /**
+   * Pending daemon status payload before useUsageTracking listener is mounted.
+   * updateDaemonStatus dispatches a CustomEvent, but events fired before the
+   * listener is attached are lost; this slot preserves the latest payload.
+   */
+  __pendingDaemonStatus?: string;
+
+  /**
    * Execute context action from IDEA shortcut (copy/cut/send)
    */
   execContextAction?: (action: string) => void;
@@ -1090,20 +1053,6 @@ interface Window {
    * parsed payload describing the providers detected during import preview.
    */
   import_preview_result?: (dataOrStr: string | { providers?: unknown }) => void;
-
-  /**
-   * Codex cc-switch import preview result callback. Mirrors import_preview_result
-   * but is Codex-scoped so the Codex panel (mounted alongside the Claude panel)
-   * owns its own import channel without colliding with the Claude flow.
-   */
-  codex_import_preview_result?: (dataOrStr: string | { providers?: unknown }) => void;
-
-  /**
-   * Codex cc-switch import notification callback (type, title, message),
-   * used for success/error/info toasts during Codex import. Codex-scoped to
-   * avoid double toasts from the shared backend_notification channel.
-   */
-  codex_cc_switch_notification?: (...args: unknown[]) => void;
 
   /**
    * Backend notification callback (variadic for backward compatibility).

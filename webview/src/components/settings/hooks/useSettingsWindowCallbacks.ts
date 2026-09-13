@@ -20,14 +20,13 @@ const sendToJava = (message: string) => {
  */
 export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
   // Environment + permissions (visible / used early on basic tab)
-  'get_claude_cli_path:',
+  'get_node_path:',
+  'get_opencode_cli_path:',
   'get_working_directory:',
   'get_streaming_enabled:',
   'get_permission_dialog_timeout:',
   // Appearance fonts
   'get_editor_font_config:',
-  'get_vscode_font_list:',
-  'get_system_font_list:',
   'get_ui_font_config:',
   'get_code_font_config:',
   // Behavior / feature toggles (basic tab sub-views)
@@ -43,17 +42,18 @@ export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
 
 export interface SettingsWindowCallbacksDeps {
   // State setters
-  setClaudeCliPath: (path: string) => void;
-  setSavingClaudeCliPath: (saving: boolean) => void;
+  setNodePath: (path: string) => void;
+  setSavingNodePath: (saving: boolean) => void;
+  setNodeVersion: (version: string | null) => void;
+  setMinNodeVersion: (minVersion: number) => void;
+  setOpencodeCliPath: (path: string) => void;
+  setSavingOpencodeCliPath: (saving: boolean) => void;
   setWorkingDirectory: (dir: string) => void;
   setSavingWorkingDirectory: (saving: boolean) => void;
 
   setEditorFontConfig: (config: { fontFamily: string; fontSize: number; lineSpacing: number } | undefined) => void;
-   setUiFontConfig: (config: UiFontConfig | undefined) => void;
-   setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
-   setVscodeFontList?: (fonts: string[]) => void;
-   setSystemFontList?: (fonts: string[]) => void;
-   setSystemFontError?: (error: string | null) => void;
+  setUiFontConfig: (config: UiFontConfig | undefined) => void;
+  setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
   setIdeTheme: (theme: 'light' | 'dark' | null) => void;
   setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
   // AI feature toggle setters
@@ -99,7 +99,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     window.showError = (message: string) => {
       d().showAlert('error', t('toast.operationFailed'), message);
-      d().setSavingClaudeCliPath(false);
+      d().setSavingNodePath(false);
+      d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
 
@@ -107,15 +108,31 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       d().showAlert('success', t('toast.switchSuccess'), message);
     };
 
-    window.updateClaudeCliPath = (jsonStr: string) => {
+    window.updateNodePath = (jsonStr: string) => {
       try {
         const data = JSON.parse(jsonStr);
-        d().setClaudeCliPath(data.path || '');
+        d().setNodePath(data.path || '');
+        d().setNodeVersion(data.version || null);
+        if (data.minVersion) {
+          d().setMinNodeVersion(data.minVersion);
+        }
       } catch (e) {
-        console.warn('[SettingsView] Failed to parse updateClaudeCliPath JSON, fallback to legacy format:', e);
-        d().setClaudeCliPath(jsonStr || '');
+        console.warn('[SettingsView] Failed to parse updateNodePath JSON, fallback to legacy format:', e);
+        d().setNodePath(jsonStr || '');
       }
-      d().setSavingClaudeCliPath(false);
+      d().setSavingNodePath(false);
+      window.dispatchEvent(new CustomEvent('nodePathReady'));
+    };
+
+    window.updateOpencodeCliPath = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        d().setOpencodeCliPath(data.path || '');
+      } catch (e) {
+        console.warn('[SettingsView] Failed to parse updateOpencodeCliPath JSON, fallback to legacy format:', e);
+        d().setOpencodeCliPath(jsonStr || '');
+      }
+      d().setSavingOpencodeCliPath(false);
     };
 
     window.updateWorkingDirectory = (jsonStr: string) => {
@@ -131,7 +148,8 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     window.showSuccess = (message: string) => {
       d().showAlert('success', t('toast.operationSuccess'), message);
-      d().setSavingClaudeCliPath(false);
+      d().setSavingNodePath(false);
+      d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
 
@@ -166,30 +184,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         window.applyCodeFontConfig?.(config);
       } catch {
         // Silently ignore malformed code font config from backend
-      }
-    };
-
-    window.onVscodeFontListReceived = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        if (Array.isArray(data?.fonts)) {
-          d().setVscodeFontList?.(data.fonts.filter((f: unknown) => typeof f === 'string'));
-        }
-      } catch {
-        // Silently ignore malformed font list from backend
-      }
-    };
-
-    window.onSystemFontListReceived = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        const fonts = Array.isArray(data?.fonts)
-          ? data.fonts.filter((f: unknown): f is string => typeof f === 'string')
-          : [];
-        d().setSystemFontList?.(fonts);
-        d().setSystemFontError?.(typeof data?.error === 'string' ? data.error : null);
-      } catch {
-        // Silently ignore malformed font list from backend
       }
     };
 
@@ -353,15 +347,14 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
       window.showError = undefined;
       window.showSwitchSuccess = undefined;
-      window.updateClaudeCliPath = undefined;
+      window.updateNodePath = undefined;
+      window.updateOpencodeCliPath = undefined;
       window.updateWorkingDirectory = undefined;
       window.showSuccess = undefined;
       window.showSuccessI18n = undefined;
       window.onEditorFontConfigReceived = undefined;
       window.onUiFontConfigReceived = undefined;
       window.onCodeFontConfigReceived = undefined;
-      window.onVscodeFontListReceived = undefined;
-      window.onSystemFontListReceived = undefined;
       window.onIdeThemeReceived = previousOnIdeThemeReceived;
       if (!d().onSendShortcutChangeProp) {
         window.updateSendShortcut = previousUpdateSendShortcut;

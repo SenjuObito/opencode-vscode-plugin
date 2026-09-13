@@ -271,11 +271,13 @@ export function ContentBlockRenderer({
   }
 
   if (block.type === 'attachment') {
-    const ext = getExtension(block.fileName);
-    const displayName = block.fileName || t('chat.unknownFile');
+    const rawName = block.fileName || (block as any).name || (block as any).title || (block as any).filename || '';
+    const ext = getExtension(rawName);
+    const displayName = rawName || t('chat.unknownFile');
+    const mediaType = block.mediaType || (block as any).media_type || '';
     return (
       <div className="message-attachment-chip" title={displayName}>
-        <span className={`message-attachment-chip-icon codicon ${getFileIcon(block.mediaType)}`} />
+        <span className={`message-attachment-chip-icon codicon ${getFileIcon(mediaType)}`} />
         {ext && <span className="message-attachment-chip-ext">{ext}</span>}
         <span className="message-attachment-chip-name">{displayName}</span>
       </div>
@@ -467,31 +469,29 @@ export function ContentBlockRenderer({
     );
   }
 
-  // Compact notification block — success / failure card
+  // Compact notification block — success / failure card (方案 3: 极简紧凑单行条)
   if (block.type === 'compact_notification') {
     const isFailure = block.status === 'failure';
-    const cardClass = `compact-card ${isFailure ? 'compact-card--failure' : 'compact-card--success'}`;
+    const cardClass = `compact-card compact-card--compact-pill ${isFailure ? 'compact-card--failure' : 'compact-card--success'}`;
+    const iconCodicon = isFailure ? 'codicon-warning' : 'codicon-check';
     return (
       <div className="compact-card-wrapper">
         <div className={cardClass}>
-          <span className="compact-card__icon">
-            {isFailure ? '!' : '\u2713'}
-          </span>
-          <span className="compact-card__text">
-            {isFailure ? (
-              <>
-                <strong>{block.headerText}</strong>
-                {block.detail ? ` \u2014 ${block.detail}` : ''}
-              </>
-            ) : (
-              <>
-                {block.headerText}
-                {block.items.length > 0 && (
-                  <> \u2014 <strong>{block.items.length} messages</strong> summarized</>
-                )}
-              </>
-            )}
-          </span>
+          <i className={`codicon ${iconCodicon} compact-card__pill-icon`} />
+          <span className="compact-card__pill-title">{block.headerText}</span>
+          {isFailure ? (
+            block.detail ? (
+              <span className="compact-card__pill-detail" title={block.detail}>
+                \u2014 {block.detail}
+              </span>
+            ) : null
+          ) : (
+            block.items && block.items.length > 0 ? (
+              <span className="compact-card__pill-detail">
+                \u2014 {block.items.length} messages summarized
+              </span>
+            ) : null
+          )}
         </div>
       </div>
     );

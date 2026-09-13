@@ -207,6 +207,21 @@ function buildUserMessage(
 		}
 	}
 
+	// Extract inlined attachment blocks (<attachment filename="...">) from text
+	// so they render as attachment chips in the UI when restored from history.
+	const inlinedRegex = /<attachment\s+filename="([^"]+)"[^>]*>/gi;
+	let match: RegExpExecArray | null;
+	while ((match = inlinedRegex.exec(text)) !== null) {
+		const filename = match[1];
+		if (!attachmentBlocks.some((b) => b.fileName === filename)) {
+			attachmentBlocks.push({
+				type: 'attachment',
+				fileName: filename,
+				mediaType: 'text/plain',
+			});
+		}
+	}
+
 	const displayText = sanitizeUserText(text);
 
 	for (const block of attachmentBlocks) {

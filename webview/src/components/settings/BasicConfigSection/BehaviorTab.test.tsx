@@ -69,6 +69,37 @@ describe('BehaviorTab ask user question notification toggle', () => {
   });
 });
 
+describe('BehaviorTab compact confirm toggle', () => {
+  it('renders checked by default and fires the change callback with false on click', () => {
+    const onCompactConfirmEnabledChange = vi.fn();
+    renderBehaviorTab({ onCompactConfirmEnabledChange });
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /settings.basic.compactConfirm.enabled/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+
+    fireEvent.click(checkbox);
+    expect(onCompactConfirmEnabledChange).toHaveBeenCalledWith(false);
+  });
+
+  it('renders unchecked when disabled and fires the change callback with true on click', () => {
+    const onCompactConfirmEnabledChange = vi.fn();
+    renderBehaviorTab({
+      compactConfirmEnabled: false,
+      onCompactConfirmEnabledChange,
+    });
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /settings.basic.compactConfirm.disabled/i,
+    }) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    fireEvent.click(checkbox);
+    expect(onCompactConfirmEnabledChange).toHaveBeenCalledWith(true);
+  });
+});
+
 describe('BehaviorTab detailed output toggle', () => {
   it('renders unchecked by default and fires the change callback with true on click', () => {
     const onDetailedOutputEnabledChange = vi.fn();

@@ -13,8 +13,6 @@ import { MarkerStreamContext, processOutputLine } from './MarkerParser';
 import { SessionCallbackAdapter } from './SessionCallbackAdapter';
 import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
-import { ListMessagesCollector, type EntryRetention } from '../util/ListMessagesCollector';
-import { convertSdkMessages } from './SdkMessageConverter';
 import type { ChatMessage, PermissionRequest } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
@@ -51,10 +49,6 @@ export interface TurnCompletedInfo {
 	status: TurnCompletedStatus;
 }
 
-/** 每次「加载更早消息」前插的条数。 */
-export const RESTORE_PAGE_MESSAGES = 200;
-/** 回源转换缓存 TTL：分页连点时避免重复全量拉取；超时后重新回源。 */
-
 export class OpenCodeSession {
 	readonly state = new SessionState();
 	private readonly context: HandlerContext;
@@ -75,14 +69,6 @@ export class OpenCodeSession {
 		lastNodeError: null,
 		wasAborted: false,
 	};
-
-	// ── 分页/回源状态 ──
-	// earlierCursor：webview 已加载内容的最早全局序号（分页游标）。
-	// restore 时 = transcript 窗口基址；前插后前移；逐出不改变它（webview
-	// 已装入的内容不随宿主逐出消失）；webview 裁剪分页时经 setEarlierCursor
-	// 回滚（该区间可重新回源）。
-	private earlierCursor = 0;
-	private earlierFetchInFlight = false;
 
 	constructor(options: OpenCodeSessionOptions) {
 		this.context = options.context;
@@ -106,11 +92,6 @@ export class OpenCodeSession {
 			permissionClosedHandler: (kind, content) => this.permissionClosedHandler?.(kind, content),
 		});
 		this.callbackHandler.setCallback(this.adapter);
-
-		// 活跃会话窗口滑动（逐出发生）→ 通知 webview 更新「加载更早」状态。
-		this.state.setOnWindowChanged(() => {
-			this.pushHistoryWindowInfo();
-		});
 	}
 
 	getAdapter(): SessionCallbackAdapter {
@@ -324,7 +305,6 @@ export class OpenCodeSession {
 		this.context.callJavaScript('clearMessages', String(seq));
 		this.state.clearMessages();
 		this.messageHandler.resetTurnState();
-		this.earlierCursor = 0;
 		this.state.setSessionId(null);
 		this.state.setBusy(false);
 		this.state.setLoading(false);
@@ -336,124 +316,18 @@ export class OpenCodeSession {
 	}
 
 	/** 从历史恢复：collector 已按 tail 窗口保留，直接采纳窗口与全量元数据。 */
-	restoreMessages(
-		messages: unknown[],
-		origin?: { firstIndex: number; total: number },
-	): void {
-		// resetStreamState 会抬高 webview 的 __minAcceptedUpdateSequence 屏障，
-		// 因此 clear/update 必须复用它返回的新序号（'0' 会被屏障丢弃 → 空屏）。
+	/** 从历史恢复：全量装入状态并推送 updateMessages。 */
+	restoreMessages(messages: unknown[]): void {
 		const seq = this.adapter.coalescer.resetStreamState();
 		this.state.clearMessages();
 		for (const m of messages) {
 			this.state.addMessage(m as ChatMessage);
 		}
-		if (origin) {
-			this.state.adoptTranscriptWindow(origin.firstIndex, origin.total);
-		}
-		this.earlierCursor = this.state.getWindowBaseIndex();
 		this.context.callJavaScript('clearMessages', String(seq));
-		// 推送走 convertMessagesToJson（tool_result 20K / 错误文本 1K 截断）；
-		// 第三个参数把窗口基址（全局序号）告知 webview 做窗口对齐。
 		this.context.callJavaScript(
 			'updateMessages',
 			convertMessagesToJson(this.state.getMessages()),
 			String(seq),
-			String(this.state.getWindowBaseIndex()),
-		);
-		this.pushHistoryWindowInfo();
-	}
-
-	/**
-	 * webview 请求更早的历史（异步回源）：以 range 保留模式从 daemon 拉
-	 * [pageStart, earlierCursor) 区间——全量 transcript 在解析管道中流过即弃，
-	 * 宿主只持有该页。transcript 收缩（revert/compact）时按全量总数对齐。
-	 */
-	async loadEarlierMessages(count = RESTORE_PAGE_MESSAGES): Promise<void> {
-		const sessionId = this.state.getSessionId();
-		if (!sessionId || this.earlierCursor <= 0 || this.earlierFetchInFlight) {
-			this.pushHistoryWindowInfo();
-			return;
-		}
-		this.earlierFetchInFlight = true;
-		try {
-			const pageEnd = this.earlierCursor;
-			const pageStart = Math.max(0, pageEnd - Math.max(1, count));
-			const collector = await this.requestTranscriptWindow(sessionId, {
-				mode: 'range',
-				start: pageStart,
-				end: pageEnd,
-			});
-			const windowLength = this.state.getMessages().length;
-			const safePageEnd = Math.min(pageEnd, Math.max(0, collector.getTotalMessageCount() - windowLength));
-			if (safePageEnd <= 0) {
-				this.earlierCursor = 0;
-				this.pushHistoryWindowInfo();
-				return;
-			}
-			const firstRetained = collector.getFirstRetainedMessageIndex();
-			const begin = Math.max(0, pageStart - firstRetained);
-			// range 保留按 entry 粒度，边界 entry 可能带出区间外的消息——按
-			// 全局序号精确切片。
-			const page = convertSdkMessages(collector.getEntries())
-				.slice(begin, Math.max(begin, safePageEnd - firstRetained));
-			if (page.length > 0) {
-				const servedStart = firstRetained + begin;
-				this.earlierCursor = servedStart;
-				// 第二个参数：页起点全局序号，webview 用它对齐列表起始位置。
-				this.context.callJavaScript(
-					'updateMessagesPrepend',
-					convertMessagesToJson(page),
-					String(servedStart),
-				);
-			} else {
-				this.earlierCursor = Math.min(this.earlierCursor, safePageEnd);
-			}
-			this.pushHistoryWindowInfo();
-		} finally {
-			this.earlierFetchInFlight = false;
-		}
-	}
-
-	/** 分页被 webview 裁剪（累积上限）时回滚游标：该区间下次可重新回源。 */
-	setEarlierCursor(cursor: number): void {
-		if (!Number.isSafeInteger(cursor) || cursor < 0) {
-			return;
-		}
-		this.earlierCursor = Math.max(this.earlierCursor, Math.min(cursor, this.state.getWindowBaseIndex()));
-		this.pushHistoryWindowInfo();
-	}
-
-	/** 按 range/tail 保留模式拉取 transcript 窗口（即弃，不缓存）。 */
-	private requestTranscriptWindow(
-		sessionId: string,
-		retention: EntryRetention,
-	): Promise<ListMessagesCollector> {
-		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		return new Promise((resolve) => {
-			const collector = new ListMessagesCollector(retention);
-			const ok = this.daemon.request('opencode.listMessages', { sessionId, directory }, {
-				onLine: (line) => collector.onLine(line),
-				onError: () => resolve(collector),
-				onComplete: () => {
-					collector.reconcileFallback();
-					resolve(collector);
-				},
-			});
-			if (!ok) {
-				resolve(collector);
-			}
-		});
-	}
-
-	private pushHistoryWindowInfo(): void {
-		this.context.callJavaScript(
-			'onHistoryWindowInfo',
-			JSON.stringify({
-				sessionId: this.state.getSessionId(),
-				hasEarlier: this.earlierCursor > 0,
-				windowStart: this.earlierCursor,
-				total: this.state.getTotalCount(),
-			}),
 		);
 	}
 
@@ -522,10 +396,10 @@ function generateAttachmentSummary(attachments?: SendMessagePayload['attachments
 	return parts.length > 0 ? parts.join(': ') : '[Attachments]';
 }
 
-/** 解析前导斜杠命令：'/name args...' → {command, arguments}；非命令返回 null。 */
-function parseSlashCommand(text: string): { command: string; arguments: string } | null {
+/** 解析前导斜杠命令：'/name args...' → {command, arguments}；非合法命令（如 URL/文件路径 /v2/...、普通语句）返回 null。 */
+export function parseSlashCommand(text: string): { command: string; arguments: string } | null {
 	const trimmed = text.trim();
-	const m = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
+	const m = /^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/.exec(trimmed);
 	if (!m || !m[1]) {
 		return null;
 	}
@@ -551,6 +425,9 @@ function buildAttachments(payload: SendMessagePayload): Array<Record<string, unk
 			result.push({
 				type: isImage ? 'image' : 'file',
 				name: att.fileName,
+				fileName: att.fileName,
+				mediaType: att.mediaType,
+				data: att.data,
 				...(isImage ? { imageData: att.data } : { content: att.data }),
 			});
 		}

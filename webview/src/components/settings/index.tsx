@@ -6,6 +6,7 @@ import SettingsHeader from './SettingsHeader';
 import SettingsSidebar, { type SettingsTab } from './SettingsSidebar';
 import BasicConfigSection from './BasicConfigSection';
 import ProviderTabSection from './ProviderTabSection';
+import PromptSection from './PromptSection';
 import UsageSection from './UsageSection';
 import PlaceholderSection from './PlaceholderSection';
 import CommunitySection from './CommunitySection';
@@ -14,6 +15,7 @@ import OtherSettingsSection from './OtherSettingsSection';
 import { SkillsSettingsSection } from '../skills';
 import SettingsDialogs from './SettingsDialogs';
 import { setNewSessionConfirmEnabled as persistNewSessionConfirmEnabled } from '../../utils/skipNewSessionConfirm';
+import { setCompactConfirmEnabled as persistCompactConfirmEnabled } from '../../utils/skipCompactConfirm';
 
 // Import custom hooks
 import {
@@ -85,22 +87,25 @@ const SettingsView = ({
 
   // Basic settings actions: working dir, streaming, shortcuts, sound, commit prompt, etc.
   const {
-    claudeCliPath,
-    setClaudeCliPath,
-    savingClaudeCliPath,
-    setSavingClaudeCliPath,
+    nodePath,
+    setNodePath,
+    savingNodePath,
+    setSavingNodePath,
+    nodeVersion,
+    setNodeVersion,
+    minNodeVersion,
+    setMinNodeVersion,
+    handleSaveNodePath,
+    opencodeCliPath,
+    setOpencodeCliPath,
+    savingOpencodeCliPath,
+    setSavingOpencodeCliPath,
     workingDirectory,
     setWorkingDirectory,
     savingWorkingDirectory,
     setSavingWorkingDirectory,
     editorFontConfig,
     setEditorFontConfig,
-    vscodeFontList,
-    setVscodeFontList,
-    systemFontList,
-    setSystemFontList,
-    systemFontError,
-    setSystemFontError,
     uiFontConfig,
     setUiFontConfig,
     codeFontConfig,
@@ -122,7 +127,9 @@ const SettingsView = ({
     setHistoryCompletionEnabled,
     skipNewSessionConfirm,
     setSkipNewSessionConfirm,
-    handleSaveClaudeCliPath,
+    skipCompactConfirm,
+    setSkipCompactConfirm,
+    handleSaveOpencodeCliPath,
     handleSaveWorkingDirectory,
     handleUiFontSelectionChange,
     handleSaveUiFontCustomPath,
@@ -211,14 +218,15 @@ const SettingsView = ({
 
   // Register window callbacks for Java bridge communication
   useSettingsWindowCallbacks({
-    setClaudeCliPath,
-    setSavingClaudeCliPath,
+    setNodePath,
+    setSavingNodePath,
+    setNodeVersion,
+    setMinNodeVersion,
+    setOpencodeCliPath,
+    setSavingOpencodeCliPath,
     setWorkingDirectory,
     setSavingWorkingDirectory,
     setEditorFontConfig,
-    setVscodeFontList,
-    setSystemFontList,
-    setSystemFontError,
     setUiFontConfig,
     setCodeFontConfig,
     setIdeTheme,
@@ -273,19 +281,21 @@ const SettingsView = ({
               onThemeChange={setThemePreference}
               fontSizeLevel={fontSizeLevel}
               onFontSizeLevelChange={setFontSizeLevel}
-              claudeCliPath={claudeCliPath}
-              onClaudeCliPathChange={setClaudeCliPath}
-              onSaveClaudeCliPath={handleSaveClaudeCliPath}
-              savingClaudeCliPath={savingClaudeCliPath}
+              nodePath={nodePath}
+              onNodePathChange={setNodePath}
+              onSaveNodePath={handleSaveNodePath}
+              savingNodePath={savingNodePath}
+              nodeVersion={nodeVersion}
+              minNodeVersion={minNodeVersion}
+              opencodeCliPath={opencodeCliPath}
+              onOpencodeCliPathChange={setOpencodeCliPath}
+              onSaveOpencodeCliPath={handleSaveOpencodeCliPath}
+              savingOpencodeCliPath={savingOpencodeCliPath}
               workingDirectory={workingDirectory}
               onWorkingDirectoryChange={setWorkingDirectory}
               onSaveWorkingDirectory={handleSaveWorkingDirectory}
               savingWorkingDirectory={savingWorkingDirectory}
               editorFontConfig={editorFontConfig}
-              vscodeFontList={vscodeFontList}
-              systemFontList={systemFontList}
-              systemFontError={systemFontError}
-              onRequestSystemFontList={() => window.sendToJava?.('get_system_font_list:')}
               uiFontConfig={uiFontConfig}
               codeFontConfig={codeFontConfig}
               onUiFontSelectionChange={handleUiFontSelectionChange}
@@ -316,6 +326,14 @@ const SettingsView = ({
                 setSkipNewSessionConfirm(!enabled);
                 persistNewSessionConfirmEnabled(enabled);
               }}
+              compactConfirmEnabled={!skipCompactConfirm}
+              onCompactConfirmEnabledChange={(enabled) => {
+                // Optimistic local update so the toggle reflects instantly even if
+                // the CustomEvent loops back. persistCompactConfirmEnabled writes
+                // to localStorage and dispatches the sync event for other surfaces.
+                setSkipCompactConfirm(!enabled);
+                persistCompactConfirmEnabled(enabled);
+              }}
               soundNotificationEnabled={soundNotificationEnabled}
               onSoundNotificationEnabledChange={handleSoundNotificationEnabledChange}
               soundOnlyWhenUnfocused={soundOnlyWhenUnfocused}
@@ -345,6 +363,8 @@ const SettingsView = ({
           {currentTab === 'providers' && (
             <ProviderTabSection addToast={addToast} />
           )}
+
+          {currentTab === 'prompts' && <PromptSection />}
 
           {currentTab === 'usage' && <UsageSection />}
 

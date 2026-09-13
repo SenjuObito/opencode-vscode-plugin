@@ -78,7 +78,6 @@ export interface ChatScreenProps {
   onSubmit: (content: string, attachments?: Attachment[]) => void;
   onInterrupt: () => void;
   onNavigateToProviderSettings: () => void;
-  onProviderSelect: (providerId: string) => void;
 
   // Undo/Redo/Fork
   /** opencode message id of the revert boundary (drives RevertPlaceholderBar). */
@@ -95,12 +94,9 @@ export interface ChatScreenProps {
   daemonStatusLoaded: boolean;
   retryDaemonStatus: () => void;
   activeProviderConfig: ProviderState['activeProviderConfig'];
-  claudeSettingsAlwaysThinkingEnabled: ProviderState['claudeSettingsAlwaysThinkingEnabled'];
   reasoningEffort: ProviderState['reasoningEffort'];
-  codexFastMode: ProviderState['codexFastMode'];
   sendShortcut: ProviderState['sendShortcut'];
   autoOpenFileEnabled: ProviderState['autoOpenFileEnabled'];
-  longContextEnabled: ProviderState['longContextEnabled'];
   usagePercentage: ProviderState['usagePercentage'];
   usageUsedTokens: ProviderState['usageUsedTokens'];
   usageMaxTokens: ProviderState['usageMaxTokens'];
@@ -109,10 +105,8 @@ export interface ChatScreenProps {
   onModeSelect: ProviderState['handleModeSelect'];
   onModelSelect: ProviderState['handleModelSelect'];
   onReasoningChange: ProviderState['handleReasoningChange'];
-  onCodexFastModeChange: ProviderState['handleCodexFastModeChange'];
   onToggleThinking: ProviderState['handleToggleThinking'];
   onAutoOpenFileEnabledChange: ProviderState['handleAutoOpenFileEnabledChange'];
-  onLongContextChange: ProviderState['handleLongContextChange'];
 
   // Message queue
   messageQueue: MessageQueueValue;
@@ -137,7 +131,7 @@ export const ChatScreen = ({
   statusPanelExpanded, forceStatusUpdate,
   onUndoFile, onDiscardAll, onKeepAll,
   onSubmit, onInterrupt,
-  onNavigateToProviderSettings, onProviderSelect,
+  onNavigateToProviderSettings,
   revertBoundaryId,
   onUndo,
   onRestore,
@@ -146,11 +140,11 @@ export const ChatScreen = ({
   currentSdkInstalled,
   daemonStatusLoaded,
   retryDaemonStatus,
-  activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
-  reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
-  longContextEnabled, usagePercentage, usageUsedTokens, usageMaxTokens,
-  onModeSelect, onModelSelect, onReasoningChange, onCodexFastModeChange, onToggleThinking,
-  onAutoOpenFileEnabledChange, onLongContextChange,
+  activeProviderConfig,
+  reasoningEffort, sendShortcut, autoOpenFileEnabled,
+  usagePercentage, usageUsedTokens, usageMaxTokens,
+  onModeSelect, onModelSelect, onReasoningChange, onToggleThinking,
+  onAutoOpenFileEnabledChange,
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
@@ -321,7 +315,7 @@ export const ChatScreen = ({
           usageUsedTokens={usageUsedTokens}
           usageMaxTokens={usageMaxTokens}
           showUsage={true}
-          alwaysThinkingEnabled={activeProviderConfig?.settingsConfig?.alwaysThinkingEnabled ?? claudeSettingsAlwaysThinkingEnabled}
+          alwaysThinkingEnabled={activeProviderConfig?.settingsConfig?.alwaysThinkingEnabled}
           placeholder={sendShortcut === 'cmdEnter' ? t('chat.inputPlaceholderCmdEnter') : t('chat.inputPlaceholderEnter')}
           sdkInstalled={currentSdkInstalled}
           daemonStatusLoaded={daemonStatusLoaded}
@@ -333,11 +327,8 @@ export const ChatScreen = ({
           onStop={onInterrupt}
           onModeSelect={onModeSelect}
           onModelSelect={onModelSelect}
-          onProviderSelect={onProviderSelect}
           reasoningEffort={reasoningEffort}
           onReasoningChange={onReasoningChange}
-          codexFastMode={codexFastMode}
-          onCodexFastModeChange={onCodexFastModeChange}
           onToggleThinking={onToggleThinking}
           sendShortcut={sendShortcut}
           activeFile={contextInfo?.file}
@@ -360,8 +351,6 @@ export const ChatScreen = ({
           onRemoveFromQueue={onRemoveFromQueue}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onAutoOpenFileEnabledChange={onAutoOpenFileEnabledChange}
-          longContextEnabled={longContextEnabled}
-          onLongContextChange={onLongContextChange}
           onCompactClick={handleCompact}
         />
       </div>

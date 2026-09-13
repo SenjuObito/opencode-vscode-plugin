@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { Attachment } from '../types.js';
+import type { Attachment, FileTagInfo } from '../types.js';
 import type { Dispatch, SetStateAction } from 'react';
 
 interface CompletionLike {
@@ -8,6 +8,8 @@ interface CompletionLike {
 
 export interface UseSubmitHandlerOptions {
   getTextContent: () => string;
+  extractFileTags?: () => FileTagInfo[];
+  cancelTagRendering?: () => void;
   attachments: Attachment[];
   isLoading: boolean;
   daemonStatusLoaded: boolean;
@@ -26,7 +28,7 @@ export interface UseSubmitHandlerOptions {
   commandCompletion: CompletionLike;
   dollarCommandCompletion: CompletionLike;
   recordInputHistory: (text: string) => void;
-  onSubmit?: (content: string, attachmentsToSend?: Attachment[]) => void;
+  onSubmit?: (content: string, attachmentsToSend?: Attachment[], fileTagsToSend?: FileTagInfo[]) => void;
   addToast?: (message: string, type: 'info' | 'warning' | 'error' | 'success') => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
@@ -41,6 +43,8 @@ export interface UseSubmitHandlerOptions {
  */
 export function useSubmitHandler({
   getTextContent,
+  extractFileTags,
+  cancelTagRendering,
   attachments,
   isLoading,
   daemonStatusLoaded,
@@ -78,7 +82,11 @@ export function useSubmitHandler({
 
     if (!cleanContent && attachments.length === 0) return;
 
-    // Close completions
+    // Extract file tags before clearing the DOM
+    const fileTagsToSend = extractFileTags ? extractFileTags() : undefined;
+
+    // Close completions and cancel pending rendering
+    cancelTagRendering?.();
     fileCompletion.close();
     commandCompletion.close();
     dollarCommandCompletion.close();
@@ -100,10 +108,12 @@ export function useSubmitHandler({
 
     // Call onSubmit even when loading - let parent handle queueing
     setTimeout(() => {
-      onSubmit?.(content, attachmentsToSend);
+      onSubmit?.(content, attachmentsToSend, fileTagsToSend);
     }, 10);
   }, [
     getTextContent,
+    extractFileTags,
+    cancelTagRendering,
     invalidateCache,
     attachments,
     isLoading,

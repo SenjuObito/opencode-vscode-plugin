@@ -8,7 +8,7 @@
  */
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
-import type { ClaudeMessage, CodexHistoryPageInfo } from '../../../types';
+import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { debugError } from '../../../utils/debug';
@@ -25,6 +25,7 @@ import { releaseSessionTransition } from '../sessionTransition';
 import { parseSequence } from '../parseSequence';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
+import i18n from '../../../i18n/config';
 
 const isTruthy = (v: unknown) => v === true || v === 'true';
 
@@ -98,13 +99,6 @@ export function registerMessageCallbacks(
   let pendingUpdateRaf: number | null = null;
   let pendingUpdateSequence: number | null = null;
   let pendingUpdateBaseIndex: string | number | null | undefined = null;
-  const pendingCodexHistoryPages = new Map<string, {
-    sessionId: string;
-    mode: 'replace' | 'prepend';
-    batches: ClaudeMessage[][];
-    chunks: Map<string, string[]>;
-    timeoutId: ReturnType<typeof setTimeout>;
-  }>();
   const getPrependedHistoryMessageCount = (messageCount: number): number => {
     const count = window.__prependedHistoryMessageCount;
     return typeof count === 'number'
@@ -113,14 +107,6 @@ export function registerMessageCallbacks(
       && count <= messageCount
       ? count
       : 0;
-  };
-  const failCodexHistoryPage = (pageId: string | undefined, message: string) => {
-    const pending = pageId ? pendingCodexHistoryPages.get(pageId) : undefined;
-    if (pending) clearTimeout(pending.timeoutId);
-    if (pageId) pendingCodexHistoryPages.delete(pageId);
-    const detail = { sessionId: pending?.sessionId, message };
-    window.dispatchEvent(new CustomEvent('codex-history-page-error', { detail }));
-    addToast(message, 'error');
   };
 
   // Expose a cancellation function so onStreamEnd can cancel stale rAF-deferred
@@ -641,13 +627,22 @@ export function registerMessageCallbacks(
   }
 
   window.updateStatus = (text) => {
+    // Resolve localized message if key or known legacy string is passed
+    let message = text;
+    if (typeof text === 'string') {
+      if (text === 'New session created, you can start asking questions' || text === 'toast.newSessionCreatedReady') {
+        message = i18n.t('toast.newSessionCreatedReady');
+      } else if (text.startsWith('toast.') && i18n.exists(text)) {
+        message = i18n.t(text);
+      }
+    }
     // Do not release the transition guard from generic status updates.
-    setStatus(text);
+    setStatus(message);
     if (suppressNextStatusToastRef.current) {
       suppressNextStatusToastRef.current = false;
       return;
     }
-    addToast(text);
+    addToast(message);
   };
 
   window.showLoading = (value) => {
@@ -800,12 +795,7 @@ export function registerMessageCallbacks(
       window.__pendingUpdateSequence = null;
     }
     window.__deniedToolIds?.clear();
-    window.__codexHistoryPageInfo = undefined;
     window.__opencodeHistoryWindow = undefined;
-    for (const pending of pendingCodexHistoryPages.values()) {
-      clearTimeout(pending.timeoutId);
-    }
-    pendingCodexHistoryPages.clear();
     window.__opencodeListStart = 0;
     window.__prependedHistoryMessageCount = 0;
     window.__messageBaseIndex = 0;
@@ -851,132 +841,6 @@ export function registerMessageCallbacks(
     setMessages((prev) => [...prev, message]);
   };
 
-  window.beginCodexHistoryPage = (json: string) => {
-    try {
-      const info = JSON.parse(json) as {
-        pageId?: string;
-        sessionId?: string;
-        mode?: 'replace' | 'prepend';
-      };
-      if (!info.pageId || !info.sessionId || (info.mode !== 'replace' && info.mode !== 'prepend')) {
-        failCodexHistoryPage(info.pageId, 'Invalid Codex history page metadata');
-        return;
-      }
-      pendingCodexHistoryPages.set(info.pageId, {
-        sessionId: info.sessionId,
-        mode: info.mode,
-        batches: [],
-        chunks: new Map(),
-        timeoutId: setTimeout(() => {
-          failCodexHistoryPage(info.pageId, 'Timed out while loading the Codex history page');
-        }, 30_000),
-      });
-    } catch (error) {
-      console.error('[Frontend] Failed to begin Codex history page:', error);
-      failCodexHistoryPage(undefined, 'Failed to initialize the Codex history page');
-    }
-  };
-
-  window.appendCodexHistoryPageBatch = (pageId: string, json: string) => {
-    const pending = pendingCodexHistoryPages.get(pageId);
-    if (!pending) return;
-    try {
-      const batch = JSON.parse(json) as ClaudeMessage[];
-      if (Array.isArray(batch) && batch.length > 0) {
-        pending.batches.push(batch);
-      }
-    } catch (error) {
-      console.error('[Frontend] Failed to parse Codex history page batch:', error);
-      failCodexHistoryPage(pageId, 'Failed to parse the Codex history page');
-    }
-  };
-
-  window.appendCodexHistoryPageChunk = (pageId, chunk, transferId, isFinal) => {
-    const pending = pendingCodexHistoryPages.get(pageId);
-    if (!pending || !transferId) return;
-    const chunks = pending.chunks.get(transferId) ?? [];
-    chunks.push(chunk);
-    if (!isTruthy(isFinal)) {
-      pending.chunks.set(transferId, chunks);
-      return;
-    }
-    pending.chunks.delete(transferId);
-    window.appendCodexHistoryPageBatch?.(pageId, chunks.join(''));
-  };
-
-  window.completeCodexHistoryPage = (json: string) => {
-    try {
-      const info = JSON.parse(json) as CodexHistoryPageInfo;
-      const pending = pendingCodexHistoryPages.get(info.pageId);
-      if (!pending || pending.sessionId !== info.sessionId) return;
-
-      // Ignore a page that arrives after the user selected a different session.
-      if (currentSessionIdRef.current !== info.sessionId) {
-        clearTimeout(pending.timeoutId);
-        pendingCodexHistoryPages.delete(info.pageId);
-        return;
-      }
-      const currentPageInfo = window.__codexHistoryPageInfo;
-      if (pending.mode === 'prepend'
-        && (!currentPageInfo
-          || currentPageInfo.sessionId !== info.sessionId
-          || info.toTurn !== currentPageInfo.fromTurn)) {
-        failCodexHistoryPage(info.pageId, 'Codex history changed while loading; please retry');
-        return;
-      }
-
-      clearTimeout(pending.timeoutId);
-      pendingCodexHistoryPages.delete(info.pageId);
-      const pageMessages = pending.batches.flat();
-      const container = messagesContainerRef.current;
-      const oldScrollHeight = container?.scrollHeight ?? 0;
-      const oldScrollTop = container?.scrollTop ?? 0;
-      const storedPrependedCount = window.__prependedHistoryMessageCount;
-      const prependedCount = typeof storedPrependedCount === 'number'
-        && Number.isSafeInteger(storedPrependedCount)
-        && storedPrependedCount >= 0
-        ? storedPrependedCount
-        : 0;
-      window.__prependedHistoryMessageCount = pending.mode === 'replace'
-        ? 0
-        : prependedCount + pageMessages.length;
-      if (pending.mode === 'prepend'
-          && isStreamingRef.current
-          && streamingMessageIndexRef.current >= 0) {
-        streamingMessageIndexRef.current += pageMessages.length;
-      }
-      setMessages((prev) => pending.mode === 'replace'
-        ? pageMessages
-        : [...pageMessages, ...prev]);
-
-      window.__codexHistoryPageInfo = info;
-      window.dispatchEvent(new CustomEvent<CodexHistoryPageInfo>('codex-history-page-info', {
-        detail: info,
-      }));
-
-      if (pending.mode === 'prepend' && container) {
-        requestAnimationFrame(() => {
-          const currentContainer = messagesContainerRef.current;
-          if (!currentContainer) return;
-          currentContainer.scrollTop = oldScrollTop + currentContainer.scrollHeight - oldScrollHeight;
-        });
-      }
-    } catch (error) {
-      console.error('[Frontend] Failed to complete Codex history page:', error);
-      failCodexHistoryPage(undefined, 'Failed to complete the Codex history page');
-    }
-  };
-
-  window.codexHistoryPageError = (json: string) => {
-    try {
-      const error = JSON.parse(json) as { sessionId?: string; message?: string };
-      if (error.sessionId && currentSessionIdRef.current !== error.sessionId) return;
-      window.dispatchEvent(new CustomEvent('codex-history-page-error', { detail: error }));
-      addToast(error.message || 'Failed to load earlier Codex history', 'error');
-    } catch (parseError) {
-      console.error('[Frontend] Failed to parse Codex history page error:', parseError);
-    }
-  };
 
   // History load complete callback — triggers Markdown re-rendering
   // Use full shallow copy to ensure all messages trigger re-render regardless of batching timing
@@ -1008,8 +872,6 @@ export function registerMessageCallbacks(
       window.__deniedToolIds.add(id);
     }
   };
-
-  window.codexHistoryPageRenderComplete = refreshLoadedHistoryMessages;
 
   window.historyLoadComplete = (expectedMessageCountArg) => {
     cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', window.__sessionTransitioning, 'expectedMsgCount:', expectedMessageCountArg);

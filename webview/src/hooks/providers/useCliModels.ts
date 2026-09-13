@@ -1,20 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
-import { CODEX_MODELS, OPENCODE_MODELS } from '../../components/ChatInputBox/types';
-import { isCliOnlyProvider } from './cliProviders';
-import { subscribeActiveCodexProvider } from '../../utils/runtimeProviderCapabilities';
+import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
 
 type CliModelsByProvider = Record<string, ModelInfo[]>;
 
-/** Java may never answer get_cli_models — don't leave the spinner on forever. */
+/** Java/Host may never answer get_cli_models — don't leave the spinner on forever. */
 const CLI_MODELS_TIMEOUT_MS = 15_000;
 
-/**
- * Module-level caches so switching away from chat (history/settings) and back
- * does not drop the catalog and re-trigger a spinner + auto-select reset.
- * ChatScreen unmounts on view change; these survive that remount.
- */
 const modelsCache: CliModelsByProvider = {};
 const defaultModelCache: Record<string, string> = {};
 const catalogHasEntriesCache: Record<string, boolean> = {};
@@ -28,18 +21,7 @@ export function __resetCliModelsCacheForTests() {
 
 function fallbackModels(providerId: string): ModelInfo[] {
   if (providerId === 'opencode') return OPENCODE_MODELS;
-  if (providerId === 'codex') return CODEX_MODELS;
   return [];
-}
-
-/**
- * Providers whose model list is discovered dynamically via `get_cli_models`.
- * Codex is included even though it is not a CLI-only provider: its list comes
- * from ~/.codex/config.toml + model_catalog_json, same as the codex CLI picker.
- */
-function supportsDynamicModels(providerId: string): boolean {
-  if (providerId === 'codex') return true;
-  return isCliOnlyProvider(providerId);
 }
 
 function normalizeModels(raw: unknown): ModelInfo[] {
@@ -65,16 +47,13 @@ function normalizeModels(raw: unknown): ModelInfo[] {
 }
 
 /**
- * Loads model catalogs for headless CLI providers (Kimi / OpenCode) and Codex
- * via channel-manager `listModels`. Falls back to static defaults until loaded.
+ * Loads model catalogs for OpenCode via channel-manager listModels.
  */
-export function useCliModels(currentProvider: string) {
-  // Seed from module cache so history→chat remounts keep the last catalog.
+export function useCliModels(currentProvider: string = 'opencode') {
   const [modelsByProvider, setModelsByProvider] = useState<CliModelsByProvider>(() => ({ ...modelsCache }));
   const [defaultModelByProvider, setDefaultModelByProvider] = useState<Record<string, string>>(
     () => ({ ...defaultModelCache }),
   );
-  /** Whether the last payload for a provider carried real catalog entries (vs empty → fallback). */
   const [catalogHasEntriesByProvider, setCatalogHasEntriesByProvider] = useState<Record<string, boolean>>(
     () => ({ ...catalogHasEntriesCache }),
   );
@@ -103,8 +82,6 @@ export function useCliModels(currentProvider: string) {
       provider: providerId,
       timer: setTimeout(() => {
         pendingLoadRef.current = null;
-        // No response arrived in time — fall back to the static catalog and
-        // surface the failure so the user isn't staring at a bare fallback list.
         setLoadingProvider((current) => (current === providerId ? null : current));
         setErrorByProvider((prev) => ({ ...prev, [providerId]: 'timeout' }));
       }, CLI_MODELS_TIMEOUT_MS),
@@ -152,8 +129,6 @@ export function useCliModels(currentProvider: string) {
         return next;
       });
       if (payload.success === false) {
-        // Backend reported a failure (CLI missing, non-zero exit, …) — keep the
-        // fallback list but remember the error so the dropdown can show it.
         const message = typeof payload.error === 'string' && payload.error.trim()
           ? payload.error.trim()
           : 'unknown error';
@@ -182,46 +157,11 @@ export function useCliModels(currentProvider: string) {
   }, [clearPendingLoad]);
 
   useEffect(() => {
-    if (!supportsDynamicModels(currentProvider)) return;
     if (modelsByProvider[currentProvider]?.length) return;
-
     beginLoad(currentProvider);
   }, [currentProvider, modelsByProvider, beginLoad]);
 
-  // Switching the active Codex provider rewrites ~/.codex/config.toml, so the
-  // cached catalog no longer reflects what the CLI would serve. Drop the cache
-  // and refetch when the chat is currently on codex.
-  useEffect(() => {
-    return subscribeActiveCodexProvider(() => {
-      delete modelsCache.codex;
-      delete defaultModelCache.codex;
-      delete catalogHasEntriesCache.codex;
-      setModelsByProvider((prev) => {
-        if (!('codex' in prev)) return prev;
-        const next = { ...prev };
-        delete next.codex;
-        return next;
-      });
-      setDefaultModelByProvider((prev) => {
-        if (!('codex' in prev)) return prev;
-        const next = { ...prev };
-        delete next.codex;
-        return next;
-      });
-      setCatalogHasEntriesByProvider((prev) => {
-        if (!('codex' in prev)) return prev;
-        const next = { ...prev };
-        delete next.codex;
-        return next;
-      });
-      if (currentProvider === 'codex') {
-        beginLoad('codex');
-      }
-    });
-  }, [currentProvider, beginLoad]);
-
   const refreshCliModels = useCallback((providerId: string) => {
-    if (!supportsDynamicModels(providerId)) return;
     beginLoad(providerId);
   }, [beginLoad]);
 
@@ -241,3 +181,4 @@ export function useCliModels(currentProvider: string) {
 }
 
 export type UseCliModelsReturn = ReturnType<typeof useCliModels>;
+

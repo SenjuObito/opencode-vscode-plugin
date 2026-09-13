@@ -88,7 +88,12 @@
       "redo": "取り消したメッセージをやり直す",
       "fork": "セッション全体を新しいフォークにコピー",
       "share": "セッションリンクを共有",
-      "unshare": "セッションの共有を解除"
+      "unshare": "セッションの共有を解除",
+      "review": "コードの変更やGit差分をレビュー",
+      "init": "プロジェクトのルールと設定を初期化 (OPENCODE.md)",
+      "models": "利用可能なモデルの表示・切り替え",
+      "themes": "UIテーマの切り替え",
+      "help": "ヘルプとコマンド一覧を表示"
     },
     "compactTooltip": "クリックでセッションを圧縮",
     "compactStarted": "セッションを要約中…",
@@ -110,7 +115,8 @@
     "showEarlierMessages": "以前の{{count}}件のメッセージを表示",
     "showEarlierTurns": "前の{{count}}ターンを表示（読み込み済み残り{{remaining}}ターン）",
     "loadEarlierTurns": "ディスクから前の{{count}}ターンを読み込む（全{{total}}ターン中、残り{{remaining}}ターン）",
-    "loadingEarlierTurns": "以前の会話を読み込み中...",
+    "loadEarlierMessages": "前の{{count}}件のメッセージを読み込む（全{{total}}件中、残り{{remaining}}件）",
+    "loadingEarlierTurns": "以前の会話を読み込み中",
     "totalDuration": "今回の応答時間",
     "tokenUsage": "入力 {{input}} / 出力 {{output}}",
     "tokenUsageDetail": "ターン合計 — 入力 {{input}} · キャッシュ書き込み {{cacheWrite}} · キャッシュ読み取り {{cacheRead}} · 出力 {{output}}",
@@ -175,8 +181,8 @@
       },
       "theme": {
         "label": "テーマ",
-        "system": "VS Code のテーマに従う",
-        "systemDesc": "VS Code のテーマに自動的に従う",
+        "system": "IDE のテーマに従う",
+        "systemDesc": "IDE のテーマに自動的に従う",
         "light": "ライト",
         "lightDesc": "爽やかで明るい、昼間の使用に適しています",
         "dark": "ダーク",
@@ -184,7 +190,7 @@
       },
       "language": {
         "label": "言語",
-        "followIde": "VS Code に従う",
+        "followIde": "IDE に従う",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -204,11 +210,6 @@
         "hintText": "実際のNode.js実行可能ファイルのパスを取得します。空欄の場合は自動検出します。",
         "versionTooLow": "Node.jsのバージョンが低すぎます。プラグインを正常に動作させるにはv{{minVersion}}以上が必要です"
       },
-      "claudeCliPath": {
-        "label": "Opencode TUI パス",
-        "placeholder": "例: /usr/local/bin/opencode — 空欄で自動検出",
-        "hint": "opencode サービスの起動に使うカスタム opencode バイナリ（任意）。空欄の場合は PATH と既定のインストール先（~/.opencode/bin）を自動検索します。保存後にデーモンが再起動されて反映されます。"
-      },
       "workingDirectory": {
         "label": "作業ディレクトリ",
         "placeholder": "例: project1 または空欄でプロジェクトルートを使用",
@@ -226,29 +227,25 @@
       "editorFont": {
         "label": "UI フォント",
         "hint": "ここではプラグイン UI のフォントを変更します。コード用のフォントは別に設定できます。",
-        "followOption": "VS Code UI フォントに従う ({{font}})",
+        "followOption": "IDEA UI フォントに従う ({{font}})",
         "customOption": "カスタム UI フォントファイル",
         "customPathLabel": "UI フォントファイルのパス",
         "customPathPlaceholder": ".ttf / .otf UI フォントファイルのパスを選択または入力",
         "browse": "参照",
-        "warningUnavailable": "UI フォントを利用できないため、現在は VS Code UI フォントを使用しています",
-        "statusFollowEditor": "現在は VS Code UI フォントを使用中: {{font}}",
-        "statusCustom": "現在はカスタム UI フォントを使用中: {{font}}",
-        "systemFontGroup": "システムフォント",
-        "systemFontLoading": "システムフォントを読み込み中…",
-        "systemFontFailed": "システムフォントの読み込みに失敗しました。",
-        "systemFontRetry": "再試行"
+        "warningUnavailable": "UI フォントを利用できないため、現在は IDEA UI フォントを使用しています",
+        "statusFollowEditor": "現在は IDEA UI フォントを使用中: {{font}}",
+        "statusCustom": "現在はカスタム UI フォントを使用中: {{font}}"
       },
       "codeFont": {
         "label": "コードフォント",
         "hint": "Markdown のコードやコマンドブロックで使用されます。",
-        "followOption": "VS Code エディタフォントに従う ({{font}})",
+        "followOption": "エディタフォントに従う ({{font}})",
         "customOption": "カスタムコードフォントファイル",
         "customPathLabel": "コードフォントファイルのパス",
         "customPathPlaceholder": ".ttf / .otf コードフォントファイルのパスを選択または入力",
         "browse": "参照",
         "warningUnavailable": "コードフォントを利用できないため、現在はエディタフォントを使用しています",
-        "statusFollowEditor": "現在は VS Code エディタフォントを使用中: {{font}}",
+        "statusFollowEditor": "現在はエディタフォントを使用中: {{font}}",
         "statusCustom": "現在はカスタムコードフォントを使用中: {{font}}"
       },
       "streaming": {
@@ -374,6 +371,17 @@
         "enabled": "有効",
         "disabled": "無効",
         "hint": "無効にすると、メッセージが存在するセッションで新規作成を選択した際、確認ダイアログを表示せず直接新規セッションを作成します。"
+      },
+      "compactConfirm": {
+        "label": "セッション圧縮時の確認",
+        "enabled": "有効",
+        "disabled": "無効",
+        "hint": "無効にすると、Token統計をクリックまたは/compactを実行した際、確認ダイアログを表示せず直接圧縮します。"
+      },
+      "opencodeCliPath": {
+        "label": "Opencode TUI パス",
+        "placeholder": "例: /usr/local/bin/opencode — 空欄で自動検出",
+        "hint": "opencode サービスの起動に使うカスタム opencode バイナリ（任意）。空欄の場合は PATH と既定のインストール先（~/.opencode/bin）を自動検索します。保存後にデーモンが再起動されて反映されます。"
       }
     },
     "providers": "プロバイダー管理",
@@ -483,7 +491,7 @@
     "communityQrAlt": "寄付QRコード",
     "communityQrAltAlipay": "Alipay 寄付QRコード",
     "communityQrAltPayPal": "PayPal 寄付QRコード",
-    "projectDesc": "このプロジェクトは OpenCode Buddy VS Code 拡張機能です (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "このプロジェクトは OpenCode Buddy IntelliJ IDEA プラグインです (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub リポジトリ",
     "githubDesc": "このプロジェクトは GitHub でオープンソースです。Star で応援してください！",
     "githubCopyBtn": "リポジトリURLをコピー",

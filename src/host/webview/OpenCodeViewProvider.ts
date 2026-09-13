@@ -196,7 +196,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 			// bridge event so they appear in the «OpenCode» Output channel.
 			// 同为高频路径（流式期间每次 updateMessages 都会触发），走 verbose 门控。
 			if (type === 'cardDebug') {
-				logVerbose(`[Webview] ${content}`);
+				logDiagnostic(`[Webview] ${content}`, 'Webview');
 				return;
 			}
 			logVerbose(`[OpenCodeViewProvider] dispatch type=${type} content=${content.substring(0, 200)}`);

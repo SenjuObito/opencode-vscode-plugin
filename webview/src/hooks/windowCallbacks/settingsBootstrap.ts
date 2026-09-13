@@ -39,32 +39,6 @@ export const startInitialSettingsRequest = (): void => {
 };
 
 /**
- * Request the active provider configuration.  Retries until sendToJava is
- * available.
- */
-export const startActiveProviderRequest = (): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  let retryCount = 0;
-  const requestActiveProvider = () => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    if (window.sendToJava) {
-      sendBridgeEvent('get_active_provider');
-    } else {
-      retryCount++;
-      if (retryCount < MAX_RETRIES) {
-        setTimeout(requestActiveProvider, 100);
-      }
-    }
-  };
-  setTimeout(requestActiveProvider, 200);
-};
-
-/**
  * Request the current permission mode from the backend.
  */
 export const startModeRequest = (): void => {
@@ -87,31 +61,6 @@ export const startModeRequest = (): void => {
     }
   };
   setTimeout(requestMode, 200);
-};
-
-/**
- * Request the thinking-enabled setting from the backend.
- */
-export const startThinkingEnabledRequest = (): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  let thinkingRetryCount = 0;
-  const requestThinkingEnabled = () => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    if (window.sendToJava) {
-      sendBridgeEvent('get_thinking_enabled');
-    } else {
-      thinkingRetryCount++;
-      if (thinkingRetryCount < MAX_RETRIES) {
-        setTimeout(requestThinkingEnabled, 100);
-      }
-    }
-  };
-  setTimeout(requestThinkingEnabled, 200);
 };
 
 /**

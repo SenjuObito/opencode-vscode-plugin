@@ -3,11 +3,9 @@ import type { TFunction } from 'i18next';
 import type { MutableRefObject, RefObject } from 'react';
 import type { ClaudeMessage, ClaudeRawMessage, HistoryData, SubagentHistoryResponse, TaskEventMap } from '../types';
 import type {
-  CodexFastMode,
   PermissionMode,
   ReasoningEffort,
 } from '../components/ChatInputBox/types';
-import type { ProviderConfig } from '../types/provider';
 import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
@@ -45,18 +43,9 @@ export interface UseWindowCallbacksOptions {
   setUsageMaxTokens: React.Dispatch<React.SetStateAction<number | undefined>>;
   setPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   setCurrentProvider: React.Dispatch<React.SetStateAction<string>>;
-  setClaudePermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  setCodexPermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   setOpenCodePermissionMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
-  setSelectedClaudeModel: React.Dispatch<React.SetStateAction<string>>;
-  setSelectedCodexModel: React.Dispatch<React.SetStateAction<string>>;
   setSelectedOpenCodeModel: React.Dispatch<React.SetStateAction<string>>;
-  setLongContextEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setReasoningEffort: React.Dispatch<React.SetStateAction<ReasoningEffort>>;
-  setCodexFastMode: React.Dispatch<React.SetStateAction<CodexFastMode>>;
-  setProviderConfigVersion: React.Dispatch<React.SetStateAction<number>>;
-  setActiveProviderConfig: React.Dispatch<React.SetStateAction<ProviderConfig | null>>;
-  setClaudeSettingsAlwaysThinkingEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setSendShortcut: React.Dispatch<React.SetStateAction<'enter' | 'cmdEnter'>>;
   setAutoOpenFileEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setPermissionDialogTimeoutSeconds: React.Dispatch<React.SetStateAction<number>>;
@@ -93,7 +82,6 @@ export interface UseWindowCallbacksOptions {
   patchAssistantForStreaming: (msg: ClaudeMessage) => ClaudeMessage;
 
   // Other functions
-  syncActiveProviderModelMapping: (provider: ProviderConfig) => void;
 
   // Permission dialog handlers from useDialogManagement
   openPermissionDialog: (request: PermissionRequest) => void;

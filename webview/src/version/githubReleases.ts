@@ -2,25 +2,18 @@
  * Shared GitHub releases fetcher for the first-start / version-update
  * changelog dialog and the Settings → Community version history button.
  *
- * Source of truth: the user's open-source GitHub repository releases.
- *
- * Failure policy (the dialog must never crash and never show unrelated
- * content):
- *  - releases present          -> return them (and cache them)
- *  - request OK, zero releases -> empty list + `empty` flag (the repo simply
- *                                 has no releases yet; the dialog shows an
- *                                 empty state rather than any foreign changelog)
- *  - request failed / timed out -> empty list + `error` (the dialog shows an
- *                                 error state; we never fall back to the
- *                                 bundled cc-gui CHANGELOG_DATA, which would
- *                                 show unrelated version history)
+ * Hybrid Fallback Strategy:
+ *  1. Cache: Return valid cached releases if fresh.
+ *  2. Online: Fetch releases from GitHub Releases API.
+ *  3. Fallback: If repo has no releases yet OR fetch fails (offline/timeout/rate-limit),
+ *     automatically fall back to the bundled CHANGELOG_DATA generated from CHANGELOG.md.
  */
 
-import type { ChangelogEntry } from './changelog';
+import { CHANGELOG_DATA, type ChangelogEntry } from './changelog';
 
 export const GITHUB_REPO_OWNER = 'SenjuObito';
-export const GITHUB_REPO_NAME = 'opencode-vscode-plugin';
-export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`;
+export const GITHUB_REPO_NAME = 'opencode-idea-gui';
+export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}.git`;
 export const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`;
 /** Hard cap so a hanging request cannot leave the dialog spinning forever. */
 const RELEASES_TIMEOUT_MS = 10_000;
@@ -62,25 +55,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/**
- * Release bodies may be bilingual, written as a Chinese section followed by an
- * `### English` heading and the English section (see CHANGELOG.md and
- * tools/extract-release-notes.mjs). Split on that marker; when the marker is
- * absent the body is single-language, so keep it only as `zh` — returning it
- * for both languages would render the same text twice in the dialog.
- */
-export function splitBilingualReleaseBody(body: string): { en: string; zh: string } {
-  const lines = body.split('\n');
-  const markerIndex = lines.findIndex(line => /^#{1,6}\s*english\s*$/i.test(line.trim()));
-  if (markerIndex === -1) {
-    return { en: '', zh: body.trim() };
-  }
-  return {
-    zh: lines.slice(0, markerIndex).join('\n').trim(),
-    en: lines.slice(markerIndex + 1).join('\n').trim(),
-  };
-}
-
 function parseReleases(data: unknown): ChangelogEntry[] {
   const list = Array.isArray(data) ? data : [];
   const entries: ChangelogEntry[] = [];
@@ -94,7 +68,7 @@ function parseReleases(data: unknown): ChangelogEntry[] {
     entries.push({
       version,
       date: published.slice(0, 10),
-      content: splitBilingualReleaseBody(body),
+      content: { en: body, zh: body },
     });
   }
   return entries;
@@ -103,19 +77,19 @@ function parseReleases(data: unknown): ChangelogEntry[] {
 export interface FetchReleasesResult {
   entries: ChangelogEntry[];
   fromCache: boolean;
-  /** Set when the list could not be fetched (network / HTTP / timeout). */
+  fromFallback?: boolean;
+  /** Set when the remote list could not be fetched (network / HTTP / timeout). */
   error?: string;
-  /** True when the request succeeded but the repository has no releases yet. */
+  /** True when no releases were found online and fallback is empty. */
   empty?: boolean;
 }
 
 /**
- * Fetch releases from the configured GitHub repository.
- * Returns a localStorage-cached result when fresh.
+ * Fetch releases from the configured GitHub repository with local CHANGELOG_DATA fallback.
  *
- * Resolves with `{ entries: [], error }` when the repository has no releases —
- * callers must treat an empty list as a valid outcome (empty state), not as a
- * hard failure and not as a reason to index into `entries[0]`.
+ * 1. Checks localStorage cache.
+ * 2. Fetches remote GitHub releases.
+ * 3. Falls back to bundled CHANGELOG_DATA on error or when repo has 0 releases.
  */
 export async function fetchGithubReleases(): Promise<FetchReleasesResult> {
   const cached = readCache();
@@ -142,20 +116,22 @@ export async function fetchGithubReleases(): Promise<FetchReleasesResult> {
       writeCache(entries);
       return { entries, fromCache: false };
     }
-    // Request succeeded but the repo has no releases yet. Report it as an empty
-    // result (not an error toast, not a foreign changelog) so the UI can show a
-    // clean empty state.
-    return { entries: [], fromCache: false, empty: true, error: 'no releases' };
+    // Request succeeded but the repo has no online releases yet: fall back to local changelog
+    return {
+      entries: CHANGELOG_DATA.length > 0 ? CHANGELOG_DATA : [],
+      fromCache: false,
+      fromFallback: true,
+      empty: CHANGELOG_DATA.length === 0,
+    };
   } catch (err) {
-    // Network offline / rate-limited / timed out / CSP-blocked: return an empty
-    // list with an error so the dialog can show an error state instead of
-    // falling back to the bundled cc-gui changelog (which would display
-    // unrelated version history).
+    // Network offline / rate-limited / timed out / CSP-blocked: fall back to local changelog
     const message = err instanceof Error ? err.message : String(err);
     return {
-      entries: [],
+      entries: CHANGELOG_DATA.length > 0 ? CHANGELOG_DATA : [],
       fromCache: false,
+      fromFallback: true,
       error: message,
+      empty: CHANGELOG_DATA.length === 0,
     };
   } finally {
     if (timeoutId !== null) clearTimeout(timeoutId);

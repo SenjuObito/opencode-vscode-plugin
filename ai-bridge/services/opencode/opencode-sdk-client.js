@@ -691,12 +691,28 @@ export async function listMessages(sessionId, directory) {
  * @returns {Promise<Array<{ path: string, type: 'file' | 'directory' }>>}
  */
 export async function findFiles({ query = '', limit = '20', directory } = {}) {
-  const params = { query, limit };
-  if (directory) params.location = { directory };
-  // fs 在 v2 子命名空间下（同 TUI：sdk.client.v2.fs.find）。
-  const result = await getClient().v2.fs.find(params);
-  if (result.error) return [];
-  return result.data?.data ?? [];
+  try {
+    const numLimit = typeof limit === 'number' ? limit : (typeof limit === 'string' ? parseInt(limit, 10) || 20 : 20);
+    const result = await getClient().find.files({
+      query: typeof query === 'string' ? query : '',
+      limit: numLimit,
+      directory: directory || undefined,
+    });
+    if (result.error || !result.data) return [];
+    const list = Array.isArray(result.data) ? result.data : (result.data?.data || []);
+    return list.map((item) => {
+      if (typeof item === 'string') {
+        return { path: item, type: 'file' };
+      }
+      if (item && typeof item === 'object') {
+        return { path: item.path || item.name || '', type: item.type || 'file' };
+      }
+      return { path: String(item), type: 'file' };
+    }).filter((e) => Boolean(e.path));
+  } catch (err) {
+    console.error(`[findFiles] error:`, err);
+    return [];
+  }
 }
 
 // ── MCP ──────────────────────────────────────────────────────────────────

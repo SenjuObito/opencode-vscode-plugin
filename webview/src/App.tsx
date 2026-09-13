@@ -160,24 +160,19 @@ const App = () => {
     currentProvider, selectedModel, permissionMode,
     daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
     currentProviderRef,
-    activeProviderConfig, claudeSettingsAlwaysThinkingEnabled,
-    reasoningEffort, codexFastMode, sendShortcut, autoOpenFileEnabled,
-    longContextEnabled,
+    activeProviderConfig,
+    reasoningEffort, sendShortcut, autoOpenFileEnabled,
     usagePercentage, usageUsedTokens, usageMaxTokens,
     setPermissionMode, setCurrentProvider,
-    setClaudePermissionMode, setCodexPermissionMode, setOpenCodePermissionMode,
-    setSelectedClaudeModel, setSelectedCodexModel,
+    setOpenCodePermissionMode,
     setSelectedOpenCodeModel,
-    setLongContextEnabled, setReasoningEffort, setCodexFastMode,
-    setProviderConfigVersion, setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled,
+    setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    syncActiveProviderModelMapping,
-    handleModeSelect, handleModelSelect, handleProviderSelect,
-    handleReasoningChange, handleCodexFastModeChange, handleToggleThinking,
+    handleModeSelect, handleModelSelect,
+    handleReasoningChange, handleToggleThinking,
     handleSendShortcutChange,
-    handleAutoOpenFileEnabledChange, handleLongContextChange,
+    handleAutoOpenFileEnabledChange,
   } = useModelProviderState({ addToast, t });
 
   // ── Global drag event interception ──
@@ -294,7 +289,6 @@ const App = () => {
     showNewSessionConfirm, showInterruptConfirm,
     suppressNextStatusToastRef,
     createNewSession, forceCreateNewSession,
-    forceCreateNewSessionWithProvider,
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
@@ -598,12 +592,10 @@ const App = () => {
     setMessages, setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    setPermissionMode, setCurrentProvider, setClaudePermissionMode, setCodexPermissionMode,
+    setPermissionMode, setCurrentProvider,
     setOpenCodePermissionMode,
-    setSelectedClaudeModel, setSelectedCodexModel, setSelectedOpenCodeModel,
-    setLongContextEnabled, setReasoningEffort, setCodexFastMode,
-    setProviderConfigVersion, setActiveProviderConfig,
-    setClaudeSettingsAlwaysThinkingEnabled,
+    setSelectedOpenCodeModel,
+    setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setContextInfo,
     setSubagentHistories,
@@ -619,7 +611,6 @@ const App = () => {
     lastThinkingUpdateRef, thinkingUpdateTimeoutRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
-    syncActiveProviderModelMapping,
     openPermissionDialog, openAskUserQuestionDialog, openPlanApprovalDialog,
     forceClosePermissionDialog, forceCloseAskUserQuestionDialog, invalidateQuestionCard, invalidatePermissionCard, forceClosePlanApprovalDialog,
     openContextUsageDialog, updateContextUsageData,
@@ -636,20 +627,13 @@ const App = () => {
   } = useMessageProcessing({ messages, currentSessionId, t });
 
   // ── Message sender ──
-  // Wrap handleProviderSelect to also clear messages and input (like creating a new session)
-  const wrappedHandleProviderSelect = useCallback((providerId: string) => {
-    chatInputRef.current?.clear();
-    handleProviderSelect(providerId);
-    forceCreateNewSessionWithProvider(providerId);
-  }, [forceCreateNewSessionWithProvider, handleProviderSelect]);
-
   const {
     handleSubmit: hookHandleSubmit,
     executeMessage,
     interruptSession,
   } = useMessageSender({
     t, addToast,
-    currentProvider, selectedModel, permissionMode, reasoningEffort, codexFastMode,
+    currentProvider, selectedModel, permissionMode, reasoningEffort,
     daemonStatusLoaded, currentSdkInstalled,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,
@@ -661,7 +645,6 @@ const App = () => {
     setCurrentView,
     forceCreateNewSession,
     handleModeSelect,
-    longContextEnabled,
     openContextUsageDialog,
     closeContextUsageDialog,
   });
@@ -722,6 +705,19 @@ const App = () => {
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
     useCompactConfirm(doCompact);
 
+  // "Don't ask again" checkbox state for the compact confirm dialog.
+  // Resets to unchecked every time the dialog re-opens.
+  const [skipCompactAgain, setSkipCompactAgain] = useState(false);
+  useEffect(() => {
+    if (showCompactConfirm) {
+      setSkipCompactAgain(false);
+    }
+  }, [showCompactConfirm]);
+
+  const handleConfirmCompactWithSkip = useCallback(() => {
+    handleCompactConfirmed(skipCompactAgain);
+  }, [handleCompactConfirmed, skipCompactAgain]);
+
   // Handle opencode builtin session commands typed as slash commands
   // (mirror the TUI: /compact /undo /redo /fork /share /unshare).
   const handleBuiltinCommand = useCallback((command: string) => {
@@ -763,7 +759,11 @@ const App = () => {
   }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact]);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback((
+    content: string,
+    attachments?: Attachment[],
+    fileTags?: { displayPath: string; absolutePath: string }[],
+  ) => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
@@ -788,7 +788,7 @@ const App = () => {
       }
       // /context - handled locally even while loading
       if (CONTEXT_COMMANDS.has(command)) {
-        hookHandleSubmit(content, attachments);
+        hookHandleSubmit(content, attachments, fileTags);
         return;
       }
       // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
@@ -806,7 +806,7 @@ const App = () => {
       enqueueMessage(content, attachments);
       return;
     }
-    hookHandleSubmit(content, attachments);
+    hookHandleSubmit(content, attachments, fileTags);
   }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
@@ -924,7 +924,6 @@ const App = () => {
               onSubmit={handleSubmit}
               onInterrupt={interruptSession}
               onNavigateToProviderSettings={handleNavigateToProviderSettings}
-              onProviderSelect={wrappedHandleProviderSelect}
               revertBoundaryId={revertBoundaryId}
               onUndo={handleUndoMessage}
               onRestore={handleRedoMessage}
@@ -936,23 +935,18 @@ const App = () => {
               daemonStatusLoaded={daemonStatusLoaded}
               retryDaemonStatus={retryDaemonStatus}
               activeProviderConfig={activeProviderConfig}
-              claudeSettingsAlwaysThinkingEnabled={claudeSettingsAlwaysThinkingEnabled}
               reasoningEffort={reasoningEffort}
-              codexFastMode={codexFastMode}
               sendShortcut={sendShortcut}
               autoOpenFileEnabled={autoOpenFileEnabled}
-              longContextEnabled={longContextEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
               onModeSelect={handleModeSelect}
               onModelSelect={handleModelSelect}
               onReasoningChange={handleReasoningChange}
-              onCodexFastModeChange={handleCodexFastModeChange}
               onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
-               onLongContextChange={handleLongContextChange}
-               messageQueue={messageQueue}
+              messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
             />
           </div>
@@ -1003,9 +997,18 @@ const App = () => {
         message={t('chat.compactConfirmMessage')}
         confirmText={t('chat.compactConfirmAction')}
         cancelText={t('common.cancel')}
-        onConfirm={handleCompactConfirmed}
+        onConfirm={handleConfirmCompactWithSkip}
         onCancel={handleCancelCompact}
-      />
+      >
+        <label className="confirm-dialog-dont-ask-again">
+          <input
+            type="checkbox"
+            checked={skipCompactAgain}
+            onChange={(e) => setSkipCompactAgain(e.target.checked)}
+          />
+          <span>{t('common.dontAskAgain')}</span>
+        </label>
+      </ConfirmDialog>
     </>
   );
 };

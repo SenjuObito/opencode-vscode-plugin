@@ -11,6 +11,10 @@ import {
   type SkipNewSessionConfirmChangedDetail,
 } from '../../../utils/skipNewSessionConfirm';
 import {
+  SKIP_COMPACT_CONFIRM_EVENT,
+  type SkipCompactConfirmChangedDetail,
+} from '../../../utils/skipCompactConfirm';
+import {
   DETAILED_OUTPUT_ENABLED_EVENT,
   setDetailedOutputEnabled,
   type DetailedOutputEnabledChangedDetail,
@@ -44,8 +48,12 @@ export interface UseSettingsBasicActionsReturn {
   // =========================================================================
   // Public read-only state (safe to read in components)
   // =========================================================================
-  claudeCliPath: string;
-  savingClaudeCliPath: boolean;
+  nodePath: string;
+  savingNodePath: boolean;
+  nodeVersion?: string | null;
+  minNodeVersion?: number;
+  opencodeCliPath: string;
+  savingOpencodeCliPath: boolean;
   workingDirectory: string;
   savingWorkingDirectory: boolean;
   editorFontConfig:
@@ -55,12 +63,6 @@ export interface UseSettingsBasicActionsReturn {
         lineSpacing: number;
       }
     | undefined;
-  /** Named fonts parsed from the VS Code `editor.fontFamily` setting. */
-  vscodeFontList: string[];
-  /** All installed font families, enumerated host-side (OS font directories). */
-  systemFontList: string[];
-  /** Non-empty when host-side font enumeration failed. */
-  systemFontError: string | null;
   uiFontConfig: UiFontConfig | undefined;
   codeFontConfig: CodeFontConfig | undefined;
   /** Send shortcut state (prefers prop over local state) */
@@ -77,6 +79,8 @@ export interface UseSettingsBasicActionsReturn {
   historyCompletionEnabled: boolean;
   /** Whether to skip the "create new session with existing messages" confirm dialog. */
   skipNewSessionConfirm: boolean;
+  /** Whether to skip the "compact session" confirm dialog. */
+  skipCompactConfirm: boolean;
   taskCompletionNotificationEnabled: boolean;
   askUserQuestionNotificationEnabled: boolean;
   detailedOutputEnabled: boolean;
@@ -86,7 +90,8 @@ export interface UseSettingsBasicActionsReturn {
   // =========================================================================
   // Handler functions (public API for components)
   // =========================================================================
-  handleSaveClaudeCliPath: () => void;
+  handleSaveNodePath: () => void;
+  handleSaveOpencodeCliPath: () => void;
   handleSaveWorkingDirectory: () => void;
   handleUiFontSelectionChange: (selection: string) => void;
   handleSaveUiFontCustomPath: (path: string) => void;
@@ -115,8 +120,12 @@ export interface UseSettingsBasicActionsReturn {
   // @internal — State setters used only by useSettingsWindowCallbacks.
   // Components should not call these directly; use handlers above instead.
   // =========================================================================
-  /** @internal */ setClaudeCliPath: (path: string) => void;
-  /** @internal */ setSavingClaudeCliPath: (saving: boolean) => void;
+  /** @internal */ setNodePath: (path: string) => void;
+  /** @internal */ setSavingNodePath: (saving: boolean) => void;
+  /** @internal */ setNodeVersion: (version: string | null) => void;
+  /** @internal */ setMinNodeVersion: (minVersion: number) => void;
+  /** @internal */ setOpencodeCliPath: (path: string) => void;
+  /** @internal */ setSavingOpencodeCliPath: (saving: boolean) => void;
   /** @internal */ setWorkingDirectory: (dir: string) => void;
   /** @internal */ setSavingWorkingDirectory: (saving: boolean) => void;
   /** @internal */ setEditorFontConfig: (
@@ -128,9 +137,6 @@ export interface UseSettingsBasicActionsReturn {
       }
       | undefined
   ) => void;
-  /** @internal */ setVscodeFontList: (fonts: string[]) => void;
-  /** @internal */ setSystemFontList: (fonts: string[]) => void;
-  /** @internal */ setSystemFontError: (error: string | null) => void;
   /** @internal */ setUiFontConfig: (config: UiFontConfig | undefined) => void;
   /** @internal */ setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
   /** @internal */ setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
@@ -142,6 +148,7 @@ export interface UseSettingsBasicActionsReturn {
   /** @internal */ setDiffExpandedByDefault: (expanded: boolean) => void;
   /** @internal */ setHistoryCompletionEnabled: (enabled: boolean) => void;
   /** @internal */ setSkipNewSessionConfirm: (enabled: boolean) => void;
+  /** @internal */ setSkipCompactConfirm: (enabled: boolean) => void;
   /** @internal */ setTaskCompletionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setAskUserQuestionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setSystemNotificationOnlyWhenUnfocused: (enabled: boolean) => void;
@@ -157,9 +164,15 @@ export function useSettingsBasicActions({
   onPermissionDialogTimeoutChangeProp,
   currentProvider: _currentProvider,
 }: UseSettingsBasicActionsProps): UseSettingsBasicActionsReturn {
+  // Node.js path
+  const [nodePath, setNodePath] = useState('');
+  const [nodeVersion, setNodeVersion] = useState<string | null>(null);
+  const [minNodeVersion, setMinNodeVersion] = useState(18);
+  const [savingNodePath, setSavingNodePath] = useState(false);
+
   // Custom Claude CLI path (overrides bundled SDK when set)
-  const [claudeCliPath, setClaudeCliPath] = useState('');
-  const [savingClaudeCliPath, setSavingClaudeCliPath] = useState(false);
+  const [opencodeCliPath, setOpencodeCliPath] = useState('');
+  const [savingOpencodeCliPath, setSavingOpencodeCliPath] = useState(false);
 
   // Working directory configuration
   const [workingDirectory, setWorkingDirectory] = useState('');
@@ -174,9 +187,6 @@ export function useSettingsBasicActions({
       }
     | undefined
   >();
-  const [vscodeFontList, setVscodeFontList] = useState<string[]>([]);
-  const [systemFontList, setSystemFontList] = useState<string[]>([]);
-  const [systemFontError, setSystemFontError] = useState<string | null>(null);
   const [uiFontConfig, setUiFontConfig] = useState<UiFontConfig | undefined>();
   const [codeFontConfig, setCodeFontConfig] = useState<CodeFontConfig | undefined>();
 
@@ -221,6 +231,23 @@ export function useSettingsBasicActions({
     return () => window.removeEventListener(SKIP_NEW_SESSION_CONFIRM_EVENT, handler);
   }, []);
 
+  // "Skip compact confirm dialog" preference (localStorage-only, default: false).
+  // Synced bidirectionally with the dialog checkbox via CustomEvent so toggling
+  // either surface (dialog or settings page) updates the other immediately.
+  const [skipCompactConfirm, setSkipCompactConfirm] = useState<boolean>(
+    () => getUiPreferences().skipCompactConfirm,
+  );
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<SkipCompactConfirmChangedDetail>;
+      if (custom.detail && typeof custom.detail.enabled === 'boolean') {
+        setSkipCompactConfirm(custom.detail.enabled);
+      }
+    };
+    window.addEventListener(SKIP_COMPACT_CONFIRM_EVENT, handler);
+    return () => window.removeEventListener(SKIP_COMPACT_CONFIRM_EVENT, handler);
+  }, []);
+
   // Task completion notification toggle (default: false, opt-in feature)
   const [taskCompletionNotificationEnabled, setTaskCompletionNotificationEnabled] = useState<boolean>(false);
 
@@ -243,6 +270,7 @@ export function useSettingsBasicActions({
       setDiffExpandedByDefault(next.diffExpandedByDefault);
       setHistoryCompletionEnabled(next.historyCompletionEnabled);
       setSkipNewSessionConfirm(next.skipNewSessionConfirm);
+      setSkipCompactConfirm(next.skipCompactConfirm);
       setDetailedOutputEnabledState(next.detailedOutputEnabled);
     };
     window.addEventListener(UI_PREFERENCES_CHANGED_EVENT, onChanged);
@@ -282,11 +310,22 @@ export function useSettingsBasicActions({
     updateUiPreferences({ skipNewSessionConfirm });
   }, [skipNewSessionConfirm]);
 
-  const handleSaveClaudeCliPath = useCallback(() => {
-    setSavingClaudeCliPath(true);
-    const payload = { path: (claudeCliPath || '').trim() };
+  // 压缩会话确认对话框开关
+  useEffect(() => {
+    updateUiPreferences({ skipCompactConfirm });
+  }, [skipCompactConfirm]);
+
+  const handleSaveNodePath = useCallback(() => {
+    setSavingNodePath(true);
+    const payload = { path: (nodePath || '').trim() };
+    sendToJava(`set_node_path:${JSON.stringify(payload)}`);
+  }, [nodePath]);
+
+  const handleSaveOpencodeCliPath = useCallback(() => {
+    setSavingOpencodeCliPath(true);
+    const payload = { path: (opencodeCliPath || '').trim() };
     sendToJava(`set_claude_cli_path:${JSON.stringify(payload)}`);
-  }, [claudeCliPath]);
+  }, [opencodeCliPath]);
 
   const handleSaveWorkingDirectory = useCallback(() => {
     setSavingWorkingDirectory(true);
@@ -520,22 +559,25 @@ export function useSettingsBasicActions({
   }, [onPermissionDialogTimeoutChangeProp]);
 
   return {
-    claudeCliPath,
-    setClaudeCliPath,
-    savingClaudeCliPath,
-    setSavingClaudeCliPath,
+    nodePath,
+    setNodePath,
+    savingNodePath,
+    setSavingNodePath,
+    nodeVersion,
+    setNodeVersion,
+    minNodeVersion,
+    setMinNodeVersion,
+    handleSaveNodePath,
+    opencodeCliPath,
+    setOpencodeCliPath,
+    savingOpencodeCliPath,
+    setSavingOpencodeCliPath,
     workingDirectory,
     setWorkingDirectory,
     savingWorkingDirectory,
     setSavingWorkingDirectory,
     editorFontConfig,
     setEditorFontConfig,
-    vscodeFontList,
-    setVscodeFontList,
-    systemFontList,
-    setSystemFontList,
-    systemFontError,
-    setSystemFontError,
     uiFontConfig,
     setUiFontConfig,
     codeFontConfig,
@@ -560,7 +602,9 @@ export function useSettingsBasicActions({
     setHistoryCompletionEnabled,
     skipNewSessionConfirm,
     setSkipNewSessionConfirm,
-    handleSaveClaudeCliPath,
+    skipCompactConfirm,
+    setSkipCompactConfirm,
+    handleSaveOpencodeCliPath,
     handleSaveWorkingDirectory,
     handleUiFontSelectionChange,
     handleSaveUiFontCustomPath,

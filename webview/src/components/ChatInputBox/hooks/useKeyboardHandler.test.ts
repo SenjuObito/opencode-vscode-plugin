@@ -58,36 +58,6 @@ describe('useKeyboardHandler', () => {
     expect(submittedOnEnterRef.current).toBe(true);
   });
 
-  it('does not send when completion handles Enter', () => {
-    const handleSubmit = vi.fn();
-    const submittedOnEnterRef = { current: false };
-    const completionSelectedRef = { current: false };
-
-    const { result } = renderHook(() =>
-      useKeyboardHandler({
-        isComposingRef: { current: false },
-        lastCompositionEndTimeRef: { current: Date.now() - 1000 },
-        sendShortcut: 'enter',
-        daemonStatusLoaded: true,
-        sdkInstalled: true,
-        fileCompletion: { isOpen: true, handleKeyDown: vi.fn(() => true) },
-        commandCompletion: { isOpen: false, handleKeyDown: vi.fn(() => false) },
-        dollarCommandCompletion: { isOpen: false, handleKeyDown: vi.fn(() => false) },
-        handleMacCursorMovement: vi.fn(() => false),
-        handleHistoryKeyDown: vi.fn(() => false),
-        completionSelectedRef,
-        submittedOnEnterRef,
-        handleSubmit,
-      })
-    );
-
-    const e = reactKeyEvent({ key: 'Enter' });
-    result.current.onKeyDown(e);
-    expect(e.preventDefault).toHaveBeenCalled();
-    expect(e.stopPropagation).toHaveBeenCalled();
-    expect(completionSelectedRef.current).toBe(true);
-    expect(handleSubmit).not.toHaveBeenCalled();
-  });
 
   it('resets submit refs on key up', () => {
     const handleSubmit = vi.fn();

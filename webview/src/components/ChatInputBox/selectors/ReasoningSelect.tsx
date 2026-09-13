@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useTranslation } from 'react-i18next';
 import {
   REASONING_LEVELS,
-  EFFORT_SUPPORTED_CLAUDE_MODELS,
   getAvailableReasoningLevels,
   type ReasoningEffort,
 } from '../types';
@@ -75,11 +74,10 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     preferredAlignment: 'right',
   });
 
-  // Determine visibility: for Claude, hide if model doesn't support adaptive thinking.
-  // opencode：variants 已知时按档位有无判断（空列表视为不支持，隐藏选择器）。
+  // Determine visibility: opencode：variants 已知时按档位有无判断（空列表视为不支持，隐藏选择器）。
   const isVisible = modelVariants && modelVariants.length > 0
     ? getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants).length > 0
-    : currentProvider !== 'claude' || !selectedModel || EFFORT_SUPPORTED_CLAUDE_MODELS.has(selectedModel);
+    : true;
 
   // Build the list of available levels for the current model.
   // opencode：按所选模型的 variants 动态取档；其他 provider 回退静态规则。

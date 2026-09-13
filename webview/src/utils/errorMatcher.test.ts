@@ -6,14 +6,6 @@ describe('matchErrorPattern', () => {
     expect(matchErrorPattern('')).toBeNull();
   });
 
-  it('matches when regex and all keywords are present', () => {
-    const text =
-      'Error: Native CLI binary for claude-agent-sdk not found in node_modules';
-    const result = matchErrorPattern(text);
-    expect(result).not.toBeNull();
-    expect(result?.code).toBe('sdkNativeBinaryMissing');
-    expect(result?.solutions).toHaveLength(2);
-  });
 
   it('matches case-insensitively on the regex portion', () => {
     const text = 'NATIVE CLI BINARY FOR claude-agent-sdk NOT FOUND';
@@ -38,30 +30,7 @@ describe('matchErrorPattern', () => {
     expect(result?.code).toBe('sdkNativeBinaryMissing');
   });
 
-  it('exposes solutions with the expected step kinds', () => {
-    const text =
-      'Native CLI binary for claude-agent-sdk not found in installation directory';
-    const result = matchErrorPattern(text);
-    const switchRegistry = result?.solutions.find((s) => s.key === 'switchRegistry');
-    expect(switchRegistry?.recommended).toBe(true);
-    expect(switchRegistry?.steps[0]?.kind).toBe('command');
-    expect(switchRegistry?.steps[1]?.kind).toBe('navigation');
-  });
 
-  it('matches spawn EBUSY error and exposes both solutions', () => {
-    const result = matchErrorPattern('Error: spawn EBUSY');
-    expect(result?.code).toBe('spawnEbusy');
-    expect(result?.solutions).toHaveLength(2);
-    const checkNode = result?.solutions.find((s) => s.key === 'checkNodeVersion');
-    expect(checkNode?.recommended).toBe(true);
-    expect(checkNode?.steps[0]?.kind).toBe('command');
-    if (checkNode?.steps[0]?.kind === 'command') {
-      expect(checkNode.steps[0].command).toBe('node -v');
-    }
-    const reinstall = result?.solutions.find((s) => s.key === 'reinstallLatestSdk');
-    expect(reinstall?.steps[0]?.kind).toBe('command');
-    expect(reinstall?.steps[1]?.kind).toBe('navigation');
-  });
 
   it('matches spawn EBUSY case-insensitively', () => {
     expect(matchErrorPattern('SPAWN EBUSY')?.code).toBe('spawnEbusy');

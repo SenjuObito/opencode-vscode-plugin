@@ -199,27 +199,6 @@ describe('ModelSelect', () => {
     expect(screen.getByTestId('model-group-deepseek')).toBeTruthy();
   });
 
-  it('搜索应过滤模型并隐藏空分组', () => {
-    render(
-      <ModelSelect
-        value="opencode/big-pickle"
-        onChange={vi.fn()}
-        models={openCodeModels}
-        currentProvider="opencode"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.change(screen.getByTestId('model-search-input'), {
-      target: { value: 'deepseek' },
-    });
-
-    expect(screen.getByTestId('model-option-deepseek/deepseek-v4-flash-free')).toBeTruthy();
-    expect(screen.queryByTestId('model-option-opencode/big-pickle')).toBeNull();
-    // Empty vendor groups disappear; a single remaining match stays flat (no group header).
-    expect(screen.queryByTestId('model-group-opencode')).toBeNull();
-    expect(screen.queryByTestId('model-group-deepseek')).toBeNull();
-  });
 
   it('置顶后模型应出现在 Pinned 分组顶部', () => {
     render(

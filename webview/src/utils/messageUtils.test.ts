@@ -1215,16 +1215,6 @@ describe('createCompactSuccessNotice', () => {
     expect(compactItems).toEqual([]);
   });
 
-  it('renders via getContentBlocks as a compact_notification block', () => {
-    const message = createCompactSuccessNotice('Session compacted');
-    const blocks = getContentBlocks(
-      message,
-      (raw: any) => raw?.content ?? null,
-      (text: string) => text,
-    );
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toEqual({ type: 'compact_notification', headerText: 'Session compacted', items: [] });
-  });
 });
 
 

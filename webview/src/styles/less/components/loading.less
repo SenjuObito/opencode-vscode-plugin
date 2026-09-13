@@ -84,6 +84,29 @@
     text-align: left;
 }
 
+/* ── Compact Card Spinners (Scheme B) ── */
+@keyframes compactSpinClockwise {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes compactSpinCounterClockwise {
+    0% { transform: rotate(360deg); }
+    100% { transform: rotate(0deg); }
+}
+
+/* ── Smooth Fade In Animation ── */
+@keyframes compactCardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* ── Compact Card Wrapper ── */
 .compact-card-wrapper {
     padding: 0;
@@ -101,14 +124,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 14px;
+    padding: 9px 14px;
     border-radius: 8px;
     font-size: 13px;
     background: var(--bg-primary);
     border: 1px solid var(--border-primary);
-    margin: 12px 0;
+    margin: 10px 0;
     width: 100%;
     box-sizing: border-box;
+    animation: compactCardFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .compact-card__icon {
@@ -119,85 +143,142 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.compact-card__text {
-    color: #b0b0b0;
-}
-
-.compact-card__text strong {
-    color: #e0e0e0;
-    font-weight: 500;
-}
-
-.compact-card__time {
     font-size: 11px;
-    color: #666;
-    margin-left: 4px;
+}
+
+.compact-card__icon .codicon {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.compact-card__spinner-dual {
+    position: relative;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
 }
 
-/* Compacting state */
-.compact-card--compacting {
-    background: rgba(14, 99, 156, 0.07);
-    border-color: rgba(14, 99, 156, 0.18);
+.compact-card__spinner-outer {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    border-top-color: var(--vscode-progressBar-background, var(--vscode-textLink-foreground, #0e70c0));
+    animation: compactSpinClockwise 1.1s linear infinite;
+}
+
+.compact-card__spinner-inner {
+    position: absolute;
+    inset: 2.5px;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    border-top-color: var(--vscode-descriptionForeground, #858585);
+    animation: compactSpinCounterClockwise 0.8s linear infinite;
+}
+
+.compact-card__text {
+    color: var(--vscode-foreground, #b0b0b0);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compact-card__text strong {
+    color: var(--vscode-foreground, #e0e0e0);
+    font-weight: 600;
 }
 
 /* Pulsing dots for compacting state */
 .compact-card__dots {
     display: inline-block;
-    min-width: 2em;
+    min-width: 1.5em;
     text-align: left;
-    flex-shrink: 0;
 }
 
-/* Success state */
-.compact-card--success {
-    background: rgba(46, 125, 79, 0.07);
-    border-color: rgba(46, 125, 79, 0.18);
-}
-
-.compact-card--success .compact-card__icon {
-    background: rgba(46, 125, 79, 0.15);
-    color: #6abf69;
-}
-
-.compact-card__stats {
-    display: flex;
-    gap: 8px;
+/* Time badge in compacting state */
+.compact-card__time-badge {
+    font-size: 11px;
+    font-family: var(--font-mono, monospace);
+    color: var(--vscode-descriptionForeground, #858585);
+    background: rgba(128, 128, 128, 0.12);
+    padding: 1.5px 7px;
+    border-radius: 4px;
     margin-left: auto;
     flex-shrink: 0;
 }
 
-.compact-card__stat {
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 11px;
-    color: #666;
-    background: rgba(46, 125, 79, 0.08);
+/* Compacting state */
+.compact-card--compacting {
+    background: rgba(14, 99, 156, 0.08);
+    border-color: rgba(14, 99, 156, 0.28);
 }
 
-.compact-card__stat--hl {
+/* Success state */
+.compact-card--success {
+    background: rgba(46, 125, 79, 0.08);
+    border-color: rgba(46, 125, 79, 0.26);
+}
+
+.compact-card--success .compact-card__icon {
+    background: rgba(46, 125, 79, 0.2);
     color: #6abf69;
-    background: rgba(46, 125, 79, 0.14);
 }
 
 /* Failure state */
 .compact-card--failure {
-    background: rgba(197, 69, 59, 0.06);
-    border-color: rgba(197, 69, 59, 0.18);
+    background: rgba(197, 69, 59, 0.08);
+    border-color: rgba(197, 69, 59, 0.26);
 }
 
 .compact-card--failure .compact-card__icon {
-    background: rgba(197, 69, 59, 0.15);
+    background: rgba(197, 69, 59, 0.2);
     color: #f48771;
 }
 
-.compact-card__detail {
-    font-size: 11px;
-    color: #666;
-    margin-left: 4px;
+/* ── 方案 3: 极简紧凑单行条 (Ultra-Compact Inline Pill) ── */
+.compact-card--compact-pill {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin: 8px 0;
+    gap: 8px;
+    line-height: 1.4;
+    width: auto;
+    display: inline-flex;
+    max-width: 100%;
+}
+
+.compact-card--compact-pill .compact-card__pill-icon {
+    font-size: 13px;
     flex-shrink: 0;
+    line-height: 1;
+}
+
+.compact-card--compact-pill.compact-card--success .compact-card__pill-icon {
+    color: #6abf69;
+}
+
+.compact-card--compact-pill.compact-card--failure .compact-card__pill-icon {
+    color: #f48771;
+}
+
+.compact-card__pill-title {
+    font-weight: 500;
+    color: var(--vscode-foreground, #cccccc);
+    flex-shrink: 0;
+}
+
+.compact-card--compact-pill.compact-card--failure .compact-card__pill-title {
+    color: var(--vscode-errorForeground, #f48771);
+}
+
+.compact-card__pill-detail {
+    color: var(--vscode-descriptionForeground, #858585);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }

@@ -39,17 +39,18 @@ const CommunitySection = ({ addToast }: CommunitySectionProps) => {
     try {
       const result = await fetchGithubReleases();
       setReleases(result.entries);
-      // A repo with no releases is a normal empty state; only a failed request
-      // should raise an error toast.
-      if (result.error && !result.empty && result.entries.length === 0) {
+      // Only surface an error toast if we failed and got zero entries even after fallback
+      if (result.error && result.entries.length === 0) {
         addToast(t('settings.versionHistoryLoadFailed', 'Failed to load version history'), 'error');
       }
     } catch {
-      addToast(t('settings.versionHistoryLoadFailed', 'Failed to load version history'), 'error');
+      if (releases.length === 0) {
+        addToast(t('settings.versionHistoryLoadFailed', 'Failed to load version history'), 'error');
+      }
     } finally {
       setLoading(false);
     }
-  }, [addToast, t]);
+  }, [addToast, releases.length, t]);
 
   return (
     <div className={styles.configSection}>

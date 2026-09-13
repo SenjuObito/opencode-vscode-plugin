@@ -1,8 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetCliModelsCacheForTests, useCliModels } from './useCliModels';
-import { CODEX_MODELS } from '../../components/ChatInputBox/types';
-import { installRuntimeProviderDispatchers } from '../../utils/runtimeProviderCapabilities';
+import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
 
 const sendBridgeEventMock = vi.hoisted(() => vi.fn());
 
@@ -20,7 +19,6 @@ describe('useCliModels', () => {
   beforeEach(() => {
     sendBridgeEventMock.mockClear();
     __resetCliModelsCacheForTests();
-    installRuntimeProviderDispatchers();
   });
 
   afterEach(() => {
@@ -29,113 +27,42 @@ describe('useCliModels', () => {
     vi.useRealTimers();
   });
 
-  it('fetches the codex catalog when the codex provider is active', () => {
-    renderHook(() => useCliModels('codex'));
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'codex');
+  it('fetches the opencode catalog when opencode provider is active', () => {
+    renderHook(() => useCliModels('opencode'));
+    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
   });
 
-  it('does not fetch for claude', () => {
-    renderHook(() => useCliModels('claude'));
-    expect(sendBridgeEventMock).not.toHaveBeenCalled();
-  });
-
-  it('falls back to the static CODEX_MODELS list before the catalog arrives', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
+  it('falls back to the static OPENCODE_MODELS list before the catalog arrives', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+    expect(result.current.cliModels).toEqual(OPENCODE_MODELS);
     expect(result.current.cliModelsLoading).toBe(true);
   });
 
-  it('stores the codex catalog and defaultModel from the backend payload', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
+  it('stores the opencode catalog and defaultModel from the backend payload', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
     emitCliModels({
       success: true,
-      provider: 'codex',
-      defaultModel: 'kimi-k3',
-      models: [{ id: 'kimi-k3', label: 'kimi-k3', description: 'kimi-k3' }],
+      provider: 'opencode',
+      defaultModel: 'claude-3-7-sonnet',
+      models: [{ id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet', description: 'Claude 3.7' }],
     });
     expect(result.current.cliModels).toEqual([
-      { id: 'kimi-k3', label: 'kimi-k3', description: 'kimi-k3' },
+      { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet', description: 'Claude 3.7' },
     ]);
-    expect(result.current.cliDefaultModel).toBe('kimi-k3');
+    expect(result.current.cliDefaultModel).toBe('claude-3-7-sonnet');
     expect(result.current.cliModelsLoading).toBe(false);
     expect(result.current.cliModelsError).toBeNull();
   });
 
-  it('falls back to CODEX_MODELS when the codex payload has no models (official provider)', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
-    emitCliModels({
-      success: true,
-      provider: 'codex',
-      defaultModel: 'gpt-5.6-sol',
-      models: [],
-    });
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
-    expect(result.current.cliDefaultModel).toBe('gpt-5.6-sol');
-  });
-
-  it('records backend errors and supports manual retry for codex', () => {
-    const { result } = renderHook(() => useCliModels('codex'));
-    emitCliModels({ success: false, provider: 'codex', error: 'node missing', models: [] });
-    expect(result.current.cliModelsError).toBe('node missing');
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
-
-    sendBridgeEventMock.mockClear();
-    act(() => {
-      result.current.refreshCliModels('codex');
-    });
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'codex');
-  });
-
-  it('refetches the codex catalog when the active codex provider changes', () => {
-    const { result, rerender } = renderHook(
-      ({ provider }) => useCliModels(provider),
-      { initialProps: { provider: 'codex' } },
-    );
-    emitCliModels({
-      success: true,
-      provider: 'codex',
-      defaultModel: 'kimi-k3',
-      models: [{ id: 'kimi-k3', label: 'kimi-k3' }],
-    });
-    expect(result.current.modelsByProvider.codex?.length).toBe(1);
-
-    sendBridgeEventMock.mockClear();
-    act(() => {
-      window.updateActiveCodexProvider?.(JSON.stringify({ id: 'other-provider' }));
-    });
-    // Cache cleared; effect refetches because the current provider is codex.
-    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'codex');
-    rerender({ provider: 'codex' });
-    expect(result.current.modelsByProvider.codex).toBeUndefined();
-  });
-
-  it('clears the codex cache without refetching when another provider is active', () => {
-    const { result } = renderHook(() => useCliModels('claude'));
-    emitCliModels({
-      success: true,
-      provider: 'codex',
-      defaultModel: 'kimi-k3',
-      models: [{ id: 'kimi-k3', label: 'kimi-k3' }],
-    });
-    expect(result.current.modelsByProvider.codex?.length).toBe(1);
-
-    sendBridgeEventMock.mockClear();
-    act(() => {
-      window.updateActiveCodexProvider?.(JSON.stringify({ id: 'other-provider' }));
-    });
-    expect(sendBridgeEventMock).not.toHaveBeenCalled();
-    expect(result.current.modelsByProvider.codex).toBeUndefined();
-  });
-
   it('times out into an error state and falls back to static models', () => {
     vi.useFakeTimers();
-    const { result } = renderHook(() => useCliModels('codex'));
+    const { result } = renderHook(() => useCliModels('opencode'));
     act(() => {
       vi.advanceTimersByTime(16_000);
     });
     expect(result.current.cliModelsLoading).toBe(false);
     expect(result.current.cliModelsError).toBe('timeout');
-    expect(result.current.cliModels).toEqual(CODEX_MODELS);
+    expect(result.current.cliModels).toEqual(OPENCODE_MODELS);
   });
 
   it('reuses the module cache on remount so history→chat does not re-fetch', () => {
@@ -168,3 +95,4 @@ describe('useCliModels', () => {
     expect(second.result.current.cliModelsLoading).toBe(false);
   });
 });
+

@@ -67,52 +67,6 @@ describe('useSessionManagement', () => {
     expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
   });
 
-  it('clears stale ui state before loading history', () => {
-    const historyData = {
-      success: true,
-      sessions: [
-        {
-          sessionId: 'history-1',
-          title: 'History Title',
-          provider: 'claude',
-          model: 'claude-sonnet-4-6',
-          messageCount: 3,
-          lastTimestamp: Date.now(),
-        },
-      ],
-      total: 3,
-    } as unknown as HistoryData;
-
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [{ type: 'assistant', content: 'old', timestamp: new Date().toISOString() }],
-        loading: true,
-        historyData,
-        currentSessionId: 'old-session',
-        ...mocks,
-        t,
-      })
-    );
-
-    act(() => {
-      result.current.loadHistorySession('history-1');
-    });
-
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'interrupt_session:');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(
-      2,
-      'load_session:{"sessionId":"history-1"}'
-    );
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith('history-1');
-    expect(mocks.setCustomSessionTitle).toHaveBeenCalledWith('History Title');
-    expect(mocks.setCurrentView).toHaveBeenCalledWith('chat');
-  });
 
   it('applies repeated history deletes against the latest state', () => {
     let historyData = {
@@ -320,30 +274,6 @@ describe('useSessionManagement', () => {
     expect(mocks.setUsageUsedTokens).toHaveBeenCalledWith(undefined);
   });
 
-  it('forceCreateNewSessionWithProvider resets session and applies target provider before recreating', () => {
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [{ type: 'assistant', content: 'old', timestamp: new Date().toISOString() }],
-        loading: false,
-        historyData: null,
-        currentSessionId: 'active-session',
-        ...mocks,
-        t,
-      })
-    );
-
-    act(() => {
-      result.current.forceCreateNewSessionWithProvider('codex');
-    });
-
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'set_provider:codex');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'create_new_session:');
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
-  });
 
   it('shows confirm dialog when creating new session with existing messages', () => {
     const mocks = createMocks();

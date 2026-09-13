@@ -89,38 +89,9 @@ const FOLLOW_IDEA_LANGUAGE = '__follow_idea__';
 
 const NODE_PATH_SECTION_STYLE: React.CSSProperties = { marginTop: 12 };
 
-/** Select value for a resolved font config: follow / named:<family> / customFile. */
-function fontSelectionValue(config?: { mode?: string; fontFamily?: string }): string {
-  if (!config || !config.mode || config.mode === 'followEditor') return 'followEditor';
-  if (config.mode === 'named' && config.fontFamily) return `named:${config.fontFamily}`;
-  return 'customFile';
-}
-
 function getSwatchStyle(color: string): React.CSSProperties {
   return { backgroundColor: color };
 }
-
-/** 系统字体列表加载状态提示（错误 + 重试）。 */
-const SystemFontStatusHint = ({
-  error,
-  onRetry = () => {},
-}: {
-  error: string | null;
-  onRetry?: () => void;
-}) => {
-  const { t } = useTranslation();
-  if (!error) {
-    return null;
-  }
-  return (
-    <small className={styles.formHint}>
-      <span>{t('settings.basic.editorFont.systemFontFailed')}</span>
-      <button type="button" className={styles.saveBtn} onClick={onRetry}>
-        {t('settings.basic.editorFont.systemFontRetry')}
-      </button>
-    </small>
-  );
-};
 
 const SunIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -159,14 +130,6 @@ export interface AppearanceTabProps {
     fontSize: number;
     lineSpacing: number;
   };
-  /** Named fonts parsed from the VS Code `editor.fontFamily` setting. */
-  vscodeFontList?: string[];
-  /** All installed font families, enumerated host-side (OS font directories). */
-  systemFontList?: string[];
-  /** Non-empty when host-side font enumeration failed. */
-  systemFontError?: string | null;
-  /** Re-request the system font list from the host (retry button). */
-  onRequestSystemFontList?: () => void;
   uiFontConfig?: UiFontConfig;
   codeFontConfig?: CodeFontConfig;
   onUiFontSelectionChange?: (selection: string) => void;
@@ -191,10 +154,6 @@ const AppearanceTab = ({
   fontSizeLevel,
   onFontSizeLevelChange,
   editorFontConfig,
-  vscodeFontList = [],
-  systemFontList = [],
-  systemFontError = null,
-  onRequestSystemFontList = () => {},
   uiFontConfig,
   codeFontConfig,
   onUiFontSelectionChange = () => {},
@@ -219,9 +178,15 @@ const AppearanceTab = ({
   const [hexInput, setHexInput] = useState(chatBgColor || '');
   const [userMsgHexInput, setUserMsgHexInput] = useState(userMsgColor || '');
   const [chatBarHexInput, setChatBarHexInput] = useState(chatBarColor || '');
-  const [selectedUiFontOption, setSelectedUiFontOption] = useState(() => fontSelectionValue(uiFontConfig));
+  const [selectedUiFontOption, setSelectedUiFontOption] = useState(() => {
+    if (!uiFontConfig || uiFontConfig.mode === 'followEditor') return 'followEditor';
+    return 'customFile';
+  });
   const [customFontPathDraft, setCustomFontPathDraft] = useState(uiFontConfig?.customFontPath || '');
-  const [selectedCodeFontOption, setSelectedCodeFontOption] = useState(() => fontSelectionValue(codeFontConfig));
+  const [selectedCodeFontOption, setSelectedCodeFontOption] = useState(() => {
+    if (!codeFontConfig || codeFontConfig.mode === 'followEditor') return 'followEditor';
+    return 'customFile';
+  });
   const [customCodeFontPathDraft, setCustomCodeFontPathDraft] = useState(codeFontConfig?.customFontPath || '');
   const [languageSelection, setLanguageSelection] = useState(() => (
     localStorage.getItem('languageSelectionMode') === 'followIdea'
@@ -242,12 +207,20 @@ const AppearanceTab = ({
   }, [chatBarColor]);
 
   useEffect(() => {
-    setSelectedUiFontOption(fontSelectionValue(uiFontConfig));
+    if (!uiFontConfig || uiFontConfig.mode === 'followEditor') {
+      setSelectedUiFontOption('followEditor');
+    } else {
+      setSelectedUiFontOption('customFile');
+    }
     setCustomFontPathDraft(uiFontConfig?.customFontPath || '');
   }, [uiFontConfig]);
 
   useEffect(() => {
-    setSelectedCodeFontOption(fontSelectionValue(codeFontConfig));
+    if (!codeFontConfig || codeFontConfig.mode === 'followEditor') {
+      setSelectedCodeFontOption('followEditor');
+    } else {
+      setSelectedCodeFontOption('customFile');
+    }
     setCustomCodeFontPathDraft(codeFontConfig?.customFontPath || '');
   }, [codeFontConfig]);
 
@@ -472,25 +445,6 @@ const AppearanceTab = ({
     onSaveUiFontCustomPath(customFontPathDraft.trim());
   };
 
-  /** 当前 named 选中值若不在任何列表中（如持久化的旧字体名），补一个占位 option 避免空白。 */
-  const missingNamedOption = (selected: string, keyPrefix: string) => {
-    if (!selected.startsWith('named:')) return null;
-    const name = selected.slice('named:'.length);
-    const known = vscodeFontList.some((f) => f === name) || systemFontList.some((f) => f === name);
-    if (known) return null;
-    return <option key={`${keyPrefix}-missing`} value={selected}>{name}</option>;
-  };
-
-  const systemFontGroup = (keyPrefix: string) => (
-    <optgroup label={t('settings.basic.editorFont.systemFontGroup')}>
-      {systemFontList.map((font) => (
-        <option key={`${keyPrefix}-sys-${font}`} value={`named:${font}`}>
-          {font}
-        </option>
-      ))}
-    </optgroup>
-  );
-
   return (
     <div className={styles.tabContent}>
       {/* Theme switcher */}
@@ -588,27 +542,14 @@ const AppearanceTab = ({
           onChange={handleUiFontSelectionChange}
         >
           <option value="followEditor">
-            {t('settings.basic.editorFont.followOption', {
-              font: uiFontConfig?.displayName || uiFontConfig?.fontFamily || '-',
-            })}
+            {t('settings.basic.editorFont.followOption', { font: uiFontConfig?.fontFamily || '-' })}
           </option>
-          {vscodeFontList.map((font) => (
-            <option key={`ui-named-${font}`} value={`named:${font}`}>
-              {font}
-            </option>
-          ))}
-          {missingNamedOption(selectedUiFontOption, 'ui')}
-          {systemFontGroup('ui')}
           <option value="customFile">
             {customFontFileName
               ? `${t('settings.basic.editorFont.customOption')} / ${customFontFileName}`
               : t('settings.basic.editorFont.customOption')}
           </option>
         </select>
-        <SystemFontStatusHint
-          error={systemFontError}
-          onRetry={onRequestSystemFontList}
-        />
 
         {isCustomUiFontSelected && (
           <div className={styles.nodePathSection} style={NODE_PATH_SECTION_STYLE}>
@@ -671,11 +612,6 @@ const AppearanceTab = ({
             const nextSelection = event.target.value;
             setSelectedCodeFontOption(nextSelection);
 
-            if (nextSelection.startsWith('named:')) {
-              onCodeFontSelectionChange(nextSelection);
-              return;
-            }
-
             if (nextSelection === 'customFile' && hasSavedCustomCodeFont) {
               onCodeFontSelectionChange(nextSelection);
               return;
@@ -687,27 +623,14 @@ const AppearanceTab = ({
           }}
         >
           <option value="followEditor">
-            {t('settings.basic.codeFont.followOption', {
-              font: codeFontConfig?.displayName || editorFontConfig?.fontFamily || '-',
-            })}
+            {t('settings.basic.codeFont.followOption', { font: editorFontConfig?.fontFamily || '-' })}
           </option>
-          {vscodeFontList.map((font) => (
-            <option key={`code-named-${font}`} value={`named:${font}`}>
-              {font}
-            </option>
-          ))}
-          {missingNamedOption(selectedCodeFontOption, 'code')}
-          {systemFontGroup('code')}
           <option value="customFile">
             {customCodeFontFileName
               ? `${t('settings.basic.codeFont.customOption')} / ${customCodeFontFileName}`
               : t('settings.basic.codeFont.customOption')}
           </option>
         </select>
-        <SystemFontStatusHint
-          error={systemFontError}
-          onRetry={onRequestSystemFontList}
-        />
 
         {isCustomCodeFontSelected && (
           <div className={styles.nodePathSection} style={NODE_PATH_SECTION_STYLE}>

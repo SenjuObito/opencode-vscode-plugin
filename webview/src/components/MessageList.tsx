@@ -1,7 +1,8 @@
 import { memo, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, forwardRef, useImperativeHandle, Fragment } from 'react';
 import type { TFunction } from 'i18next';
-import type { ClaudeMessage, ClaudeContentBlock, CodexHistoryPageInfo, ToolResultBlock } from '../types';
-import { sendBridgeEvent } from '../utils/bridge';
+import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../types';
+import { cardDebugLog } from '../utils/bridge';
+import { isToolResultOnlyUserMessage } from '../utils/turnScope';
 import { MessageItem } from './MessageItem';
 import WaitingIndicator from './WaitingIndicator';
 import CompactingIndicator from './CompactingIndicator';
@@ -19,26 +20,31 @@ import {
 /** Keep pagination aligned to complete user turns so assistant/tool chains are never split. */
 const INITIAL_VISIBLE_TURNS = 5;
 const REVEAL_TURN_PAGE_SIZE = 5;
-/** opencode 恢复分页页大小（与宿主 RESTORE_PAGE_MESSAGES 对齐）。 */
-const OPENCODE_HISTORY_PAGE_SIZE = 200;
-const HISTORY_DISK_PAGE_SIZE = 30;
+const MIN_LOADING_DISPLAY_MS = 600;
 
 function isHumanUserMessage(message: ClaudeMessage): boolean {
   if (message.type !== 'user') return false;
+  if (isToolResultOnlyUserMessage(message)) return false;
 
-  const raw = typeof message.raw === 'object' && message.raw !== null ? message.raw : null;
-  const nestedMessage = raw?.message;
-  const rawContent = raw?.content ?? (
-    typeof nestedMessage === 'object' && nestedMessage !== null ? nestedMessage.content : undefined
-  );
+  const raw = typeof message.raw === 'object' && message.raw !== null ? (message.raw as Record<string, unknown>) : null;
+  if (raw?.synthetic === true) return false;
+
+  const contentStr = typeof message.content === 'string' ? message.content : '';
+  if (contentStr === '[tool_result]' || contentStr.includes('<task-notification>')) return false;
+
+  const nestedMessage = (raw?.message && typeof raw.message === 'object') ? (raw.message as Record<string, unknown>) : undefined;
+  const rawContent = raw?.content ?? nestedMessage?.content;
 
   if (Array.isArray(rawContent)) {
-    return rawContent.some((block) => block
-      && typeof block === 'object'
-      && (block.type === 'text' || block.type === 'image'));
+    if (rawContent.length === 0) return Boolean(contentStr.trim());
+    return rawContent.some((block) => {
+      if (!block || typeof block !== 'object') return false;
+      const bType = (block as { type?: string }).type;
+      return bType !== 'tool_result';
+    });
   }
 
-  return message.content !== '[tool_result]';
+  return true;
 }
 
 function getFirstMessageBoundaryKey(message: ClaudeMessage | undefined): string | undefined {
@@ -149,12 +155,12 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   forkDisabled = false,
 }, ref) {
   const [revealedTurnCount, setRevealedTurnCount] = useState(0);
-  const [historyPageInfo, setHistoryPageInfo] = useState<CodexHistoryPageInfo | null>(null);
   const [loadingEarlierHistory, setLoadingEarlierHistory] = useState(false);
   const loadingEarlierHistoryRef = useRef(false);
-  /** opencode 恢复分页：宿主推送的窗口状态（hasEarlier = 还有更早的页）。 */
-  const [opencodeWindowInfo, setOpencodeWindowInfo] = useState<NonNullable<Window['__opencodeHistoryWindow']> | null>(() =>
-    window.__opencodeHistoryWindow ?? null);
+  const loadingStartTimeRef = useRef(0);
+  const revealTimeoutRef = useRef<number | null>(null);
+  const pendingScrollAdjustRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+
   const [detailedOutputEnabled, setDetailedOutputEnabled] = useState(() =>
     getDetailedOutputEnabled()
   );
@@ -162,6 +168,11 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   // Context menu for message list (copy + quote, when text selected)
   const ctxMenu = useContextMenu();
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const getScrollContainer = useCallback((): HTMLDivElement | null => {
+    return containerRef.current?.closest<HTMLDivElement>('.messages-container')
+      ?? (containerRef.current?.parentElement as HTMLDivElement | null);
+  }, []);
 
   const handleMessageContextMenu = useCallback((e: React.MouseEvent) => {
     const sel = window.getSelection();
@@ -199,59 +210,24 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       setRevealedTurnCount(0);
       setLoadingEarlierHistory(false);
       loadingEarlierHistoryRef.current = false;
-      const cached = window.__codexHistoryPageInfo;
-      setHistoryPageInfo(
-        currentProvider === 'codex' && cached?.sessionId === currentSessionId ? cached ?? null : null,
-      );
-      const cachedWindow = window.__opencodeHistoryWindow;
-      setOpencodeWindowInfo(
-        cachedWindow && cachedWindow.sessionId && cachedWindow.sessionId === currentSessionId
-          ? cachedWindow
-          : null,
-      );
+      pendingScrollAdjustRef.current = null;
+      if (revealTimeoutRef.current !== null) {
+        clearTimeout(revealTimeoutRef.current);
+        revealTimeoutRef.current = null;
+      }
     }
     previousSessionRef.current = currentSessionId;
     firstMessageBoundaryRef.current = currentBoundary;
-  }, [currentProvider, currentSessionId, messages]);
+  }, [currentSessionId, messages]);
 
   useEffect(() => {
-    const handlePageInfo = (event: Event) => {
-      const info = (event as CustomEvent<CodexHistoryPageInfo>).detail;
-      if (currentProvider !== 'codex' || !info || info.sessionId !== currentSessionId) return;
-      setHistoryPageInfo(info);
-      setLoadingEarlierHistory(false);
-      loadingEarlierHistoryRef.current = false;
-    };
-    const handlePageError = (event: Event) => {
-      const error = (event as CustomEvent<{ sessionId?: string }>).detail;
-      if (!error?.sessionId || error.sessionId === currentSessionId) {
-        setLoadingEarlierHistory(false);
-        loadingEarlierHistoryRef.current = false;
+    return () => {
+      if (revealTimeoutRef.current !== null) {
+        clearTimeout(revealTimeoutRef.current);
+        revealTimeoutRef.current = null;
       }
     };
-
-    // opencode 恢复分页：宿主在 restore/load_earlier_messages 后推送窗口状态
-    const handleOpencodeWindowInfo = (event: Event) => {
-      const info = (event as CustomEvent<NonNullable<Window['__opencodeHistoryWindow']>>).detail;
-      if (!info || (info.sessionId && info.sessionId !== currentSessionId)) return;
-      setOpencodeWindowInfo(info);
-      setLoadingEarlierHistory(false);
-      loadingEarlierHistoryRef.current = false;
-    };
-    window.addEventListener('opencode-history-window-info', handleOpencodeWindowInfo);
-
-    window.addEventListener('codex-history-page-info', handlePageInfo);
-    window.addEventListener('codex-history-page-error', handlePageError);
-    const cached = window.__codexHistoryPageInfo;
-    if (currentProvider === 'codex' && cached?.sessionId === currentSessionId) {
-      setHistoryPageInfo(cached ?? null);
-    }
-    return () => {
-      window.removeEventListener('codex-history-page-info', handlePageInfo);
-      window.removeEventListener('codex-history-page-error', handlePageError);
-      window.removeEventListener('opencode-history-window-info', handleOpencodeWindowInfo);
-    };
-  }, [currentProvider, currentSessionId]);
+  }, []);
 
   /** Match a message against an opencode message id (top-level id or raw.id/raw.uuid). */
   const messageMatchesId = useCallback((message: ClaudeMessage, id: string): boolean => {
@@ -305,47 +281,70 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const shouldCollapse = collapsedCount > 0;
   const nextTurnCount = Math.min(REVEAL_TURN_PAGE_SIZE, hiddenTurnCount);
 
-  const canLoadEarlierFromDisk = Boolean(currentProvider === 'codex'
-    && historyPageInfo?.sessionId === currentSessionId
-    && historyPageInfo?.hasMore);
-  // opencode 恢复分页：宿主 restore 只装了最近窗口，还有更早的页可前插。
-  const canLoadEarlierOpencode = Boolean(
-    currentSessionId
-    && opencodeWindowInfo
-    && opencodeWindowInfo.hasEarlier
-    && opencodeWindowInfo.sessionId === currentSessionId,
-  );
+  useEffect(() => {
+    cardDebugLog('[MessageList] Pagination state:', {
+      totalDisplayMessages: displayMessages.length,
+      userTurnStartIndexes,
+      totalUserTurns: userTurnStartIndexes.length,
+      visibleTurnCount,
+      hiddenTurnCount,
+      revealedTurnCount,
+      collapsedCount,
+      shouldCollapse,
+      loadingEarlierHistory,
+    });
+  }, [displayMessages.length, userTurnStartIndexes, visibleTurnCount, hiddenTurnCount, revealedTurnCount, collapsedCount, shouldCollapse, loadingEarlierHistory]);
+
   const handleRevealMore = useCallback(() => {
+    cardDebugLog('[MessageList] handleRevealMore clicked:', {
+      hiddenTurnCount,
+      currentSessionId,
+      loadingEarlierHistory: loadingEarlierHistoryRef.current,
+      userTurnStartIndexesCount: userTurnStartIndexes.length,
+    });
+
+    if (loadingEarlierHistoryRef.current) {
+      cardDebugLog('[MessageList] handleRevealMore: already loading, ignore click');
+      return;
+    }
+
     if (hiddenTurnCount > 0) {
-      setRevealedTurnCount((prev) => prev + REVEAL_TURN_PAGE_SIZE);
-      return;
-    }
-    if (canLoadEarlierFromDisk && !loadingEarlierHistoryRef.current && currentSessionId && historyPageInfo) {
+      const container = getScrollContainer();
+      if (container) {
+        pendingScrollAdjustRef.current = {
+          scrollHeight: container.scrollHeight,
+          scrollTop: container.scrollTop,
+        };
+        cardDebugLog('[MessageList] in-memory reveal: saved scroll anchor:', pendingScrollAdjustRef.current);
+      }
       loadingEarlierHistoryRef.current = true;
       setLoadingEarlierHistory(true);
-      const sent = sendBridgeEvent('load_codex_history_page', JSON.stringify({
-        sessionId: currentSessionId,
-        beforeTurn: historyPageInfo.fromTurn,
-      }));
-      if (!sent) {
-        loadingEarlierHistoryRef.current = false;
-        setLoadingEarlierHistory(false);
+      loadingStartTimeRef.current = Date.now();
+      cardDebugLog('[MessageList] in-memory reveal: start loading state for', MIN_LOADING_DISPLAY_MS, 'ms');
+      if (revealTimeoutRef.current !== null) {
+        clearTimeout(revealTimeoutRef.current);
       }
-      return;
-    }
-    if (canLoadEarlierOpencode && !loadingEarlierHistoryRef.current) {
-      loadingEarlierHistoryRef.current = true;
-      setLoadingEarlierHistory(true);
-      const sent = sendBridgeEvent('load_earlier_messages', JSON.stringify({
-        sessionId: currentSessionId,
-        count: OPENCODE_HISTORY_PAGE_SIZE,
-      }));
-      if (!sent) {
-        loadingEarlierHistoryRef.current = false;
+      revealTimeoutRef.current = window.setTimeout(() => {
+        const currentContainer = getScrollContainer();
+        if (currentContainer) {
+          pendingScrollAdjustRef.current = {
+            scrollHeight: currentContainer.scrollHeight,
+            scrollTop: currentContainer.scrollTop,
+          };
+          cardDebugLog('[MessageList] in-memory reveal timer fired: updated scroll anchor:', pendingScrollAdjustRef.current);
+        }
+        setRevealedTurnCount((prev) => {
+          const next = prev + REVEAL_TURN_PAGE_SIZE;
+          cardDebugLog('[MessageList] in-memory reveal: new revealedTurnCount =', next);
+          return next;
+        });
         setLoadingEarlierHistory(false);
-      }
+        loadingEarlierHistoryRef.current = false;
+        revealTimeoutRef.current = null;
+        cardDebugLog('[MessageList] in-memory reveal: loading state finished');
+      }, MIN_LOADING_DISPLAY_MS);
     }
-  }, [canLoadEarlierFromDisk, canLoadEarlierOpencode, currentSessionId, hiddenTurnCount, historyPageInfo]);
+  }, [currentSessionId, getScrollContainer, hiddenTurnCount, userTurnStartIndexes.length]);
 
   // Imperative API so the in-page search can expand everything before scanning.
   // Returns the number of messages that were just revealed (0 when nothing
@@ -381,6 +380,20 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
     [displayMessages, shouldCollapse, collapsedCount]
   );
 
+  // Preserve scroll position when earlier messages are revealed / prepended at top
+  useLayoutEffect(() => {
+    if (pendingScrollAdjustRef.current) {
+      const container = getScrollContainer();
+      if (container) {
+        const delta = container.scrollHeight - pendingScrollAdjustRef.current.scrollHeight;
+        if (delta > 0) {
+          container.scrollTop = pendingScrollAdjustRef.current.scrollTop + delta;
+        }
+      }
+      pendingScrollAdjustRef.current = null;
+    }
+  }, [visibleMessages, getScrollContainer]);
+
   return (
     <div ref={containerRef} onContextMenu={handleMessageContextMenu}>
       {ctxMenu.visible && (
@@ -394,30 +407,23 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
           ]}
         />
       )}
-      {(shouldCollapse || canLoadEarlierFromDisk || canLoadEarlierOpencode) && (
+      {shouldCollapse && (
         <div
-          className="collapsed-messages-indicator"
-          onClick={handleRevealMore}
+          className={`collapsed-messages-indicator ${loadingEarlierHistory ? 'is-loading loading' : ''}`}
+          onClick={loadingEarlierHistory ? undefined : handleRevealMore}
         >
-          {loadingEarlierHistory
-            ? t('chat.loadingEarlierTurns')
-            : shouldCollapse
-              ? t('chat.showEarlierTurns', {
-                count: nextTurnCount,
-                remaining: hiddenTurnCount,
-                total: historyPageInfo?.totalTurns,
-              })
-              : canLoadEarlierFromDisk
-                ? t('chat.loadEarlierTurns', {
-                  count: Math.min(HISTORY_DISK_PAGE_SIZE, historyPageInfo?.fromTurn ?? 0),
-                  remaining: historyPageInfo?.fromTurn ?? 0,
-                  total: historyPageInfo?.totalTurns ?? 0,
-                })
-                : t('chat.loadEarlierTurns', {
-                  count: Math.min(OPENCODE_HISTORY_PAGE_SIZE, opencodeWindowInfo?.windowStart ?? 0),
-                  remaining: opencodeWindowInfo?.windowStart ?? 0,
-                  total: opencodeWindowInfo?.total ?? 0,
-                })}
+          {loadingEarlierHistory ? (
+            <span className="collapsed-messages-loading-wrapper">
+              <span className="codicon codicon-loading codicon-modifier-spin" />
+              <span>{t('chat.loadingEarlierTurns')}</span>
+            </span>
+          ) : (
+            t('chat.showEarlierTurns', {
+              count: nextTurnCount,
+              remaining: hiddenTurnCount,
+              total: userTurnStartIndexes.length,
+            })
+          )}
         </div>
       )}
 

@@ -251,43 +251,123 @@ export async function cleanupMaterializedImagePaths(paths) {
 }
 
 /**
+ * Known binary file extensions that cannot be read as plain text.
+ */
+export const BINARY_EXTENSIONS = new Set([
+  'zip', 'jar', 'war', 'ear', 'tar', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar',
+  'exe', 'dll', 'so', 'dylib', 'bin', 'class', 'pyc', 'pyo', 'pyd',
+  'o', 'obj', 'lib', 'a', 'iso', 'img', 'dmg', 'apk', 'wasm',
+  'mp3', 'wav', 'ogg', 'flac', 'aac', 'mp4', 'avi', 'mkv', 'mov', 'wmv', 'webm',
+]);
+
+/**
+ * Checks whether a MIME type represents readable text or code.
+ *
+ * @param {unknown} mime
+ * @returns {boolean}
+ */
+export function isTextMimeType(mime) {
+  if (typeof mime !== 'string') return false;
+  const lower = mime.trim().toLowerCase();
+  if (lower.startsWith('text/')) return true;
+  return (
+    lower === 'application/json' ||
+    lower === 'application/ld+json' ||
+    lower === 'application/xml' ||
+    lower === 'application/xhtml+xml' ||
+    lower === 'application/javascript' ||
+    lower === 'application/x-javascript' ||
+    lower === 'application/typescript' ||
+    lower === 'application/x-yaml' ||
+    lower === 'application/yaml' ||
+    lower === 'application/x-sh' ||
+    lower === 'application/x-shellscript' ||
+    lower === 'application/sql' ||
+    lower === 'application/graphql' ||
+    lower === 'application/toml'
+  );
+}
+
+/**
+ * Detects whether a buffer contains binary data (e.g. NUL byte in the first 1KB).
+ *
+ * @param {Buffer} buffer
+ * @returns {boolean}
+ */
+export function isBinaryBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return false;
+  const inspectLen = Math.min(buffer.length, 1024);
+  for (let i = 0; i < inspectLen; i++) {
+    if (buffer[i] === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Extension → MIME fallback for attachments that carry no media type.
  * Text-ish sources map to `text/plain` on purpose: opencode inlines
- * `data:` + `text/plain` parts as readable content instead of a binary blob.
+ * `data:` + `text/plain` parts as readable content instead of sending
+ * unsupported file parts (like application/json or text/csv) to the model.
  */
 const EXTENSION_MIME = new Map(Object.entries({
   txt: 'text/plain',
   log: 'text/plain',
-  md: 'text/markdown',
-  json: 'application/json',
-  csv: 'text/csv',
-  xml: 'text/xml',
-  html: 'text/html',
-  css: 'text/css',
+  md: 'text/plain',
+  markdown: 'text/plain',
+  json: 'text/plain',
+  csv: 'text/plain',
+  tsv: 'text/plain',
+  xml: 'text/plain',
+  html: 'text/plain',
+  htm: 'text/plain',
+  css: 'text/plain',
+  scss: 'text/plain',
+  less: 'text/plain',
   pdf: 'application/pdf',
-  zip: 'application/zip',
-  gz: 'application/gzip',
   js: 'text/plain',
+  mjs: 'text/plain',
+  cjs: 'text/plain',
   jsx: 'text/plain',
   ts: 'text/plain',
+  mts: 'text/plain',
+  cts: 'text/plain',
   tsx: 'text/plain',
   java: 'text/plain',
   kt: 'text/plain',
+  kts: 'text/plain',
+  groovy: 'text/plain',
   py: 'text/plain',
   go: 'text/plain',
   rs: 'text/plain',
   c: 'text/plain',
   h: 'text/plain',
   cpp: 'text/plain',
+  hpp: 'text/plain',
   cs: 'text/plain',
   rb: 'text/plain',
   php: 'text/plain',
   sh: 'text/plain',
+  bash: 'text/plain',
+  zsh: 'text/plain',
+  bat: 'text/plain',
+  cmd: 'text/plain',
+  ps1: 'text/plain',
+  psm1: 'text/plain',
   yml: 'text/plain',
   yaml: 'text/plain',
   toml: 'text/plain',
   sql: 'text/plain',
   gradle: 'text/plain',
+  properties: 'text/plain',
+  env: 'text/plain',
+  ini: 'text/plain',
+  conf: 'text/plain',
+  proto: 'text/plain',
+  graphql: 'text/plain',
+  gql: 'text/plain',
+  dockerfile: 'text/plain',
 }));
 
 function mimeForFileName(fileName) {
@@ -298,9 +378,10 @@ function mimeForFileName(fileName) {
 
 /**
  * Resolve a MIME type for any attachment (not just images).
- * Never returns null — unknown files fall back to `text/plain` so opencode
- * inlines them as readable text instead of rejecting the unsupported
- * `application/octet-stream`.
+ * Native multimodal types (images and PDF) are preserved.
+ * All text and code types (including application/json, text/csv, etc.)
+ * are normalized to `text/plain` so opencode inlines them instead of
+ * failing with "functionality not supported".
  *
  * @param {unknown} mediaTypeHint from mediaType / mimeType fields
  * @param {string|null|undefined} dataUrlMime from data: URL parse
@@ -309,16 +390,51 @@ function mimeForFileName(fileName) {
  */
 export function resolveAttachmentMimeType(mediaTypeHint, dataUrlMime, fileName) {
   const hint = typeof mediaTypeHint === 'string' ? mediaTypeHint.trim().toLowerCase() : '';
-  // application/octet-stream is the browser's "I don't know" value; using it
-  // makes opencode serve reject the part (especially Copilot-compatible
-  // providers), so fall through to extension sniffing.
-  if (hint && hint !== 'application/octet-stream') return hint;
   const dm = typeof dataUrlMime === 'string' ? dataUrlMime.trim().toLowerCase() : '';
-  if (dm && dm !== 'application/octet-stream') return dm;
-  const sniffed = mimeForFileName(fileName);
-  // Final guard: if extension sniffing somehow still yields the unsupported
-  // catch-all, coerce to text/plain so opencode inlines it instead of throwing.
-  return sniffed === 'application/octet-stream' ? 'text/plain' : sniffed;
+  const candidate = (hint && hint !== 'application/octet-stream')
+    ? hint
+    : ((dm && dm !== 'application/octet-stream') ? dm : '');
+
+  // 1. Native multimodal types supported by LLM providers:
+  //    - image/* (png, jpeg, gif, webp, etc.)
+  //    - application/pdf
+  if (candidate) {
+    if (candidate.startsWith('image/')) {
+      return normalizeImageMimeType(candidate);
+    }
+    if (candidate === 'application/pdf') {
+      return 'application/pdf';
+    }
+    // Text-like media types (application/json, text/csv, text/markdown, etc.)
+    // MUST be coerced to text/plain so opencode inlines them instead of
+    // sending unsupported media types to provider file-part endpoints.
+    if (isTextMimeType(candidate)) {
+      return 'text/plain';
+    }
+  }
+
+  // 2. Extension-based resolution
+  const ext = typeof fileName === 'string'
+    ? path.extname(fileName).replace(/^\./, '').toLowerCase()
+    : '';
+
+  if (ext) {
+    if (BINARY_EXTENSIONS.has(ext)) {
+      return 'application/octet-stream';
+    }
+    const fromExt = EXTENSION_MIME.get(ext);
+    if (fromExt) {
+      return fromExt;
+    }
+  }
+
+  // 3. If candidate was another text variant, fall back to text/plain
+  if (candidate && isTextMimeType(candidate)) {
+    return 'text/plain';
+  }
+
+  // Default fallback for unknown files (e.g. extensionless scripts like gradlew)
+  return 'text/plain';
 }
 
 /**
@@ -326,25 +442,27 @@ export function resolveAttachmentMimeType(mediaTypeHint, dataUrlMime, fileName) 
  *
  * opencode server schema (packages/schema/src/v1/session.ts — FilePartInput):
  *   { id?, type: "file", mime: string, filename?: string, url: string, source? }
- * `url` accepts both `data:<mime>;base64,<payload>` and `file://<abs path>`.
- * Sending anything else (e.g. the old `{ path, mediaType }` shape) makes the
- * server reject the whole prompt with
- * `400 Missing key at ["parts"][n]["mime"]`.
+ * `url` accepts both `data:<mime>;base64,<payload>` (multimodal) and `file://<abs path>`.
+ *
+ * Text / code files are decoded to UTF-8 and returned in `textAttachments` to be
+ * inlined into prompt text, since downstream LLM APIs reject non-multimodal MIME
+ * types on media/image part endpoints.
  *
  * Nothing is dropped silently: every skipped attachment yields an entry in
  * `errors` so the caller can surface it.
  *
  * @param {CliAttachment[]} attachments
  * @param {{ maxBytes?: number }} [options]
- * @returns {{ parts: Array<{ type: 'file', mime: string, filename: string, url: string }>, errors: string[] }}
+ * @returns {{ parts: Array<{ type: 'file', mime: string, filename: string, url: string }>, textAttachments: Array<{ fileName: string, content: string, mime: string }>, errors: string[] }}
  */
 export function buildFileParts(attachments, options = {}) {
   const maxBytes = options.maxBytes ?? MAX_ATTACHMENT_BYTES;
   const parts = [];
+  const textAttachments = [];
   const errors = [];
 
   if (!Array.isArray(attachments) || attachments.length === 0) {
-    return { parts, errors };
+    return { parts, textAttachments, errors };
   }
 
   for (const att of attachments) {
@@ -374,6 +492,10 @@ export function buildFileParts(attachments, options = {}) {
     // it reads the current content from disk via its own Read tool.
     if (localPath && !hasData) {
       const mime = resolveAttachmentMimeType(hint, null, fileName);
+      if (mime === 'application/octet-stream') {
+        errors.push(`${label}: binary files are not supported as chat attachments`);
+        continue;
+      }
       parts.push({
         type: 'file',
         mime,
@@ -412,15 +534,46 @@ export function buildFileParts(attachments, options = {}) {
     }
 
     const mime = resolveAttachmentMimeType(hint, parsed.mimeType, fileName);
-    parts.push({
-      type: 'file',
-      mime,
-      filename: label,
-      url: `data:${mime};base64,${buffer.toString('base64')}`,
-    });
+    const isNativeMedia = mime.startsWith('image/') || mime === 'application/pdf';
+    if (mime === 'application/octet-stream' || (!isNativeMedia && isBinaryBuffer(buffer))) {
+      errors.push(`${label}: binary files are not supported as chat attachments`);
+      continue;
+    }
+
+    if (isNativeMedia) {
+      parts.push({
+        type: 'file',
+        mime,
+        filename: label,
+        url: `data:${mime};base64,${buffer.toString('base64')}`,
+      });
+    } else {
+      const textContent = buffer.toString('utf8');
+      textAttachments.push({
+        fileName: label,
+        content: textContent,
+        mime,
+      });
+    }
   }
 
-  return { parts, errors };
+  return { parts, textAttachments, errors };
+}
+
+/**
+ * Formats inlined text attachments into a structured Markdown section for prompt injection.
+ *
+ * @param {Array<{ fileName: string, content: string, mime?: string }>} textAttachments
+ * @returns {string}
+ */
+export function formatInlinedAttachments(textAttachments) {
+  if (!Array.isArray(textAttachments) || textAttachments.length === 0) {
+    return '';
+  }
+  const blocks = textAttachments.map((att) => {
+    return `<attachment filename="${att.fileName}">\n${att.content}\n</attachment>`;
+  });
+  return '\n\n## Attached Files\n' + blocks.join('\n\n');
 }
 
 /**

@@ -94,17 +94,6 @@ export interface ClaudeMessage {
   [key: string]: unknown;
 }
 
-export interface CodexHistoryPageInfo {
-  pageId: string;
-  sessionId: string;
-  mode: 'replace' | 'prepend';
-  fromTurn: number;
-  toTurn: number;
-  totalTurns: number;
-  hasMore: boolean;
-  loadedMessageCount: number;
-  cursorReset?: boolean;
-}
 
 export interface TodoItem {
   id?: string;

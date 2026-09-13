@@ -88,7 +88,12 @@
       "redo": "Rétablir le dernier message annulé",
       "fork": "Dupliquer toute la session dans une nouvelle branche",
       "share": "Partager le lien de la session",
-      "unshare": "Ne plus partager la session"
+      "unshare": "Ne plus partager la session",
+      "review": "Examiner les modifications de code ou le diff git",
+      "init": "Initialiser les règles et la configuration du projet (OPENCODE.md)",
+      "models": "Afficher ou changer de modèle disponible",
+      "themes": "Changer le thème de l'interface",
+      "help": "Afficher l'aide et la liste des commandes"
     },
     "compactTooltip": "Cliquez pour compacter la session",
     "compactStarted": "Compression de la session…",
@@ -110,7 +115,8 @@
     "showEarlierMessages": "Afficher {{count}} messages précédents",
     "showEarlierTurns": "Afficher les {{count}} tours précédents ({{remaining}} tours chargés restants)",
     "loadEarlierTurns": "Charger {{count}} tours précédents depuis le disque ({{remaining}} sur {{total}} restants)",
-    "loadingEarlierTurns": "Chargement des tours précédents...",
+    "loadEarlierMessages": "Charger {{count}} messages précédents ({{remaining}} sur {{total}} restants)",
+    "loadingEarlierTurns": "Chargement des tours précédents",
     "totalDuration": "Cette réponse a pris",
     "tokenUsage": "{{input}} entrée / {{output}} sortie",
     "tokenUsageDetail": "Total du tour — entrée {{input}} · écriture cache {{cacheWrite}} · lecture cache {{cacheRead}} · sortie {{output}}",
@@ -175,8 +181,8 @@
       },
       "theme": {
         "label": "Thème de l'interface",
-        "system": "Suivre VS Code",
-        "systemDesc": "Suit automatiquement le thème de VS Code",
+        "system": "Suivre l'IDE",
+        "systemDesc": "Suivre automatiquement le thème de l'IDE",
         "light": "Clair",
         "lightDesc": "Frais et lumineux, adapté pour une utilisation diurne",
         "dark": "Sombre",
@@ -184,7 +190,7 @@
       },
       "language": {
         "label": "Langue de l'interface",
-        "followIde": "Suivre VS Code",
+        "followIde": "Suivre l'IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -204,11 +210,6 @@
         "hintText": "pour obtenir le chemin de l'exécutable Node.js réel. Laisser vide pour la détection automatique.",
         "versionTooLow": "La version de Node.js est trop ancienne. Le plugin nécessite v{{minVersion}} ou supérieur pour fonctionner correctement"
       },
-      "claudeCliPath": {
-        "label": "Chemin du TUI Opencode",
-        "placeholder": "ex. /usr/local/bin/opencode — laisser vide pour détection auto",
-        "hint": "Binaire opencode personnalisé (facultatif) utilisé pour démarrer le service opencode. Laissez vide pour rechercher dans le PATH et les emplacements par défaut (~/.opencode/bin). Prend effet après le redémarrage du démon lors de la sauvegarde."
-      },
       "workingDirectory": {
         "label": "Working Directory",
         "placeholder": "e.g. project1 or leave empty to use project root",
@@ -226,29 +227,25 @@
       "editorFont": {
         "label": "Police UI",
         "hint": "Ici vous changez la police de l'interface du plugin ; le code peut utiliser une police séparée.",
-        "followOption": "Suivre la police UI de VS Code ({{font}})",
+        "followOption": "Suivre la police UI d'IDEA ({{font}})",
         "customOption": "Fichier de police UI personnalisé",
         "customPathLabel": "Chemin du fichier de police UI",
         "customPathPlaceholder": "Choisissez ou saisissez le chemin d'un fichier .ttf / .otf pour la police UI",
         "browse": "Parcourir",
-        "warningUnavailable": "La police UI est indisponible, la police UI de VS Code est utilisée",
-        "statusFollowEditor": "Police UI de VS Code actuellement utilisée : {{font}}",
-        "statusCustom": "Police UI personnalisée actuellement utilisée : {{font}}",
-        "systemFontGroup": "Polices système",
-        "systemFontLoading": "Chargement des polices système…",
-        "systemFontFailed": "Échec du chargement des polices système.",
-        "systemFontRetry": "Réessayer"
+        "warningUnavailable": "La police UI est indisponible, la police UI d'IDEA est utilisée",
+        "statusFollowEditor": "Police UI d'IDEA actuellement utilisée : {{font}}",
+        "statusCustom": "Police UI personnalisée actuellement utilisée : {{font}}"
       },
       "codeFont": {
         "label": "Police de code",
         "hint": "Le code Markdown et les blocs de commande utilisent cette police.",
-        "followOption": "Suivre la police de l'éditeur VS Code ({{font}})",
+        "followOption": "Suivre la police de l'éditeur ({{font}})",
         "customOption": "Fichier de police de code personnalisé",
         "customPathLabel": "Chemin du fichier de police de code",
         "customPathPlaceholder": "Choisissez ou saisissez le chemin d'un fichier .ttf / .otf pour la police de code",
         "browse": "Parcourir",
         "warningUnavailable": "La police de code est indisponible, la police de l'éditeur est utilisée",
-        "statusFollowEditor": "Police de l'éditeur VS Code actuellement utilisée : {{font}}",
+        "statusFollowEditor": "Police de l'éditeur actuellement utilisée : {{font}}",
         "statusCustom": "Police de code personnalisée actuellement utilisée : {{font}}"
       },
       "streaming": {
@@ -374,6 +371,17 @@
         "enabled": "Activé",
         "disabled": "Désactivé",
         "hint": "Lorsqu'elle est désactivée, créer une nouvelle session dans une conversation contenant des messages se fera directement, sans afficher la boîte de dialogue de confirmation."
+      },
+      "compactConfirm": {
+        "label": "Confirmation de compactage de session",
+        "enabled": "Activé",
+        "disabled": "Désactivé",
+        "hint": "Lorsqu'elle est désactivée, cliquer sur les stats de tokens ou exécuter /compact compactera directement sans demander de confirmation."
+      },
+      "opencodeCliPath": {
+        "label": "Chemin du TUI Opencode",
+        "placeholder": "ex. /usr/local/bin/opencode — laisser vide pour détection auto",
+        "hint": "Binaire opencode personnalisé (facultatif) utilisé pour démarrer le service opencode. Laissez vide pour rechercher dans le PATH et les emplacements par défaut (~/.opencode/bin). Prend effet après le redémarrage du démon lors de la sauvegarde."
       }
     },
     "providers": "Gestion des fournisseurs",
@@ -478,7 +486,7 @@
     "communityQrAlt": "Code QR de soutien",
     "communityQrAltAlipay": "Code QR de soutien Alipay",
     "communityQrAltPayPal": "Code QR de soutien PayPal",
-    "projectDesc": "Ce projet est l'extension VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "Ce projet est le plugin IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "Dépôt GitHub",
     "githubDesc": "Ce projet est open source sur GitHub. Mettez une étoile pour nous soutenir !",
     "githubCopyBtn": "Copier l'URL du dépôt",

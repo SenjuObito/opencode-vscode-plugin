@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ConfirmDialog from './ConfirmDialog';
 import PlanApprovalDialog from './PlanApprovalDialog';
-import ChangelogDialog from './ChangelogDialog';
 import CustomModelDialog from './settings/CustomModelDialog';
 import { usePluginModels } from './settings/hooks/usePluginModels';
 import { STORAGE_KEYS } from '../types/provider';
-import { fetchGithubReleases, clearReleasesCache } from '../version/githubReleases';
-import type { ChangelogEntry } from '../version/changelog';
 import { useDialogs } from '../contexts/DialogContext';
 import { useUIState } from '../contexts/UIStateContext';
 import ContextUsageDialog from './ContextUsageDialog';
@@ -56,7 +53,7 @@ export interface AppDialogsProps {
 
 /**
  * Renders all top-level dialogs.
- * Permission / ask-user / plan / changelog / add-model state is read
+ * Permission / ask-user / plan / add-model state is read
  * from DialogContext and UIStateContext directly to avoid prop drilling 25+
  * fields from App.tsx (stage 4-5 of TASK-P1-01).
  */
@@ -80,7 +77,6 @@ export const AppDialogs = ({
     handleAskUserQuestionSubmit, handleAskUserQuestionSkip,
   } = useDialogs();
   const {
-    showChangelogDialog, closeChangelogDialog,
     addModelDialogOpen, setAddModelDialogOpen,
   } = useUIState();
 
@@ -93,37 +89,6 @@ export const AppDialogs = ({
       setSkipNewSessionAgain(false);
     }
   }, [showNewSessionConfirm]);
-
-  // First-start / version-update changelog: fetch from the configured GitHub
-  // repository instead of showing the bundled cc-gui changelog history.
-  // Start empty: the repo may legitimately have no releases, and the dialog
-  // must never index into a list we have not loaded yet.
-  const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
-  // Seed loading from the dialog's initial visibility so the first paint shows
-  // the spinner rather than a flash of the empty state.
-  const [changelogLoading, setChangelogLoading] = useState(() => showChangelogDialog);
-  const [changelogError, setChangelogError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!showChangelogDialog) return;
-    // The cached list may be stale after an update; clear it once per dialog
-    // open so the user sees the latest releases.
-    clearReleasesCache();
-    setChangelogLoading(true);
-    setChangelogError(null);
-    fetchGithubReleases()
-      .then((result) => {
-        setChangelogEntries(result.entries);
-        // A repo with no releases is a normal empty state, not a load failure —
-        // only surface real fetch errors in the dialog's error banner.
-        setChangelogError(result.empty ? null : result.error ?? null);
-      })
-      .catch((err) => {
-        setChangelogError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        setChangelogLoading(false);
-      });
-  }, [showChangelogDialog]);
 
   const handleConfirmNewSessionWithSkip = () => {
     if (skipNewSessionAgain) {
@@ -188,13 +153,6 @@ export const AppDialogs = ({
         onApprove={handlePlanApprovalApprove}
         onReject={handlePlanApprovalReject}
         timeoutSeconds={permissionDialogTimeoutSeconds}
-      />
-      <ChangelogDialog
-        isOpen={showChangelogDialog}
-        onClose={closeChangelogDialog}
-        entries={changelogEntries}
-        loading={changelogLoading}
-        error={changelogError ?? undefined}
       />
       <AddModelDialogWrapper
         isOpen={addModelDialogOpen}

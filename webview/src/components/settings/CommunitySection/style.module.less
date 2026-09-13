@@ -1,5 +1,5 @@
 .configSection {
-  max-width: 600px;
+  max-width: 800px;
   padding-bottom: 24px;
 }
 
@@ -29,33 +29,52 @@
   align-items: center;
   padding: 20px 0;
   margin-top: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .qrcodeRow {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 20px;
   justify-content: center;
+  align-items: stretch;
+  width: 100%;
 }
 
 .qrcodeWrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 12px;
   padding: 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  flex: 0 1 200px;
+  min-width: 160px;
+  max-width: 220px;
+  box-sizing: border-box;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
 }
 
 .qrcodeImage {
-  width: 180px;
-  height: 180px;
+  width: 100%;
+  max-width: 180px;
+  aspect-ratio: 1 / 1;
+  height: auto;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #ffffff;
   padding: 8px;
+  box-sizing: border-box;
 }
 
 .qrcodeTip {
@@ -63,6 +82,7 @@
   font-size: 14px;
   color: var(--text-tertiary);
   text-align: center;
+  word-break: break-word;
 }
 
 /* GitHub open source */
@@ -140,21 +160,17 @@
   }
 
   .qrcodeContainer {
-    padding: 16px 0;
+    padding: 12px 0;
   }
 
   .qrcodeRow {
-    flex-direction: column;
-    align-items: center;
+    gap: 12px;
   }
 
   .qrcodeWrapper {
+    flex: 1 1 140px;
+    max-width: 100%;
     padding: 12px;
-  }
-
-  .qrcodeImage {
-    width: 150px;
-    height: 150px;
   }
 
   .qrcodeTip {

@@ -110,6 +110,7 @@ describe('uiPreferences', () => {
       historyCompletionEnabled: 'yes',
       detailedOutputEnabled: 'y',
       skipNewSessionConfirm: 1,
+      skipCompactConfirm: 1,
     });
 
     const prefs = m.getUiPreferences();
@@ -121,6 +122,7 @@ describe('uiPreferences', () => {
     expect(prefs.historyCompletionEnabled).toBe(true);
     expect(prefs.detailedOutputEnabled).toBe(false);
     expect(prefs.skipNewSessionConfirm).toBe(false);
+    expect(prefs.skipCompactConfirm).toBe(false);
   });
 
   it('ignores non-object payloads', async () => {

@@ -88,7 +88,12 @@
       "redo": "重做上次撤銷的訊息",
       "fork": "全量複製目前會話到新分叉",
       "share": "分享會話連結",
-      "unshare": "取消分享會話"
+      "unshare": "取消分享會話",
+      "review": "審查代碼變更與 Git Diff",
+      "init": "初始化項目規則與配置 (OPENCODE.md)",
+      "models": "查看或切換可用模型",
+      "themes": "切換介面主題",
+      "help": "查看幫助與命令列表"
     },
     "compactTooltip": "點擊壓縮會話",
     "compactStarted": "正在壓縮會話…",
@@ -110,7 +115,8 @@
     "showEarlierMessages": "顯示之前的 {{count}} 則訊息",
     "showEarlierTurns": "顯示更早的 {{count}} 輪對話（目前已載入尚餘 {{remaining}} 輪）",
     "loadEarlierTurns": "從磁碟載入更早的 {{count}} 輪（共 {{total}} 輪，尚餘 {{remaining}} 輪）",
-    "loadingEarlierTurns": "正在載入更早的對話...",
+    "loadEarlierMessages": "載入更早的 {{count}} 條訊息（共 {{total}} 條，尚餘 {{remaining}} 條）",
+    "loadingEarlierTurns": "正在載入更早的對話",
     "totalDuration": "本次耗時",
     "tokenUsage": "輸入 {{input}} / 輸出 {{output}}",
     "tokenUsageDetail": "本輪合計 — 輸入 {{input}} · 快取寫入 {{cacheWrite}} · 快取讀取 {{cacheRead}} · 輸出 {{output}}",
@@ -175,8 +181,8 @@
       },
       "theme": {
         "label": "介面主題",
-        "system": "跟隨 VS Code",
-        "systemDesc": "自動跟隨 VS Code 主題",
+        "system": "跟隨 IDE",
+        "systemDesc": "自動跟隨 IDE 主題",
         "light": "亮色",
         "lightDesc": "清爽明亮，適合白天使用",
         "dark": "暗色",
@@ -184,7 +190,7 @@
       },
       "language": {
         "label": "介面語言",
-        "followIde": "跟隨 VS Code",
+        "followIde": "跟隨 IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -221,29 +227,25 @@
       "editorFont": {
         "label": "UI 字體",
         "hint": "這裡修改的是外掛介面字體。程式碼可以使用獨立的程式碼字體。",
-        "followOption": "跟隨 VS Code UI 字體（{{font}}）",
+        "followOption": "跟隨 IDEA UI 字體（{{font}}）",
         "customOption": "自訂 UI 字體檔案",
         "customPathLabel": "UI 字體檔案路徑",
         "customPathPlaceholder": "選擇或輸入 .ttf / .otf UI 字體檔案路徑",
         "browse": "瀏覽",
-        "warningUnavailable": "UI 字體不可用，目前已回退到 VS Code UI 字體",
-        "statusFollowEditor": "目前跟隨 VS Code UI 字體：{{font}}",
-        "statusCustom": "目前使用自訂 UI 字體：{{font}}",
-        "systemFontGroup": "系統字體",
-        "systemFontLoading": "正在載入系統字體…",
-        "systemFontFailed": "系統字體載入失敗。",
-        "systemFontRetry": "重試"
+        "warningUnavailable": "UI 字體不可用，目前已回退到 IDEA UI 字體",
+        "statusFollowEditor": "目前跟隨 IDEA UI 字體：{{font}}",
+        "statusCustom": "目前使用自訂 UI 字體：{{font}}"
       },
       "codeFont": {
         "label": "程式碼字體",
         "hint": "Markdown 程式碼和命令區塊會使用這個字體。",
-        "followOption": "跟隨 VS Code 編輯器字體（{{font}}）",
+        "followOption": "跟隨編輯器字體（{{font}}）",
         "customOption": "自訂程式碼字體檔案",
         "customPathLabel": "程式碼字體檔案路徑",
         "customPathPlaceholder": "選擇或輸入 .ttf / .otf 程式碼字體檔案路徑",
         "browse": "瀏覽",
         "warningUnavailable": "程式碼字體不可用，目前已回退到編輯器字體",
-        "statusFollowEditor": "目前跟隨 VS Code 編輯器字體：{{font}}",
+        "statusFollowEditor": "目前跟隨編輯器字體：{{font}}",
         "statusCustom": "目前使用自訂程式碼字體：{{font}}"
       },
       "streaming": {
@@ -370,6 +372,12 @@
         "disabled": "已關閉",
         "hint": "關閉後，在已有訊息的會話中點選新建將直接建立，不再彈出確認視窗"
       },
+      "compactConfirm": {
+        "label": "壓縮會話時二次確認",
+        "enabled": "已開啟",
+        "disabled": "已關閉",
+        "hint": "關閉後，點選 Token 統計或執行 /compact 時將直接壓縮，不再彈出確認視窗"
+      },
       "opencodeCliPath": {
         "label": "Opencode TUI 路徑",
         "placeholder": "例如 /usr/local/bin/opencode — 留空則自動查找",
@@ -483,7 +491,7 @@
     "communityQrAlt": "贊助二維碼",
     "communityQrAltAlipay": "支付寶贊助二維碼",
     "communityQrAltPayPal": "PayPal 贊助二維碼",
-    "projectDesc": "本專案是 OpenCode Buddy VS Code 插件 (https://github.com/SenjuObito/opencode-vscode-plugin)",
+    "projectDesc": "本專案是 OpenCode Buddy IntelliJ IDEA 插件 (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub 開源地址",
     "githubDesc": "本專案已在 GitHub 開源，歡迎 Star 支持",
     "githubCopyBtn": "複製開源地址",

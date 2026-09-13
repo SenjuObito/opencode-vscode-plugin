@@ -2,11 +2,7 @@ import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
-import {
-  EFFORT_SUPPORTED_CLAUDE_MODELS,
-  apply1MContextSuffix,
-} from '../components/ChatInputBox/types';
-import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort, CodexFastMode } from '../components/ChatInputBox/types';
+import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
 
 /**
@@ -29,13 +25,6 @@ function createContextUsageRequestId(): string {
   return `context-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function shouldSendReasoningEffort(provider: string, model: string): boolean {
-  if (provider !== 'claude') {
-    return true;
-  }
-  return EFFORT_SUPPORTED_CLAUDE_MODELS.has(model);
-}
-
 export interface UseMessageSenderOptions {
   t: TFunction;
   addToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
@@ -43,7 +32,6 @@ export interface UseMessageSenderOptions {
   selectedModel: string;
   permissionMode: PermissionMode;
   reasoningEffort: ReasoningEffort;
-  codexFastMode: CodexFastMode;
   daemonStatusLoaded: boolean;
   currentSdkInstalled: boolean;
   sentAttachmentsRef: RefObject<Map<string, Array<{ fileName: string; mediaType: string }>>>;
@@ -68,7 +56,6 @@ export interface UseMessageSenderOptions {
   setCurrentView: (view: 'chat' | 'history' | 'settings') => void;
   forceCreateNewSession: () => void;
   handleModeSelect?: (mode: PermissionMode) => void;
-  longContextEnabled?: boolean;
   openContextUsageDialog: (requestId?: string | null, loading?: boolean) => void;
   closeContextUsageDialog: (requestId?: string | null) => boolean;
 }
@@ -83,7 +70,6 @@ export function useMessageSender({
   selectedModel,
   permissionMode,
   reasoningEffort,
-  codexFastMode,
   daemonStatusLoaded,
   currentSdkInstalled,
   sentAttachmentsRef,
@@ -92,6 +78,8 @@ export function useMessageSender({
   isUserAtBottomRef,
   userPausedRef,
   isStreamingRef,
+  streamingContentRef,
+  streamingThinkingRef,
   contentUpdateTimeoutRef,
   thinkingUpdateTimeoutRef,
   setMessages,
@@ -101,7 +89,6 @@ export function useMessageSender({
   setCurrentView,
   forceCreateNewSession,
   handleModeSelect,
-  longContextEnabled,
   openContextUsageDialog,
   closeContextUsageDialog,
 }: UseMessageSenderOptions) {
@@ -168,10 +155,8 @@ export function useMessageSender({
       openContextUsageDialog(requestId, true);
 
       // Send bridge event to fetch context usage with current model
-      // Apply [1m] suffix if long context is enabled so the SDK creates
-      // a runtime with the correct context window limit.
       const sent = sendBridgeEvent('get_context_usage', JSON.stringify({
-        model: apply1MContextSuffix(selectedModel, longContextEnabled ?? false),
+        model: selectedModel,
         requestId,
       }));
 
@@ -184,7 +169,7 @@ export function useMessageSender({
       return true;
     }
     return false;
-  }, [currentProvider, selectedModel, longContextEnabled, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
+  }, [currentProvider, selectedModel, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
 
   /**
    * Check for unimplemented slash commands
@@ -262,18 +247,14 @@ export function useMessageSender({
     requestedPermissionMode: PermissionMode
   ) => {
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-    const effectivePermissionMode: PermissionMode = currentProvider === 'codex' && requestedPermissionMode === 'plan'
-      ? 'default'
-      : requestedPermissionMode;
+    const effectivePermissionMode: PermissionMode = requestedPermissionMode;
     console.debug('[ModeSync][Frontend] send request mode', {
       provider: currentProvider,
       requestedMode: requestedPermissionMode,
       effectiveMode: effectivePermissionMode,
     });
 
-    const reasoningEffortPayload = shouldSendReasoningEffort(currentProvider, selectedModel)
-      ? { reasoningEffort }
-      : {};
+    const reasoningEffortPayload = { reasoningEffort };
 
     if (hasAttachments) {
       try {
@@ -287,7 +268,6 @@ export function useMessageSender({
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
-          codexFastMode,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
       } catch (error) {
@@ -297,7 +277,6 @@ export function useMessageSender({
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
           ...reasoningEffortPayload,
-          codexFastMode,
         });
         sendBridgeEvent('send_message', fallbackPayload);
       }
@@ -307,16 +286,19 @@ export function useMessageSender({
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
         ...reasoningEffortPayload,
-        codexFastMode,
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [codexFastMode, currentProvider, selectedModel, reasoningEffort]);
+  }, [currentProvider, selectedModel, reasoningEffort]);
 
   /**
    * Execute message sending (from queue or directly)
    */
-  const executeMessage = useCallback((content: string, attachments?: Attachment[]) => {
+  const executeMessage = useCallback((
+    content: string,
+    attachments?: Attachment[],
+    fileTags?: { displayPath: string; absolutePath: string }[],
+  ) => {
     // Expand inline quote chips (tokens) into their full Markdown blockquotes.
     const text = expandQuoteTokens(content).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
@@ -383,9 +365,11 @@ export function useMessageSender({
 
     // Build agent info
 
-    // Extract file tag info
-    const fileTags = chatInputRef.current?.getFileTags() ?? [];
-    const fileTagsInfo = fileTags.length > 0 ? fileTags.map(tag => ({
+    // Extract file tag info: prefer directly passed fileTags from submit, fallback to ref
+    const resolvedFileTags = (fileTags && fileTags.length > 0)
+      ? fileTags
+      : (chatInputRef.current?.getFileTags() ?? []);
+    const fileTagsInfo = resolvedFileTags.length > 0 ? resolvedFileTags.map(tag => ({
       displayPath: tag.displayPath,
       absolutePath: tag.absolutePath,
     })) : null;
@@ -406,7 +390,11 @@ export function useMessageSender({
   /**
    * Handle message submission (from ChatInputBox)
    */
-  const handleSubmit = useCallback((content: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback((
+    content: string,
+    attachments?: Attachment[],
+    fileTags?: { displayPath: string; absolutePath: string }[],
+  ) => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
 
@@ -425,7 +413,7 @@ export function useMessageSender({
     if (checkUnimplementedCommand(text)) return;
 
     // Execute message
-    executeMessage(content, attachments);
+    executeMessage(content, attachments, fileTags);
   }, [checkNewSessionCommand, checkLocalCommand, checkContextCommand, checkUnimplementedCommand, executeMessage]);
 
   /**
@@ -451,17 +439,23 @@ export function useMessageSender({
       thinkingUpdateTimeoutRef.current = null;
     }
 
-    // Deliberately NOT resetting streamingMessageIndexRef / streamingTurnIdRef /
-    // streamingContentRef / streamingThinkingRef: the host's interrupt path now
-    // pushes the final message snapshot and then fires onStreamEnd, and that
-    // onStreamEnd needs the turn refs to locate the streaming assistant bubble
-    // and the buffered content to write the final (partial) answer back onto it.
-    // Clearing them here is what made BOTH the user message and the partial AI
-    // reply vanish on stop.
+    // Drop the accumulated delta buffers. The backend may still push a few
+    // trailing deltas that were already in flight; those call
+    // ensureStreamingActive() and would resume patching on top of a buffer that
+    // no longer belongs to any visible turn.
+    //
+    // Deliberately NOT resetting streamingMessageIndexRef / streamingTurnIdRef:
+    // onStreamEnd needs both to locate the placeholder assistant message and
+    // write back the final content / raw / durationMs / __turnId. Clearing them
+    // here would make the finalized reply disappear from the UI.
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
 
     sendBridgeEvent('interrupt_session');
   }, [
     isStreamingRef,
+    streamingContentRef,
+    streamingThinkingRef,
     contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef,
   ]);
