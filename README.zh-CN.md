@@ -32,7 +32,7 @@
 - **MCP** —— 服务器状态查看与市场（安装 / 移除 MCP 服务器）。
 - **IDE 集成** —— 编辑器、项目视图、编辑器标签页、控制台右键菜单动作，以及 VCS 提交工具栏的
   *Generate Commit Message*（通过 Git4Idea 跑真实 `git diff`）。
-- **跟随 IDE** —— 明暗主题跟随 IDE，可同步 IDE 字体，界面支持中英双语。
+- **跟随 VS Code** —— 明暗主题跟随 VS Code，可同步 VS Code 字体，界面支持多种语言。
 
 
 ## 使用教程

@@ -1,13 +1,8 @@
 # OpenCode Buddy
 
-A VS Code extension that brings the **opencode** agent into a full chat GUI. The original motivation was that the existing VS Code opencode plugin was too difficult to use, and the cc-gui open source project was found on GitHub. It is a greenfield port of the
-IntelliJ plugin [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui): the React webview is
-carried over verbatim, the Java backend is rewritten in TypeScript, and only the **opencode** provider is kept
-(Claude / Codex / Grok / Kimi / PI branches removed).
+A VS Code extension that brings the **opencode** agent into a full chat GUI. The original motivation was that the existing VS Code opencode plugin was too difficult to use, and the cc-gui open source project was found on GitHub. It is a greenfield port of the IntelliJ plugin [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui): the React webview is carried over verbatim, the Java backend is rewritten in TypeScript, and only the **opencode** provider is kept (Claude / Codex / Grok / Kimi / PI branches removed).
 
-Unlike the original plugin — which spawned a fresh `opencode run` for every message — this extension keeps a
-**persistent `opencode serve` daemon** (via `@opencode-ai/sdk`) alive across all tabs and conversations, managed by a
-daemon bridge with prewarm, heartbeat, crash-restart, and session reuse.
+Unlike the original plugin — which spawned a fresh `opencode run` process for every message — this extension keeps a **persistent `opencode serve` daemon** (via `@opencode-ai/sdk`) alive across all tabs and conversations, managed by a daemon bridge with prewarm, heartbeat, crash-restart, and session reuse.
 
 ## Philosophy
 
@@ -17,30 +12,43 @@ daemon bridge with prewarm, heartbeat, crash-restart, and session reuse.
 
 This project is primarily developed with AI assistance:
 
-- **AI Tools**: OpenCode (primary), Claude Code, WorkBuddy
-- **AI Models**: Deepseek-v4-flash (primary), Deepseek-v4-pro, MiMo V2.5, Ox Alpha, hy4, hy3
+- **AI Tools**: OpenCode (primary), Claude Code, WorkBuddy, Gemini
+- **AI Models**: Deepseek-v4-flash (primary), Gemini, Deepseek-v4-pro, MiMo V2.5, Ox Alpha, hy4, hy3
 
-Most development used free tiers. Deepseek cost was 65.34 CNY.
+A Gemini Pro subscription has been purchased; Deepseek cost 89 CNY. If you find this useful, a tip would help me recover the cost.
 
 ## Features
 
-- **Persistent opencode daemon** — no per-message process spawn. `opencode serve` is prewarmed on activation,
-  reused across requests, and auto-restarted on crash (≤3 attempts).
-- **Two chat surfaces** — an activity-bar panel (left) and a secondary-sidebar panel (right), plus **multi-tab**
-  editor sessions (each tab is an independent `createWebviewPanel` with its own conversation).
-- **Full cc-gui UI** — streaming text / thinking / tool calls with diffs, model / mode / slash-command selectors,
-  token-usage circle, attachments and file context, conversation history, MCP servers, agent/skill/prompt
-  management, permission / question / plan-approval dialogs, and a settings panel.
-- **opencode-only** — the webview, host handlers, and CLI tooling are trimmed to opencode.
+- **Persistent opencode daemon** — no per-message process spawn. `opencode serve` (default port 4096,
+  overridable via `OPENCODE_PORT`) is started or reused on demand, stays prewarmed across requests, and
+  auto-restarts on crash.
+- **Full chat interface** — streaming text, thinking deltas, tool-call cards with diffs; multi-tab
+  sessions inside the tool window, detachable into a standalone window.
+- **Native input** — `@filename` references, image attachments, one-click send of an editor selection or
+  file path, opencode's native slash commands (`/init`, `/review`, …), `!shell` commands, and a
+  context-compaction flow.
+- **Agent / model / reasoning depth** — build / plan mode switching, any provider + model combination
+  from your opencode config, and reasoning-depth (variant) selection.
+- **Approval flows** — permission approval (once / always / reject), question prompts, and plan approval,
+  all rendered as native panels inside the chat area.
+- **Session management** — local session index with favourites and search, revert / fork / compact, and
+  history export.
+- **MCP** — server status view and a marketplace (install / remove MCP servers).
+- **Editor integration** — a button in the editor title bar, plus two commands: open the panel in the
+  left sidebar, or open it as an independent tab in an editor split.
+- **Follow VS Code** — light/dark theme follows VS Code, VS Code font syncing, and a
+  multi-language UI.
 
 ## Usage
 
 ### 1. Open the chat panel
 
-After installing the extension, click the OpenCode icon in the VS Code sidebar to open the chat panel. You can also run `OpenCode: Open OpenCode in Editor Split` from the command palette to open an independent tab in an editor split — each tab has its own conversation.
+After installing the extension, click the OpenCode icon in the VS Code sidebar to open the chat panel.
+You can also open an independent tab in an editor split by running the *Open OpenCode Buddy in Editor
+Split* command from the command palette — each tab is its own conversation.
 
 ![Chat main view](media/home.png)
-*The screenshot shows the UI in Simplified Chinese.*
+*Screenshots show the UI in Simplified Chinese.*
 
 UI layout:
 
@@ -51,14 +59,14 @@ UI layout:
   - `Build` — select the working mode (Build / Plan, etc.).
   - **Model selector** — pick the current model (e.g. `Nemotron-3.5-Lightning-Free`).
   - **Reasoning depth** — e.g. `medium`, controls how deeply the model thinks.
-- **Input box** — `@filename` attaches files, `/bash ...` runs shell commands, `/opencode ...` runs opencode commands. `Enter` sends.
+- **Input box** — `@filename` attaches files, `/bash ...` runs shell commands, `/opencode ...` runs
+  opencode commands. `Enter` sends.
 
 ### 2. Personalise settings
 
 Click the gear icon in the top-right of the chat panel to open the settings page:
 
 ![Settings page](media/settings.png)
-*`Basic Config → Appearance` tab. UI labels are localised to Simplified Chinese in this screenshot.*
 
 **Basic Config → Appearance** main options:
 
@@ -70,7 +78,8 @@ Click the gear icon in the top-right of the chat panel to open the settings page
 | Diff theme | Light/dark theme for the diff view |
 | Chat background / Title-bar and status-bar colour | Custom chat-area colour (custom hex supported) |
 
-The settings page also has `Appearance / Behaviour / Environment` tabs at the top — Behaviour and Environment configure the agent and runtime behaviour respectively.
+The settings page also has `Appearance / Behaviour / Environment` tabs at the top — Appearance for
+visual customisation, Behaviour for agent behaviour, and Environment for runtime configuration.
 
 ## Requirements
 
