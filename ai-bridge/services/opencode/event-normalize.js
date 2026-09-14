@@ -50,6 +50,7 @@ export function normalizePermissionRequest(props) {
     toolName: tool,
     description: resources.join(', '),
     inputs: { command: tool, patterns: resources },
+    directory: data.directory ?? props?.directory ?? undefined,
   };
 }
 
@@ -82,5 +83,6 @@ export function normalizeQuestionRequest(props) {
     requestId: data.id ?? props?.requestId ?? props?.id ?? '',
     tool,
     questions,
+    directory: data.directory ?? props?.directory ?? undefined,
   };
 }

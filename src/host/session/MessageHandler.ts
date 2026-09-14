@@ -860,9 +860,10 @@ export class MessageHandler implements MessageCallback {
 				(typeof payload.requestId === 'string' && payload.requestId) ||
 				(typeof payload.permissionId === 'string' && (payload.permissionId as string)) ||
 				undefined,
+			directory: typeof payload.directory === 'string' ? payload.directory : undefined,
 			questions: Array.isArray(payload.questions) ? (payload.questions as Array<Record<string, unknown>>) : undefined,
 		};
-		logDiagnostic(`[MessageHandler] handlePermissionRequest resolved: type=${request.type} toolUseId="${request.toolUseId}" toolName="${request.toolName}" requestId=${request.requestId}`);
+		logDiagnostic(`[MessageHandler] handlePermissionRequest resolved: type=${request.type} toolUseId="${request.toolUseId}" toolName="${request.toolName}" requestId=${request.requestId} directory=${request.directory}`);
 			this.callbackHandler.notifyPermissionRequested(request);
 		} catch {
 			// 解析失败忽略

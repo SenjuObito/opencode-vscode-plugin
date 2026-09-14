@@ -17,12 +17,14 @@ interface PendingPermission {
 	sessionId: string | null;
 	permissionId: string;
 	toolName: string;
+	directory?: string | null;
 }
 
 interface PendingQuestion {
 	sessionId: string | null;
 	questions: Array<Record<string, unknown>>;
 	toolName: string;
+	directory?: string | null;
 }
 
 export class PermissionHandler extends BaseMessageHandler {
@@ -68,7 +70,7 @@ export class PermissionHandler extends BaseMessageHandler {
 
 	/** 由 OpenCodeSession 的 SessionCallbackAdapter 注入：收到 daemon 权限/提问请求。 */
 	onPermissionRequested(request: PermissionRequest): void {
-		this.debugLog(`onPermissionRequested type=${request.type} toolUseId=${request.toolUseId} requestId=${request.requestId} toolName=${request.toolName} sessionId=${request.sessionId}`);
+		this.debugLog(`onPermissionRequested type=${request.type} toolUseId=${request.toolUseId} requestId=${request.requestId} toolName=${request.toolName} sessionId=${request.sessionId} directory=${request.directory}`);
 		if (request.type === 'question') {
 			this.onQuestionRequested(request);
 			return;
@@ -79,11 +81,16 @@ export class PermissionHandler extends BaseMessageHandler {
 		// 否则会把 call_xxx 当 permissionId 回传导致 replyPermission failed。
 		const channelId = request.toolUseId || request.requestId || request.toolName || 'permission-1';
 		const permissionId = request.requestId || request.toolUseId || channelId;
-		this.debugLog(`onPermissionRequested storing channelId=${channelId} sessionId=${sessionId} permissionId=${permissionId}`);
+		const directory = request.directory
+			?? this.context.resolveEffectiveWorkingDirectory()
+			?? this.context.getFallbackWorkingDirectory()
+			?? null;
+		this.debugLog(`onPermissionRequested storing channelId=${channelId} sessionId=${sessionId} permissionId=${permissionId} directory=${directory}`);
 		this.pendingPermissions.set(channelId, {
 			sessionId,
 			permissionId,
 			toolName: request.toolName,
+			directory,
 		});
 		this.callJavaScript(
 			'showPermissionDialog',
@@ -102,11 +109,16 @@ export class PermissionHandler extends BaseMessageHandler {
 
 	onQuestionRequested(request: PermissionRequest): void {
 		const requestId = request.requestId ?? request.toolUseId ?? 'question-1';
-		this.debugLog(`onQuestionRequested requestId=${requestId} sessionId=${request.sessionId} toolName="${request.toolName}" toolNameType=${typeof request.toolName} questions=${request.questions?.length ?? 0}`);
+		const directory = request.directory
+			?? this.context.resolveEffectiveWorkingDirectory()
+			?? this.context.getFallbackWorkingDirectory()
+			?? null;
+		this.debugLog(`onQuestionRequested requestId=${requestId} sessionId=${request.sessionId} toolName="${request.toolName}" toolNameType=${typeof request.toolName} questions=${request.questions?.length ?? 0} directory=${directory}`);
 		this.pendingQuestions.set(requestId, {
 			sessionId: request.sessionId ?? null,
 			questions: request.questions ?? [],
 			toolName: request.tool ?? request.toolName ?? '',
+			directory,
 		});
 		const payload = JSON.stringify({
 			requestId,
@@ -197,7 +209,7 @@ export class PermissionHandler extends BaseMessageHandler {
 				this.debugLog(`[P] channelId=${channelId} no daemon — early return`);
 				return;
 			}
-			this.debugLog(`[P] channelId=${channelId} calling replyPermission sessionId=${pending.sessionId} permissionId=${pending.permissionId}`);
+			this.debugLog(`[P] channelId=${channelId} calling replyPermission sessionId=${pending.sessionId} permissionId=${pending.permissionId} directory=${pending.directory}`);
 			void daemon.request(
 				'opencode.replyPermission',
 				{
@@ -205,6 +217,7 @@ export class PermissionHandler extends BaseMessageHandler {
 					permissionID: pending.permissionId,
 					reply: allow ? (remember ? 'allowAlways' : 'allow') : 'deny',
 					rejectMessage,
+					directory: pending.directory ?? undefined,
 				},
 				{
 					onLine: () => {},
@@ -251,10 +264,15 @@ export class PermissionHandler extends BaseMessageHandler {
 				return;
 			}
 			const orderedAnswers = buildOrderedAnswers(pending.questions, answers);
-			this.debugLog(`[Q] requestId=${requestId} calling replyQuestion sessionId=${pending.sessionId}`);
+			this.debugLog(`[Q] requestId=${requestId} calling replyQuestion sessionId=${pending.sessionId} directory=${pending.directory}`);
 			void daemon.request(
 				'opencode.replyQuestion',
-				{ sessionId: pending.sessionId ?? undefined, questionID: requestId, answers: orderedAnswers },
+				{
+					sessionId: pending.sessionId ?? undefined,
+					questionID: requestId,
+					answers: orderedAnswers,
+					directory: pending.directory ?? undefined,
+				},
 				{
 					onLine: () => {},
 					onError: (error) => {
@@ -287,7 +305,11 @@ export class PermissionHandler extends BaseMessageHandler {
 			}
 			void daemon.request(
 				'opencode.rejectQuestion',
-				{ sessionId: pending.sessionId ?? undefined, questionID: requestId },
+				{
+					sessionId: pending.sessionId ?? undefined,
+					questionID: requestId,
+					directory: pending.directory ?? undefined,
+				},
 				{
 					onLine: () => {},
 					onError: (error) => this.handleReplyFailure(`跳过问题失败: ${error}`),
@@ -301,9 +323,9 @@ export class PermissionHandler extends BaseMessageHandler {
 
 	/**
 	 * 回复送达失败（daemon 返回 success:false / 请求异常）：
-	 * toast 告知用户具体原因，并中止当前挂死的一轮 —— 否则 opencode 仍会
-	 * 等待回复、session 永远 busy，前端"正在生成响应"无法结束。
-	 * 对卡片：把已乐观置为"已回答/已允许/已拒绝"的记录如实翻转为失效状态。
+	 * toast 告知用户具体原因。
+	 * 对卡片：把已乐观置为"已回答/已允许/已拒绝"的记录如实翻转为失效状态，
+	 * 避免调用破坏性的 sendAbort() 强行杀死整个正在运行的对话循环。
 	 */
 	private handleReplyFailure(message: string, questionRequestId?: string, permissionChannelId?: string): void {
 		logDiagnostic(`[PermissionHandler] handleReplyFailure: ${message} questionRequestId=${questionRequestId ?? 'N/A'} permissionChannelId=${permissionChannelId ?? 'N/A'}`);
@@ -316,8 +338,6 @@ export class PermissionHandler extends BaseMessageHandler {
 			logDiagnostic(`[PermissionHandler] calling invalidatePermissionCard(${permissionChannelId})`);
 			this.callJavaScript('invalidatePermissionCard', JSON.stringify(permissionChannelId));
 		}
-		const daemon = this.context.getDaemon();
-		daemon?.sendAbort();
 	}
 
 	private forceCloseFrontendDialog(fnName: string): void {

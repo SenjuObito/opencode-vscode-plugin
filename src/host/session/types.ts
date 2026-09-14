@@ -32,6 +32,8 @@ export interface PermissionRequest {
 	sessionId?: string;
 	/** opencode 侧请求 id（permission/question 事件 `data.id`），用于回传。 */
 	requestId?: string;
+	/** 对应会话的工作区目录（用于服务端多实例寻址）。 */
+	directory?: string;
 	/** 提问弹层所需的原始 questions（type === 'question' 时）。 */
 	questions?: Array<Record<string, unknown>>;
 }

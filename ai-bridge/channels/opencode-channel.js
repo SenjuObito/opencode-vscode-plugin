@@ -205,8 +205,8 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
     }
 
     case 'replyQuestion': {
-      const { sessionId, questionID, answers } = stdinData || {};
-      const directory = getSessionDirectory(sessionId);
+      const { sessionId, questionID, answers, directory: explicitDirectory } = stdinData || {};
+      const directory = getSessionDirectory(sessionId) || explicitDirectory;
       console.log(`[opencode-channel] replyQuestion sessionId=${sessionId} questionID=${questionID} directory=${directory || '-'} answers=${JSON.stringify(answers)}`);
       await openCodeReplyQuestion(sessionId, questionID, Array.isArray(answers) ? answers : [], directory);
       console.log(`[opencode-channel] replyQuestion SUCCESS`);
@@ -214,8 +214,8 @@ export async function handleOpenCodeCommand(command, args, stdinData) {
     }
 
     case 'rejectQuestion': {
-      const { sessionId, questionID } = stdinData || {};
-      const directory = getSessionDirectory(sessionId);
+      const { sessionId, questionID, directory: explicitDirectory } = stdinData || {};
+      const directory = getSessionDirectory(sessionId) || explicitDirectory;
       await openCodeRejectQuestion(sessionId, questionID, directory);
       break;
     }

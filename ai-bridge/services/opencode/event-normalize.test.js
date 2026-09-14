@@ -111,3 +111,45 @@ test('normalizePermissionRequest — falls back to permissionId without a tool c
   assert.equal(result.toolUseId, 'perm_4');
   assert.equal(result.tool_use_id, 'perm_4');
 });
+
+test('normalizeQuestionRequest — preserves directory in v1 and v2 shapes', () => {
+  const v1 = normalizeQuestionRequest({
+    id: 'qst_v1',
+    sessionID: 'ses_v1',
+    directory: '/workspace/v1',
+    questions: [QUESTION],
+  });
+  assert.equal(v1.directory, '/workspace/v1');
+
+  const v2 = normalizeQuestionRequest({
+    data: {
+      id: 'qst_v2',
+      sessionID: 'ses_v2',
+      directory: '/workspace/v2',
+      questions: [QUESTION],
+    },
+  });
+  assert.equal(v2.directory, '/workspace/v2');
+});
+
+test('normalizePermissionRequest — preserves directory in v1 and v2 shapes', () => {
+  const v1 = normalizePermissionRequest({
+    id: 'perm_v1',
+    sessionID: 'ses_v1',
+    directory: '/workspace/v1',
+    permission: 'edit',
+    patterns: ['a.txt'],
+  });
+  assert.equal(v1.directory, '/workspace/v1');
+
+  const v2 = normalizePermissionRequest({
+    data: {
+      id: 'perm_v2',
+      sessionID: 'ses_v2',
+      directory: '/workspace/v2',
+      action: 'bash',
+      resources: ['echo 1'],
+    },
+  });
+  assert.equal(v2.directory, '/workspace/v2');
+});
