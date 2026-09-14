@@ -1,6 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import RevertPlaceholderBar from './RevertPlaceholderBar';
+import type { ClaudeMessage } from '../../types';
+
+vi.mock('../MessageItem', () => ({
+  MessageItem: ({ message }: { message: ClaudeMessage }) => (
+    <div data-testid="mock-message-item">{message.content}</div>
+  ),
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -56,6 +63,26 @@ describe('RevertPlaceholderBar', () => {
     expect(screen.queryByText('first question')).toBeNull();
   });
 
+  it('renders full MessageItems when revertedMessages is provided', () => {
+    const sampleMessages: ClaudeMessage[] = [
+      { id: 'm1', type: 'user', content: 'full question text' },
+      { id: 'm2', type: 'assistant', content: 'full answer text' },
+    ];
+
+    render(
+      <RevertPlaceholderBar
+        count={2}
+        revertedMessages={sampleMessages}
+        onRestore={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'chat.revertExpand' }));
+    expect(screen.getByTestId('reverted-messages-container')).toBeTruthy();
+    expect(screen.getByText('full question text')).toBeTruthy();
+    expect(screen.getByText('full answer text')).toBeTruthy();
+  });
+
   it('disables the expand toggle when there is nothing to preview', () => {
     render(<RevertPlaceholderBar count={0} previews={[]} onRestore={vi.fn()} />);
 
@@ -63,3 +90,4 @@ describe('RevertPlaceholderBar', () => {
     expect((expandBtn as HTMLButtonElement).disabled).toBe(true);
   });
 });
+

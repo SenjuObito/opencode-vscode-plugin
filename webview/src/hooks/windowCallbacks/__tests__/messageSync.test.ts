@@ -814,6 +814,20 @@ describe('preserveLatestMessagesOnShrink', () => {
     expect(result).toBe(next);
   });
 
+  it('does NOT preserve tail when window.__hasActiveRevert is true', () => {
+    (window as any).__hasActiveRevert = true;
+    const oldAssistant = makeAssistantMsg('old response');
+    const undoneUser = makeUserMsg('undone question');
+    const undoneAssistant = makeAssistantMsg('undone answer');
+    const prev = [oldAssistant, undoneUser, undoneAssistant];
+    const next = [oldAssistant]; // shrunk after undo
+
+    const result = preserveLatestMessagesOnShrink(prev, next, 'opencode');
+    expect(result).toBe(next);
+    expect(result).toHaveLength(1);
+    (window as any).__hasActiveRevert = false;
+  });
+
   it('does NOT add optimistic duplicate when shrink tail contains optimistic already matched', () => {
     // Compact scenario: backend sends shorter list, optimistic was matched but shrink
     // logic must filter it out to prevent duplicate display.

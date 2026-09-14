@@ -351,6 +351,7 @@ const App = () => {
   const [revertBoundaryId, setRevertBoundaryId] = useState<string | null>(null);
   const hasRevertStateRef = useRef(false);
   const revertBoundaryIdRef = useRef<string | null>(null);
+  const lastLoadedRevertStateRef = useRef<string>('');
 
   /**
    * 同步更新 revert 状态的 ref 与 boundary（ref 供回调内做变更检测，避开闭包旧值）。
@@ -359,8 +360,17 @@ const App = () => {
   const applyRevertState = useCallback((next: boolean, messageId?: string | null) => {
     hasRevertStateRef.current = next;
     revertBoundaryIdRef.current = next ? (messageId ?? null) : null;
+    if (typeof window !== 'undefined') {
+      window.__hasActiveRevert = next;
+    }
     setRevertBoundaryId(next ? (messageId ?? null) : null);
-  }, []);
+    userPausedRef.current = false;
+    isUserAtBottomRef.current = true;
+    scrollToBottom();
+    requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  }, [scrollToBottom, userPausedRef, isUserAtBottomRef]);
 
   /**
    * Resolve an opencode message id from a chat message. Live messages may
@@ -539,19 +549,15 @@ const App = () => {
         console.debug('[App] onRevertStateUpdate', payload);
         const next = !!payload.hasRevert;
         const nextId = payload.messageId ?? null;
-        // 重载触发条件：hasRevert 变化「或」边界消息 id 变化。
-        // 仅比较 hasRevert 会在「已有撤销态时再次点击撤销」场景下漏掉重载：
-        // 此时 hasRevert 仍为 true（changed=false），但边界 msg_xxx 已改变，
-        // 新边界消息未被拉取进前端 → messageMatchesId 命中失败 → 消息不折叠、
-        // 占位条为空且「展示」无反应。
-        const changed = next !== hasRevertStateRef.current || nextId !== revertBoundaryIdRef.current;
+        const prevHasRevert = hasRevertStateRef.current;
+        const prevId = revertBoundaryIdRef.current;
+        const changed = next !== prevHasRevert || nextId !== prevId;
         applyRevertState(next, nextId);
-        // Reload the transcript so reverted/restored messages are reflected.
-        // 仅在状态真正变化时重载：宿主在每次历史加载完成后都会推送本事件，
-        // 无条件重载会形成 load_session → onRevertStateUpdate → load_session
-        // 的死循环，表现为消息列表持续闪烁。
-        if (changed) {
-          const sessionId = currentSessionIdRef.current;
+
+        const sessionId = currentSessionIdRef.current;
+        const currentKey = `${sessionId}:${next}:${nextId}`;
+        if (changed || (next && lastLoadedRevertStateRef.current !== currentKey)) {
+          lastLoadedRevertStateRef.current = currentKey;
           if (sessionId) {
             loadHistorySession(sessionId);
           }
@@ -687,8 +693,20 @@ const App = () => {
     // Use the ref to avoid a stale closure: this callback is invoked from the
     // submit path where the `revertBoundaryId` state may not have caught up.
     const boundaryId = revertBoundaryIdRef.current;
-    if (!hasRevertStateRef.current || !boundaryId) return;
-    const idx = messages.findIndex((m) => getMessageId(m) === boundaryId);
+    if (!hasRevertStateRef.current) return;
+    let idx = -1;
+    if (boundaryId) {
+      idx = messages.findIndex((m) => getMessageId(m) === boundaryId);
+    }
+    if (idx < 0) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.type === 'user' && !m.content?.includes('[tool_result]')) {
+          idx = i;
+          break;
+        }
+      }
+    }
     if (idx >= 0) {
       setMessages(messages.slice(0, idx));
     }

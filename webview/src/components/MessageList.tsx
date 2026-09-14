@@ -245,7 +245,15 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   // BEFORE pagination math so collapsed-turn bookkeeping stays consistent.
   const { displayMessages, revertedMessages } = useMemo(() => {
     if (!revertBoundaryId) return { displayMessages: messages, revertedMessages: [] as ClaudeMessage[] };
-    const idx = messages.findIndex((m) => messageMatchesId(m, revertBoundaryId));
+    let idx = messages.findIndex((m) => messageMatchesId(m, revertBoundaryId));
+    if (idx < 0) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (isHumanUserMessage(messages[i])) {
+          idx = i;
+          break;
+        }
+      }
+    }
     if (idx < 0) {
       // Boundary not present in the loaded transcript (e.g. server already
       // filtered it) — keep the full list; the bar still renders via hasRevert.
@@ -394,6 +402,18 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
     }
   }, [visibleMessages, getScrollContainer]);
 
+  // Synchronously anchor scroll when revert boundary changes, preventing scroll clamping to 0
+  const prevRevertBoundaryIdRef = useRef(revertBoundaryId);
+  useLayoutEffect(() => {
+    if (prevRevertBoundaryIdRef.current !== revertBoundaryId) {
+      prevRevertBoundaryIdRef.current = revertBoundaryId;
+      const container = getScrollContainer();
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }, [revertBoundaryId, getScrollContainer]);
+
   return (
     <div ref={containerRef} onContextMenu={handleMessageContextMenu}>
       {ctxMenu.visible && (
@@ -470,7 +490,16 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
         <RevertPlaceholderBar
           count={revertedMessages.length}
           previews={revertedPreviews}
+          revertedMessages={revertedMessages}
           onRestore={() => onRestore?.()}
+          t={t}
+          getMessageText={getMessageText}
+          getContentBlocks={getContentBlocks}
+          findToolResult={findToolResult}
+          extractMarkdownContent={extractMarkdownContent}
+          onNavigateToProviderSettings={onNavigateToProviderSettings}
+          currentProvider={currentProvider}
+          detailedOutputEnabled={detailedOutputEnabled}
         />
       )}
 

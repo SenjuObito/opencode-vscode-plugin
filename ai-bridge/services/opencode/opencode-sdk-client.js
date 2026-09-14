@@ -614,34 +614,67 @@ export async function replyPermission(sessionId, permissionID, reply, message, d
  */
 export async function replyQuestion(sessionId, questionID, answers, directory) {
   const client = getClient();
+  const formattedAnswers = Array.isArray(answers) ? answers : [];
+
+  if (sessionId && client.session?.question?.reply) {
+    console.log(`[sdk] session.question.reply sessionID=${sessionId} requestID=${questionID}`);
+    const result = await client.session.question.reply({
+      sessionID: sessionId,
+      requestID: questionID,
+      questionV2Reply: { answers: formattedAnswers },
+      directory,
+    });
+    console.log(`[sdk] session.question.reply result=${JSON.stringify(result).substring(0, 500)}`);
+    if (!result.error) {
+      console.log(`[sdk] replyQuestion OK (session scope) questionID=${questionID}`);
+      return;
+    }
+    console.warn(`[sdk] session.question.reply returned error, falling back to legacy: ${summarizeError(result.error)}`);
+  }
+
   const params = {
     requestID: questionID,
-    answers: Array.isArray(answers) ? answers : [],
+    answers: formattedAnswers,
   };
   if (directory) params.directory = directory;
-  console.log(`[sdk] replyQuestion params=${JSON.stringify({ requestID: questionID, directory })}`);
+  console.log(`[sdk] legacy replyQuestion params=${JSON.stringify({ requestID: questionID, directory })}`);
   const result = await client.question.reply(params);
-  console.log(`[sdk] replyQuestion result=${JSON.stringify(result).substring(0, 500)}`);
+  console.log(`[sdk] legacy replyQuestion result=${JSON.stringify(result).substring(0, 500)}`);
   if (result.error) {
     throw new Error(`replyQuestion failed (${questionID}): ${summarizeError(result.error)}`);
   }
-  console.log(`[sdk] replyQuestion OK questionID=${questionID}`);
+  console.log(`[sdk] replyQuestion OK (legacy scope) questionID=${questionID}`);
 }
 
 /**
  * @param {string} sessionId
  * @param {string} questionID
+ * @param {string} [directory]
  * @returns {Promise<void>}
  */
 export async function rejectQuestion(sessionId, questionID, directory) {
   const client = getClient();
+  if (sessionId && client.session?.question?.reject) {
+    console.log(`[sdk] session.question.reject sessionID=${sessionId} requestID=${questionID}`);
+    const result = await client.session.question.reject({
+      sessionID: sessionId,
+      requestID: questionID,
+      directory,
+    });
+    if (!result.error) {
+      console.error('[DEBUG][OpenCodeDaemon] question rejected ok (session scope):', questionID);
+      return;
+    }
+    console.warn(`[sdk] session.question.reject returned error, falling back to legacy: ${summarizeError(result.error)}`);
+  }
+
   const params = { requestID: questionID };
   if (directory) params.directory = directory;
   const result = await client.question.reject(params);
   if (result.error) {
     throw new Error(`rejectQuestion failed (${questionID}): ${summarizeError(result.error)}`);
   }
-  console.error('[DEBUG][OpenCodeDaemon] question rejected ok:', questionID);
+  console.error('[DEBUG][OpenCodeDaemon] question rejected ok (legacy scope):', questionID);
 }
 
 /**

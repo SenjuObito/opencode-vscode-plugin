@@ -55,6 +55,8 @@ interface Window {
   };
   /** Global message ordinal of the webview list's first entry (window paging). */
   __opencodeListStart?: number;
+  /** Whether a revert/undo boundary is currently active on the frontend. */
+  __hasActiveRevert?: boolean;
 
   /**
    * Patch a single message UUID without re-sending the full message list.
