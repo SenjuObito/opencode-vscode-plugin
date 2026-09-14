@@ -2,8 +2,8 @@
   "name": "opencode-buddy",
   "displayName": "OpenCode Buddy",
   "publisher": "SenjuObito",
-  "description": "OpenCode — AI coding panel for VS Code",
-  "version": "0.0.1",
+  "description": "OpenCode — Best OpenCode GUI plugin for VS Code",
+  "version": "0.0.4",
   "repository": {
     "type": "git",
     "url": "https://github.com/SenjuObito/opencode-vscode-plugin.git"
