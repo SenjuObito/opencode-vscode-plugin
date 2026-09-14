@@ -37,17 +37,17 @@ Most development used free tiers. Deepseek cost was 65.34 CNY.
 
 ### 1. Open the chat panel
 
-After installing the extension, click the OpenCode icon in the VS Code sidebar to open the chat panel. You can also run `OpenCode: 在编辑器分栏打开 OpenCode` from the command palette to open an independent tab in an editor split — each tab has its own conversation.
+After installing the extension, click the OpenCode icon in the VS Code sidebar to open the chat panel. You can also run `OpenCode: Open OpenCode in Editor Split` from the command palette to open an independent tab in an editor split — each tab has its own conversation.
 
 ![Chat main view](media/home.png)
 *The screenshot shows the UI in Simplified Chinese.*
 
 UI layout:
 
-- **Top tabs** — `聊天 / Claude Code / Codex / OpenCode` to switch between conversations.
+- **Top tabs** — `Chat / Claude Code / Codex / OpenCode` to switch between conversations.
 - **Top-right** — new conversation / search / history / settings.
 - **Bottom bar**:
-  - `任务 / 子代理 / 编辑` — switch input mode.
+  - `Task / Subagent / Edit` — switch input mode.
   - `Build` — select the working mode (Build / Plan, etc.).
   - **Model selector** — pick the current model (e.g. `Nemotron-3.5-Lightning-Free`).
   - **Reasoning depth** — e.g. `medium`, controls how deeply the model thinks.
@@ -58,9 +58,9 @@ UI layout:
 Click the gear icon in the top-right of the chat panel to open the settings page:
 
 ![Settings page](media/settings.png)
-*`基础配置 → 外观` tab. UI labels are localised to Simplified Chinese in this screenshot.*
+*`Basic Config → Appearance` tab. UI labels are localised to Simplified Chinese in this screenshot.*
 
-**基础配置 → Appearance** main options:
+**Basic Config → Appearance** main options:
 
 | Item | Description |
 |---|---|
@@ -70,7 +70,7 @@ Click the gear icon in the top-right of the chat panel to open the settings page
 | Diff theme | Light/dark theme for the diff view |
 | Chat background / Title-bar and status-bar colour | Custom chat-area colour (custom hex supported) |
 
-The settings page also has `外观 / 行为 / 环境` tabs at the top — Behaviour and Environment configure the agent and runtime behaviour respectively.
+The settings page also has `Appearance / Behaviour / Environment` tabs at the top — Behaviour and Environment configure the agent and runtime behaviour respectively.
 
 ## Requirements
 

@@ -12,17 +12,28 @@
 
 本项目主要使用 AI 辅助开发：
 
-- **AI 工具**：OpenCode（主要）、Claude Code、WorkBuddy
-- **AI 模型**：Deepseek-v4-flash（主要）、Deepseek-v4-pro、MiMo V2.5、Ox Alpha、hy4、hy3
+- **AI 工具**：OpenCode（主要）、Claude Code、WorkBuddy、Gemini
+- **AI 模型**：Deepseek-v4-flash（主要）、Gemini、Deepseek-v4-pro、MiMo V2.5、Ox Alpha、hy4、hy3
 
-大部分开发使用免费额度，Deepseek 成本 65.34 元人民币。
+目前已购买使用Gemini Pro套餐，Deepseek 成本 89 元人民币。
+大家如果觉得好用，希望赞赏可以让我回收成本。
 
 ## 功能特性
 
-- **持久化 opencode 守护进程** — 无需为每条消息生成进程。`opencode serve` 在激活时预热，跨请求复用，崩溃时自动重启（≤3 次）。
-- **双聊天界面** — 活动栏面板（左侧）和辅助侧边栏面板（右侧），加上**多标签页**编辑器会话（每个标签页是独立的 `createWebviewPanel`，拥有自己的对话）。
-- **完整 cc-gui UI** — 流式文本/思考/工具调用及差异显示、模型/模式/斜杠命令选择器、token 使用量环形图、附件和文件上下文、对话历史、MCP 服务器、agent/skill/prompt 管理、权限/问题/计划审批对话框，以及设置面板。
-- **仅支持 opencode** — webview、宿主处理器和 CLI 工具已精简为仅支持 opencode。
+- **持久化 opencode 守护进程** —— 无需为每条消息生成进程。`opencode serve`（默认端口 4096，可用
+  `OPENCODE_PORT` 覆盖）按需启动或复用，跨请求保持预热，崩溃后自动重启。
+- **完整聊天界面** —— 流式文本、思考增量、带 diff 的工具调用卡片；工具窗口内多标签会话，支持脱离为独立窗口。
+- **原生输入** —— `@文件名` 引用、图片附件、编辑器选区/文件路径一键发送、opencode 原生斜杠命令
+  （`/init`、`/review` 等）、`!shell` 命令，以及上下文压缩流程。
+- **Agent / 模型 / 推理力度** —— build / plan 模式切换，读取 opencode 配置里的任意 provider + model 组合，
+  以及推理力度（variant）选择。
+- **审批流** —— 权限审批（once / always / reject）、question 提问和 plan 计划审批，全部在聊天区内以原生面板呈现。
+- **会话管理** —— 本地会话索引 + 收藏 + 搜索，revert / fork / compact，历史导出。
+- **MCP** —— 服务器状态查看与市场（安装 / 移除 MCP 服务器）。
+- **IDE 集成** —— 编辑器、项目视图、编辑器标签页、控制台右键菜单动作，以及 VCS 提交工具栏的
+  *Generate Commit Message*（通过 Git4Idea 跑真实 `git diff`）。
+- **跟随 IDE** —— 明暗主题跟随 IDE，可同步 IDE 字体，界面支持中英双语。
+
 
 ## 使用教程
 
