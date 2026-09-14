@@ -171,14 +171,28 @@ export const appendOptimisticMessageIfMissing = (
         : Array.isArray(backendRaw?.content)
           ? backendRaw.content
           : [];
-      const mergedContent = [...attachmentBlocks, ...backendContent];
-      const mergedRaw = {
-        ...backendRaw,
-        message: { ...(backendRaw?.message ?? {}), content: mergedContent },
-      };
-      const result = [...nextList];
-      result[matchedIndex] = { ...backendMsg, raw: mergedRaw };
-      return result;
+      // Backend messages (history/restore via SdkMessageConverter) already carry
+      // attachment blocks parsed from `<attachment filename="...">`; only prepend
+      // ones the backend is missing, otherwise the chip renders twice.
+      const existingAttachmentNames = new Set(
+        backendContent
+          .filter((b: any) => b && typeof b === 'object' && b.type === 'attachment')
+          .map((b: any) => b.fileName || b.name || b.title || b.filename || '')
+          .filter(Boolean)
+      );
+      const newAttachmentBlocks = attachmentBlocks.filter(
+        (b: any) => !existingAttachmentNames.has(b.fileName || b.name || b.title || b.filename || '')
+      );
+      if (newAttachmentBlocks.length > 0) {
+        const mergedContent = [...newAttachmentBlocks, ...backendContent];
+        const mergedRaw = {
+          ...backendRaw,
+          message: { ...(backendRaw?.message ?? {}), content: mergedContent },
+        };
+        const result = [...nextList];
+        result[matchedIndex] = { ...backendMsg, raw: mergedRaw };
+        return result;
+      }
     }
   }
 

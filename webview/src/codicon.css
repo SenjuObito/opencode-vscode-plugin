@@ -9,6 +9,23 @@
 	src: url("./codicon.ttf?3ef8078adef4793b3c5d7a7651cd9048") format("truetype");
 }
 
+/*
+ * Linux-only codicon face: FreeType (VS Code / JCEF on Linux) and DirectWrite
+ * (Windows) read different metric sets out of codicon.ttf (hhea 300/0 vs OS/2
+ * win 327/4), which shifts the glyph baseline inside its 1em box and knocks the
+ * icon out of line with adjacent text. Pinning the face to the font's own
+ * design metrics makes the glyph fill the box on Linux. Windows/macOS keep the
+ * un-overridden "codicon" face above; only `.os-linux` uses this one (base.less).
+ */
+@font-face {
+	font-family: "codicon-linux";
+	font-display: block;
+	src: url("./codicon.ttf?3ef8078adef4793b3c5d7a7651cd9048") format("truetype");
+	ascent-override: 100%;
+	descent-override: 0%;
+	line-gap-override: 0%;
+}
+
 .codicon[class*='codicon-'],
 .codicon {
 	font: normal normal normal 16px/1 codicon;

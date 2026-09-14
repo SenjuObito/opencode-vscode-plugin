@@ -23,6 +23,13 @@ import { debugLog } from './utils/debug';
 import { waitForBridge } from './utils/bridgeStartup';
 import type { UiFontConfig, CodeFontConfig } from './types/uiFontConfig';
 import { playNotificationSound } from './utils/notificationSound';
+import { isLinuxPlatform } from './utils/platform';
+
+// Linux-only: switch codicon to a fixed-metric face (see codicon.css / base.less)
+// so icon/text stay aligned. Windows/macOS never get the class and are unchanged.
+if (isLinuxPlatform()) {
+  document.documentElement.classList.add('os-linux');
+}
 
 // Silence noisy console output in production (including third-party libs).
 // console.error is preserved so ErrorBoundary and unhandled exceptions still

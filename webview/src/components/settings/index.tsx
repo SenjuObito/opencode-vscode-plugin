@@ -87,15 +87,10 @@ const SettingsView = ({
 
   // Basic settings actions: working dir, streaming, shortcuts, sound, commit prompt, etc.
   const {
-    nodePath,
     setNodePath,
-    savingNodePath,
     setSavingNodePath,
-    nodeVersion,
     setNodeVersion,
-    minNodeVersion,
     setMinNodeVersion,
-    handleSaveNodePath,
     opencodeCliPath,
     setOpencodeCliPath,
     savingOpencodeCliPath,
@@ -284,12 +279,6 @@ const SettingsView = ({
               onThemeChange={setThemePreference}
               fontSizeLevel={fontSizeLevel}
               onFontSizeLevelChange={setFontSizeLevel}
-              nodePath={nodePath}
-              onNodePathChange={setNodePath}
-              onSaveNodePath={handleSaveNodePath}
-              savingNodePath={savingNodePath}
-              nodeVersion={nodeVersion}
-              minNodeVersion={minNodeVersion}
               opencodeCliPath={opencodeCliPath}
               onOpencodeCliPathChange={setOpencodeCliPath}
               onSaveOpencodeCliPath={handleSaveOpencodeCliPath}

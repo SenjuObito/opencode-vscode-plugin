@@ -366,6 +366,36 @@ describe('appendOptimisticMessageIfMissing', () => {
     expect(hasAttachment).toBe(true);
   });
 
+  it('does not duplicate attachment blocks when backend message already contains them', () => {
+    const ts = new Date().toISOString();
+    const attachmentBlock = { type: 'attachment', fileName: '.env', data: 'base64data' };
+    const optimistic = makeUserMsg('hello', {
+      isOptimistic: true,
+      timestamp: ts,
+      raw: {
+        message: {
+          content: [attachmentBlock, { type: 'text', text: 'hello' }],
+        },
+      } as any,
+    });
+    const backendMsg = makeUserMsg('hello', {
+      timestamp: ts,
+      raw: {
+        message: {
+          content: [{ type: 'attachment', fileName: '.env', mediaType: 'text/plain' }, { type: 'text', text: 'hello' }],
+        },
+      } as any,
+    });
+    const prev = [optimistic];
+    const next = [backendMsg];
+
+    const result = appendOptimisticMessageIfMissing(prev, next);
+    expect(result).toHaveLength(1);
+    const raw = result[0].raw as any;
+    const attachments = raw.message.content.filter((b: any) => b.type === 'attachment');
+    expect(attachments).toHaveLength(1);
+  });
+
   it('keeps the optimistic user message when a lagging snapshot omits it entirely', () => {
     // Regression for "my message disappears but the agent answers it": a snapshot
     // (e.g. a background session_updated reload) arrives that does NOT yet contain

@@ -20,12 +20,6 @@ interface BasicConfigSectionProps {
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
   fontSizeLevel: number;
   onFontSizeLevelChange: (level: number) => void;
-  nodePath?: string;
-  onNodePathChange?: (path: string) => void;
-  onSaveNodePath?: () => void;
-  savingNodePath?: boolean;
-  nodeVersion?: string | null;
-  minNodeVersion?: number;
   opencodeCliPath?: string;
   onOpencodeCliPathChange?: (path: string) => void;
   onSaveOpencodeCliPath?: () => void;
@@ -196,12 +190,6 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
 
       {activeTab === 'environment' && (
         <EnvironmentTab
-          nodePath={props.nodePath}
-          onNodePathChange={props.onNodePathChange}
-          onSaveNodePath={props.onSaveNodePath}
-          savingNodePath={props.savingNodePath}
-          nodeVersion={props.nodeVersion}
-          minNodeVersion={props.minNodeVersion}
           opencodeCliPath={props.opencodeCliPath}
           onOpencodeCliPathChange={props.onOpencodeCliPathChange}
           onSaveOpencodeCliPath={props.onSaveOpencodeCliPath}
