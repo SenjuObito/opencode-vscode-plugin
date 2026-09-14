@@ -51,10 +51,30 @@ describe('useSettingsBasicActions', () => {
   it('does not send anything when switching to customFile without a saved path (silent no-op)', () => {
     const { result } = renderHook(() => useSettingsBasicActions({}));
 
+    (window.sendToJava as any).mockClear();
+
     act(() => {
       result.current.handleCodeFontSelectionChange('customFile');
     });
 
-    expect(window.sendToJava).not.toHaveBeenCalled();
+    expect(window.sendToJava).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^set_code_font_config:/)
+    );
+  });
+
+  it('sends named font configuration updates for ui and code font selections', () => {
+    const { result } = renderHook(() => useSettingsBasicActions({}));
+
+    act(() => {
+      result.current.handleUiFontSelectionChange('named:JetBrains Mono');
+      result.current.handleCodeFontSelectionChange('named:Fira Code');
+    });
+
+    expect(window.sendToJava).toHaveBeenCalledWith(
+      'set_ui_font_config:{"mode":"named","fontFamily":"JetBrains Mono"}'
+    );
+    expect(window.sendToJava).toHaveBeenCalledWith(
+      'set_code_font_config:{"mode":"named","fontFamily":"Fira Code"}'
+    );
   });
 });

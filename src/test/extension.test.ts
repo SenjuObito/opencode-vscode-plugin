@@ -50,4 +50,26 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(parseSlashCommand('!git status'), null);
 		assert.strictEqual(parseSlashCommand(''), null);
 	});
+
+	test('Notification COPY table contains all 10 supported languages and valid OpenCode Buddy branding', async () => {
+		const { COPY, resolveCopyKey, mapIdeLanguageToSupported } = await import('../host/notifications/NotificationCopy.js');
+		const expectedLanguages = ['zh', 'zh-TW', 'en', 'es', 'fr', 'ja', 'ru', 'hi', 'ko', 'pt-BR'] as const;
+		for (const lang of expectedLanguages) {
+			assert.ok(COPY[lang], `COPY missing language: ${lang}`);
+			assert.ok(COPY[lang].taskCompleted, `COPY[${lang}] missing taskCompleted`);
+			assert.ok(COPY[lang].taskFailed, `COPY[${lang}] missing taskFailed`);
+			assert.ok(COPY[lang].questionPending, `COPY[${lang}] missing questionPending`);
+			assert.match(COPY[lang].questionPending, /OpenCode Buddy/i);
+			assert.doesNotMatch(COPY[lang].questionPending, /Claude/i);
+			assert.doesNotMatch(COPY[lang].taskCompleted, /Claude/i);
+			assert.doesNotMatch(COPY[lang].taskFailed, /Claude/i);
+		}
+
+		assert.strictEqual(resolveCopyKey('ja', 'zh-cn'), 'ja');
+		assert.strictEqual(resolveCopyKey(null, 'zh-cn'), 'zh');
+		assert.strictEqual(resolveCopyKey(null, 'zh-tw'), 'zh-TW');
+		assert.strictEqual(resolveCopyKey(null, 'ko-KR'), 'ko');
+		assert.strictEqual(mapIdeLanguageToSupported('zh-HK'), 'zh-TW');
+		assert.strictEqual(mapIdeLanguageToSupported('pt-BR'), 'pt-BR');
+	});
 });

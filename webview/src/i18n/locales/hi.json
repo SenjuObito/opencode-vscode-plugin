@@ -486,7 +486,7 @@
     "communityQrAlt": "सहायता QR कोड",
     "communityQrAltAlipay": "Alipay सहायता QR कोड",
     "communityQrAltPayPal": "PayPal सहायता QR कोड",
-    "projectDesc": "यह प्रोजेक्ट OpenCode Buddy IntelliJ IDEA प्लगइन है (https://github.com/SenjuObito/opencode-idea-gui.git)",
+    "projectDesc": "यह प्रोजेक्ट OpenCode Buddy VS Code एक्सटेंशन है (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
     "githubTitle": "GitHub रिपॉजिटरी",
     "githubDesc": "यह प्रोजेक्ट GitHub पर ओपन सोर्स है। सपोर्ट के लिए Star करें!",
     "githubCopyBtn": "रिपॉजिटरी URL कॉपी करें",

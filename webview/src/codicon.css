@@ -9,9 +9,15 @@
 	src: url("./codicon.ttf?3ef8078adef4793b3c5d7a7651cd9048") format("truetype");
 }
 
-.codicon[class*='codicon-'] {
+.codicon[class*='codicon-'],
+.codicon {
 	font: normal normal normal 16px/1 codicon;
-	display: inline-block;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	vertical-align: middle;
+	flex-shrink: 0;
+	line-height: 1;
 	text-decoration: none;
 	text-rendering: auto;
 	text-align: center;

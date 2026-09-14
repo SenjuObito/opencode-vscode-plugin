@@ -91,25 +91,7 @@ function createBridgeHeartbeatStarter() {
 }
 
 const startBridgeHeartbeat = createBridgeHeartbeatStarter();
-// vConsole debugging tool
-const enableVConsole =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_VCONSOLE === 'true';
 
-if (enableVConsole) {
-  void import('vconsole').then(({ default: VConsole }) => {
-    new VConsole();
-    // Move vConsole button to top-left corner to avoid blocking the send button in the bottom-right
-    setTimeout(() => {
-      const vcSwitch = document.getElementById('__vconsole') as HTMLElement;
-      if (vcSwitch) {
-        vcSwitch.style.left = '10px';
-        vcSwitch.style.right = 'auto';
-        vcSwitch.style.top = '10px';
-        vcSwitch.style.bottom = 'auto';
-      }
-    }, 100);
-  });
-}
 
 /**
  * Apply IDEA editor font configuration to CSS variables
@@ -149,9 +131,23 @@ function buildFontFamilyValue(
   if (options.appendSansSerifFallback) {
     // UI fonts fall back to a sans-serif stack so a failed custom-font load lands on a
     // sensible UI font instead of the browser default serif.
-    fontParts.push("'Inter'", 'system-ui', 'sans-serif');
+    fontParts.push(
+      "'Inter'",
+      '-apple-system',
+      'BlinkMacSystemFont',
+      "'Segoe WPC'",
+      "'Segoe UI'",
+      "'Microsoft YaHei UI'",
+      "'Microsoft YaHei'",
+      "'PingFang SC'",
+      "'Hiragino Sans GB'",
+      "'Noto Sans CJK SC'",
+      "'Noto Sans SC'",
+      'system-ui',
+      'sans-serif',
+    );
   } else if (options.appendMonospaceFallback !== false) {
-    fontParts.push("'Consolas'", 'monospace');
+    fontParts.push("'Consolas'", "'Menlo'", "'Monaco'", "'Courier New'", 'monospace');
   }
   return fontParts.join(', ');
 }

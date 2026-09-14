@@ -635,6 +635,11 @@ interface Window {
   onCodeFontConfigReceived?: (json: string) => void;
 
   /**
+   * System font list received callback - receives the host's enumerable font families
+   */
+  onSystemFontListReceived?: (jsonStr: string) => void;
+
+  /**
    * IDE theme received callback - receives IDE theme configuration
    */
   onIdeThemeReceived?: (json: string) => void;

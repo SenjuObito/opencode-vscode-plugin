@@ -491,7 +491,7 @@
     "communityQrAlt": "寄付QRコード",
     "communityQrAltAlipay": "Alipay 寄付QRコード",
     "communityQrAltPayPal": "PayPal 寄付QRコード",
-    "projectDesc": "このプロジェクトは OpenCode Buddy IntelliJ IDEA プラグインです (https://github.com/SenjuObito/opencode-idea-gui.git)",
+    "projectDesc": "このプロジェクトは OpenCode Buddy VS Code 拡張機能です (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
     "githubTitle": "GitHub リポジトリ",
     "githubDesc": "このプロジェクトは GitHub でオープンソースです。Star で応援してください！",
     "githubCopyBtn": "リポジトリURLをコピー",

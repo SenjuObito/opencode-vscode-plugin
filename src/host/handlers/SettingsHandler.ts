@@ -612,28 +612,8 @@ export function pushUiPreferences(
 }
 
 /** webview i18n 支持的语言码（与 webview/src/i18n/config.ts resources 一致）。 */
-const SUPPORTED_LANGUAGES = ['zh', 'en', 'zh-TW', 'hi', 'es', 'fr', 'ja', 'ru', 'ko', 'pt-BR'];
-
-/**
- * IDE 界面语言（vscode.env.language，如 zh-cn / zh-tw / en）→ 支持的语言码。
- * "跟随 IDE" 兜底：用户未手动设置语言时使用。无法识别时回退英文。
- */
-export function mapIdeLanguageToSupported(ideLanguage: string): string {
-	const lower = (ideLanguage ?? '').trim().toLowerCase();
-	if (!lower) {
-		return 'en';
-	}
-	const exact = SUPPORTED_LANGUAGES.find((l) => l.toLowerCase() === lower);
-	if (exact) {
-		return exact;
-	}
-	// 中文变体：zh-cn/zh-sg → zh；zh-tw/zh-hk/zh-hant → zh-TW
-	if (lower.startsWith('zh')) {
-		return /tw|hk|mo|hant/.test(lower) ? 'zh-TW' : 'zh';
-	}
-	const base = lower.split('-')[0];
-	return SUPPORTED_LANGUAGES.find((l) => l.toLowerCase() === base) ?? 'en';
-}
+import { mapIdeLanguageToSupported } from '../notifications/NotificationCopy';
+export { mapIdeLanguageToSupported };
 
 /**
  * 推送权威语言配置给 webview：

@@ -65,6 +65,7 @@ export interface UseSettingsBasicActionsReturn {
     | undefined;
   uiFontConfig: UiFontConfig | undefined;
   codeFontConfig: CodeFontConfig | undefined;
+  systemFonts: string[];
   /** Send shortcut state (prefers prop over local state) */
   sendShortcut: 'enter' | 'cmdEnter';
   localSendShortcut: 'enter' | 'cmdEnter';
@@ -139,6 +140,7 @@ export interface UseSettingsBasicActionsReturn {
   ) => void;
   /** @internal */ setUiFontConfig: (config: UiFontConfig | undefined) => void;
   /** @internal */ setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
+  /** @internal */ setSystemFonts: (fonts: string[]) => void;
   /** @internal */ setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
   /** @internal */ setLocalAutoOpenFileEnabled: (enabled: boolean) => void;
   /** @internal */ setSoundNotificationEnabled: (enabled: boolean) => void;
@@ -163,11 +165,11 @@ export function useSettingsBasicActions({
   permissionDialogTimeoutSecondsProp,
   onPermissionDialogTimeoutChangeProp,
   currentProvider: _currentProvider,
-}: UseSettingsBasicActionsProps): UseSettingsBasicActionsReturn {
-  // Node.js path
+}: UseSettingsBasicActionsProps = {}): UseSettingsBasicActionsReturn {
+  // Node.js path state
   const [nodePath, setNodePath] = useState('');
   const [nodeVersion, setNodeVersion] = useState<string | null>(null);
-  const [minNodeVersion, setMinNodeVersion] = useState(18);
+  const [minNodeVersion, setMinNodeVersion] = useState<number | undefined>(18);
   const [savingNodePath, setSavingNodePath] = useState(false);
 
   // Custom Claude CLI path (overrides bundled SDK when set)
@@ -189,6 +191,11 @@ export function useSettingsBasicActions({
   >();
   const [uiFontConfig, setUiFontConfig] = useState<UiFontConfig | undefined>();
   const [codeFontConfig, setCodeFontConfig] = useState<CodeFontConfig | undefined>();
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+
+  useEffect(() => {
+    sendToJava('get_system_font_list:');
+  }, []);
 
   // Send shortcut configuration - prefer props, fallback to local state
   const [localSendShortcut, setLocalSendShortcut] = useState<'enter' | 'cmdEnter'>('enter');
@@ -582,6 +589,8 @@ export function useSettingsBasicActions({
     setUiFontConfig,
     codeFontConfig,
     setCodeFontConfig,
+    systemFonts,
+    setSystemFonts,
     localSendShortcut,
     setLocalSendShortcut,
     sendShortcut,

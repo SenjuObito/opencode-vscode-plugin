@@ -488,7 +488,7 @@
     "communityQrAlt": "후원 QR 코드",
     "communityQrAltAlipay": "Alipay 후원 QR 코드",
     "communityQrAltPayPal": "PayPal 후원 QR 코드",
-    "projectDesc": "이 프로젝트는 OpenCode Buddy IntelliJ IDEA 플러그인입니다 (https://github.com/SenjuObito/opencode-idea-gui.git)",
+    "projectDesc": "이 프로젝트는 OpenCode Buddy VS Code 확장입니다 (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
     "githubTitle": "GitHub 저장소",
     "githubDesc": "이 프로젝트는 GitHub에서 오픈소스로 공개되어 있습니다. Star를 눌러 응원해주세요!",
     "githubCopyBtn": "저장소 URL 복사",

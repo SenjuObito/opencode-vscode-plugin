@@ -486,7 +486,7 @@
     "communityQrAlt": "Code QR de soutien",
     "communityQrAltAlipay": "Code QR de soutien Alipay",
     "communityQrAltPayPal": "Code QR de soutien PayPal",
-    "projectDesc": "Ce projet est le plugin IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
+    "projectDesc": "Ce projet est l'extension VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
     "githubTitle": "Dépôt GitHub",
     "githubDesc": "Ce projet est open source sur GitHub. Mettez une étoile pour nous soutenir !",
     "githubCopyBtn": "Copier l'URL du dépôt",

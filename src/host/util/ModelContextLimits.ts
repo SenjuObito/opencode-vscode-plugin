@@ -23,15 +23,36 @@ export function getModelContextLimit(model: string | null | undefined): number {
 	if (!model) {
 		return DEFAULT_CONTEXT_LIMIT;
 	}
-	const normalized = model.trim();
-	// 精确匹配，再前缀匹配（例如 "claude-sonnet-4-7[1m]" 或 "gpt-5-codex-fast"）
-	if (KNOWN_LIMITS[normalized] != null) {
-		return KNOWN_LIMITS[normalized];
+	const trimmed = model.trim();
+
+	// 1. Explicit bracketed capacity suffix, e.g. "claude-sonnet-4-7 [1m]" or "model[200k]"
+	const match = /\s*\[([0-9.]+)([kKmM])\]\s*$/.exec(trimmed);
+	if (match && match[1] && match[2]) {
+		const val = parseFloat(match[1]);
+		const unit = match[2].toLowerCase();
+		if (!Number.isNaN(val) && val > 0) {
+			return Math.round(unit === 'm' ? val * 1_000_000 : val * 1_000);
+		}
 	}
+
+	// 2. Exact match on full string
+	if (KNOWN_LIMITS[trimmed] != null) {
+		return KNOWN_LIMITS[trimmed];
+	}
+
+	// 3. Strip provider prefix if present (e.g. "anthropic/claude-3-7-sonnet" -> "claude-3-7-sonnet")
+	const slashIdx = trimmed.indexOf('/');
+	const bareModel = slashIdx >= 0 ? trimmed.substring(slashIdx + 1) : trimmed;
+	if (KNOWN_LIMITS[bareModel] != null) {
+		return KNOWN_LIMITS[bareModel];
+	}
+
+	// 4. Prefix match (e.g. "claude-3-7-sonnet-20250219")
 	for (const [name, limit] of Object.entries(KNOWN_LIMITS)) {
-		if (name !== 'default' && normalized.startsWith(name)) {
+		if (name !== 'default' && (trimmed.startsWith(name) || bareModel.startsWith(name))) {
 			return limit;
 		}
 	}
+
 	return DEFAULT_CONTEXT_LIMIT;
 }

@@ -110,6 +110,8 @@ const SettingsView = ({
     setUiFontConfig,
     codeFontConfig,
     setCodeFontConfig,
+    systemFonts,
+    setSystemFonts,
     setLocalSendShortcut,
     sendShortcut,
     autoOpenFileEnabled,
@@ -229,6 +231,7 @@ const SettingsView = ({
     setEditorFontConfig,
     setUiFontConfig,
     setCodeFontConfig,
+    setSystemFonts,
     setIdeTheme,
     setLocalSendShortcut,
     loadAgents,
@@ -298,6 +301,7 @@ const SettingsView = ({
               editorFontConfig={editorFontConfig}
               uiFontConfig={uiFontConfig}
               codeFontConfig={codeFontConfig}
+              systemFonts={systemFonts}
               onUiFontSelectionChange={handleUiFontSelectionChange}
               onSaveUiFontCustomPath={handleSaveUiFontCustomPath}
               onBrowseUiFontFile={handleBrowseUiFontFile}

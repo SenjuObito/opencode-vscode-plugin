@@ -54,6 +54,7 @@ export interface SettingsWindowCallbacksDeps {
   setEditorFontConfig: (config: { fontFamily: string; fontSize: number; lineSpacing: number } | undefined) => void;
   setUiFontConfig: (config: UiFontConfig | undefined) => void;
   setCodeFontConfig: (config: CodeFontConfig | undefined) => void;
+  setSystemFonts?: (fonts: string[]) => void;
   setIdeTheme: (theme: 'light' | 'dark' | null) => void;
   setLocalSendShortcut: (shortcut: 'enter' | 'cmdEnter') => void;
   // AI feature toggle setters
@@ -184,6 +185,17 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
         window.applyCodeFontConfig?.(config);
       } catch {
         // Silently ignore malformed code font config from backend
+      }
+    };
+
+    window.onSystemFontListReceived = (jsonStr: string) => {
+      try {
+        const data = JSON.parse(jsonStr);
+        if (Array.isArray(data.fonts)) {
+          d().setSystemFonts?.(data.fonts);
+        }
+      } catch (error) {
+        console.error('[SettingsView] Failed to parse system font list:', error);
       }
     };
 
@@ -355,6 +367,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
       window.onEditorFontConfigReceived = undefined;
       window.onUiFontConfigReceived = undefined;
       window.onCodeFontConfigReceived = undefined;
+      window.onSystemFontListReceived = undefined;
       window.onIdeThemeReceived = previousOnIdeThemeReceived;
       if (!d().onSendShortcutChangeProp) {
         window.updateSendShortcut = previousUpdateSendShortcut;

@@ -16,30 +16,11 @@ import * as vscode from 'vscode';
 import { readFileSync } from 'fs';
 import type { HandlerContext } from '../router/HandlerContext';
 import { logDiagnostic } from '../util/DiagnosticLogger';
+import { COPY, type CopyKey, resolveCopyKey } from './NotificationCopy';
 
-/** 宿主侧轻量文案表（webview i18n 不适用于系统通知场景）。 */
-const COPY = {
-	zh: {
-		taskCompleted: '任务已完成',
-		taskFailed: '任务执行出错',
-		questionPending: 'opencode 等待你的输入',
-	},
-	'zh-TW': {
-		taskCompleted: '任務已完成',
-		taskFailed: '任務執行出錯',
-		questionPending: 'opencode 等待你的輸入',
-	},
-	en: {
-		taskCompleted: 'Task completed',
-		taskFailed: 'Task failed',
-		questionPending: 'opencode is waiting for your input',
-	},
-} as const;
+export { COPY, type CopyKey, resolveCopyKey };
 
-type CopyKey = keyof typeof COPY;
 type SoundKind = 'turnCompleted' | 'question' | 'error';
-
-/** 自定义声音文件 base64 上限（约 5MB，超出直接回退默认音）。 */
 const MAX_CUSTOM_SOUND_BYTES = 5 * 1024 * 1024;
 
 export class NotificationService {
@@ -104,11 +85,7 @@ export class NotificationService {
 	}
 
 	private copyKey(): CopyKey {
-		const stored = (this.settings().getUserLanguage() ?? '').trim();
-		if (stored === 'zh' || stored === 'zh-TW') {
-			return stored;
-		}
-		return 'en';
+		return resolveCopyKey(this.settings().getUserLanguage(), vscode.env.language);
 	}
 
 	/** 系统通知的"仅未聚焦时"门控。 */

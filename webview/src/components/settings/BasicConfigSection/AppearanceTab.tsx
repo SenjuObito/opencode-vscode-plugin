@@ -132,6 +132,7 @@ export interface AppearanceTabProps {
   };
   uiFontConfig?: UiFontConfig;
   codeFontConfig?: CodeFontConfig;
+  systemFonts?: string[];
   onUiFontSelectionChange?: (selection: string) => void;
   onSaveUiFontCustomPath?: (path: string) => void;
   onBrowseUiFontFile?: () => void;
@@ -156,6 +157,7 @@ const AppearanceTab = ({
   editorFontConfig,
   uiFontConfig,
   codeFontConfig,
+  systemFonts = [],
   onUiFontSelectionChange = () => {},
   onSaveUiFontCustomPath = () => {},
   onBrowseUiFontFile = () => {},
@@ -180,11 +182,13 @@ const AppearanceTab = ({
   const [chatBarHexInput, setChatBarHexInput] = useState(chatBarColor || '');
   const [selectedUiFontOption, setSelectedUiFontOption] = useState(() => {
     if (!uiFontConfig || uiFontConfig.mode === 'followEditor') return 'followEditor';
+    if (uiFontConfig.mode === 'named' && uiFontConfig.fontFamily) return `named:${uiFontConfig.fontFamily}`;
     return 'customFile';
   });
   const [customFontPathDraft, setCustomFontPathDraft] = useState(uiFontConfig?.customFontPath || '');
   const [selectedCodeFontOption, setSelectedCodeFontOption] = useState(() => {
     if (!codeFontConfig || codeFontConfig.mode === 'followEditor') return 'followEditor';
+    if (codeFontConfig.mode === 'named' && codeFontConfig.fontFamily) return `named:${codeFontConfig.fontFamily}`;
     return 'customFile';
   });
   const [customCodeFontPathDraft, setCustomCodeFontPathDraft] = useState(codeFontConfig?.customFontPath || '');
@@ -209,6 +213,8 @@ const AppearanceTab = ({
   useEffect(() => {
     if (!uiFontConfig || uiFontConfig.mode === 'followEditor') {
       setSelectedUiFontOption('followEditor');
+    } else if (uiFontConfig.mode === 'named' && uiFontConfig.fontFamily) {
+      setSelectedUiFontOption(`named:${uiFontConfig.fontFamily}`);
     } else {
       setSelectedUiFontOption('customFile');
     }
@@ -218,6 +224,8 @@ const AppearanceTab = ({
   useEffect(() => {
     if (!codeFontConfig || codeFontConfig.mode === 'followEditor') {
       setSelectedCodeFontOption('followEditor');
+    } else if (codeFontConfig.mode === 'named' && codeFontConfig.fontFamily) {
+      setSelectedCodeFontOption(`named:${codeFontConfig.fontFamily}`);
     } else {
       setSelectedCodeFontOption('customFile');
     }
@@ -345,11 +353,13 @@ const AppearanceTab = ({
       ? t('settings.basic.editorFont.warningUnavailable')
       : uiFontConfig?.warning;
   const uiFontHint = localizedUiFontWarning
-    || (uiFontConfig?.effectiveMode === 'customFile'
-      ? t('settings.basic.editorFont.statusCustom', { font: currentUiFontDisplayName })
-      : t('settings.basic.editorFont.statusFollowEditor', {
-        font: uiFontConfig?.fontFamily || currentUiFontDisplayName,
-      }));
+    || (uiFontConfig?.mode === 'named'
+      ? t('settings.basic.editorFont.statusFollowEditor', { font: uiFontConfig.fontFamily })
+      : (uiFontConfig?.effectiveMode === 'customFile'
+        ? t('settings.basic.editorFont.statusCustom', { font: currentUiFontDisplayName })
+        : t('settings.basic.editorFont.statusFollowEditor', {
+          font: uiFontConfig?.fontFamily || currentUiFontDisplayName,
+        })));
 
   const hasSavedCustomCodeFont = Boolean(codeFontConfig?.customFontPath);
   const isCustomCodeFontSelected = selectedCodeFontOption === 'customFile';
@@ -362,11 +372,13 @@ const AppearanceTab = ({
     ? t('settings.basic.codeFont.warningUnavailable')
     : codeFontConfig?.warning;
   const codeFontHint = localizedCodeFontWarning
-    || (codeFontConfig?.effectiveMode === 'customFile'
-      ? t('settings.basic.codeFont.statusCustom', { font: currentCodeFontDisplayName })
-      : t('settings.basic.codeFont.statusFollowEditor', {
-        font: editorFontConfig?.fontFamily || currentCodeFontDisplayName,
-      }));
+    || (codeFontConfig?.mode === 'named'
+      ? t('settings.basic.codeFont.statusFollowEditor', { font: codeFontConfig.fontFamily })
+      : (codeFontConfig?.effectiveMode === 'customFile'
+        ? t('settings.basic.codeFont.statusCustom', { font: currentCodeFontDisplayName })
+        : t('settings.basic.codeFont.statusFollowEditor', {
+          font: editorFontConfig?.fontFamily || currentCodeFontDisplayName,
+        })));
 
   const diffThemeOptions: Array<{ value: DiffThemeMode; label: string; desc: string }> = [
     {
@@ -544,6 +556,20 @@ const AppearanceTab = ({
           <option value="followEditor">
             {t('settings.basic.editorFont.followOption', { font: uiFontConfig?.fontFamily || '-' })}
           </option>
+          {uiFontConfig?.mode === 'named' && uiFontConfig.fontFamily && !systemFonts.includes(uiFontConfig.fontFamily) && (
+            <option value={`named:${uiFontConfig.fontFamily}`}>
+              {uiFontConfig.fontFamily}
+            </option>
+          )}
+          {systemFonts && systemFonts.length > 0 && (
+            <optgroup label={t('settings.basic.editorFont.systemFontsGroup')}>
+              {systemFonts.map((font) => (
+                <option key={`ui-font-${font}`} value={`named:${font}`}>
+                  {font}
+                </option>
+              ))}
+            </optgroup>
+          )}
           <option value="customFile">
             {customFontFileName
               ? `${t('settings.basic.editorFont.customOption')} / ${customFontFileName}`
@@ -612,6 +638,11 @@ const AppearanceTab = ({
             const nextSelection = event.target.value;
             setSelectedCodeFontOption(nextSelection);
 
+            if (nextSelection.startsWith('named:')) {
+              onCodeFontSelectionChange(nextSelection);
+              return;
+            }
+
             if (nextSelection === 'customFile' && hasSavedCustomCodeFont) {
               onCodeFontSelectionChange(nextSelection);
               return;
@@ -625,6 +656,20 @@ const AppearanceTab = ({
           <option value="followEditor">
             {t('settings.basic.codeFont.followOption', { font: editorFontConfig?.fontFamily || '-' })}
           </option>
+          {codeFontConfig?.mode === 'named' && codeFontConfig.fontFamily && !systemFonts.includes(codeFontConfig.fontFamily) && (
+            <option value={`named:${codeFontConfig.fontFamily}`}>
+              {codeFontConfig.fontFamily}
+            </option>
+          )}
+          {systemFonts && systemFonts.length > 0 && (
+            <optgroup label={t('settings.basic.codeFont.systemFontsGroup')}>
+              {systemFonts.map((font) => (
+                <option key={`code-font-${font}`} value={`named:${font}`}>
+                  {font}
+                </option>
+              ))}
+            </optgroup>
+          )}
           <option value="customFile">
             {customCodeFontFileName
               ? `${t('settings.basic.codeFont.customOption')} / ${customCodeFontFileName}`

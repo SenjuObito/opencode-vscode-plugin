@@ -58,7 +58,7 @@ interface StoredFontSelection {
 
 interface EffectiveFontConfig {
 	mode: StoredFontSelection['mode'];
-	effectiveMode: 'followEditor' | 'customFile';
+	effectiveMode: 'followEditor' | 'customFile' | 'named';
 	customFontPath?: string;
 	fontFamily: string;
 	displayName?: string;
@@ -242,7 +242,7 @@ export class FontConfigHandler extends BaseMessageHandler {
 		const common = { fontSize, lineSpacing: this.lineSpacing(fontSize) };
 		if (stored.mode === 'named' && stored.fontFamily) {
 			return {
-				mode: 'named', effectiveMode: 'followEditor',
+				mode: 'named', effectiveMode: 'named',
 				fontFamily: stored.fontFamily, displayName: stored.fontFamily,
 				fallbackFonts: [...VSCODE_UI_FALLBACKS],
 				...common,
@@ -253,7 +253,9 @@ export class FontConfigHandler extends BaseMessageHandler {
 			if (loaded) {
 				return { ...loaded, mode: 'customFile', effectiveMode: 'customFile', ...common };
 			}
-			return this.followUiFont(common, stored.customFontPath);
+			// 只降级 effectiveMode，保留用户的 mode：webview 用 mode 反推下拉框选中项，
+			// 改掉它会让失效的自定义字体悄悄跳回「跟随编辑器」，用户以为选择丢了。
+			return { ...this.followUiFont(common, stored.customFontPath), mode: 'customFile' };
 		}
 		return this.followUiFont(common);
 	}
@@ -276,7 +278,7 @@ export class FontConfigHandler extends BaseMessageHandler {
 		const names = this.fontList();
 		if (stored.mode === 'named' && stored.fontFamily) {
 			return {
-				mode: 'named', effectiveMode: 'followEditor',
+				mode: 'named', effectiveMode: 'named',
 				fontFamily: stored.fontFamily, displayName: stored.fontFamily,
 				fallbackFonts: names.filter((n) => n.toLowerCase() !== stored.fontFamily!.toLowerCase()),
 				...common,
@@ -287,7 +289,8 @@ export class FontConfigHandler extends BaseMessageHandler {
 			if (loaded) {
 				return { ...loaded, mode: 'customFile', effectiveMode: 'customFile', ...common };
 			}
-			return this.followCodeFont(common, names, stored.customFontPath);
+			// 同 resolveUiFont：只降级 effectiveMode，保留用户的 mode。
+			return { ...this.followCodeFont(common, names, stored.customFontPath), mode: 'customFile' };
 		}
 		return this.followCodeFont(common, names);
 	}

@@ -250,4 +250,56 @@ describe('AppearanceTab ui font selector', () => {
 
     expect(onChatBarColorChange).toHaveBeenCalledWith('');
   });
+
+  it('renders system fonts in an optgroup and triggers selection changes', () => {
+    const onUiFontSelectionChange = vi.fn();
+    const onCodeFontSelectionChange = vi.fn();
+
+    renderAppearanceTab({
+      systemFonts: ['JetBrains Mono', 'Fira Code', 'Segoe UI'],
+      onUiFontSelectionChange,
+      onCodeFontSelectionChange,
+    });
+
+    const uiSelect = screen.getByRole('combobox', { name: /settings.basic.editorFont.label/i });
+    const codeSelect = screen.getByRole('combobox', { name: /settings.basic.codeFont.label/i });
+
+    expect(within(uiSelect).getByRole('group', { name: /settings.basic.editorFont.systemFontsGroup/i })).toBeTruthy();
+    expect(within(codeSelect).getByRole('group', { name: /settings.basic.codeFont.systemFontsGroup/i })).toBeTruthy();
+
+    const jetbrainsOption = screen.getAllByRole('option', { name: 'JetBrains Mono' });
+    expect(jetbrainsOption.length).toBeGreaterThanOrEqual(2);
+
+    fireEvent.change(uiSelect, { target: { value: 'named:JetBrains Mono' } });
+    expect(onUiFontSelectionChange).toHaveBeenCalledWith('named:JetBrains Mono');
+
+    fireEvent.change(codeSelect, { target: { value: 'named:Fira Code' } });
+    expect(onCodeFontSelectionChange).toHaveBeenCalledWith('named:Fira Code');
+  });
+
+  it('displays named mode font family in the ui and code font hint', () => {
+    renderAppearanceTab({
+      uiFontConfig: {
+        mode: 'named',
+        effectiveMode: 'named',
+        fontFamily: 'JetBrains Mono',
+        fontSize: 14,
+        lineSpacing: 1.35,
+      },
+      codeFontConfig: {
+        mode: 'named',
+        effectiveMode: 'named',
+        fontFamily: 'Fira Code',
+        fontSize: 14,
+        lineSpacing: 1.35,
+      },
+    });
+
+    const uiSelect = screen.getByRole('combobox', { name: /settings.basic.editorFont.label/i }) as HTMLSelectElement;
+    expect(uiSelect.value).toBe('named:JetBrains Mono');
+
+    const codeSelect = screen.getByRole('combobox', { name: /settings.basic.codeFont.label/i }) as HTMLSelectElement;
+    expect(codeSelect.value).toBe('named:Fira Code');
+  });
 });
+

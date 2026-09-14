@@ -97,16 +97,7 @@ async function installBridgeMocks(page: Page, customModels = [LONG_MODEL]) {
     localStorage.setItem('claude-custom-models', JSON.stringify(models));
     localStorage.setItem('lastSeenChangelogVersion', appVersion);
 
-    const hideVConsole = () => {
-      const style = document.createElement('style');
-      style.textContent = '#__vconsole { display: none !important; pointer-events: none !important; }';
-      (document.head || document.documentElement)?.appendChild(style);
-    };
-    if (document.head || document.documentElement) {
-      hideVConsole();
-    } else {
-      window.addEventListener('DOMContentLoaded', hideVConsole, { once: true });
-    }
+
 
     const respond = (callbackName: string, payload: unknown) => {
       window.setTimeout(() => {

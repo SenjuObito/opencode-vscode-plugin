@@ -13,6 +13,8 @@ import { MarkerStreamContext, processOutputLine } from './MarkerParser';
 import { SessionCallbackAdapter } from './SessionCallbackAdapter';
 import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
+import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
+import { getModelContextLimit } from '../util/ModelContextLimits';
 import type { ChatMessage, PermissionRequest } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
@@ -329,6 +331,14 @@ export class OpenCodeSession {
 			convertMessagesToJson(this.state.getMessages()),
 			String(seq),
 		);
+
+		// 恢复历史 Token 统计
+		const lastUsage = findLastUsageFromMessages(this.state.getMessages());
+		if (lastUsage) {
+			const usedTokens = extractContextTokens(lastUsage, this.state.getProvider());
+			const maxTokens = getModelContextLimit(this.state.getModel());
+			this.callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
+		}
 	}
 
 	dispose(): void {

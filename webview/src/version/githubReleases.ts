@@ -12,7 +12,7 @@
 import { CHANGELOG_DATA, type ChangelogEntry } from './changelog';
 
 export const GITHUB_REPO_OWNER = 'SenjuObito';
-export const GITHUB_REPO_NAME = 'opencode-idea-gui';
+export const GITHUB_REPO_NAME = 'opencode-vscode-plugin';
 export const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}.git`;
 export const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`;
 /** Hard cap so a hanging request cannot leave the dialog spinning forever. */
@@ -55,6 +55,37 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** 发布流程给每个 body 前置 `## OpenCode <version>`（tools/extract-release-notes.mjs:138）。 */
+const LEADING_VERSION_HEADING_RE = /^#{1,6}\s*OpenCode\b[^\n]*\n?/;
+
+/** 双语 body 在英文译文前插入这个标记标题。 */
+const ENGLISH_SECTION_RE = /^###\s+English\s*$/m;
+
+/** 去掉生成的版本标题行——弹窗头部已经有 v 徽章和日期了。 */
+function stripVersionHeading(text: string): string {
+  return text.replace(LEADING_VERSION_HEADING_RE, '').trim();
+}
+
+/**
+ * 把生成的 release body 拆成中文 / 英文两半。
+ *
+ * tools/extract-release-notes.mjs:91 产出 `[zh, '### English', en]`，而
+ * ChangelogDialog 会把 content.zh 和 content.en 各渲染成一个块。两个字段赋同一个
+ * body（旧行为）就会把整段双语内容渲染两遍。
+ *
+ * 没有标记的 body（手写 release notes）整体归到 zh，仍然只渲染一个块。
+ */
+function splitBilingualBody(body: string): { en: string; zh: string } {
+  const marker = ENGLISH_SECTION_RE.exec(body);
+  if (!marker) {
+    return { en: '', zh: stripVersionHeading(body) };
+  }
+  return {
+    zh: stripVersionHeading(body.slice(0, marker.index)),
+    en: stripVersionHeading(body.slice(marker.index + marker[0].length)),
+  };
+}
+
 function parseReleases(data: unknown): ChangelogEntry[] {
   const list = Array.isArray(data) ? data : [];
   const entries: ChangelogEntry[] = [];
@@ -68,7 +99,7 @@ function parseReleases(data: unknown): ChangelogEntry[] {
     entries.push({
       version,
       date: published.slice(0, 10),
-      content: { en: body, zh: body },
+      content: splitBilingualBody(body),
     });
   }
   return entries;

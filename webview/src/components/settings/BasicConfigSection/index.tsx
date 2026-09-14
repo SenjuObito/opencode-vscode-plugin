@@ -41,6 +41,7 @@ interface BasicConfigSectionProps {
   };
   uiFontConfig?: UiFontConfig;
   codeFontConfig?: CodeFontConfig;
+  systemFonts?: string[];
   onUiFontSelectionChange?: (selection: string) => void;
   onSaveUiFontCustomPath?: (path: string) => void;
   onBrowseUiFontFile?: () => void;
@@ -137,6 +138,7 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           editorFontConfig={props.editorFontConfig}
           uiFontConfig={props.uiFontConfig}
           codeFontConfig={props.codeFontConfig}
+          systemFonts={props.systemFonts}
           onUiFontSelectionChange={props.onUiFontSelectionChange}
           onSaveUiFontCustomPath={props.onSaveUiFontCustomPath}
           onBrowseUiFontFile={props.onBrowseUiFontFile}

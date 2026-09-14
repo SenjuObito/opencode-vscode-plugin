@@ -200,8 +200,8 @@
       },
       "theme": {
         "label": "界面主题",
-        "system": "跟随 IDE",
-        "systemDesc": "自动跟随 IDE 主题",
+        "system": "跟随 VS Code",
+        "systemDesc": "自动跟随 VS Code 主题",
         "light": "亮色",
         "lightDesc": "清爽明亮，适合白天使用",
         "dark": "暗色",
@@ -209,7 +209,7 @@
       },
       "language": {
         "label": "界面语言",
-        "followIde": "跟随 IDE",
+        "followIde": "跟随 VS Code",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -250,19 +250,21 @@
       "editorFont": {
         "label": "UI 字体",
         "hint": "这里修改的是插件界面字体。代码可以使用单独的代码字体。",
-        "followOption": "跟随 IDEA UI 字体（{{font}}）",
+        "followOption": "跟随 VS Code UI 字体（{{font}}）",
+        "systemFontsGroup": "系统字体",
         "customOption": "自定义 UI 字体文件",
         "customPathLabel": "UI 字体文件路径",
         "customPathPlaceholder": "选择或输入 .ttf / .otf UI 字体文件路径",
         "browse": "浏览",
-        "warningUnavailable": "UI 字体不可用，当前已回退到 IDEA UI 字体",
-        "statusFollowEditor": "当前跟随 IDEA UI 字体：{{font}}",
+        "warningUnavailable": "UI 字体不可用，当前已回退到 VS Code UI 字体",
+        "statusFollowEditor": "当前跟随 VS Code UI 字体：{{font}}",
         "statusCustom": "当前使用自定义 UI 字体：{{font}}"
       },
       "codeFont": {
         "label": "代码字体",
         "hint": "Markdown 代码和命令块会使用这个字体。",
         "followOption": "跟随编辑器字体（{{font}}）",
+        "systemFontsGroup": "系统字体",
         "customOption": "自定义代码字体文件",
         "customPathLabel": "代码字体文件路径",
         "customPathPlaceholder": "选择或输入 .ttf / .otf 代码字体文件路径",
@@ -332,10 +334,10 @@
         "hint": "开启后，当 opencode 向你提问时播放已配置的提示音。会使用下方的音效选择和焦点规则。"
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "仅在 IDE 未聚焦时显示系统通知",
+        "label": "仅在 VS Code 未聚焦时显示系统通知",
         "enabled": "已开启",
         "disabled": "已关闭",
-        "hint": "开启后，仅在 IDE 窗口未聚焦时显示任务完成和提问系统通知。"
+        "hint": "开启后，仅在 VS Code 窗口未聚焦时显示任务完成和提问系统通知。"
       },
       "sendShortcut": {
         "label": "发送快捷键",
@@ -366,7 +368,7 @@
         "follow": "跟随界面",
         "followDesc": "跟随当前聊天界面明暗主题",
         "editor": "跟随编辑器",
-        "editorDesc": "尽量贴近 IDE 编辑器的 diff 氛围",
+        "editorDesc": "尽量贴近 VS Code 编辑器的 diff 氛围",
         "light": "浅色",
         "lightDesc": "更轻、更贴近当前设置页背景",
         "softDark": "柔和深色",
@@ -377,8 +379,8 @@
         "enabled": "已开启",
         "disabled": "已关闭",
         "hint": "开启后，AI 完成任务时会播放提示音，方便您离开屏幕时也能知道任务已完成。",
-        "onlyWhenUnfocused": "仅在 IDE 未聚焦时播放提示音",
-        "onlyWhenUnfocusedHint": "开启后，仅在 IDE 窗口未聚焦时播放任务完成和提问提示音。",
+        "onlyWhenUnfocused": "仅在 VS Code 未聚焦时播放提示音",
+        "onlyWhenUnfocusedHint": "开启后，仅在 VS Code 窗口未聚焦时播放任务完成和提问提示音。",
         "selectSound": "提示音",
         "soundDefault": "默认",
         "soundChime": "清脆铃声",
@@ -569,7 +571,7 @@
     "communityQrAlt": "赞赏二维码",
     "communityQrAltAlipay": "支付宝赞赏二维码",
     "communityQrAltPayPal": "PayPal 赞赏二维码",
-    "projectDesc": "本项目是 OpenCode Buddy IntelliJ IDEA 插件 (https://github.com/SenjuObito/opencode-idea-gui.git)",
+    "projectDesc": "本项目是 OpenCode Buddy VS Code 插件 (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
     "githubTitle": "GitHub 开源地址",
     "githubDesc": "本项目已在 GitHub 开源，欢迎 Star 支持",
     "githubCopyBtn": "复制开源地址",
