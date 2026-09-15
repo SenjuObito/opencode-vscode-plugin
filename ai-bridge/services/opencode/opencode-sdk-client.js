@@ -399,7 +399,8 @@ async function resolveSummarizeModel(model, sessionId, directory) {
     return { providerID: sessionProviderID, modelID: sessionModelID };
   }
 
-  const messages = await listMessages(sessionId, directory);
+  // 兜底来源：拿不到就是「没有可参考的模型」，由调用方报错，不该因此中断 summarize。
+  const messages = await listMessages(sessionId, directory, { tolerateError: true });
   for (let i = messages.length - 1; i >= 0; i--) {
     const info = messages[i]?.info;
     if (
@@ -698,15 +699,28 @@ function summarizeError(error) {
 // ── Messages ──────────────────────────────────────────────────────────────
 
 /**
+ * List a session's messages.
+ *
+ * 失败必须**可见**：过去这里 `if (result.error) return []`，把「查询失败」和
+ * 「这个会话确实没有消息」压成同一个结果。宿主因此无法区分两者，只能把
+ * 冷启动/服务端未就绪时的失败当成空会话展示（打开历史对话得到一片空白，
+ * 且没有任何错误提示）。现在默认抛出，由调用方决定是重试还是容忍。
+ *
  * @param {string} sessionId
  * @param {string} [directory]
+ * @param {{ tolerateError?: boolean }} [options] 容忍失败时返回 `[]`（供
+ *   「拿不到就退回默认值」的调用方使用，例如 summarize 的模型兜底、
+ *   回合结束时的最终消息抓取、上下文用量估算）。
  * @returns {Promise<object[]>} message entries `{ info, parts }`
  */
-export async function listMessages(sessionId, directory) {
+export async function listMessages(sessionId, directory, options = {}) {
   const params = { sessionID: sessionId };
   if (directory) params.directory = directory;
   const result = await getClient().session.messages(params);
-  if (result.error) return [];
+  if (result.error) {
+    if (options.tolerateError) return [];
+    throw new Error(`Failed to list messages for session ${sessionId}: ${summarizeError(result.error)}`);
+  }
   return result.data ?? [];
 }
 

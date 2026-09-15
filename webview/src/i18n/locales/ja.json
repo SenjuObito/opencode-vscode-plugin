@@ -173,7 +173,7 @@
     "title": "設定",
     "basic": {
       "title": "基本設定",
-      "description": "ページテーマ、言語、Node.js環境を設定",
+      "description": "ページテーマ、言語、実行環境を設定",
       "tabs": {
         "appearance": "外観",
         "behavior": "動作",
@@ -201,14 +201,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Node.jsパス",
-        "placeholder": "例: C:\\Program Files\\nodejs\\node.exe または /usr/local/bin/node",
-        "hint": "ターミナルで実行",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "実際のNode.js実行可能ファイルのパスを取得します。空欄の場合は自動検出します。",
-        "versionTooLow": "Node.jsのバージョンが低すぎます。プラグインを正常に動作させるにはv{{minVersion}}以上が必要です"
       },
       "workingDirectory": {
         "label": "作業ディレクトリ",
@@ -480,8 +472,8 @@
       }
     },
     "sidebar": {
-      "expand": "Expand Sidebar",
-      "collapse": "Collapse Sidebar"
+      "expand": "サイドバーを展開",
+      "collapse": "サイドバーを折りたたむ"
     },
     "community": "寄付支援",
     "communityDesc": "下のQRコードをスキャンして著者を支援し、プロジェクトの継続的なメンテナンスをサポートします",
@@ -641,7 +633,6 @@
       "title": "プロンプト",
       "create": "作成",
       "createAgent": "プロンプトを作成",
-      "createAgentHint": "クリックしてプロンプト設定ページに移動して作成",
       "customAgents": "カスタムプロンプト",
       "noAgents": "カスタムプロンプトなし",
       "noAgentsDropdown": "プロンプトなし",

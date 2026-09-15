@@ -192,7 +192,7 @@
     "title": "Settings",
     "basic": {
       "title": "Basic Configuration",
-      "description": "Configure page theme, language and Node.js environment",
+      "description": "Configure page theme, language and runtime environment",
       "tabs": {
         "appearance": "Appearance",
         "behavior": "Behavior",
@@ -220,18 +220,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Node.js Path",
-        "placeholder": "Windows: C:\\Program Files\\nodejs\\node.exe (must end with .exe) | macOS/Linux: /usr/local/bin/node",
-        "hint": "Run in terminal",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "to get the actual Node.js executable path. Leave empty to auto-detect. ⚠️ Windows users: Path must point to the full executable file (node.exe), not just the directory.",
-        "versionTooLow": "Node.js version is too low. The plugin requires v{{minVersion}} or higher to run properly",
-        "invalidPath": "Invalid path: {{reason}}",
-        "pathNotFound": "File does not exist, please check the path",
-        "invalidFileName": "Path must end with node.exe on Windows, or node on macOS/Linux",
-        "cannotExecute": "File exists but cannot be executed, please check file permissions"
       },
       "workingDirectory": {
         "label": "Working Directory",
@@ -724,7 +712,6 @@
       "export": "Export",
       "import": "Import",
       "createAgent": "Create Prompt",
-      "createAgentHint": "Click to go to prompt settings page to create",
       "customAgents": "Custom Prompts",
       "noAgents": "No custom prompts",
       "noAgentsDropdown": "No prompts",
@@ -786,34 +773,7 @@
         "selectHint": "Select prompts to export",
         "confirmExport": "Confirm Export"
       }
-    },
-    "commands": {
-      "title": "Commands (Prompts)",
-      "description": "Manage opencode command markdown files. Global: ~/.config/opencode/command, project: .opencode/command. Run them in chat with /name.",
-      "library": "Prompt Library",
-      "libraryTitle": "Prompt Library — import a built-in template",
-      "new": "New",
-      "newName": "new-command",
-      "import": "Import",
-      "edit": "Edit",
-      "delete": "Delete",
-      "empty": "No commands in this scope yet.",
-      "confirmDelete": "Delete command \"{{name}}\"?",
-      "editorTitle": "Command file",
-      "namePlaceholder": "command name",
-      "scope": {
-        "global": "Global",
-        "project": "Project"
-      },
-      "templates": {
-        "review": "Review current changes for bugs and style issues",
-        "explain": "Explain a file or symbol in plain language",
-        "tests": "Generate unit tests for the target code",
-        "refactor": "Refactor code without changing behaviour",
-        "commit": "Generate a conventional commit message"
-      }
-    },
-    "prompts": "Commands (Prompts)"
+    }
   },
   "history": {
     "title": "History",

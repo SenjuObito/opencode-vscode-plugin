@@ -6,7 +6,6 @@ import SettingsHeader from './SettingsHeader';
 import SettingsSidebar, { type SettingsTab } from './SettingsSidebar';
 import BasicConfigSection from './BasicConfigSection';
 import ProviderTabSection from './ProviderTabSection';
-import PromptSection from './PromptSection';
 import UsageSection from './UsageSection';
 import PlaceholderSection from './PlaceholderSection';
 import CommunitySection from './CommunitySection';
@@ -87,10 +86,6 @@ const SettingsView = ({
 
   // Basic settings actions: working dir, streaming, shortcuts, sound, commit prompt, etc.
   const {
-    setNodePath,
-    setSavingNodePath,
-    setNodeVersion,
-    setMinNodeVersion,
     opencodeCliPath,
     setOpencodeCliPath,
     savingOpencodeCliPath,
@@ -200,8 +195,6 @@ const SettingsView = ({
     onSuccess: (msg) => addToast(msg, 'success'),
   });
 
-  // Note: Prompt management is now handled internally by PromptSection component
-
   // Load heavy list / AI-feature data only when the corresponding tab is first opened.
   // Opening Settings previously stampeded providers + agents + CLI probes at once.
   // Commit / prompt-enhancer config probes multiple CLIs and must stay off first paint.
@@ -215,10 +208,6 @@ const SettingsView = ({
 
   // Register window callbacks for Java bridge communication
   useSettingsWindowCallbacks({
-    setNodePath,
-    setSavingNodePath,
-    setNodeVersion,
-    setMinNodeVersion,
     setOpencodeCliPath,
     setSavingOpencodeCliPath,
     setWorkingDirectory,
@@ -234,7 +223,6 @@ const SettingsView = ({
     handleAgentOperationResult,
     handleAgentImportPreviewResult,
     handleAgentImportResult,
-    // Note: Prompt-related callbacks are now handled in PromptSection component
     cleanupAgentsTimeout,
     showAlert,
     addToast,
@@ -356,8 +344,6 @@ const SettingsView = ({
           {currentTab === 'providers' && (
             <ProviderTabSection addToast={addToast} />
           )}
-
-          {currentTab === 'prompts' && <PromptSection />}
 
           {currentTab === 'usage' && <UsageSection />}
 

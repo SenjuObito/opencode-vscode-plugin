@@ -42,10 +42,6 @@ export const SETTINGS_BOOTSTRAP_BRIDGE_MESSAGES = [
 
 export interface SettingsWindowCallbacksDeps {
   // State setters
-  setNodePath: (path: string) => void;
-  setSavingNodePath: (saving: boolean) => void;
-  setNodeVersion: (version: string | null) => void;
-  setMinNodeVersion: (minVersion: number) => void;
   setOpencodeCliPath: (path: string) => void;
   setSavingOpencodeCliPath: (saving: boolean) => void;
   setWorkingDirectory: (dir: string) => void;
@@ -100,29 +96,12 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     window.showError = (message: string) => {
       d().showAlert('error', t('toast.operationFailed'), message);
-      d().setSavingNodePath(false);
       d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
 
     window.showSwitchSuccess = (message: string) => {
       d().showAlert('success', t('toast.switchSuccess'), message);
-    };
-
-    window.updateNodePath = (jsonStr: string) => {
-      try {
-        const data = JSON.parse(jsonStr);
-        d().setNodePath(data.path || '');
-        d().setNodeVersion(data.version || null);
-        if (data.minVersion) {
-          d().setMinNodeVersion(data.minVersion);
-        }
-      } catch (e) {
-        console.warn('[SettingsView] Failed to parse updateNodePath JSON, fallback to legacy format:', e);
-        d().setNodePath(jsonStr || '');
-      }
-      d().setSavingNodePath(false);
-      window.dispatchEvent(new CustomEvent('nodePathReady'));
     };
 
     window.updateOpencodeCliPath = (jsonStr: string) => {
@@ -149,7 +128,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
     window.showSuccess = (message: string) => {
       d().showAlert('success', t('toast.operationSuccess'), message);
-      d().setSavingNodePath(false);
       d().setSavingOpencodeCliPath(false);
       d().setSavingWorkingDirectory(false);
     };
@@ -359,7 +337,6 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
 
       window.showError = undefined;
       window.showSwitchSuccess = undefined;
-      window.updateNodePath = undefined;
       window.updateOpencodeCliPath = undefined;
       window.updateWorkingDirectory = undefined;
       window.showSuccess = undefined;

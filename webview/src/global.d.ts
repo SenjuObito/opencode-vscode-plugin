@@ -233,19 +233,6 @@ interface Window {
   onSoundFileSelected?: (json: string) => void;
 
   /**
-   * Node.js path configuration callback
-   */
-  updateNodePath?: (path: string) => void;
-
-  /**
-   * Opencode commands / prompts callbacks
-   */
-  onCommandsList?: (json: string) => void;
-  onCommandsRead?: (json: string) => void;
-  onCommandsSaved?: (json: string) => void;
-  onCommandsDeleted?: (json: string) => void;
-
-  /**
    * Session state restored callback - fired when a history session is loaded
    * and the daemon's authoritative per-session state (model / permission mode
    * / reasoning effort, read from `session.get`) is applied to the UI.

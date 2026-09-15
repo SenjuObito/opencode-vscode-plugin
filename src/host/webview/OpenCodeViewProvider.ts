@@ -40,6 +40,14 @@ export class BroadcastChannel implements WebviewChannel {
 		return this.views.size;
 	}
 
+	/**
+	 * 存活视图数量。侧边栏左/右 + 编辑器分栏共享同一会话，宿主据此区分
+	 * 「重新打开插件（应当是新会话）」与「再开一个视图看同一会话（应当补推快照）」。
+	 */
+	getViewCount(): number {
+		return this.views.size;
+	}
+
 	callJavaScript(functionName: string, ...args: string[]): void {
 		this.postRaw({ type: functionName, args });
 	}

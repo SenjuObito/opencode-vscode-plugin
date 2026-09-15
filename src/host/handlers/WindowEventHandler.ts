@@ -128,6 +128,13 @@ export class WindowEventHandler extends BaseMessageHandler {
 			return;
 		}
 
+		// ── 方案 B：视图就绪时先对齐宿主内存与这个刚出现的空视图 ──
+		// 每个 webview 只在启动时发一次 frontend_ready，收到它就意味着「来了一个
+		// 空视图」。若宿主持有的是上一会话的残留，就会表现为「打开是空对话、
+		// 一发消息旧对话诈尸」。必须在回放状态之前清理，否则下面的 sessionId
+		// 回放会把旧会话 id 塞给空视图，后续 send 再次命中旧会话。
+		const startedFresh = session.reconcileWithFreshView();
+
 		this.callJavaScript(
 			'applyBackendTabState',
 			JSON.stringify({
@@ -142,8 +149,11 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 		this.callJavaScript('onModeReceived', session.state.getPermissionMode());
 
+		// sessionId 只在宿主**仍持有该会话**时回放（多视图共享同一会话的情形）。
+		// 单视图时 reconcileWithFreshView 已把状态清成新会话，此时若仍把旧 id 推给
+		// 空视图，用户下一次发送就会带着旧 id 打到旧会话上，旧消息被整份带回。
 		const sessionId = session.state.getSessionId();
-		if (sessionId) {
+		if (!startedFresh && sessionId) {
 			this.callJavaScript('setSessionId', sessionId);
 		}
 

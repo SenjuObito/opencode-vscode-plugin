@@ -173,7 +173,7 @@
     "title": "Configuración",
     "basic": {
       "title": "Configuración básica",
-      "description": "Configurar tema de página, idioma y entorno de ejecución Node.js",
+      "description": "Configurar tema de página, idioma y entorno de ejecución",
       "tabs": {
         "appearance": "Apariencia",
         "behavior": "Comportamiento",
@@ -201,14 +201,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Ruta de Node.js",
-        "placeholder": "ej. C:\\Program Files\\nodejs\\node.exe o /usr/local/bin/node",
-        "hint": "Ejecutar en terminal",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "para obtener la ruta del ejecutable real de Node.js. Dejar vacío para detección automática.",
-        "versionTooLow": "La versión de Node.js es demasiado baja. El plugin requiere v{{minVersion}} o superior para funcionar correctamente"
       },
       "workingDirectory": {
         "label": "Working Directory",
@@ -475,8 +467,8 @@
       }
     },
     "sidebar": {
-      "expand": "Expand Sidebar",
-      "collapse": "Collapse Sidebar"
+      "expand": "Expandir barra lateral",
+      "collapse": "Contraer barra lateral"
     },
     "community": "Donar",
     "communityDesc": "Escanea el código QR a continuación para donar al autor y apoyar el mantenimiento continuo",
@@ -636,7 +628,6 @@
       "title": "Prompts",
       "create": "Crear",
       "createAgent": "Crear Prompt",
-      "createAgentHint": "Haz clic para ir a la página de configuración de prompts",
       "customAgents": "Prompts personalizados",
       "noAgents": "No hay prompts personalizados",
       "noAgentsDropdown": "No hay prompts",
@@ -1225,41 +1216,41 @@
     "loadingSession": "Cargando conversación…"
   },
   "skills": {
-    "title": "Skills",
+    "title": "Habilidades",
     "all": "Todos",
     "global": "Global",
     "local": "Local",
-    "filterEnabled": "Filter enabled Skills",
-    "enabled": "Enabled",
-    "filterDisabled": "Filter disabled Skills",
-    "disabled": "Disabled",
-    "searchPlaceholder": "Search Skills...",
-    "whatIsSkills": "What are Skills?",
-    "importSkill": "Import Skill",
-    "importGlobalSkill": "Import Global Skill",
-    "importLocalSkill": "Import Local Skill",
+    "filterEnabled": "Filtrar Skills habilitadas",
+    "enabled": "Habilitadas",
+    "filterDisabled": "Filtrar Skills deshabilitadas",
+    "disabled": "Deshabilitadas",
+    "searchPlaceholder": "Buscar Skills...",
+    "whatIsSkills": "¿Qué son las Skills?",
+    "importSkill": "Importar Skill",
+    "importGlobalSkill": "Importar Skill global",
+    "importLocalSkill": "Importar Skill local",
     "importUserSkill": "Importar Skill de usuario",
     "importRepoSkill": "Importar Skill de repositorio",
     "user": "Usuario",
     "repo": "Repositorio",
-    "description": "Description",
-    "noDescription": "No description",
-    "noSkills": "No Skills",
+    "description": "Descripción",
+    "noDescription": "Sin descripción",
+    "noSkills": "No hay Skills",
     "noMatchingSkills": "No se encontraron Skills coincidentes",
-    "importHint": "Click + button to import Skill file or folder",
-    "deleteTitle": "Delete Skill",
-    "deleteMessage": "Are you sure you want to delete {{scope}} Skill \"{{name}}\"?\n\nThis action cannot be undone.",
+    "importHint": "Haga clic en el botón + para importar un archivo o carpeta de Skill",
+    "deleteTitle": "Eliminar Skill",
+    "deleteMessage": "¿Está seguro de que desea eliminar la Skill {{scope}} \"{{name}}\"?\n\nEsta acción no se puede deshacer.",
     "deleteMessageGlobal": "global",
     "deleteMessageLocal": "local",
     "deleteMessageUser": "de usuario",
     "deleteMessageRepo": "de repositorio",
-    "importSuccess": "Successfully imported {{count}} Skills",
-    "importSuccessOne": "Successfully imported 1 Skill",
-    "importPartialSuccess": "Successfully imported {{count}}/{{total}} Skills, some failed",
-    "importFailed": "Failed to import Skill",
-    "deleteSuccess": "Successfully deleted Skill",
-    "toggleSuccess": "Updated Skill status",
-    "toggleFailed": "Failed to update Skill status",
+    "importSuccess": "Se importaron {{count}} Skills correctamente",
+    "importSuccessOne": "Se importó 1 Skill correctamente",
+    "importPartialSuccess": "Se importaron {{count}}/{{total}} Skills correctamente, algunas fallaron",
+    "importFailed": "Error al importar el Skill",
+    "deleteSuccess": "Skill eliminada correctamente",
+    "toggleSuccess": "Estado del Skill actualizado",
+    "toggleFailed": "Error al actualizar el estado del Skill",
     "deleteFailed": "Error al eliminar el Skill",
     "enableSuccess": "Skill habilitado con éxito: {{name}}",
     "disableSuccess": "Skill deshabilitado con éxito: {{name}}",
@@ -1323,12 +1314,12 @@
         "structure": {
           "title": "Estructura de la Skill",
           "description": "Una Skill de Codex es una carpeta que contiene un archivo SKILL.md:",
-          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Required: skill definition file\n    ├── templates/        # Optional: template files\n    └── references/       # Optional: reference materials"
+          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Requerido: archivo de definición de habilidad\n    ├── templates/        # Opcional: archivos de plantilla\n    └── references/       # Opcional: materiales de referencia"
         },
         "format": {
           "title": "Formato SKILL.md",
           "description": "Los archivos SKILL.md usan formato YAML frontmatter + Markdown:",
-          "example": "---\nname: my-skill-name\ndescription: Skill description and when to use\n---\n\n# Skill Instructions\n\nDetailed instruction content...",
+          "example": "---\nname: my-skill-name\ndescription: Descripción de la habilidad y cuándo usarla\n---\n\n# Instrucciones de Skill\n\nContenido de instrucción detallado...",
           "hint": "name y description son campos obligatorios"
         },
         "configuration": {

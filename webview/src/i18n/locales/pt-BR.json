@@ -173,7 +173,7 @@
     "title": "Configurações",
     "basic": {
       "title": "Configuração Básica",
-      "description": "Configurar tema da página, idioma e ambiente Node.js",
+      "description": "Configurar tema da página, idioma e ambiente de execução",
       "tabs": {
         "appearance": "Aparência",
         "behavior": "Comportamento",
@@ -201,14 +201,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Caminho do Node.js",
-        "placeholder": "ex: C:\\Program Files\\nodejs\\node.exe ou /usr/local/bin/node",
-        "hint": "Execute no terminal",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "para obter o caminho real do executável Node.js. Deixe vazio para detecção automática.",
-        "versionTooLow": "A versão do Node.js é muito baixa. O plugin requer v{{minVersion}} ou superior para funcionar corretamente"
       },
       "workingDirectory": {
         "label": "Diretório de Trabalho",
@@ -443,7 +435,7 @@
     "mcpDesc": "Configurar e gerenciar servidores do Model Context Protocol",
     "agents": "Agentes",
     "agentsDesc": "Gerenciar e configurar agentes de IA",
-    "skills": "Skills",
+    "skills": "Habilidades",
     "skillsDesc": "Gerenciar e configurar módulos de skill",
     "other": {
       "title": "Outras Configurações",
@@ -656,7 +648,6 @@
       "export": "Exportar",
       "import": "Importar",
       "createAgent": "Criar Prompt",
-      "createAgentHint": "Clique para ir à página de configurações de prompts para criar",
       "customAgents": "Prompts Personalizados",
       "noAgents": "Sem prompts personalizados",
       "noAgentsDropdown": "Sem prompts",

@@ -173,7 +173,7 @@
     "title": "設定",
     "basic": {
       "title": "基礎配置",
-      "description": "配置頁面主題、語言和 Node.js 執行環境",
+      "description": "配置頁面主題、語言和執行環境",
       "tabs": {
         "appearance": "外觀",
         "behavior": "行為",
@@ -201,14 +201,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Node.js 路徑",
-        "placeholder": "例如 C:\\Program Files\\nodejs\\node.exe 或 /usr/local/bin/node",
-        "hint": "在終端中執行",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "獲取實際的 Node.js 可執行檔案路徑。為空時外掛會自動嘗試檢測 Node.js。",
-        "versionTooLow": "Node.js 版本過低，外掛需要 v{{minVersion}} 或更高版本才能正常運行"
       },
       "workingDirectory": {
         "label": "Working Directory",
@@ -434,7 +426,7 @@
     },
     "agents": "Agents",
     "agentsDesc": "管理和配置AI代理",
-    "skills": "Skills",
+    "skills": "技能",
     "skillsDesc": "管理和配置技能模組",
     "other": {
       "title": "其他設定",
@@ -482,8 +474,8 @@
       }
     },
     "sidebar": {
-      "expand": "Expand Sidebar",
-      "collapse": "Collapse Sidebar"
+      "expand": "展開側邊欄",
+      "collapse": "收起側邊欄"
     },
     "community": "贊助支持",
     "communityDesc": "掃描二維碼贊助作者，支持項目持續維護",
@@ -643,7 +635,6 @@
       "title": "提示詞",
       "create": "建立",
       "createAgent": "建立提示詞",
-      "createAgentHint": "點選跳轉到提示詞設定頁面進行建立",
       "customAgents": "自訂提示詞",
       "noAgents": "暫無自訂提示詞",
       "noAgentsDropdown": "暫無提示詞",
@@ -1235,41 +1226,41 @@
     "loadingSession": "正在載入對話，請稍候…"
   },
   "skills": {
-    "title": "Skills",
+    "title": "技能",
     "all": "全部",
     "global": "全局",
     "local": "本項目",
-    "filterEnabled": "Filter enabled Skills",
-    "enabled": "Enabled",
-    "filterDisabled": "Filter disabled Skills",
-    "disabled": "Disabled",
-    "searchPlaceholder": "Search Skills...",
-    "whatIsSkills": "What are Skills?",
-    "importSkill": "Import Skill",
-    "importGlobalSkill": "Import Global Skill",
-    "importLocalSkill": "Import Local Skill",
+    "filterEnabled": "篩選已啟用的 Skills",
+    "enabled": "啟用",
+    "filterDisabled": "篩選已停用的 Skills",
+    "disabled": "停用",
+    "searchPlaceholder": "搜尋 Skills...",
+    "whatIsSkills": "什麼是 Skills?",
+    "importSkill": "匯入 Skill",
+    "importGlobalSkill": "匯入全局 Skill",
+    "importLocalSkill": "匯入本專案 Skill",
     "importUserSkill": "匯入使用者 Skill",
     "importRepoSkill": "匯入儲存庫 Skill",
     "user": "使用者",
     "repo": "儲存庫",
     "description": "描述",
     "noDescription": "暫無描述",
-    "noSkills": "No Skills",
+    "noSkills": "暫無 Skills",
     "noMatchingSkills": "未找到匹配的技能",
-    "importHint": "Click + button to import Skill file or folder",
-    "deleteTitle": "Delete Skill",
-    "deleteMessage": "Are you sure you want to delete {{scope}} Skill \"{{name}}\"?\n\nThis action cannot be undone.",
-    "deleteMessageGlobal": "global",
-    "deleteMessageLocal": "local",
+    "importHint": "點選 + 按鈕匯入 Skill 檔案或資料夾",
+    "deleteTitle": "刪除 Skill",
+    "deleteMessage": "確定要刪除{{scope}} Skill \"{{name}}\" 嗎？\n\n此操作無法復原。",
+    "deleteMessageGlobal": "全局",
+    "deleteMessageLocal": "本專案",
     "deleteMessageUser": "使用者",
     "deleteMessageRepo": "儲存庫",
-    "importSuccess": "Successfully imported {{count}} Skills",
-    "importSuccessOne": "Successfully imported 1 Skill",
-    "importPartialSuccess": "Successfully imported {{count}}/{{total}} Skills, some failed",
-    "importFailed": "Failed to import Skill",
-    "deleteSuccess": "Successfully deleted Skill",
-    "toggleSuccess": "Updated Skill status",
-    "toggleFailed": "Failed to update Skill status",
+    "importSuccess": "已成功匯入 {{count}} 個 Skills",
+    "importSuccessOne": "已成功匯入 1 個 Skill",
+    "importPartialSuccess": "成功匯入 {{count}}/{{total}} 個 Skills，部分失敗",
+    "importFailed": "匯入 Skill 失敗",
+    "deleteSuccess": "已成功刪除 Skill",
+    "toggleSuccess": "已更新 Skill 狀態",
+    "toggleFailed": "更新 Skill 狀態失敗",
     "deleteFailed": "刪除 Skill 失敗",
     "enableSuccess": "已成功啟用 Skill: {{name}}",
     "disableSuccess": "已成功停用 Skill: {{name}}",
@@ -1333,12 +1324,12 @@
         "structure": {
           "title": "Skill 結構",
           "description": "Codex Skill 是一個包含 SKILL.md 檔案的資料夾：",
-          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Required: skill definition file\n    ├── templates/        # Optional: template files\n    └── references/       # Optional: reference materials"
+          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # 必須：技能定義檔案\n    ├── templates/        # 可選：範本檔案\n    └── references/       # 可選：參考資料"
         },
         "format": {
           "title": "SKILL.md 格式",
           "description": "SKILL.md 檔案使用 YAML frontmatter + Markdown 格式：",
-          "example": "---\nname: my-skill-name\ndescription: Skill description and when to use\n---\n\n# Skill Instructions\n\nDetailed instruction content...",
+          "example": "---\nname: my-skill-name\ndescription: 技能描述和使用時機\n---\n\n# 技能指令\n\n詳細的指令內容...",
           "hint": "name 和 description 是必填欄位"
         },
         "configuration": {
