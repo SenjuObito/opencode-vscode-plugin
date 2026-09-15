@@ -1,8 +1,15 @@
-/**
+/*
  * Model context limits — port of cc-gui `SettingsHandler.getModelContextLimit`.
  * Used to compute the context-usage percentage in the toolbar TokenCircle.
- * OpenCode models default to 200k; a handful of known limits are pinned.
+ *
+ * Real provider metadata wins over the pinned table: the opencode model catalog
+ * reports each model's models.dev `limit.context`, which is the only correct
+ * source for models the table below has never heard of (deepseek-v4-pro is 1M,
+ * not the pinned 200k default). The table stays as the offline fallback for when
+ * the catalog is still cold or a model is missing from it.
  */
+import { getCatalogContextWindow } from './ModelContextWindowCatalog';
+
 const KNOWN_LIMITS: Record<string, number> = {
 	// Anthropic / Claude Code 模型（opencode 内部可用的常见后端）
 	'claude-sonnet-4-5': 200_000,
@@ -19,7 +26,21 @@ const KNOWN_LIMITS: Record<string, number> = {
 
 const DEFAULT_CONTEXT_LIMIT = 200_000;
 
+/**
+ * Resolve a model's context window, preferring real provider metadata over the
+ * pinned table.
+ *
+ * Ids carrying an explicit capacity suffix (`model[1m]`) deliberately miss the
+ * catalog — its keys never contain a suffix — and fall through to the parser
+ * below, so an explicit capacity still wins over the catalog's bare-id value.
+ */
 export function getModelContextLimit(model: string | null | undefined): number {
+	const fromCatalog = getCatalogContextWindow(model);
+	return fromCatalog !== undefined ? fromCatalog : getHardcodedModelContextLimit(model);
+}
+
+/** The offline table: bracketed suffix, pinned ids, then the 200k default. */
+function getHardcodedModelContextLimit(model: string | null | undefined): number {
 	if (!model) {
 		return DEFAULT_CONTEXT_LIMIT;
 	}

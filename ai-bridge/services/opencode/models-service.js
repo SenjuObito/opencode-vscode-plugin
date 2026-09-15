@@ -67,9 +67,58 @@ export function parseOpenCodeModelsOutput(stdout) {
 }
 
 /**
+ * Resolve a model's total context window from its models.dev metadata.
+ * @param {unknown} modelInfo - SDK `Model` entry (`{ limit: { context, output } }`)
+ * @returns {number | undefined} positive integer token count, otherwise undefined
+ */
+export function resolveContextWindow(modelInfo) {
+  const context = modelInfo && typeof modelInfo === 'object' ? modelInfo.limit?.context : undefined;
+  const value = Number(context);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : undefined;
+}
+
+/**
+ * Build one catalog entry from an SDK `Model` record.
+ *
+ * `contextWindow` is omitted entirely when models.dev has no usable limit so the
+ * consumer can tell "unknown" apart from "zero".
+ *
+ * @param {string} providerId
+ * @param {string} providerName - display name, used for the description fallback
+ * @param {string} modelId - bare model id (no `provider/` prefix)
+ * @param {object} [modelInfo] - SDK `Model` record
+ * @returns {{ id: string, label: string, description: string, variants?: string[], contextWindow?: number }}
+ */
+export function buildSdkModelEntry(providerId, providerName, modelId, modelInfo) {
+  const fullId = `${providerId}/${modelId}`;
+  const description = (modelInfo && typeof modelInfo === 'object' && modelInfo.name)
+    ? modelInfo.name
+    : `${providerName} ${modelId}`;
+  // opencode variants = 推理力度档位（按模型变化），供前端动态渲染。
+  let variants;
+  if (modelInfo && typeof modelInfo.variants === 'object' && modelInfo.variants !== null) {
+    variants = Object.keys(modelInfo.variants).filter((key) => {
+      const cfg = modelInfo.variants[key];
+      return !(cfg && typeof cfg === 'object' && cfg.disabled);
+    });
+    if (variants.length === 0) variants = undefined;
+  }
+  // 上下文额度（models.dev limit.context）必须一路带到 host 侧，
+  // 否则模型切换/用量环只能退回硬编码表，1M 模型会被显示成 200k。
+  const contextWindow = resolveContextWindow(modelInfo);
+  return {
+    id: fullId,
+    label: formatLabel(fullId),
+    description,
+    ...(variants ? { variants } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+  };
+}
+
+/**
  * Enumerate models via the SDK `config.providers()` endpoint.
  * @param {string} [directory]
- * @returns {Promise<{ id: string, label: string, description?: string }[]>}
+ * @returns {Promise<{ id: string, label: string, description?: string, contextWindow?: number }[]>}
  */
 async function listModelsFromSdk(directory) {
   const providers = await sdk.getProviders(directory);
@@ -84,22 +133,10 @@ async function listModelsFromSdk(directory) {
     if (!providerId || !modelMap || typeof modelMap !== 'object') continue;
     for (const [modelId, modelInfo] of Object.entries(modelMap)) {
       if (!modelId) continue;
-      const fullId = `${providerId}/${modelId}`;
-      if (seen.has(fullId)) continue;
-      seen.add(fullId);
-      const description = (modelInfo && typeof modelInfo === 'object' && modelInfo.name)
-        ? modelInfo.name
-        : `${providerName} ${modelId}`;
-      // opencode variants = 推理力度档位（按模型变化），供前端动态渲染。
-      let variants;
-      if (modelInfo && typeof modelInfo.variants === 'object' && modelInfo.variants !== null) {
-        variants = Object.keys(modelInfo.variants).filter((key) => {
-          const cfg = modelInfo.variants[key];
-          return !(cfg && typeof cfg === 'object' && cfg.disabled);
-        });
-        if (variants.length === 0) variants = undefined;
-      }
-      models.push({ id: fullId, label: formatLabel(fullId), description, ...(variants ? { variants } : {}) });
+      const entry = buildSdkModelEntry(providerId, providerName, modelId, modelInfo);
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      models.push(entry);
     }
   }
   return models;

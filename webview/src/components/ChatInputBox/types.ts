@@ -195,6 +195,11 @@ export interface ModelInfo {
   description?: string;
   /** opencode model variants（推理力度档位 id 列表，来自 daemon 目录）。 */
   variants?: string[];
+  /**
+   * 模型总上下文额度（models.dev `limit.context`，token 数）。
+   * host 侧另有权威副本用于用量环，这里保留原始值以免前端二次丢字段。
+   */
+  contextWindow?: number;
 }
 
 /** OpenCode default: omit `--model` so CLI resolves its own default. */

@@ -8,6 +8,7 @@
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
+import { updateModelContextWindows } from '../util/ModelContextWindowCatalog';
 
 const SUPPORTED_TYPES = ['get_cli_models'];
 
@@ -54,6 +55,9 @@ export class CliModelsHandler extends BaseMessageHandler {
 		if (pushToWebview) {
 			const cached = settings.getCachedCliModels();
 			if (cached) {
+				// The persisted list may predate this build and lack limit metadata;
+				// merging is a no-op then and a real warm-up otherwise.
+				this.primeCatalog(cached);
 				this.callJavaScript('setCliModels', JSON.stringify(cached));
 			}
 		}
@@ -89,6 +93,9 @@ export class CliModelsHandler extends BaseMessageHandler {
 					payload.provider = provider;
 				}
 				settings.setCachedCliModels(payload);
+				// Teach the context-window catalog before the webview sees the list,
+				// so the very next usage push resolves the real model limit.
+				this.primeCatalog(payload);
 				if (pushToWebview) {
 					this.callJavaScript('setCliModels', JSON.stringify(payload));
 				}
@@ -96,6 +103,23 @@ export class CliModelsHandler extends BaseMessageHandler {
 		});
 		if (!ok && pushToWebview) {
 			this.pushError(provider, 'Daemon unavailable for model list');
+		}
+	}
+
+	/**
+	 * Merge the payload's per-model context windows and, when the catalog learned
+	 * something new, re-publish the usage snapshot that may have been computed
+	 * against the cold 200k fallback. A session with no usage snapshot pushes
+	 * nothing, so a warmup before the first turn stays silent.
+	 */
+	private primeCatalog(payload: unknown): void {
+		try {
+			if (!updateModelContextWindows(payload)) {
+				return;
+			}
+			this.context.getSession()?.republishUsageFromHistory();
+		} catch (error) {
+			console.warn('[CliModels] Usage republish skipped:', error);
 		}
 	}
 

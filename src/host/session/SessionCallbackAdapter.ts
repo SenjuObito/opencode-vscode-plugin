@@ -284,6 +284,19 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.jsTarget.callJavaScript('onUsageUpdate', json);
 	}
 
+	/**
+	 * 清空用量环。切换模型后分母已失效，清掉比继续展示旧模型的额度更诚实。
+	 *
+	 * 只发 percentage：让前端把 retained 的 used/max 一并清掉，避免 tooltip 里
+	 * 出现 "0 / 0" 这种无意义的分母（对应 cc-gui `clearUsageDisplay`）。
+	 */
+	clearUsage(): void {
+		if (this.isInactive()) {
+			return;
+		}
+		this.jsTarget.callJavaScript('onUsageUpdate', JSON.stringify({ percentage: 0 }));
+	}
+
 	onUserMessageUuidPatched(content: string, uuid: string): void {
 		if (this.isInactive()) {
 			return;

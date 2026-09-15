@@ -333,12 +333,45 @@ export class OpenCodeSession {
 		);
 
 		// 恢复历史 Token 统计
+		this.republishUsageFromHistory();
+	}
+
+	/**
+	 * 用当前解析出的额度重推一次用量快照。
+	 *
+	 * 会话恢复时模型目录可能还是冷的，会先推硬编码的 200k；目录热起来之后若不
+	 * 重推，已经渲染的用量环会一直错到下一轮。没有历史用量则不推，UI 保持原样。
+	 */
+	republishUsageFromHistory(): void {
 		const lastUsage = findLastUsageFromMessages(this.state.getMessages());
-		if (lastUsage) {
-			const usedTokens = extractContextTokens(lastUsage, this.state.getProvider());
-			const maxTokens = getModelContextLimit(this.state.getModel());
-			this.callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
+		if (!lastUsage) {
+			return;
 		}
+		this.pushUsageSnapshot(lastUsage);
+	}
+
+	/**
+	 * 切换模型后按新模型的上下文额度重算用量环。
+	 *
+	 * 分母是模型自身的属性，`set_model` 不重推的话，用量环会一直停在旧模型的
+	 * 额度上（1M 的模型切过去仍显示 200k），直到下一轮 usage 事件才纠正。
+	 * 没有历史用量时清空显示 —— 旧模型的额度不能当成新模型的分母
+	 * （对应 cc-gui `pushUsageUpdateAfterModelChange`）。
+	 */
+	republishUsageAfterModelChange(): void {
+		const lastUsage = findLastUsageFromMessages(this.state.getMessages());
+		if (!lastUsage) {
+			this.adapter.clearUsage();
+			return;
+		}
+		this.pushUsageSnapshot(lastUsage);
+	}
+
+	/** 用当前 state.getModel() 解析出的额度推送用量快照。 */
+	private pushUsageSnapshot(lastUsage: Record<string, unknown>): void {
+		const usedTokens = extractContextTokens(lastUsage, this.state.getProvider());
+		const maxTokens = getModelContextLimit(this.state.getModel());
+		this.callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
 	}
 
 	dispose(): void {

@@ -54,6 +54,44 @@ describe('useCliModels', () => {
     expect(result.current.cliModelsError).toBeNull();
   });
 
+  it('carries each model context window through the catalog payload', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'deepseek/deepseek-v4-pro', label: 'Deepseek-V4-Pro', contextWindow: 1_000_000 },
+        { id: 'opencode/big-pickle', label: 'Big-Pickle', contextWindow: 200_000 },
+      ],
+    });
+    expect(result.current.cliModels).toEqual([
+      { id: 'deepseek/deepseek-v4-pro', label: 'Deepseek-V4-Pro', contextWindow: 1_000_000 },
+      { id: 'opencode/big-pickle', label: 'Big-Pickle', contextWindow: 200_000 },
+    ]);
+  });
+
+  it('drops a missing or bogus context window instead of storing nonsense', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'no-limit', label: 'No Limit' },
+        { id: 'zero-limit', label: 'Zero', contextWindow: 0 },
+        { id: 'negative-limit', label: 'Negative', contextWindow: -5 },
+        { id: 'nan-limit', label: 'NaN', contextWindow: 'nope' },
+        { id: 'fractional-limit', label: 'Fractional', contextWindow: 1.5 },
+      ],
+    });
+    expect(result.current.cliModels).toEqual([
+      { id: 'no-limit', label: 'No Limit' },
+      { id: 'zero-limit', label: 'Zero' },
+      { id: 'negative-limit', label: 'Negative' },
+      { id: 'nan-limit', label: 'NaN' },
+      { id: 'fractional-limit', label: 'Fractional' },
+    ]);
+  });
+
   it('times out into an error state and falls back to static models', () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useCliModels('opencode'));

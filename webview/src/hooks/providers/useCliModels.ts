@@ -41,7 +41,19 @@ function normalizeModels(raw: unknown): ModelInfo[] {
     const variants = Array.isArray(row.variants)
       ? row.variants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
       : undefined;
-    out.push({ id, label, description, ...(variants && variants.length > 0 ? { variants } : {}) });
+    // 上下文额度必须透传：daemon 目录是它唯一的来源，丢掉就只能退回 host 硬编码表。
+    // 额度是正整数，非整数一律当脏数据丢掉，不做四舍五入。
+    const rawContextWindow = Number(row.contextWindow);
+    const contextWindow = Number.isInteger(rawContextWindow) && rawContextWindow > 0
+      ? rawContextWindow
+      : undefined;
+    out.push({
+      id,
+      label,
+      description,
+      ...(variants && variants.length > 0 ? { variants } : {}),
+      ...(contextWindow ? { contextWindow } : {}),
+    });
   }
   return out;
 }

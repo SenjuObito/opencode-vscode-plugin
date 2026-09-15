@@ -63,6 +63,13 @@ export class ModelProviderHandler extends BaseMessageHandler {
 		}
 		// workspaceState 持久化由 webview 侧 useModelStatePersistence 处理
 		this.callJavaScript('onModelConfirmed', model, this.context.getCurrentProvider());
+
+		// 上下文额度是模型自身的属性：不重推的话用量环会停在旧模型的分母上
+		// （1M 的模型切过去仍显示 200k），直到下一轮 usage 事件才纠正。
+		// 必须在 setModel 之后执行，否则解析到的还是旧额度。
+		if (modelChanged && session) {
+			session.republishUsageAfterModelChange();
+		}
 	}
 
 	// ── set_provider ───────────────────────────────────────────────────────
