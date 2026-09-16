@@ -905,6 +905,11 @@ const App = () => {
         onShare={handleShare}
         onUnshare={handleUnshare}
         onForkAll={handleForkFull}
+        onExport={() => {
+          if (currentSessionId) {
+            exportHistorySession(currentSessionId, sessionTitle);
+          }
+        }}
       />
 
       {currentView === 'settings' ? (

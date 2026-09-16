@@ -13,13 +13,34 @@ import * as cp from 'node:child_process';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { resolveOpenCodeCliPath, isWindowsCmdShim } from '../../utils/cli-path.js';
+import { homedir } from 'node:os';
+import {
+  resolveOpenCodeCliPath,
+  needsShellOnWindows,
+  commonCliBinDirs,
+  enrichPathWithBinDirs,
+} from '../../utils/cli-path.js';
 
 /** @type {cp.ChildProcess | null} */
 let _process = null;
 let _serverUrl = null;
 /** @type {Promise<string> | null} */
 let _startPromise = null;
+/** Last port passed to start(), so an auto-restart rebinds the same port the
+ *  daemon originally requested (the daemon may override via OPENCODE_PORT env). */
+let _lastPort = 4096;
+/** True once serve has been started or reused successfully. Distinguishes a
+ *  steady-state crash (auto-restart) from a failure during initial boot
+ *  (which must surface to the caller instead of retrying forever). */
+let _started = false;
+/** Set while stop() is in progress so an exit event is treated as an expected
+ *  shutdown rather than a crash to recover from. */
+let _stopRequested = false;
+/** Auto-restart backoff bookkeeping. */
+let _restartAttempts = 0;
+const MAX_RESTART_ATTEMPTS = 5;
+const BACKOFF_BASE_MS = 1000;
+const BACKOFF_MAX_MS = 10000;
 
 /**
  * @returns {string | null} The URL the server was started on, if any.
@@ -65,10 +86,14 @@ function isExecutable(filePath) {
  */
 export async function findBinary() {
   const resolved = resolveOpenCodeCliPath();
-  if (resolved && isExecutable(resolved)) {
+  if (!resolved) return null;
+  // Bare command name (no path, no drive): cannot F_OK-check against cwd.
+  // Let it through to spawn, where needsShellOnWindows forces a shell on
+  // Windows so cmd/PATHEXT resolves the real .exe/.cmd.
+  if (!/[\\/]/.test(resolved) && !/^[A-Za-z]:/.test(resolved)) {
     return resolved;
   }
-  return null;
+  return isExecutable(resolved) ? resolved : null;
 }
 
 /**
@@ -120,6 +145,7 @@ function waitForReady(url, timeoutMs) {
  * @throws If the binary cannot be found, the process exits early, or startup times out.
  */
 export async function start(port = 4096) {
+  _lastPort = port;
   if (_process && _serverUrl) {
     return _serverUrl;
   }
@@ -152,16 +178,22 @@ async function doStart(port) {
   if (await waitForReady(url, 1500)) {
     console.error(`[opencode-serve-manager] Reusing existing server on ${url}`);
     _serverUrl = url;
+    _started = true;
     return url;
   }
 
   console.error(`[opencode-serve-manager] Starting: ${binary} serve --port ${port}`);
 
-  // Windows .cmd/.bat shims require shell: true to spawn correctly.
+  // Windows .cmd/.bat shims (and bare command names) require a shell so
+  // PATHEXT can resolve the real executable. Enrich PATH with common user bin
+  // dirs (pnpm global, Scoop shims, …) that an IDE-launched process often lacks.
+  const spawnEnv = { ...process.env };
+  enrichPathWithBinDirs(spawnEnv, commonCliBinDirs(homedir()));
   const spawnOpts = {
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: spawnEnv,
   };
-  if (isWindowsCmdShim(binary)) {
+  if (needsShellOnWindows(binary)) {
     spawnOpts.shell = true;
   }
 
@@ -179,6 +211,10 @@ async function doStart(port) {
         reject(new Error(value));
       } else {
         _serverUrl = value;
+        _started = true;
+        // A stable run resets the auto-restart backoff so a future crash gets a
+        // fresh retry budget instead of inheriting a near-exhausted counter.
+        _restartAttempts = 0;
         resolve(value);
       }
     };
@@ -219,6 +255,14 @@ async function doStart(port) {
           _process = null;
           _serverUrl = null;
         }
+        // Steady-state crash (started successfully, not an intentional stop):
+        // schedule a backoff auto-restart so the bridge self-heals without
+        // waiting for the next outgoing request.
+        if (_started && !_stopRequested) {
+          scheduleAutoRestart();
+        } else if (_stopRequested) {
+          _started = false;
+        }
       }
     });
 
@@ -239,6 +283,42 @@ async function doStart(port) {
 }
 
 /**
+ * @returns {boolean} Whether a serve process is currently alive. Used by the
+ * daemon to detect a crashed serve and re-launch it on the next request.
+ */
+export function isRunning() {
+  return _process !== null;
+}
+
+/**
+ * Backoff-restricted auto-restart after a steady-state crash.
+ *
+ * Guarded by `_stopRequested` (never fight an intentional stop()) and
+ * `MAX_RESTART_ATTEMPTS` (avoid a restart storm when the binary is missing or
+ * the port is permanently occupied). Rebinds `_lastPort` so the restart uses
+ * the same port the daemon originally requested. Re-entrancy is handled by
+ * `_startPromise` inside start() and the `_process` guard below.
+ */
+function scheduleAutoRestart() {
+  if (_stopRequested || _process) return;
+  if (_restartAttempts >= MAX_RESTART_ATTEMPTS) {
+    console.error('[opencode-serve-manager] Auto-restart limit reached; giving up on opencode serve');
+    return;
+  }
+  const delay = Math.min(BACKOFF_BASE_MS * 2 ** _restartAttempts, BACKOFF_MAX_MS);
+  _restartAttempts += 1;
+  console.error(
+    `[opencode-serve-manager] Scheduling auto-restart in ${delay}ms (attempt ${_restartAttempts}/${MAX_RESTART_ATTEMPTS})`,
+  );
+  setTimeout(() => {
+    if (_stopRequested || _process) return; // a newer process owns the slot now
+    start(_lastPort).catch((err) => {
+      console.error(`[opencode-serve-manager] auto-restart failed: ${err?.message || err}`);
+    });
+  }, delay);
+}
+
+/**
  * Stop the opencode serve process.
  *
  * On Unix: sends SIGTERM first; if the process hasn't exited within 5 seconds,
@@ -252,6 +332,7 @@ async function doStart(port) {
  * @returns {Promise<void>}
  */
 export async function stop() {
+  _stopRequested = true;
   const proc = _process;
   if (!proc) return;
 

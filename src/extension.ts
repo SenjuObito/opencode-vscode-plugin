@@ -30,6 +30,7 @@ import { WindowEventHandler } from './host/handlers/WindowEventHandler.js';
 import { SkillHandler } from './host/handlers/SkillHandler.js';
 import { AgentHandler } from './host/handlers/AgentHandler.js';
 import { HistoryHandler } from './host/handlers/HistoryHandler.js';
+import { ExportHandler } from './host/handlers/ExportHandler.js';
 import { FileHandler } from './host/handlers/FileHandler.js';
 import { DiffHandler } from './host/handlers/DiffHandler.js';
 import { UndoFileHandler } from './host/handlers/UndoFileHandler.js';
@@ -95,6 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
 	dispatcher.registerHandler(new AgentHandler(handlerContext));
 	const historyHandler = new HistoryHandler(handlerContext);
 	dispatcher.registerHandler(historyHandler);
+	dispatcher.registerHandler(new ExportHandler(handlerContext));
 	dispatcher.registerHandler(new FileHandler(handlerContext));
 	dispatcher.registerHandler(new McpServerHandler(handlerContext));
 	dispatcher.registerHandler(new McpMarketplaceHandler(handlerContext));

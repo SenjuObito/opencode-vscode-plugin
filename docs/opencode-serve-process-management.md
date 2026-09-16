@@ -1,5 +1,7 @@
 # opencode serve 进程管理流程梳理
 
+> **状态：方案 A 已实施**（2026-09-16）。opencode-vscode-plugin 与 opencode-idea-gui 两个仓库的 `ai-bridge/services/opencode/` 均已改动：serve-manager 增加 `isRunning()` + 崩溃自动重拉（退避 + 上限 5 次 + stop 时不再重拉），daemon-service 的 `_ensureReady` 改为 `if (!_serveStarted || !serveManager.isRunning())` 实现发送时检测重启。运行时 mock 测试通过。
+
 > 目的：回答「opencode serve 进程挂了之后，有没有重启拉起操作」以及「server 进程管理的完整流程」。
 > 结论先行：**opencode serve 子进程挂掉后，没有专门的自动重启拉起机制。** 唯一能让 serve 重新拉起的路径，是「整个 daemon 进程（ai-bridge/daemon.js）死掉 → 宿主侧自动重启 daemon → 连带重新 spawn serve」。若 daemon 进程还活着、只是它内部 spawn 的 serve 子进程挂了，则不会自动恢复。
 

@@ -184,7 +184,9 @@ function tokensToUsage(tokens) {
  * @param {string} directory - working directory to scope the SSE subscription to
  */
 async function _ensureReady(directory) {
-  if (!_serveStarted) {
+  // Path ①: re-launch serve on send if it crashed between requests.
+  // `_serveStarted` stays true after a crash, so also check the live process.
+  if (!_serveStarted || !serveManager.isRunning()) {
     await serveManager.start(DEFAULT_PORT);
     _serveStarted = true;
   }

@@ -32,6 +32,8 @@ export interface ChatHeaderProps {
   onUnshare?: () => void;
   /** Fork the entire conversation into a new session */
   onForkAll?: () => void;
+  /** Export current session as Markdown */
+  onExport?: () => void;
 }
 
 export function ChatHeader({
@@ -52,6 +54,7 @@ export function ChatHeader({
   onShare,
   onUnshare,
   onForkAll,
+  onExport,
 }: ChatHeaderProps): React.ReactElement | null {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -216,6 +219,16 @@ export function ChatHeader({
                 aria-label={t('chat.search.openTooltip', { defaultValue: 'Search in conversation' })}
               >
                 <span className="codicon codicon-search" />
+              </button>
+            )}
+            {onExport && (
+              <button
+                className="icon-button"
+                onClick={onExport}
+                data-tooltip={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
+                aria-label={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
+              >
+                <span className="codicon codicon-export" />
               </button>
             )}
             <button

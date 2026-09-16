@@ -196,8 +196,7 @@ export const HistoryListItem = memo(({
   }, [onConvertToCliSession, session.sessionId]);
 
   const showEntrypointBadge = session.entrypoint && session.entrypoint !== 'cli' && session.entrypoint !== 'remote';
-  // [TEMP] 下载会话按钮当前点击无响应，临时隐藏（handler / props / i18n 均保留）。详见 docs/KNOWN-ISSUES.md
-  const showExportButton = false;
+  const showExportButton = true;
   // Converting the session this window is still chatting in would race with the
   // SDK process appending to the jsonl file, so hide the button for it.
   const showConvertButton = !isActiveSession

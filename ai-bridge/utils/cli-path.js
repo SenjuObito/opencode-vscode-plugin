@@ -34,6 +34,27 @@ export function isWindowsCmdShim(bin) {
 }
 
 /**
+ * Whether the resolved binary must be spawned through a shell on Windows.
+ *
+ * True for `.cmd`/`.bat` shims AND for bare command names (no path, no
+ * extension). Node's `spawn()` without a shell cannot resolve a bare name via
+ * PATHEXT, so on Windows we must hand it to `cmd /c` to let PATHEXT pick the
+ * real `.exe`/`.cmd`. Absolute/relative paths with an extension (`.exe`, `.com`,
+ * …) are left to `CreateProcess` directly.
+ *
+ * @param {string} bin
+ * @returns {boolean}
+ */
+export function needsShellOnWindows(bin) {
+  if (process.platform !== 'win32') return false;
+  const s = String(bin || '');
+  if (/\.(cmd|bat)$/i.test(s)) return true;
+  const looksLikePath = /[\\/]/.test(s) || /^[A-Za-z]:/.test(s);
+  const hasExt = /\.[a-z0-9]+$/i.test(s);
+  return !looksLikePath && !hasExt;
+}
+
+/**
  * Pick the best match from `where` output lines on Windows.
  * Prefer `.exe` / `.cmd` / `.bat` over extensionless npm bash shims.
  *
@@ -224,6 +245,14 @@ export function commonCliBinDirs(home = homedir()) {
     // npm global bin dir on Windows (e.g. C:\Users\<user>\AppData\Roaming\npm).
     const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
     dirs.push(join(appData, 'npm'));
+    // pnpm global bin dir on Windows (e.g. C:\Users\<user>\AppData\Local\pnpm).
+    const localAppData = process.env.LOCALAPPDATA || join(home, 'AppData', 'Local');
+    dirs.push(join(localAppData, 'pnpm'));
+    // Scoop shims (e.g. C:\Users\<user>\scoop\shims).
+    dirs.push(join(home, 'scoop', 'shims'));
+  } else {
+    // pnpm global bin dir on macOS/Linux (e.g. ~/.local/share/pnpm).
+    dirs.push(join(home, '.local', 'share', 'pnpm'));
   }
   return dirs;
 }

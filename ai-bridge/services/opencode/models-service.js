@@ -16,6 +16,7 @@ import {
   commonCliBinDirs,
   enrichPathWithBinDirs,
   isWindowsCmdShim,
+  needsShellOnWindows,
   resolveOpenCodeCliPath,
 } from '../../utils/cli-path.js';
 import { selectWorkingDirectory } from '../../utils/path-utils.js';
@@ -32,7 +33,7 @@ export function formatLabel(fullId) {
   const trimmed = String(fullId || '').trim();
   if (!trimmed) return 'OpenCode';
   const slash = trimmed.indexOf('/');
-  // UI 已按供应商分组，label 只显示模型名；id 仍保留完整 provider/model。
+  // UI 已按供应商分组，label 只显示模型名；id 仍保留完�? provider/model�?
   const modelName = slash > 0 ? trimmed.slice(slash + 1) : trimmed;
   if (!modelName) return trimmed;
   // Title-case-ish for display.
@@ -94,7 +95,7 @@ export function buildSdkModelEntry(providerId, providerName, modelId, modelInfo)
   const description = (modelInfo && typeof modelInfo === 'object' && modelInfo.name)
     ? modelInfo.name
     : `${providerName} ${modelId}`;
-  // opencode variants = 推理力度档位（按模型变化），供前端动态渲染。
+  // opencode variants = 推理力度档位（按模型变化），供前端动态渲染�?
   let variants;
   if (modelInfo && typeof modelInfo.variants === 'object' && modelInfo.variants !== null) {
     variants = Object.keys(modelInfo.variants).filter((key) => {
@@ -103,8 +104,8 @@ export function buildSdkModelEntry(providerId, providerName, modelId, modelInfo)
     });
     if (variants.length === 0) variants = undefined;
   }
-  // 上下文额度（models.dev limit.context）必须一路带到 host 侧，
-  // 否则模型切换/用量环只能退回硬编码表，1M 模型会被显示成 200k。
+  // 上下文额度（models.dev limit.context）必须一路带�? host 侧，
+  // 否则模型切换/用量环只能退回硬编码表，1M 模型会被显示�? 200k�?
   const contextWindow = resolveContextWindow(modelInfo);
   return {
     id: fullId,
@@ -190,8 +191,8 @@ export async function listModels() {
       env,
       timeout: 45_000,
       maxBuffer: 8 * 1024 * 1024,
-      // Windows npm `.cmd` shims require a shell to spawn.
-      shell: isWindowsCmdShim(bin),
+      // Windows npm `.cmd` shims (and bare names) require a shell to spawn.
+      shell: needsShellOnWindows(bin),
     });
   } catch (error) {
     console.log(JSON.stringify({ success: false, error: error?.message || String(error), models: [] }));
