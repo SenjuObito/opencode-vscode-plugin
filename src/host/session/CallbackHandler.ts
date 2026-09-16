@@ -84,8 +84,20 @@ export class CallbackHandler {
 		this.callback?.onTaskEvent?.(eventJson);
 	}
 
-	notifyRevertStateUpdate(hasRevert: boolean): void {
-		this.callback?.onRevertStateUpdate?.(hasRevert);
+	notifyRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {
+		this.callback?.onRevertStateUpdate?.(hasRevert, messageId);
+	}
+
+	/**
+	 * 服务端权威删除了一批消息（opencode 在下一次 prompt 执行 revert cleanup 时
+	 * 逐条广播 message.removed）。传 opencode 消息 id 列表，webview 据此先从本地
+	 * 列表剔除，随后的快照才会等长覆盖而不是触发收缩保护。
+	 */
+	notifyMessagesRemoved(messageIds: string[]): void {
+		if (!messageIds || messageIds.length === 0) {
+			return;
+		}
+		this.callback?.onMessagesRemoved?.(messageIds);
 	}
 
 	notifyTodoUpdated(payload: string): void {

@@ -183,6 +183,65 @@ export class SessionState {
 	clearMessages(): void {
 		this.messages.length = 0;
 	}
+
+	/**
+	 * 按 opencode 消息 id 删除消息 —— 服务端权威删除在宿主的落地。
+	 *
+	 * opencode 的 revert 只是写一个「此处往后作废」的指针，真正的删除发生在下一次
+	 * prompt：服务端先跑 cleanup 把 revert 点之后的消息删掉，再落新的用户消息，并对
+	 * 每条被删消息广播 message.removed。宿主必须跟着删，否则它会一直揣着已作废的
+	 * 消息，继续发消息时又把这些内容推回 webview（表现为「撤回的消息复活」）。
+	 *
+	 * id 落在 raw 上：历史转换器写 raw.id，rewind 修补过的用户消息可能是 raw.uuid，
+	 * 顶层也可能带一份。三种写法都检查。
+	 *
+	 * @returns 是否至少删掉一条
+	 */
+	removeMessagesByIds(messageIds: readonly string[]): boolean {
+		if (!messageIds || messageIds.length === 0) {
+			return false;
+		}
+		const ids = new Set(messageIds.filter((id) => typeof id === 'string' && id.length > 0));
+		if (ids.size === 0) {
+			return false;
+		}
+		const before = this.messages.length;
+		for (let i = this.messages.length - 1; i >= 0; i--) {
+			if (messageMatchesAnyProviderId(this.messages[i], ids)) {
+				this.messages.splice(i, 1);
+			}
+		}
+		return this.messages.length !== before;
+	}
+
+	/**
+	 * 从当前 revert 边界起（含该条）裁掉后续全部消息。
+	 *
+	 * 在追加新用户消息前调用，与服务端即将执行的动作对齐：pending revert 会在下一次
+	 * prompt 开始时生效，边界之后的消息即将消失。先在本地裁掉，推给 webview 的快照
+	 * 就不会把已作废的那一轮带回去 —— 否则那些消息会先闪现，直到 message.removed
+	 * 到达才消失。
+	 *
+	 * 无 revert、或边界 id 为空 / 本地找不到时是 no-op（此时仍由权威的
+	 * message.removed 事件纠正状态）。
+	 *
+	 * @returns 是否裁掉了内容
+	 */
+	trimMessagesFromRevertBoundary(): boolean {
+		const boundaryId = this.revertState?.messageID;
+		if (!boundaryId) {
+			return false;
+		}
+		const ids = new Set([boundaryId]);
+		const idx = this.messages.findIndex((m) => messageMatchesAnyProviderId(m, ids));
+		if (idx < 0) {
+			return false;
+		}
+		// 含边界本身：未指定 partID 时服务端从边界消息起删（SessionRevert.cleanup）。
+		this.messages.splice(idx);
+		return true;
+	}
+
 	updateLastModifiedTime(): void {
 		this.lastModifiedTime = Date.now();
 	}
@@ -202,4 +261,33 @@ export function createMessage(
 	timestamp: number = Date.now(),
 ): ChatMessage {
 	return { type, content, timestamp, raw };
+}
+
+/**
+ * 消息是否命中任一 opencode 消息 id。
+ *
+ * id 的落点随来源而变：转换器写 raw.id，rewind 修补过的用户消息走 raw.uuid，顶层
+ * 也可能有一份。三种写法都检查，服务端事件里的 id 才能匹配到对应消息。
+ */
+function messageMatchesAnyProviderId(
+	message: ChatMessage | undefined | null,
+	ids: ReadonlySet<string>,
+): boolean {
+	if (!message || ids.size === 0) {
+		return false;
+	}
+	const topLevelId = (message as { id?: unknown }).id;
+	if (typeof topLevelId === 'string' && ids.has(topLevelId)) {
+		return true;
+	}
+	const raw = message.raw as Record<string, unknown> | undefined;
+	if (raw && typeof raw === 'object') {
+		if (typeof raw.id === 'string' && ids.has(raw.id)) {
+			return true;
+		}
+		if (typeof raw.uuid === 'string' && ids.has(raw.uuid)) {
+			return true;
+		}
+	}
+	return false;
 }

@@ -15,6 +15,7 @@ import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
 import { getModelContextLimit } from '../util/ModelContextLimits';
+import { logDiagnostic } from '../util/DiagnosticLogger';
 import type { ChatMessage, PermissionRequest } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
@@ -134,6 +135,14 @@ export class OpenCodeSession {
 
 		// cc-gui `SessionSendService.updateSessionStateForSend`：先把用户消息入状态
 		// 并立即推给前端（乐观气泡由内容+时间窗口匹配归位），再建立会话摘要。
+		//
+		// 入状态前先按 revert 边界裁剪：pending revert 会在本次 prompt 开始时由服务端
+		// 执行 cleanup（从边界消息起全部删除），本地先裁掉同样的范围，随后推给前端的
+		// 快照才不会把已作废的那一轮带回去 —— 否则它们会先「复活」闪现，直到
+		// message.removed 到达才消失。
+		if (this.state.trimMessagesFromRevertBoundary()) {
+			logDiagnostic('[Revert] Trimmed session state from the revert boundary before send');
+		}
 		const userMessage = buildUserMessage(payload.text, payload.attachments);
 		this.state.addMessage(userMessage);
 		this.state.setError(null);

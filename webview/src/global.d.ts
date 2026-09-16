@@ -283,6 +283,18 @@ interface Window {
   onRevertStateUpdate?: (json: string) => void;
 
   /**
+   * Authoritative server-side deletion — JSON array of opencode message ids.
+   *
+   * opencode applies a pending revert at the start of the next prompt and drops
+   * every message from the revert point onward (SessionRevert.cleanup), publishing
+   * `message.removed` per message. The host mirrors that deletion and forwards the
+   * ids here BEFORE the follow-up updateMessages snapshot, so the local list has
+   * already shrunk by the time the (also shorter) snapshot lands — otherwise the
+   * shrink-protection path would restore the just-deleted messages.
+   */
+  onMessagesRemoved?: (json: string) => void;
+
+  /**
    * Show PlanApproval dialog
    */
   showPlanApprovalDialog?: (json: string) => void;

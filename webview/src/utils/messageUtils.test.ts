@@ -23,6 +23,8 @@ import {
   extractCompactItems,
   buildCompactNotification,
   createCompactSuccessNotice,
+  matchesProviderMessageId,
+  applyMessagesRemoved,
   TASK_STATUS_COLORS,
 } from './messageUtils';
 
@@ -1414,5 +1416,75 @@ describe('getContentBlocks — compact summary compactMetadata', () => {
       title: 'chat.compactSummary.summarizedConversation',
       metadata: { messagesSummarized: 12 },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchesProviderMessageId (used by onMessagesRemoved to drop reverted messages)
+
+describe('matchesProviderMessageId', () => {
+  it('matches the top-level message id', () => {
+    const msg: ClaudeMessage = { id: 'abc', type: 'user', content: '' };
+    expect(matchesProviderMessageId(msg, 'abc')).toBe(true);
+    expect(matchesProviderMessageId(msg, 'xyz')).toBe(false);
+  });
+
+  it('matches raw.id', () => {
+    const msg: ClaudeMessage = { type: 'user', content: '', raw: { id: 'raw-1' } as ClaudeMessage['raw'] };
+    expect(matchesProviderMessageId(msg, 'raw-1')).toBe(true);
+    expect(matchesProviderMessageId(msg, 'raw-2')).toBe(false);
+  });
+
+  it('matches raw.uuid (rewind-patched user messages)', () => {
+    const msg: ClaudeMessage = { type: 'user', content: '', raw: { uuid: 'uuid-9' } as ClaudeMessage['raw'] };
+    expect(matchesProviderMessageId(msg, 'uuid-9')).toBe(true);
+  });
+
+  it('returns false for null/undefined message or empty id', () => {
+    expect(matchesProviderMessageId(null, 'abc')).toBe(false);
+    expect(matchesProviderMessageId(undefined, 'abc')).toBe(false);
+    expect(matchesProviderMessageId({ type: 'user', content: '' }, '')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyMessagesRemoved (onMessagesRemoved drops reverted messages locally)
+
+describe('applyMessagesRemoved', () => {
+  const kept = (id: string): ClaudeMessage => ({ id, type: 'user', content: '' });
+  const withRawId = (rid: string): ClaudeMessage => ({ type: 'user', content: '', raw: { id: rid } as ClaudeMessage['raw'] });
+  const withRawUuid = (uuid: string): ClaudeMessage => ({ type: 'user', content: '', raw: { uuid } as ClaudeMessage['raw'] });
+
+  it('removes a message matched by top-level id', () => {
+    const list = [kept('a'), kept('b'), kept('c')];
+    const next = applyMessagesRemoved(list, ['b']);
+    expect(next.map((m) => m.id)).toEqual(['a', 'c']);
+  });
+
+  it('removes messages matched by raw.id / raw.uuid', () => {
+    const list = [withRawId('r1'), withRawUuid('u2'), kept('keep')];
+    const next = applyMessagesRemoved(list, ['r1', 'u2']);
+    expect(next).toEqual([kept('keep')]);
+  });
+
+  it('keeps messages whose id is not in the removed set', () => {
+    const list = [kept('a'), kept('b')];
+    expect(applyMessagesRemoved(list, ['z'])).toEqual(list);
+  });
+
+  it('returns the same reference when nothing matched (no spurious re-render)', () => {
+    const list = [kept('a'), kept('b')];
+    expect(applyMessagesRemoved(list, ['z'])).toBe(list);
+  });
+
+  it('is a no-op for an empty id list', () => {
+    const list = [kept('a')];
+    expect(applyMessagesRemoved(list, [])).toBe(list);
+  });
+
+  it('removes every message whose id is in the set, regardless of id form', () => {
+    const list = [kept('a'), withRawId('b'), withRawUuid('c'), kept('d')];
+    const next = applyMessagesRemoved(list, ['a', 'b', 'c']);
+    expect(next).toEqual([kept('d')]);
   });
 });

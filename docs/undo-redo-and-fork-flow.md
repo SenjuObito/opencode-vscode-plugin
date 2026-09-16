@@ -232,9 +232,39 @@ Fork 允许用户以**历史中的任意一条消息为分叉点**，或者将**
 | :--- | :--- | :--- |
 | **未完成生成时点击 Undo** | 服务端因 Session Busy 直接报错拒绝 Revert | 前端检测 `streamingActive`，拦截直接请求并弹出 `pendingRevert` 确认框，确认后先执行 abort 强杀，再发起 Revert。 |
 | **实时消息缺少服务端 ID** | 前端无法按 `msg_xxx` 查找到对应的切片边界 | `MessageList` 与 `consumeRevertBoundary` 自动触发 Fallback 启发式查找，从后向前自动定位最后一条人类用户消息。 |
-| **撤销后发送新消息** | 若未清理 Revert 边界，旧消息与新消息并存冲突 | 发送前统一执行 `consumeRevertBoundary()`：本地立即截断废弃消息，服务端收到新 prompt 时自动执行 `revert.cleanup` 清理。 |
+| **撤销后发送新消息** | 若撤回删除信号未贯通到前端，被撤销的消息会被下一次全量快照推回（"复活"） | 双路径修复（详见 2.5 节）：① 服务端 `message.removed` 经 Daemon `[MESSAGE_REMOVED]` 贯通到前端，前端 `onMessagesRemoved` 按 id 剔除；② 宿主发送前 `trimMessagesFromRevertBoundary()` 按 revert 边界裁剪再推。 |
 | **Revert 失败或网络断开** | 前端停留在错误的乐观切片状态 | 宿主监听 `onRevertError`，弹出错误 Toast，调用 `applyRevertState(false)` 并重新 `loadHistorySession` 强制拉取服务端真实数据。 |
 | **双向循环重载 (Ping-Pong)** | `onRevertStateUpdate` 触发 `loadSession`，`loadSession` 又触发状态更新 | 前端引入 `lastLoadedRevertStateRef` 状态指纹，仅在 `sessionId + hasRevert + nextId` 发生实质变化时才触发 reload。 |
+
+---
+
+## 2.5 撤回消息的持久删除同步（防"复活"）
+
+### 2.5.1 根因
+撤回（revert）在服务端只写入一个「从此处往后作废」的指针，**不立即删除消息**；真正的删除发生在下一次发送时——服务端 `prompt()` 会先执行 `revert.cleanup(session)`（删除边界之后的所有消息），再落新用户消息。该 `cleanup` 会通过事件总线广播 `message.removed`。
+
+但旧链路里这条「已删除」通知**没有贯通到前端**，导致三种账本不一致：
+- **Daemon** 的事件分发（`_handleEvent`）未处理 `message.removed` / `message.part.removed`，事件被 `default: break` 丢弃；
+- **宿主 `SessionState`** 没有「按 id 删除单条消息」的能力（只有 `addMessage` / `clearMessages`），删除即使转发也无处落地；
+- **前端**只做了渲染层遮罩（`revertBoundaryId` 切片），数据层未变，且「本地删除」这类句式在通道里不存在——宿主听不到前端的删除。
+
+结果：继续发消息时，宿主把「撤销前」的全量快照推给前端（推送时机甚至早于服务端 `cleanup`），前端以快照为准、遮罩被揭开，被撤销的消息当场「复活」。
+
+### 2.5.2 修复路径（双端一致）
+**路径 A — 服务端删除信号贯通到前端：**
+1. Daemon `_handleEvent` 新增 `message.removed` 分支，emit `[MESSAGE_REMOVED]` marker（携带 `sessionID` + `messageID`）；
+2. 宿主 Marker 解析 → MessageHandler 按 `raw.id` / `raw.uuid` 匹配，调用 `SessionState.removeMessagesByIds(ids)` 删除，并 `notifyMessageUpdate` 推给前端；
+3. 前端 `window.onMessagesRemoved` 用 `matchesProviderMessageId` 从本地列表剔除——在随后 `updateMessages` 快照到达**之前**收缩，避开 `preserveLatestMessagesOnShrink` 把被删尾部抢救回来。
+
+**路径 B — 发消息时按 revert 边界裁剪再推（避免「先闪现再消失」）：**
+- 宿主发送服务（`OpenCodeSession`）推快照前先 `SessionState.trimMessagesFromRevertBoundary()`，按 `RevertState.messageID` 截掉边界之后。
+
+> 附：`[REVERT_STATE]` 原实现因 `emitJsonStringMarker` 二次 JSON 编码导致宿主解析失败（boundary id 永远为空），已改为传对象并携带 `messageId`。
+
+### 2.5.3 关键代码位置
+- **Daemon**：`ai-bridge/services/opencode/opencode-daemon-service.js` → `_handleEvent` 的 `message.removed` 分支与 `[REVERT_STATE]` 对象化
+- **宿主（VS Code TS）**：`MarkerParser`、`MessageHandler.handleMessageRemoved`、`SessionState.removeMessagesByIds` / `trimMessagesFromRevertBoundary`、`OpenCodeSession`
+- **前端**：`App.tsx` 的 `window.onMessagesRemoved` + `utils/messageUtils.ts` 的 `matchesProviderMessageId` / `applyMessagesRemoved`
 
 ---
 
@@ -251,3 +281,4 @@ Fork 允许用户以**历史中的任意一条消息为分叉点**，或者将**
   - `webview/src/components/MessageList/RevertPlaceholderBar.test.tsx`
   - `webview/src/components/MessageList.revert.test.tsx`
   - `webview/src/hooks/windowCallbacks/__tests__/messageSync.test.ts`
+  - `webview/src/utils/messageUtils.test.ts`（`matchesProviderMessageId` / `applyMessagesRemoved` —— 撤回删除同步的视图层过滤）

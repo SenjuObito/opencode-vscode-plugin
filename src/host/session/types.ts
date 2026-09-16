@@ -58,7 +58,18 @@ export interface SessionCallback {
 	onUsageUpdate(usedTokens: number, maxTokens: number): void;
 	onUserMessageUuidPatched(content: string, uuid: string): void;
 	onTaskEvent?(eventJson: string): void;
-	onRevertStateUpdate?(hasRevert: boolean): void;
+	/**
+	 * revert 指针变化。messageId 是服务端指针指向的用户消息 id（无 revert 时为
+	 * null），webview 据此把转录切在正确的边界上。
+	 */
+	onRevertStateUpdate?(hasRevert: boolean, messageId?: string | null): void;
+	/**
+	 * 服务端权威删除了一批消息（opencode 在下一次 prompt 时执行 revert cleanup，
+	 * 逐条广播 message.removed）。webview 必须先把自己列表里的这些消息剔除，
+	 * 随后的 updateMessages 快照才会等长地覆盖 —— 否则收缩保护会把刚删掉的
+	 * 消息当成「暂时收缩」抢救回来。
+	 */
+	onMessagesRemoved?(messageIds: string[]): void;
 	onTodoUpdated?(payload: string): void;
 	onSessionTitleReceived?(sessionId: string, title: string): void;
 }

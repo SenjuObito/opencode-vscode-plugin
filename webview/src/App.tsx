@@ -29,7 +29,7 @@ import {
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
-import { createCompactSuccessNotice, createCompactFailureNotice } from './utils/messageUtils';
+import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import { ToastContainer } from './components/Toast';
@@ -566,6 +566,22 @@ const App = () => {
         // ignore malformed payloads
       }
     };
+    // 服务端权威删除：opencode 在下一次 prompt 时把 revert 点之后的消息真正删掉，
+    // 并逐条广播 message.removed；宿主镜像删除后转发到这里。先把自己列表里的这些
+    // 消息剔除，使随后到达的 updateMessages 快照与 prev 等长 —— 否则
+    // preserveLatestMessagesOnShrink 会把它当成「暂时收缩」，把刚删的消息抢救回来。
+    window.onMessagesRemoved = (json: string) => {
+      try {
+        const parsed = JSON.parse(json) as unknown;
+        if (!Array.isArray(parsed) || parsed.length === 0) return;
+        const ids = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+        if (ids.length === 0) return;
+        console.debug('[App] onMessagesRemoved', ids);
+        setMessages((prev) => applyMessagesRemoved(prev, ids));
+      } catch {
+        // ignore malformed payloads
+      }
+    };
     window.onCompactSuccess = () => {
       setIsCompacting(false);
       setCompactingStartTime(null);
@@ -587,6 +603,7 @@ const App = () => {
       delete window.onShareError;
       delete window.onRevertError;
       delete window.onRevertStateUpdate;
+      delete window.onMessagesRemoved;
       delete window.onCompactSuccess;
       delete window.onCompactError;
     };

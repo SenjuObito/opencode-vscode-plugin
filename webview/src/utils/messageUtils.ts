@@ -191,6 +191,43 @@ export function hasNonHumanOrigin(message: ClaudeMessage): boolean {
 }
 
 /**
+ * Whether a message carries the given opencode message id.
+ *
+ * opencode's id is stamped in different places depending on provenance: the
+ * live/history converter writes it to `raw.id`, rewind-patched user messages
+ * surface it as `raw.uuid`, and some paths copy it to the top level. All three
+ * spellings are checked, so an id arriving from a server event matches the
+ * message however it was recorded.
+ */
+export function matchesProviderMessageId(message: ClaudeMessage | undefined | null, id: string): boolean {
+  if (!message || !id) return false;
+  if (typeof message.id === 'string' && message.id === id) return true;
+  const raw = message.raw as Record<string, unknown> | undefined;
+  if (raw && typeof raw === 'object') {
+    if (typeof raw.id === 'string' && raw.id === id) return true;
+    if (typeof raw.uuid === 'string' && raw.uuid === id) return true;
+  }
+  return false;
+}
+
+/**
+ * Drop messages whose opencode id is in `ids` (the reverted/removed set).
+ *
+ * This is the view-layer half of the revert-cleanup fix: when the host replays
+ * the server's `message.removed` events it calls `window.onMessagesRemoved`, and
+ * the list must shrink locally *before* the next full snapshot arrives — otherwise
+ * `preserveLatestMessagesOnShrink` would rescue the voided tail back into view.
+ *
+ * Returns the same array reference when nothing matched, so callers can keep the
+ * previous render when the diff is empty.
+ */
+export function applyMessagesRemoved(messages: ClaudeMessage[], ids: string[]): ClaudeMessage[] {
+  if (!ids.length) return messages;
+  const next = messages.filter((m) => !ids.some((id) => matchesProviderMessageId(m, id)));
+  return next.length === messages.length ? messages : next;
+}
+
+/**
  * Extract all text strings from a raw message's content (handles various structures).
  * Shared helper to avoid duplicating traversal logic.
  */

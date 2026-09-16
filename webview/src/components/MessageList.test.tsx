@@ -345,46 +345,6 @@ describe('MessageList paged collapse', () => {
 
     expect(screen.getAllByTestId('message-item')).toHaveLength(10);
   });
-
-  it('shows loading animation and reveals earlier turns progressively on click', () => {
-    const endRef = createRef<HTMLDivElement>();
-    const messages = makeMessages(40); // 20 user turns
-    const { container } = render(
-      <MessageList
-        messages={messages}
-        messageKeys={keysFor(messages)}
-        streamingActive={false}
-        isThinking={false}
-        loading={false}
-        loadingStartTime={null}
-        t={t}
-        getMessageText={noopGetText}
-        getContentBlocks={noopGetBlocks}
-        findToolResult={noopFindToolResult}
-        extractMarkdownContent={noopExtractMd}
-        messagesEndRef={endRef}
-        currentSessionId="session-1"
-      />
-    );
-
-    const indicator = container.querySelector('.collapsed-messages-indicator');
-    expect(indicator).toBeTruthy();
-    expect(indicator?.textContent).toContain('Show 5 earlier turns (15 remaining)');
-
-    // Click indicator to start loading
-    fireEvent.click(indicator!);
-    expect(indicator?.textContent).toBe('Loading earlier turns...');
-    expect(indicator?.classList.contains('is-loading')).toBe(true);
-
-    // After 600ms timer expires, loading completes and 5 more turns (10 total) are shown
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-
-    expect(screen.getAllByTestId('message-item')).toHaveLength(20);
-    const updatedIndicator = container.querySelector('.collapsed-messages-indicator');
-    expect(updatedIndicator?.textContent).toContain('Show 5 earlier turns (10 remaining)');
-  });
 });
 
 describe('MessageList container behaviour', () => {

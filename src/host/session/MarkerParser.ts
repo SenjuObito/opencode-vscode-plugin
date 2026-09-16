@@ -135,6 +135,14 @@ export function processOutputLine(
 		return;
 	}
 
+	if (line.startsWith('[MESSAGE_REMOVED]')) {
+		// Authoritative server-side deletion (opencode applies a pending revert via
+		// SessionRevert.cleanup at the start of the next prompt). Payload is a bare
+		// JSON object: {"sessionID": "...", "messageID": "..."}.
+		callback.onMessage('message_removed', line.substring('[MESSAGE_REMOVED]'.length).trim());
+		return;
+	}
+
 	if (line.startsWith('[MESSAGE_START]')) {
 		callback.onMessage('message_start', '');
 		return;

@@ -311,11 +311,31 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.jsTarget.callJavaScript('onTaskEvent', eventJson);
 	}
 
-	onRevertStateUpdate(hasRevert: boolean): void {
+	onRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {
 		if (this.isInactive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert }));
+		// messageId 供 webview 定位切片边界；缺省为 null，webview 会退回兜底逻辑。
+		this.jsTarget.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert, messageId }));
+	}
+
+	/**
+	 * 把服务端权威删除转发给 webview。
+	 *
+	 * payload 是 opencode 消息 id 的裸 JSON 数组，与 webview 的
+	 * `onMessagesRemoved` 解析形状一致。必须在随后的 updateMessages 快照之前发出，
+	 * 这样快照到达时 webview 的列表已经收缩到位 —— 否则其「收缩保护」会把刚删的
+	 * 消息当成暂时性收缩抢救回来。
+	 */
+	onMessagesRemoved(messageIds: string[]): void {
+		if (this.isInactive() || !messageIds || messageIds.length === 0) {
+			return;
+		}
+		const ids = messageIds.filter((id) => typeof id === 'string' && id.length > 0);
+		if (ids.length === 0) {
+			return;
+		}
+		this.jsTarget.callJavaScript('onMessagesRemoved', JSON.stringify(ids));
 	}
 
 	onTodoUpdated(payload: string): void {

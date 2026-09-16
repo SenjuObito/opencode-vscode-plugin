@@ -12,6 +12,7 @@ import { HandlerContext } from '../router/HandlerContext';
 import { convertSdkMessages, extractSubagentTranscript } from '../session/SdkMessageConverter';
 import { truncateRawForTransport } from '../util/MessageJsonConverter';
 import { ListMessagesCollector } from '../util/ListMessagesCollector';
+import { logError, logWarn } from '../util/DiagnosticLogger';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import {
 	getFavorites,
@@ -41,7 +42,18 @@ const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 /** 子代理轮询的 tail 窗口（消息条数）：运行中的 task tool_result 落在 transcript 尾部。 */
 const SUBAGENT_POLL_TAIL_MESSAGES = 200;
 
+/**
+ * 历史列表加载的重试参数。单次尝试超时后由下一次尝试顶掉——daemon 与宿主
+ * 都没有逐请求超时，悬挂的请求只能靠「新请求」终止等待。
+ */
+const HISTORY_ATTEMPT_TIMEOUT_MS = 5_000;
+const HISTORY_MAX_ATTEMPTS = 3;
+const HISTORY_RETRY_DELAY_MS = 600;
+
 export class HistoryHandler extends BaseMessageHandler {
+	/** 历史列表加载序列：每次 load_history_data 递增，用于顶掉过期的重试与回包。 */
+	private historyLoadSeq = 0;
+
 	constructor(context: HandlerContext) {
 		super(context);
 	}
@@ -99,35 +111,101 @@ export class HistoryHandler extends BaseMessageHandler {
 		// Native OpenCode server persists sessions automatically
 	}
 
+	/**
+	 * 历史列表只在这里加载（webview 的 useHistoryLoader 仅在进入 history 视图时
+	 * 请求一次），宿主此前既不重试也不打日志——任何一次静默失败都等于列表永久
+	 * 空白，直到用户切换视图或删/改会话重新触发一次加载。
+	 *
+	 * 三种失败面目，前两种完全无声：
+	 *   1. daemon 回了 success，但宿主收到的 payload 行为空（请求 id 认领错位，
+	 *      chunks 为空被解析成 0 条会话）；
+	 *   2. daemon 从未发回终态（daemon 错误分支的终态受 requestContext 守卫，
+	 *      上下文丢失时整条被吞），请求永久悬挂——两侧都没有逐请求超时；
+	 *   3. 明确的 onError。
+	 * 所以「空结果 / 超时 / 报错」一律重试，最终仍失败就明确报错 + 落日志，不再
+	 * 静默推一个空列表。空列表本身是合法状态（新工作区/无会话），它只记 warn。
+	 */
 	private handleLoadHistoryData(): void {
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
-			this.callJavaScript(
-				'setHistoryData',
-				JSON.stringify({ success: false, error: 'No daemon connection', sessions: [], total: 0, favorites: {} }),
-			);
+			this.failLoadHistory('No daemon connection');
 			return;
 		}
-		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		// 每次加载都是一个新序列：delete/update_title 触发的重复加载会顶掉旧序列，
+		// 防止过期结果（或过期重试）覆盖新结果。
+		const seq = ++this.historyLoadSeq;
+		this.requestSessions(daemon, this.context.resolveEffectiveWorkingDirectory() ?? undefined, 1, seq);
+	}
+
+	private failLoadHistory(error: string): void {
+		logError(`load_history_data failed: ${error}`, undefined, 'HistoryHandler');
+		this.callJavaScript(
+			'setHistoryData',
+			JSON.stringify({ success: false, error: `Failed to list sessions: ${error}`, sessions: [], total: 0, favorites: {} }),
+		);
+	}
+
+	/** 单次 listSessions 尝试：软超时 / 空结果 / 报错都交给下一次尝试。 */
+	private requestSessions(
+		daemon: NonNullable<ReturnType<HandlerContext['getDaemon']>>,
+		directory: string | undefined,
+		attempt: number,
+		seq: number,
+	): void {
+		if (seq !== this.historyLoadSeq) return;
 		const chunks: string[] = [];
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+
+		/** 结束本次尝试：failure 为 null 表示成功（成功路径直接推送，见下方 onComplete）。 */
+		const finish = (failure: { message: string; empty?: boolean } | null): void => {
+			if (settled || seq !== this.historyLoadSeq) return;
+			settled = true;
+			if (timer) clearTimeout(timer);
+			if (failure === null) return;
+			if (attempt < HISTORY_MAX_ATTEMPTS) {
+				logWarn(`load_history_data attempt ${attempt} ${failure.message} — retrying`, 'HistoryHandler');
+				timer = setTimeout(() => this.requestSessions(daemon, directory, attempt + 1, seq), HISTORY_RETRY_DELAY_MS);
+				return;
+			}
+			if (failure.empty) {
+				// 重试后仍是空：日志里必须能和「回包丢失」区分开；同时给前端一个
+				// 终态，否则列表永远停在 loading 转圈。
+				logWarn(`load_history_data returned an empty session list after ${attempt} attempts`, 'HistoryHandler');
+				this.callJavaScript(
+					'setHistoryData',
+					JSON.stringify({ success: true, sessions: [], total: 0, favorites: {} }),
+				);
+				return;
+			}
+			this.failLoadHistory(`after ${attempt} attempts: ${failure.message}`);
+		};
+
+		// 悬挂兜底：没有终态时由下一次尝试顶掉这次请求。
+		timer = setTimeout(
+			() => finish({ message: `timed out after ${HISTORY_ATTEMPT_TIMEOUT_MS}ms` }),
+			HISTORY_ATTEMPT_TIMEOUT_MS,
+		);
+
 		daemon.request('opencode.listSessions', { directory }, {
 			onLine: (line) => chunks.push(line),
 			onError: (err) => {
-				this.callJavaScript(
-					'setHistoryData',
-					JSON.stringify({ success: false, error: typeof err === 'string' ? err : 'Failed to list sessions', sessions: [], total: 0, favorites: {} }),
-				);
+				finish({ message: typeof err === 'string' && err.trim() !== '' ? err : 'Failed to list sessions' });
 			},
 			onComplete: (success) => {
+				if (settled) return;
 				if (!success) {
-					this.callJavaScript(
-						'setHistoryData',
-						JSON.stringify({ success: false, error: 'Failed to list sessions', sessions: [], total: 0, favorites: {} }),
-					);
+					finish({ message: 'daemon reported failure' });
 					return;
 				}
 				const payload = this.extractJsonObject(chunks.join('\n'));
 				const rawSessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+				if (rawSessions.length === 0) {
+					finish({ message: 'returned an empty session list', empty: true });
+					return;
+				}
+				settled = true;
+				if (timer) clearTimeout(timer);
 				const favorites: Record<string, { favoritedAt: number }> = {};
 				const sessions = (rawSessions as Array<Record<string, any>>).map((s) => {
 					const sessionId = String(s?.id || s?.sessionId || '');

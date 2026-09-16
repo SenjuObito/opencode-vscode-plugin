@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../types';
 import { cardDebugLog } from '../utils/bridge';
 import { isToolResultOnlyUserMessage } from '../utils/turnScope';
+import { matchesProviderMessageId } from '../utils/messageUtils';
 import { MessageItem } from './MessageItem';
 import WaitingIndicator from './WaitingIndicator';
 import CompactingIndicator from './CompactingIndicator';
@@ -230,15 +231,10 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   }, []);
 
   /** Match a message against an opencode message id (top-level id or raw.id/raw.uuid). */
-  const messageMatchesId = useCallback((message: ClaudeMessage, id: string): boolean => {
-    if (typeof message.id === 'string' && message.id === id) return true;
-    const raw = message.raw as Record<string, unknown> | undefined;
-    if (raw && typeof raw === 'object') {
-      if (typeof raw.id === 'string' && raw.id === id) return true;
-      if (typeof raw.uuid === 'string' && raw.uuid === id) return true;
-    }
-    return false;
-  }, []);
+  const messageMatchesId = useCallback(
+    (message: ClaudeMessage, id: string): boolean => matchesProviderMessageId(message, id),
+    [],
+  );
 
   // Revert boundary slicing: when a revert (undo) is active, hide the boundary
   // user message and everything after it behind a RevertPlaceholderBar. Applied

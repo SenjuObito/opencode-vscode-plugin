@@ -133,6 +133,9 @@ export class MessageHandler implements MessageCallback {
 			case 'revert_state':
 				this.handleRevertState(content);
 				break;
+			case 'message_removed':
+				this.handleMessageRemoved(content);
+				break;
 			case 'slash_commands':
 				this.handleSlashCommands(content);
 				break;
@@ -811,16 +814,60 @@ export class MessageHandler implements MessageCallback {
 			return;
 		}
 		try {
-			const payload = JSON.parse(content) as { hasRevert: boolean };
-			if (payload.hasRevert) {
-				this.state.setRevertState({ messageID: '' });
+			const payload = JSON.parse(content) as { hasRevert?: boolean; messageId?: string | null };
+			const hasRevert = payload.hasRevert === true;
+			// 边界消息 id：webview 据此把转录切在正确的用户消息上。缺失时占位条会退回
+			// 「最后一条 user 消息」的兜底，边界不是末条 user 时切片位置就会偏后。
+			const messageId = typeof payload.messageId === 'string' && payload.messageId ? payload.messageId : '';
+			if (hasRevert) {
+				this.state.setRevertState({ messageID: messageId });
 			} else {
 				this.state.setRevertState(null);
 			}
 			// 同步给 webview：发送消息后服务端 revert.cleanup 会清除指针，
 			// webview 据此撤掉撤销占位条（App 侧仅在状态变化时重载，不会成环）。
-			this.callbackHandler.notifyRevertStateUpdate(payload.hasRevert);
+			this.callbackHandler.notifyRevertStateUpdate(hasRevert, messageId || null);
 			this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
+		} catch {
+			// 解析失败忽略
+		}
+	}
+
+	/**
+	 * 处理服务端权威删除（opencode 在下一次 prompt 开始时执行 revert cleanup，
+	 * 逐条广播 message.removed）。
+	 *
+	 * opencode 的 revert 只写一个「此处往后作废」的指针，真正的删除发生在下一次
+	 * prompt：服务端先跑 cleanup 把 revert 点之后的消息删掉，再落新的用户消息。
+	 * 宿主必须跟着删，否则它会一直揣着已作废的消息，继续发消息时又把这些内容推回
+	 * webview —— 也就是「撤回的消息复活」。
+	 */
+	private handleMessageRemoved(content: string): void {
+		if (!content || !content.startsWith('{')) {
+			return;
+		}
+		try {
+			const payload = JSON.parse(content) as { sessionID?: string; messageID?: string };
+			// daemon 流按目录作用域，同一目录下的兄弟会话删除不能动当前会话。
+			const sessionId = payload.sessionID;
+			const currentSessionId = this.state.getSessionId();
+			if (sessionId && currentSessionId && sessionId !== currentSessionId) {
+				logDiagnostic(`[MessageHandler] Ignoring message_removed for another session: ${sessionId}`);
+				return;
+			}
+			const messageId = payload.messageID;
+			if (!messageId) {
+				return;
+			}
+			if (!this.state.removeMessagesByIds([messageId])) {
+				// 已被发送前的边界裁剪处理过 —— 权威事件只是确认，无需再推。
+				return;
+			}
+			logDiagnostic(`[MessageHandler] Removed reverted message from session state: ${messageId}`);
+			// 顺序重要：先让 webview 剔除，再推（已经变短的）快照。提前剔除使 webview 的
+			// 列表长度与快照同步，其「收缩保护」才不会把作废的尾部抢救回来。
+			this.callbackHandler.notifyMessagesRemoved([messageId]);
+			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 		} catch {
 			// 解析失败忽略
 		}

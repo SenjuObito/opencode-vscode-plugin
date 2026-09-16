@@ -294,9 +294,17 @@ function _handleEvent(evt) {
           directory: props?.info?.directory || _sessions.get(id)?.directory,
           revert,
         });
-        // Emit revert state update to frontend
+        // Emit revert state update to frontend.
+        // Payload is passed as an OBJECT on purpose: emitJsonStringMarker already
+        // JSON-stringifies it once. Pre-stringifying here double-encodes the
+        // payload, and the host parser (which expects a bare JSON object) drops
+        // the event silently — that is why the revert boundary id never reached
+        // the webview.
         if (turn) {
-          emitJsonStringMarker('[REVERT_STATE]', JSON.stringify({ hasRevert: !!revert }));
+          emitJsonStringMarker('[REVERT_STATE]', {
+            hasRevert: !!revert,
+            messageId: (revert && typeof revert.messageID === 'string') ? revert.messageID : '',
+          });
         }
         // Emit session title update to frontend
         if (props?.info?.title && typeof props.info.title === 'string') {
@@ -319,6 +327,26 @@ function _handleEvent(evt) {
       // Track the latest assistant message info (id/role/tokens) for MESSAGE_END.
       if (turn && props?.info && typeof props.info === 'object') {
         if (props.info.role === 'assistant') turn.lastInfo = props.info;
+      }
+      break;
+    case 'message.removed':
+      // Where a revert actually lands. opencode's revert only writes a "void from
+      // here on" pointer; the real deletion happens on the next prompt: the server
+      // runs cleanup(session) first (removing every message from the revert point
+      // onward) and only then persists the new user message. cleanup publishes
+      // `message.removed` per deleted message.
+      //
+      // The host must mirror that deletion. Otherwise its state keeps carrying the
+      // voided messages, and the next send pushes them straight back to the webview
+      // — which is why reverted messages "came back to life" after sending.
+      //
+      // Not gated on `turn`: the turn is registered before promptAsync so it does
+      // exist here, but a removal is authoritative state and should sync regardless.
+      if (sessionID && _sessions.has(sessionID) && typeof props?.messageID === 'string' && props.messageID) {
+        emitJsonStringMarker('[MESSAGE_REMOVED]', {
+          sessionID,
+          messageID: props.messageID,
+        });
       }
       break;
     case 'session.idle':
