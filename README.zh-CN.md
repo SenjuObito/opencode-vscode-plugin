@@ -41,7 +41,7 @@
 
 安装插件后，点击 VS Code 侧栏的 OpenCode 图标即可打开聊天界面。或者通过命令面板执行 `OpenCode: 在编辑器分栏打开 OpenCode`，在编辑器分栏中打开一个独立的标签页（每个标签页都是一个独立的会话）。
 
-![聊天主界面](media/home.png)
+<img src="media/home.png" width="400" alt="聊天主界面">
 
 界面区域一览：
 
@@ -58,7 +58,7 @@
 
 点击聊天界面右上角的齿轮图标打开设置面板：
 
-![设置页面](media/settings.png)
+<img src="media/settings.png" width="400" alt="设置页面">
 
 **基础配置 → 外观** 主要选项：
 
@@ -135,7 +135,7 @@ webview/ (React SPA)  ⇄  src/ extension host (TS)  ⇄  ai-bridge/daemon.js (N
 
 | 微信 | 支付宝 | PayPal |
 |:---:|:---:|:---:|
-| ![微信赞赏](media/wallet.png) | ![支付宝赞赏](media/wallet-alipay.png) | <img src="media/wallet-paypal.png" width="600" /> |
+| <img src="webview/src/assets/images/wallet.png" width="200" alt="微信赞赏码"> | <img src="webview/src/assets/images/wallet-alipay.png" width="200" alt="支付宝赞赏码"> | <img src="webview/src/assets/images/wallet-paypal.png" width="200" alt="PayPal"> |
 
 ## 致谢
 

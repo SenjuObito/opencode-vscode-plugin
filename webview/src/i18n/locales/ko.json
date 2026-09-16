@@ -173,7 +173,7 @@
     "title": "설정",
     "basic": {
       "title": "기본 설정",
-      "description": "페이지 테마, 언어 및 Node.js 환경 설정",
+      "description": "페이지 테마, 언어 및 실행 환경 설정",
       "tabs": {
         "appearance": "모양",
         "behavior": "동작",
@@ -201,14 +201,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Node.js 경로",
-        "placeholder": "예: C:\\Program Files\\nodejs\\node.exe 또는 /usr/local/bin/node",
-        "hint": "터미널에서 실행",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "을 실행하여 실제 Node.js 실행 파일 경로를 확인하세요. 비워두면 자동 감지합니다.",
-        "versionTooLow": "Node.js 버전이 너무 낮습니다. 플러그인을 정상적으로 실행하려면 v{{minVersion}} 이상이 필요합니다"
       },
       "workingDirectory": {
         "label": "작업 디렉토리",
@@ -641,7 +633,6 @@
       "export": "내보내기",
       "import": "가져오기",
       "createAgent": "프롬프트 생성",
-      "createAgentHint": "클릭하여 프롬프트 설정 페이지에서 생성",
       "customAgents": "사용자 지정 프롬프트",
       "noAgents": "사용자 지정 프롬프트 없음",
       "noAgentsDropdown": "프롬프트 없음",

@@ -192,7 +192,7 @@
     "title": "设置",
     "basic": {
       "title": "基础配置",
-      "description": "配置页面主题、语言和 Node.js 运行环境",
+      "description": "配置页面主题、语言和运行环境",
       "tabs": {
         "appearance": "外观",
         "behavior": "行为",
@@ -220,18 +220,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Node.js 路径",
-        "placeholder": "Windows: C:\\Program Files\\nodejs\\node.exe (必须以 .exe 结尾) | macOS/Linux: /usr/local/bin/node",
-        "hint": "在终端中运行",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "获取实际的 Node.js 可执行文件路径。为空时插件会自动尝试检测 Node.js。⚠️ Windows 用户注意：路径必须指向完整的可执行文件（node.exe），不能只填写目录。",
-        "versionTooLow": "Node.js 版本过低，插件需要 v{{minVersion}} 或更高版本才能正常运行",
-        "invalidPath": "路径无效：{{reason}}",
-        "pathNotFound": "文件不存在，请检查路径是否正确",
-        "invalidFileName": "Windows 下路径必须以 node.exe 结尾，macOS/Linux 下必须以 node 结尾",
-        "cannotExecute": "文件存在但无法执行，请检查文件权限"
       },
       "workingDirectory": {
         "label": "工作目录",
@@ -510,7 +498,7 @@
     "mcpDesc": "配置和管理 Model Context Protocol 服务器",
     "agents": "Agents",
     "agentsDesc": "管理和配置AI代理",
-    "skills": "Skills",
+    "skills": "技能",
     "skillsDesc": "管理和配置技能模块",
     "other": {
       "title": "其他设置",
@@ -729,7 +717,6 @@
       "export": "导出",
       "import": "导入",
       "createAgent": "创建提示词",
-      "createAgentHint": "点击跳转到提示词设置页面进行创建",
       "customAgents": "自定义提示词",
       "noAgents": "暂无自定义提示词",
       "noAgentsDropdown": "暂无提示词",
@@ -791,34 +778,7 @@
         "selectHint": "选择要导出的提示词",
         "confirmExport": "确认导出"
       }
-    },
-    "commands": {
-      "title": "命令（提示词）",
-      "description": "管理 opencode 命令 markdown 文件。全局：~/.config/opencode/command，项目：.opencode/command。在聊天中用 /命令名 调用。",
-      "library": "提示词库",
-      "libraryTitle": "提示词库 — 导入内置模板",
-      "new": "新建",
-      "newName": "new-command",
-      "import": "导入",
-      "edit": "编辑",
-      "delete": "删除",
-      "empty": "当前作用域还没有命令。",
-      "confirmDelete": "删除命令 \"{{name}}\"？",
-      "editorTitle": "命令文件",
-      "namePlaceholder": "命令名",
-      "scope": {
-        "global": "全局",
-        "project": "项目"
-      },
-      "templates": {
-        "review": "审查当前变更的缺陷与风格问题",
-        "explain": "用通俗语言解释文件或符号",
-        "tests": "为目标代码生成单元测试",
-        "refactor": "在不改变行为的前提下重构代码",
-        "commit": "生成符合规范的提交信息"
-      }
-    },
-    "prompts": "命令（提示词）"
+    }
   },
   "history": {
     "title": "历史会话",

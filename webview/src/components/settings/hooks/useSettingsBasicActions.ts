@@ -48,10 +48,6 @@ export interface UseSettingsBasicActionsReturn {
   // =========================================================================
   // Public read-only state (safe to read in components)
   // =========================================================================
-  nodePath: string;
-  savingNodePath: boolean;
-  nodeVersion?: string | null;
-  minNodeVersion?: number;
   opencodeCliPath: string;
   savingOpencodeCliPath: boolean;
   workingDirectory: string;
@@ -91,7 +87,6 @@ export interface UseSettingsBasicActionsReturn {
   // =========================================================================
   // Handler functions (public API for components)
   // =========================================================================
-  handleSaveNodePath: () => void;
   handleSaveOpencodeCliPath: () => void;
   handleSaveWorkingDirectory: () => void;
   handleUiFontSelectionChange: (selection: string) => void;
@@ -121,10 +116,6 @@ export interface UseSettingsBasicActionsReturn {
   // @internal — State setters used only by useSettingsWindowCallbacks.
   // Components should not call these directly; use handlers above instead.
   // =========================================================================
-  /** @internal */ setNodePath: (path: string) => void;
-  /** @internal */ setSavingNodePath: (saving: boolean) => void;
-  /** @internal */ setNodeVersion: (version: string | null) => void;
-  /** @internal */ setMinNodeVersion: (minVersion: number) => void;
   /** @internal */ setOpencodeCliPath: (path: string) => void;
   /** @internal */ setSavingOpencodeCliPath: (saving: boolean) => void;
   /** @internal */ setWorkingDirectory: (dir: string) => void;
@@ -166,12 +157,6 @@ export function useSettingsBasicActions({
   onPermissionDialogTimeoutChangeProp,
   currentProvider: _currentProvider,
 }: UseSettingsBasicActionsProps = {}): UseSettingsBasicActionsReturn {
-  // Node.js path state
-  const [nodePath, setNodePath] = useState('');
-  const [nodeVersion, setNodeVersion] = useState<string | null>(null);
-  const [minNodeVersion, setMinNodeVersion] = useState<number | undefined>(18);
-  const [savingNodePath, setSavingNodePath] = useState(false);
-
   // Custom Claude CLI path (overrides bundled SDK when set)
   const [opencodeCliPath, setOpencodeCliPath] = useState('');
   const [savingOpencodeCliPath, setSavingOpencodeCliPath] = useState(false);
@@ -321,12 +306,6 @@ export function useSettingsBasicActions({
   useEffect(() => {
     updateUiPreferences({ skipCompactConfirm });
   }, [skipCompactConfirm]);
-
-  const handleSaveNodePath = useCallback(() => {
-    setSavingNodePath(true);
-    const payload = { path: (nodePath || '').trim() };
-    sendToJava(`set_node_path:${JSON.stringify(payload)}`);
-  }, [nodePath]);
 
   const handleSaveOpencodeCliPath = useCallback(() => {
     setSavingOpencodeCliPath(true);
@@ -566,15 +545,6 @@ export function useSettingsBasicActions({
   }, [onPermissionDialogTimeoutChangeProp]);
 
   return {
-    nodePath,
-    setNodePath,
-    savingNodePath,
-    setSavingNodePath,
-    nodeVersion,
-    setNodeVersion,
-    minNodeVersion,
-    setMinNodeVersion,
-    handleSaveNodePath,
     opencodeCliPath,
     setOpencodeCliPath,
     savingOpencodeCliPath,

@@ -37,17 +37,11 @@ describe('useWindowCallbacks integration', () => {
     setPermissionMode: vi.fn(),
     setCurrentProvider: vi.fn(),
     setOpenCodePermissionMode: vi.fn(),
-    setClaudePermissionMode: vi.fn(),
-    setSelectedClaudeModel: vi.fn(),
     setSelectedOpenCodeModel: vi.fn(),
-    setLongContextEnabled: vi.fn(),
     setReasoningEffort: vi.fn(),
     setSendShortcut: vi.fn(),
     setAutoOpenFileEnabled: vi.fn(),
     setPermissionDialogTimeoutSeconds: vi.fn(),
-    setSdkStatus: vi.fn(),
-    setSdkStatusLoaded: vi.fn(),
-    setSdkStatusError: vi.fn(),
     setContextInfo: vi.fn(),
 
     // Refs
@@ -103,7 +97,6 @@ describe('useWindowCallbacks integration', () => {
     window.__pendingSessionTransitionToast = undefined;
     window.__deniedToolIds = new Set();
     window.sendToJava = vi.fn();
-    window.updateDependencyStatus = undefined;
     delete (window as unknown as Record<string, unknown>)._appUpdateDependencyStatus;
     // The drain test inspects this slot; if a prior test (or earlier suite run)
     // leaked a value onto window we'd see a false-positive drain. Wipe it here
@@ -117,7 +110,6 @@ describe('useWindowCallbacks integration', () => {
     delete window.__pendingHistoryRefreshMessageCount;
     delete window.__pendingHistoryLoadComplete;
     delete window.__historySurfaceRefreshEpoch;
-    window.__dependencyStatusState = 'pending';
   });
 
   /** Stub timer/rAF globals to execute synchronously for streaming tests. */
@@ -142,17 +134,18 @@ describe('useWindowCallbacks integration', () => {
 
     act(() => {
       window.applyBackendTabState?.(JSON.stringify({
+        // Recovery is opencode-only now: a provider in the payload must be ignored
+        // rather than echoed back to the bridge.
         provider: 'claude',
-        model: 'claude-opus-4-8[1m]',
+        model: 'gpt-5.6-sol',
         permissionMode: 'default',
         reasoningEffort: 'high',
       }));
     });
 
-    expect(currentProviderRef.current).toBe('claude');
-    expect(opts.setCurrentProvider).toHaveBeenCalledWith('claude');
-    expect(opts.setSelectedClaudeModel).toHaveBeenCalledWith('claude-opus-4-8');
-    expect(opts.setLongContextEnabled).toHaveBeenCalledWith(true);
+    expect(currentProviderRef.current).toBe('opencode');
+    expect(opts.setCurrentProvider).toHaveBeenCalledWith('opencode');
+    expect(opts.setSelectedOpenCodeModel).toHaveBeenCalledWith('gpt-5.6-sol');
     expect(opts.setReasoningEffort).toHaveBeenCalledWith('high');
     expect(window.__CCGUI_RECOVERY_STATE_APPLIED__).toBe(true);
     expect((window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.length).toBe(bridgeCallsBeforeRestore);
@@ -195,7 +188,6 @@ describe('useWindowCallbacks integration', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
-    delete window.__codexHistoryPageInfo;
   });
 
   /**
@@ -231,20 +223,6 @@ describe('useWindowCallbacks integration', () => {
 
     expect(window.__sessionTransitioning).toBe(false);
     expect(window.__sessionTransitionToken).toBeNull();
-  });
-
-  it('older Codex page rendering does not release the session transition guard', () => {
-    const opts = createOptions();
-    renderHook(() => useWindowCallbacks(opts));
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'newer-transition';
-
-    act(() => {
-      window.codexHistoryPageRenderComplete!();
-    });
-
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBe('newer-transition');
   });
 
   it('historyLoadComplete shows pending session transition toast', () => {
@@ -348,7 +326,7 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setCustomSessionTitle).toHaveBeenCalledWith(longAiTitle);
   });
 
-  it('updateSessionTitle skips when sessionId does not match currentSessionIdRef (stale event)', () => {
+  it('updateSessionTitle for a stale session updates only the history list, not the header title', () => {
     const opts = createOptions({
       currentSessionIdRef: { current: 'sess-current' },
     });
@@ -358,7 +336,9 @@ describe('useWindowCallbacks integration', () => {
       window.updateSessionTitle!('sess-stale', 'Stale AI title');
     });
 
-    expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
+    // The history list entry is still synced so a background session shows its
+    // AI-generated title, but the visible header title must not be hijacked.
+    expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-stale', 'Stale AI title');
     expect(opts.updateHistoryTitle).not.toHaveBeenCalled();
     expect(opts.setCustomSessionTitle).not.toHaveBeenCalled();
   });
@@ -596,142 +576,6 @@ describe('useWindowCallbacks integration', () => {
     vi.useRealTimers();
   });
 
-  it('buffers a Codex history page and prepends it in one ordered state update', () => {
-    const { opts, buffer } = createOptsWithMessages([{ type: 'user', content: 'newer' }]);
-    opts.currentSessionIdRef.current = 'session-1';
-    renderHook(() => useWindowCallbacks(opts));
-    window.__codexHistoryPageInfo = {
-      pageId: 'page-current', sessionId: 'session-1', mode: 'replace',
-      fromTurn: 40, toTurn: 70, totalTurns: 70, hasMore: true, loadedMessageCount: 1,
-    };
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-1', sessionId: 'session-1', mode: 'prepend',
-      }));
-      window.appendCodexHistoryPageBatch!('page-1', JSON.stringify([
-        { type: 'user', content: 'older-1' },
-      ]));
-      window.appendCodexHistoryPageBatch!('page-1', JSON.stringify([
-        { type: 'assistant', content: 'older-2' },
-      ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-1', sessionId: 'session-1', mode: 'prepend',
-        fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
-      }));
-    });
-
-    expect(buffer.current.map(message => message.content)).toEqual(['older-1', 'older-2', 'newer']);
-    expect(window.__codexHistoryPageInfo?.fromTurn).toBe(10);
-  });
-
-  it('resets the prepended history offset when a page replaces the transcript', () => {
-    const { opts, buffer } = createOptsWithMessages([
-      { type: 'user', content: 'older-user' },
-      { type: 'assistant', content: 'current-answer' },
-    ]);
-    opts.currentSessionIdRef.current = 'session-1';
-    window.__prependedHistoryMessageCount = 1;
-    renderHook(() => useWindowCallbacks(opts));
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-replace', sessionId: 'session-1', mode: 'replace',
-      }));
-      window.appendCodexHistoryPageBatch!('page-replace', JSON.stringify([
-        { type: 'user', content: 'replacement' },
-      ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-replace', sessionId: 'session-1', mode: 'replace',
-        fromTurn: 0, toTurn: 1, totalTurns: 1, hasMore: false, loadedMessageCount: 1,
-      }));
-    });
-
-    expect(buffer.current.map(message => message.content)).toEqual(['replacement']);
-    expect(window.__prependedHistoryMessageCount).toBe(0);
-  });
-
-  it('keeps the streaming assistant index aligned when history is prepended', () => {
-    const { opts, buffer } = createOptsWithMessages([
-      { type: 'user', content: 'current-user' },
-      { type: 'assistant', content: 'streaming-answer', isStreaming: true },
-    ]);
-    opts.currentSessionIdRef.current = 'session-1';
-    opts.isStreamingRef.current = true;
-    opts.streamingMessageIndexRef.current = 1;
-    renderHook(() => useWindowCallbacks(opts));
-    window.__codexHistoryPageInfo = {
-      pageId: 'page-current', sessionId: 'session-1', mode: 'replace',
-      fromTurn: 40, toTurn: 70, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
-    };
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
-      }));
-      window.appendCodexHistoryPageBatch!('page-older', JSON.stringify([
-        { type: 'user', content: 'older-user' },
-        { type: 'assistant', content: 'older-answer' },
-      ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
-        fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
-      }));
-    });
-
-    expect(buffer.current.map(message => message.content)).toEqual([
-      'older-user', 'older-answer', 'current-user', 'streaming-answer',
-    ]);
-    expect(opts.streamingMessageIndexRef.current).toBe(3);
-  });
-
-  it('drops a late Codex history page from a previously selected session', () => {
-    const { opts, buffer } = createOptsWithMessages([{ type: 'user', content: 'current' }]);
-    opts.currentSessionIdRef.current = 'session-current';
-    renderHook(() => useWindowCallbacks(opts));
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-old', sessionId: 'session-old', mode: 'prepend',
-      }));
-      window.appendCodexHistoryPageBatch!('page-old', JSON.stringify([
-        { type: 'user', content: 'stale' },
-      ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-old', sessionId: 'session-old', mode: 'prepend',
-        fromTurn: 0, toTurn: 30, totalTurns: 60, hasMore: false, loadedMessageCount: 1,
-      }));
-    });
-
-    expect(buffer.current.map(message => message.content)).toEqual(['current']);
-  });
-
-  it('rejects a non-contiguous Codex history page and allows the UI to retry', () => {
-    const { opts, buffer } = createOptsWithMessages([{ type: 'user', content: 'current' }]);
-    opts.currentSessionIdRef.current = 'session-1';
-    renderHook(() => useWindowCallbacks(opts));
-    window.__codexHistoryPageInfo = {
-      pageId: 'page-current', sessionId: 'session-1', mode: 'replace',
-      fromTurn: 40, toTurn: 70, totalTurns: 70, hasMore: true, loadedMessageCount: 1,
-    };
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-gap', sessionId: 'session-1', mode: 'prepend',
-      }));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-gap', sessionId: 'session-1', mode: 'prepend',
-        fromTurn: 0, toTurn: 30, totalTurns: 70, hasMore: false, loadedMessageCount: 0,
-      }));
-    });
-
-    expect(buffer.current.map(message => message.content)).toEqual(['current']);
-    expect(opts.addToast).toHaveBeenCalledWith(
-      'Codex history changed while loading; please retry',
-      'error',
-    );
-  });
-
   it('patches only the transported tail when the full prefix is present', () => {
     const initial = Array.from({ length: 400 }, (_, index): ClaudeMessage => ({
       type: index % 2 === 0 ? 'user' : 'assistant',
@@ -751,86 +595,6 @@ describe('useWindowCallbacks integration', () => {
     expect(buffer.current[399]?.content).toBe('new-399');
     expect(window.__messageBaseIndex).toBe(0);
     expect(window.__minAcceptedUpdateSequence).toBe(7);
-  });
-
-  it('keeps prepended history aligned when patching the backend tail', () => {
-    const initial = Array.from({ length: 400 }, (_, index): ClaudeMessage => ({
-      type: index % 2 === 0 ? 'user' : 'assistant',
-      content: `current-${index}`,
-    }));
-    const older = Array.from({ length: 100 }, (_, index): ClaudeMessage => ({
-      type: index % 2 === 0 ? 'user' : 'assistant',
-      content: `older-${index}`,
-    }));
-    const { opts, buffer } = createOptsWithMessages(initial);
-    opts.currentSessionIdRef.current = 'session-1';
-    renderHook(() => useWindowCallbacks(opts));
-    window.__codexHistoryPageInfo = {
-      pageId: 'page-current', sessionId: 'session-1', mode: 'replace',
-      fromTurn: 40, toTurn: 70, totalTurns: 70, hasMore: true, loadedMessageCount: 400,
-    };
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
-      }));
-      window.appendCodexHistoryPageBatch!('page-older', JSON.stringify(older));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
-        fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 100,
-      }));
-      window.updateMessageTail!(JSON.stringify([
-        { type: 'user', content: 'updated-398' },
-        { type: 'assistant', content: 'updated-399' },
-      ]), 398, 7);
-    });
-
-    expect(buffer.current).toHaveLength(500);
-    expect(buffer.current[99]?.content).toBe('older-99');
-    expect(buffer.current[100]?.content).toBe('current-0');
-    expect(buffer.current[497]?.content).toBe('current-397');
-    expect(buffer.current[498]?.content).toBe('updated-398');
-    expect(buffer.current[499]?.content).toBe('updated-399');
-    expect(window.__prependedHistoryMessageCount).toBe(100);
-    expect(window.__messageBaseIndex).toBe(0);
-  });
-
-  it('preserves prepended history and its cursor across a full backend snapshot', () => {
-    const { opts, buffer } = createOptsWithMessages([
-      { type: 'user', content: 'current-user' },
-      { type: 'assistant', content: 'current-answer' },
-    ]);
-    opts.currentSessionIdRef.current = 'session-1';
-    renderHook(() => useWindowCallbacks(opts));
-    window.__codexHistoryPageInfo = {
-      pageId: 'page-current', sessionId: 'session-1', mode: 'replace',
-      fromTurn: 40, toTurn: 70, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
-    };
-
-    act(() => {
-      window.beginCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
-      }));
-      window.appendCodexHistoryPageBatch!('page-older', JSON.stringify([
-        { type: 'user', content: 'older-user' },
-        { type: 'assistant', content: 'older-answer' },
-      ]));
-      window.completeCodexHistoryPage!(JSON.stringify({
-        pageId: 'page-older', sessionId: 'session-1', mode: 'prepend',
-        fromTurn: 10, toTurn: 40, totalTurns: 70, hasMore: true, loadedMessageCount: 2,
-      }));
-      window.updateMessages!(JSON.stringify([
-        { type: 'user', content: 'current-user' },
-        { type: 'assistant', content: 'updated-answer' },
-        { type: 'user', content: 'new-user' },
-      ]), 8);
-    });
-
-    expect(buffer.current.map(message => message.content)).toEqual([
-      'older-user', 'older-answer', 'current-user', 'updated-answer', 'new-user',
-    ]);
-    expect(window.__prependedHistoryMessageCount).toBe(2);
-    expect(window.__codexHistoryPageInfo?.fromTurn).toBe(10);
   });
 
   it('reconstructs settled turn metadata after a tail update', () => {

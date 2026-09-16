@@ -12,6 +12,13 @@ export interface WebviewChannel {
 	callJavaScript(functionName: string, ...args: string[]): void;
 	isDisposed(): boolean;
 	postRaw(message: unknown): void;
+	/**
+	 * 当前存活 webview 数量（可选）。
+	 * 侧边栏左/右视图与编辑器分栏窗口共享同一会话，视图就绪时需要据此
+	 * 判断「当前会话是否还有别的视图在展示」——有则补推快照，没有则清成新会话。
+	 * 未实现时按单视图处理。
+	 */
+	getViewCount?(): number;
 }
 
 /** 宿主注入的文件操作（VS Code 用 workspace.fs / 编辑器打开）。 */
@@ -95,6 +102,11 @@ export class HandlerContext {
 
 	getChannel(): WebviewChannel {
 		return this.channel;
+	}
+
+	/** 当前存活 webview 数量；通道未上报时按单视图处理。 */
+	getViewCount(): number {
+		return this.channel.getViewCount ? this.channel.getViewCount() : 1;
 	}
 
 	getSettingsService(): SettingsService {

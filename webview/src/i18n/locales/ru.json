@@ -173,7 +173,7 @@
     "title": "Настройки",
     "basic": {
       "title": "Основные настройки",
-      "description": "Тема, язык и окружение Node.js",
+      "description": "Тема, язык и окружение",
       "tabs": {
         "appearance": "Внешний вид",
         "behavior": "Поведение",
@@ -201,14 +201,6 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
-      },
-      "nodePath": {
-        "label": "Путь к Node.js",
-        "placeholder": "например, C:\\Program Files\\nodejs\\node.exe или /usr/local/bin/node",
-        "hint": "Выполните в терминале",
-        "hintCommand": "node -p \"process.execPath\"",
-        "hintText": "чтобы узнать путь к исполняемому файлу Node.js. Оставьте пустым для автоопределения.",
-        "versionTooLow": "Версия Node.js слишком старая. Плагин требует v{{minVersion}} или выше"
       },
       "workingDirectory": {
         "label": "Рабочая директория",
@@ -648,7 +640,6 @@
       "title": "Промпты",
       "create": "Создать",
       "createAgent": "Создать промпта",
-      "createAgentHint": "Нажмите для перехода на страницу настройки промптов",
       "customAgents": "Пользовательские промпты",
       "noAgents": "Нет пользовательских промптов",
       "noAgentsDropdown": "Нет промптов",

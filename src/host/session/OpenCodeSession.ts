@@ -308,6 +308,39 @@ export class OpenCodeSession {
 	}
 
 	/**
+	 * 视图就绪对齐（方案 B）。
+	 *
+	 * 每个新建的 webview 只会发一次 `frontend_ready`（`main.tsx` 里 waitForBridge
+	 * 回调），因此收到它就意味着「刚出现了一个空视图」。而宿主内存里的 state
+	 * 可能还留着上一会话的整份消息——两者不一致就会表现为：
+	 * 打开插件看到空对话（视图是空的），发第一条消息后旧对话立刻冒出来
+	 * （send() 会把 state.getMessages() 整份推给视图）。
+	 *
+	 * 这里在回放任何状态之前先把两者对齐：
+	 *
+	 * - 只有这一个存活视图：清空宿主内存 → 名副其实的「新会话」。旧会话仍在
+	 *   opencode 服务端，可从历史列表随时重新打开，不会丢。
+	 * - 已有别的视图在展示当前会话（侧边栏 + 编辑器分栏共享同一会话）：不能清，
+	 *   否则会把另一个视图正在看的对话擦掉；改为把宿主快照补推给新视图。
+	 * - 流式进行中：不动。流式快照本来就会广播给所有存活视图。
+	 * @returns 是否把会话清成了新会话（true 表示宿主已不再持有任何会话，
+	 *   调用方不应再向视图回放旧的 sessionId）。
+	 */
+	reconcileWithFreshView(): boolean {
+		const messages = this.state.getMessages();
+		const hasSession = this.state.getSessionId() != null || messages.length > 0;
+		if (!hasSession || this.state.isBusy()) {
+			return false;
+		}
+		if (this.context.getViewCount() > 1) {
+			this.restoreMessages(messages);
+			return false;
+		}
+		this.resetSession();
+		return true;
+	}
+
+	/**
 	 * 新建会话：重置状态并建立新会话（daemon 侧 SDK createSession 会在
 	 * [MESSAGE_START] 里回传新的 session_id）。
 	 */

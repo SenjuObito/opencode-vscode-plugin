@@ -34,8 +34,6 @@ interface SettingsDialogsProps {
   onConfirmAgentExport: (selectedIds: string[]) => void;
   onCloseAgentImportPreview: () => void;
   onSaveImportedAgents: (selectedIds: string[], strategy: ConflictStrategy) => void;
-
-  // Note: Prompt dialogs are now handled in PromptSection component
 }
 
 const SettingsDialogs = ({
@@ -87,8 +85,6 @@ const SettingsDialogs = ({
         onCancel={onCancelDeleteAgent}
       />
 
-      {/* Note: Prompt dialogs are now rendered in PromptSection component */}
-
       {/* Agent export dialog */}
       {agentExportDialog.isOpen && (
         <AgentExportDialog
@@ -106,8 +102,6 @@ const SettingsDialogs = ({
           onCancel={onCloseAgentImportPreview}
         />
       )}
-
-      {/* Note: Prompt import/export dialogs are now rendered in PromptSection component */}
     </>
   );
 };

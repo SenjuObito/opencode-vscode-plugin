@@ -47,7 +47,8 @@ After installing the extension, click the OpenCode icon in the VS Code sidebar t
 You can also open an independent tab in an editor split by running the *Open OpenCode Buddy in Editor
 Split* command from the command palette — each tab is its own conversation.
 
-![Chat main view](media/home.png)
+<img src="media/home.png" width="400" alt="Chat main view">
+
 *Screenshots show the UI in Simplified Chinese.*
 
 UI layout:
@@ -66,7 +67,7 @@ UI layout:
 
 Click the gear icon in the top-right of the chat panel to open the settings page:
 
-![Settings page](media/settings.png)
+<img src="media/settings.png" width="400" alt="Settings page">
 
 **Basic Config → Appearance** main options:
 
@@ -151,7 +152,7 @@ If you find this useful, consider supporting:
 
 | WeChat | Alipay | PayPal |
 |:---:|:---:|:---:|
-| ![WeChat](media/wallet.png) | ![Alipay](media/wallet-alipay.png) | <img src="media/wallet-paypal.png" width="600" /> |
+| <img src="webview/src/assets/images/wallet.png" width="200" alt="WeChat"> | <img src="webview/src/assets/images/wallet-alipay.png" width="200" alt="Alipay"> | <img src="webview/src/assets/images/wallet-paypal.png" width="200" alt="PayPal"> |
 
 ## Acknowledgements
 

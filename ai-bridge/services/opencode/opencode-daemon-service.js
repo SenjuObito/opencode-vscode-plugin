@@ -903,7 +903,8 @@ export async function sendShellPersistent(params = {}) {
  */
 async function _fetchFinalAssistantMessage(sessionId, directory) {
   try {
-    const messages = await sdk.listMessages(sessionId, directory);
+    // 仅用于补齐 token 统计，拿不到就退回 turn 自身的数据。
+    const messages = await sdk.listMessages(sessionId, directory, { tolerateError: true });
     if (Array.isArray(messages)) {
       for (let i = messages.length - 1; i >= 0; i -= 1) {
         const m = messages[i];
@@ -990,7 +991,8 @@ export async function getContextUsagePersistent(params = {}) {
       maxTokens = cached.maxTokens;
     } else {
       try {
-        const messages = await sdk.listMessages(sessionId, directory);
+        // 用量估算的兜底：失败就退回缓存/默认值，不要中断状态推送。
+        const messages = await sdk.listMessages(sessionId, directory, { tolerateError: true });
         if (Array.isArray(messages)) {
           for (let i = messages.length - 1; i >= 0; i -= 1) {
             const m = messages[i];

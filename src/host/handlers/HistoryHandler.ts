@@ -360,53 +360,95 @@ export class HistoryHandler extends BaseMessageHandler {
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
 		// Daemon cold-start may return empty messages on the very first listMessages
 		// call after startup (serve not ready, or the session transcript not yet
-		// lazily loaded). Retry a few times with a short delay when the response is
-		// successful but contains zero messages. Channel-side ensureServerReady()
-		// already removes the "serve not ready" case; this covers the remaining
-		// "session not loaded yet" window so the first history load is never blank.
-		const MAX_EMPTY_RETRIES = 3;
-		const EMPTY_RETRY_DELAY_MS = 600;
+		// lazily loaded). Retry with a short delay when the response is successful
+		// but contains zero messages.
+		//
+		// 方案 C：**失败**同样要重试。此前只有 `success && 空` 才重试，
+		// `onError` / `onComplete(false)` 直接放弃 —— 冷启动 serve 未就绪时
+		// 用户会拿到一个空白对话，且没有任何错误提示（错误被静默吞掉）。
+		// 另外 daemon 的失败响应会先 onError 再 onComplete(false)，
+		// 所以重试决策必须放在一个带 settled 闸门的统一出口里，否则会重复重试。
+		const MAX_ATTEMPTS = 4;
+		const RETRY_DELAY_MS = 600;
 
-		const doRequest = (retriesLeft: number): Promise<void> => {
+		const attempt = (attemptIndex: number): Promise<void> => {
 			const collector = new ListMessagesCollector();
 			return new Promise<void>((resolve) => {
+				let settled = false;
+				/** 本轮（或本轮之前）最近一次真实失败原因；成功应答会把它清掉。 */
+				let failureReason: string | null = null;
+
+				const finish = (reason: string | null): void => {
+					if (settled) {
+						return;
+					}
+					settled = true;
+					if (reason) {
+						// 让失败可见：此前静默只表现为「这个会话没有消息」。
+						console.error(`[HistoryHandler] Failed to load messages for session ${sessionId}: ${reason}`);
+						this.callJavaScript('updateStatus', `Failed to load session messages: ${reason}`);
+					}
+					// 恢复会话后同步 revert（redo）状态，供前端渲染撤销占位条 / 恢复按钮
+					const revertState = session.state.getRevertState();
+					this.callJavaScript(
+						'onRevertStateUpdate',
+						JSON.stringify({
+							hasRevert: !!revertState,
+							messageId: revertState?.messageID || null,
+						}),
+					);
+					resolve();
+				};
+
+				const retryLater = (): void => {
+					if (settled) {
+						return;
+					}
+					if (attemptIndex + 1 >= MAX_ATTEMPTS) {
+						finish(failureReason);
+						return;
+					}
+					settled = true;
+					setTimeout(() => {
+						void attempt(attemptIndex + 1).then(resolve);
+					}, RETRY_DELAY_MS);
+				};
+
 				const ok = daemon.request('opencode.listMessages', { sessionId, directory }, {
 					onLine: (line) => collector.onLine(line),
-					onError: () => resolve(),
+					onError: (error) => {
+						failureReason = typeof error === 'string' ? error : 'listMessages failed';
+						retryLater();
+					},
 					onComplete: (success) => {
-						collector.reconcileFallback();
-						const messages = convertSdkMessages(collector.getEntries());
-						if (messages.length > 0) {
-							session.restoreMessages(messages);
-							resolve();
-							return;
+						if (success) {
+							collector.reconcileFallback();
+							const messages = convertSdkMessages(collector.getEntries());
+							if (messages.length > 0) {
+								session.restoreMessages(messages);
+								if (!settled) {
+									settled = true;
+									resolve();
+								}
+								return;
+							}
+							// 成功但为空：可能是会话 transcript 尚未惰性加载完成。
+							// 服务端确实给了应答，之前某轮的失败已被这次成功取代，
+							// 所以清掉 failureReason —— 否则真·空会话会被误报成加载失败。
+							failureReason = null;
 						}
-						// Empty messages + retries remaining → delay and retry
-						if (success && retriesLeft > 0) {
-							setTimeout(() => {
-								doRequest(retriesLeft - 1).then(resolve);
-							}, EMPTY_RETRY_DELAY_MS);
-							return;
-						}
-						// 恢复会话后同步 revert（redo）状态，供前端渲染撤销占位条 / 恢复按钮
-						const revertState = session.state.getRevertState();
-						this.callJavaScript(
-							'onRevertStateUpdate',
-							JSON.stringify({
-								hasRevert: !!revertState,
-								messageId: revertState?.messageID || null,
-							}),
-						);
-						resolve();
+						retryLater();
 					},
 				});
 				if (!ok) {
-					resolve();
+					// 请求根本没排上队（daemon 未运行等）：同样走重试，而不是无声放弃
+					failureReason = failureReason ?? 'daemon request was not accepted';
+					retryLater();
 				}
 			});
 		};
 
-		return doRequest(MAX_EMPTY_RETRIES);
+		return attempt(0);
 	}
 
 	private requestSessionState(

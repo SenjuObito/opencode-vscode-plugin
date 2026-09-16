@@ -405,7 +405,6 @@ export function agentToDropdownItem(agent: AgentItem): DropdownItemData {
     return {
       id: agent.id,
       label: agent.name,
-      description: i18n.t('settings.agent.createAgentHint'),
       icon: 'codicon-add',
       type: 'agent',
       data: { agent },
