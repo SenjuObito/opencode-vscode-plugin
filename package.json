@@ -2,6 +2,7 @@
   "name": "opencode-buddy",
   "displayName": "OpenCode Buddy",
   "publisher": "SenjuObito",
+  "license": "MIT",
   "description": "OpenCode — Best OpenCode GUI plugin for VS Code",
   "version": "0.0.4",
   "repository": {
