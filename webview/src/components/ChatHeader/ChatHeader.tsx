@@ -228,7 +228,7 @@ export function ChatHeader({
                 data-tooltip={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
                 aria-label={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
               >
-                <span className="codicon codicon-export" />
+                <span className="codicon codicon-arrow-down" />
               </button>
             )}
             <button
