@@ -100,15 +100,6 @@ html {
     font-family: 'codicon' !important;
 }
 
-/* Linux 专用：切换到固定度量的 codicon 字体（见 codicon.css）。
- * 仅通过 .os-linux（main.tsx 按平台注入）生效，Windows/macOS 仍用原字体，渲染不变。 */
-.os-linux .codicon,
-.os-linux .codicon[class*='codicon-'],
-.os-linux [class*='codicon-']::before,
-.os-linux [class*='codicon-']::after {
-    font-family: 'codicon-linux' !important;
-}
-
 /* Notice Box - shared info/warning notice */
 .notice-box {
     border-radius: 4px;

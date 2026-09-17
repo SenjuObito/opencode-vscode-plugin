@@ -16,8 +16,6 @@ export function isMacPlatform(): boolean {
 
 /**
  * Desktop Linux detection (excludes Android, whose UA also contains "Linux").
- * Used to scope the codicon font-metric fix via an `os-linux` root class so
- * Windows/macOS rendering stays untouched.
  */
 export function isLinuxPlatform(): boolean {
   if (typeof navigator === 'undefined') return false;
