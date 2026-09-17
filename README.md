@@ -19,68 +19,68 @@ A Gemini Pro subscription has been purchased; Deepseek cost 89 CNY. If you find 
 
 ## Features
 
-- **Persistent opencode daemon** — no per-message process spawn. `opencode serve` (default port 4096,
-  overridable via `OPENCODE_PORT`) is started or reused on demand, stays prewarmed across requests, and
-  auto-restarts on crash.
-- **Full chat interface** — streaming text, thinking deltas, tool-call cards with diffs; multi-tab
-  sessions inside the tool window, detachable into a standalone window.
-- **Native input** — `@filename` references, image attachments, one-click send of an editor selection or
-  file path, opencode's native slash commands (`/init`, `/review`, …), `!shell` commands, and a
-  context-compaction flow.
-- **Agent / model / reasoning depth** — build / plan mode switching, any provider + model combination
-  from your opencode config, and reasoning-depth (variant) selection.
-- **Approval flows** — permission approval (once / always / reject), question prompts, and plan approval,
-  all rendered as native panels inside the chat area.
-- **Session management** — local session index with favourites and search, revert / fork / compact, and
-  history export.
-- **MCP** — server status view and a marketplace (install / remove MCP servers).
-- **Editor integration** — a button in the editor title bar, plus two commands: open the panel in the
-  left sidebar, or open it as an independent tab in an editor split.
-- **Follow VS Code** — light/dark theme follows VS Code, VS Code font syncing, and a
-  multi-language UI.
+- **Persistent OpenCode Daemon** — No per-message process spawn. Runs a persistent `opencode serve` daemon (default port 4096, configurable via `OPENCODE_PORT`) via `@opencode-ai/sdk`, prewarmed across requests, with automatic heartbeat keep-alive, crash recovery, and context isolation using `AsyncLocalStorage`.
+- **Full Streaming Chat Interface** — Real-time streaming text responses, interactive thinking deltas, structured tool-call cards with expandable diff views.
+- **Multi-Panel & Flexible Layouts** — Native integration with VS Code Activity Bar (left), Secondary Sidebar (right), and Editor Split views; one-click launch from the editor title bar.
+- **Multi-Tab Session Management** — Seamless multi-tab conversation switching and management within the same panel window.
+- **Rich Context & Native Inputs**:
+  - `@` symbol file and symbol reference autocomplete.
+  - Image attachments via drag-and-drop or clipboard paste.
+  - One-click context insertion from editor selection and file paths.
+  - OpenCode native slash commands (`/init`, `/review`, etc.) and `!shell` command executions.
+  - Context compaction support to optimize token usage.
+- **Agent Modes, Models & Reasoning Depth** — Switch between Build and Plan modes, dynamically retrieve and select configured providers/models from OpenCode, and configure reasoning depth / variants (e.g. `low`, `medium`, `high`).
+- **Permission Approvals & Interactive Prompts** — Granular permission approval system (allow once, always allow, reject), interactive questions (`AskUserQuestion` dialog), and plan confirmation approvals directly in chat.
+- **File Changes & One-Click Undo** — Live tracking of AI-generated file edits with diffs; revert changes per-file or roll back all changes in batch.
+- **Session History & Time Travel (Rewind / Fork)** — Local session index with search, favourites, renaming, and deletion; rewind to any previous message turn to fork or regenerate; export conversations to Markdown.
+- **MCP Servers & Marketplace** — Monitor MCP server status, browse, install, configure, and remove MCP servers through a built-in marketplace.
+- **Skills System Management** — Global and workspace-level skill auto-discovery, one-click import, enable/disable toggling, and direct opening of `SKILL.md` files in VS Code.
+- **Token & Usage Tracking** — Live tracking and visualization of token consumption per message and tool call.
+- **Theming & Deep Personalization** — Fully synchronized with VS Code light/dark themes, custom font sizes and families (UI & monospace code fonts), customizable chat backgrounds and bar colors, diff theme options, and multi-language UI.
 
 ## Usage
 
-### 1. Open the chat panel
+### 1. Open the Chat Panel
 
-After installing the extension, click the OpenCode icon in the VS Code sidebar to open the chat panel.
-You can also open an independent tab in an editor split by running the *Open OpenCode Buddy in Editor
-Split* command from the command palette — each tab is its own conversation.
+After installing the extension, you can open OpenCode Buddy in several ways:
+- Click the **OpenCode icon** in the VS Code Activity Bar (left).
+- Click the **OpenCode icon** in the editor title bar.
+- Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run:
+  - `Open OpenCode Buddy Panel (Left)`
+  - `New OpenCode Buddy Chat` (opens a standalone tab in an editor split for parallel sessions)
 
-<img src="media/home.png" width="400" alt="Chat main view">
+<img src="media/home.png" width="600" alt="Chat main view">
 
 *Screenshots show the UI in Simplified Chinese.*
 
 UI layout:
 
-- **Top tabs** — `Chat / Claude Code / Codex / OpenCode` to switch between conversations.
-- **Top-right** — new conversation / search / history / settings.
-- **Bottom bar**:
-  - `Task / Subagent / Edit` — switch input mode.
-  - `Build` — select the working mode (Build / Plan, etc.).
-  - **Model selector** — pick the current model (e.g. `Nemotron-3.5-Lightning-Free`).
-  - **Reasoning depth** — e.g. `medium`, controls how deeply the model thinks.
-- **Input box** — `@filename` attaches files, `/bash ...` runs shell commands, `/opencode ...` runs
-  opencode commands. `Enter` sends.
+- **Top Tabs** — Switch between, open, and close independent conversation sessions.
+- **Top-Right Actions** — New session, search, history drawer, and settings.
+- **Bottom Bar**:
+  - `Task / Subagent / Edit` — Switch input mode.
+  - `Build / Plan` — Switch working mode.
+  - **Model Selector** — Select active model (e.g. `deepseek-v3`, `claude-3-7-sonnet`).
+  - **Reasoning Depth (Variant)** — Control reasoning effort (e.g. `low`, `medium`, `high`).
+- **Input Box** — `@filename` references, drag-and-drop images, `/bash ...` commands, `/opencode ...` commands. Press `Enter` to send (`Shift+Enter` for new line).
 
-### 2. Personalise settings
+### 2. Personalise Settings
 
 Click the gear icon in the top-right of the chat panel to open the settings page:
 
-<img src="media/settings.png" width="400" alt="Settings page">
+<img src="media/settings.png" width="350" alt="Settings page">
 
 **Basic Config → Appearance** main options:
 
 | Item | Description |
 |---|---|
 | UI theme | Follow VS Code / Light / Dark |
-| UI language | Follow VS Code |
-| Font size / UI font / Code font | Font and sizing inside the webview |
+| UI language | Follow VS Code / Simplified Chinese / English |
+| Font size / UI font / Code font | Font families and sizing inside the webview |
 | Diff theme | Light/dark theme for the diff view |
-| Chat background / Title-bar and status-bar colour | Custom chat-area colour (custom hex supported) |
+| Chat background / Title-bar and status-bar colour | Custom chat-area colour scheme (custom hex supported) |
 
-The settings page also has `Appearance / Behaviour / Environment` tabs at the top — Appearance for
-visual customisation, Behaviour for agent behaviour, and Environment for runtime configuration.
+The settings page also includes tabs for `Appearance`, `Behaviour`, `Environment`, `MCP`, and `Skills` to configure agent parameters, MCP integrations, and skill packages.
 
 ## Requirements
 
