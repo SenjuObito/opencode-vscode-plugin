@@ -58,7 +58,9 @@ export function ChatHeader({
 }: ChatHeaderProps): React.ReactElement | null {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!titleEditable) {
@@ -72,6 +74,26 @@ export function ChatHeader({
       inputRef.current.select();
     }
   }, [editing]);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   const startEditing = useCallback(() => {
     if (!titleEditable || !onTitleChange) return;
@@ -221,16 +243,6 @@ export function ChatHeader({
                 <span className="codicon codicon-search" />
               </button>
             )}
-            {onExport && (
-              <button
-                className="icon-button"
-                onClick={onExport}
-                data-tooltip={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
-                aria-label={t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}
-              >
-                <span className="codicon codicon-arrow-down" />
-              </button>
-            )}
             <button
               className="icon-button"
               onClick={onHistory}
@@ -238,13 +250,45 @@ export function ChatHeader({
             >
               <span className="codicon codicon-history" />
             </button>
-            <button
-              className="icon-button"
-              onClick={onSettings}
-              data-tooltip={t('common.settings')}
-            >
-              <span className="codicon codicon-settings-gear" />
-            </button>
+            <div className="header-more-menu-wrapper" ref={moreMenuRef}>
+              <button
+                className={`icon-button ${moreMenuOpen ? 'active' : ''}`}
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                data-tooltip={moreMenuOpen ? undefined : t('common.more', { defaultValue: 'More' })}
+                aria-label={t('common.more', { defaultValue: 'More' })}
+                aria-expanded={moreMenuOpen}
+              >
+                <span className="codicon codicon-ellipsis" />
+              </button>
+              {moreMenuOpen && (
+                <div className="header-dropdown-menu" role="menu">
+                  {onExport && (
+                    <button
+                      className="header-dropdown-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        onExport();
+                      }}
+                    >
+                      <span className="codicon codicon-arrow-down" />
+                      <span>{t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}</span>
+                    </button>
+                  )}
+                  <button
+                    className="header-dropdown-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      onSettings();
+                    }}
+                  >
+                    <span className="codicon codicon-settings-gear" />
+                    <span>{t('common.settings', { defaultValue: 'Settings' })}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>

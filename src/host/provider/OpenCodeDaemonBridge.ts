@@ -35,6 +35,8 @@ const DAEMON_HEAP_WARN_BYTES = 1_500_000_000;
 const DAEMON_HEAP_RESET_BYTES = DAEMON_HEAP_WARN_BYTES * 0.8;
 
 export interface DaemonOutputCallback {
+	/** 请求成功注册并发送后立即触发，提供该请求在 bridge 分配的 requestId。 */
+	onStart?(requestId: string): void;
 	onLine(line: string): void;
 	onStderr?(text: string): void;
 	onError(error: string): void;
@@ -55,6 +57,7 @@ export interface DaemonEventListener {
 interface PendingRequest {
 	callback: DaemonOutputCallback;
 	countsAsActive: boolean;
+	sessionId?: string;
 }
 
 enum DaemonState {
@@ -480,25 +483,59 @@ export class OpenCodeDaemonBridge {
 		this.log('Daemon stopped');
 	}
 
-	/** 发送 abort（绕过命令队列立即下发），并完成所有挂起请求。 */
-	sendAbort(): void {
+	/**
+	 * 发送 abort（绕过命令队列立即下发）。
+	 * 若指定了 sessionId 或 requestId，则只完成该会话/请求关联的挂起处理程序，
+	 * 避免多标签页并发时一个 Tab 中断误杀其他 Tab 的对话。
+	 */
+	sendAbort(sessionId?: string, requestId?: string): void {
 		const context = this.daemonContext;
 		if (context?.isActive && context.process.exitCode === null) {
 			try {
 				context.process.stdin?.write(
-					JSON.stringify({ id: `abort-${Date.now()}`, method: 'abort' }) + '\n',
+					JSON.stringify({
+						id: `abort-${Date.now()}`,
+						method: 'abort',
+						params: {
+							...(sessionId ? { sessionId } : {}),
+							...(requestId ? { requestId } : {}),
+						},
+					}) + '\n',
 				);
-				this.log('Sent abort command');
+				this.log(`Sent abort command (sessionId=${sessionId ?? 'all'}, requestId=${requestId ?? 'none'})`);
 			} catch {
 				/* ignore */
 			}
 		}
-		// 用 onComplete(false) 而非 onError —— 用户主动中断是正常（未成功）完成。
-		if (context) {
+
+		if (!context) {
+			return;
+		}
+
+		if (sessionId || requestId) {
+			const matchingIds: string[] = [];
+			for (const [id, handler] of context.pendingRequests.entries()) {
+				if (requestId && id === requestId) {
+					matchingIds.push(id);
+				} else if (sessionId && handler.sessionId === sessionId) {
+					matchingIds.push(id);
+				}
+			}
+
+			for (const id of matchingIds) {
+				const handler = context.pendingRequests.get(id);
+				if (handler) {
+					context.removeRequest(id);
+					if (handler.callback.onAbort) {
+						handler.callback.onAbort();
+					} else {
+						handler.callback.onComplete(false);
+					}
+				}
+			}
+		} else {
+			// 未指定目标时的全局清理兜底
 			for (const handler of context.drainRequests()) {
-				// 注意：不能写 `onAbort?.() ?? onComplete(false)` —— onAbort 返回
-				// undefined，`??` 会使两个回调都被执行，onComplete(false) 会把
-				// 用户主动中断误报为「发送失败」错误。
 				if (handler.callback.onAbort) {
 					handler.callback.onAbort();
 				} else {
@@ -554,7 +591,8 @@ export class OpenCodeDaemonBridge {
 
 		const requestId = String(++this.requestIdCounter);
 		const countsAsActive = method !== 'heartbeat' && method !== 'status';
-		const handler: PendingRequest = { callback, countsAsActive };
+		const sessionId = typeof params.sessionId === 'string' ? params.sessionId : undefined;
+		const handler: PendingRequest = { callback, countsAsActive, sessionId };
 		if (!context.registerRequest(requestId, handler)) {
 			callback.onError('Daemon generation is no longer active');
 			return false;
@@ -564,6 +602,7 @@ export class OpenCodeDaemonBridge {
 		try {
 			context.process.stdin?.write(request + '\n');
 			this.log(`Sent request ${requestId}: ${method}`);
+			callback.onStart?.(requestId);
 		} catch (err) {
 			context.removeRequest(requestId);
 			callback.onError(`Failed to send request: ${(err as Error).message}`);

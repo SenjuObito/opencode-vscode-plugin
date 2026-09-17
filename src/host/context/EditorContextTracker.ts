@@ -5,7 +5,8 @@
  * `window.clearSelectionInfo()`（200ms 防抖，与 IDE 版一致）。
  */
 import * as vscode from 'vscode';
-import type { HandlerContext } from '../router/HandlerContext';
+import type { SettingsService } from '../settings/SettingsService';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 
 const DEBOUNCE_MS = 200;
 
@@ -16,7 +17,7 @@ export class EditorContextTracker {
 	/** 最近一次计算的上下文（'@path#L1-L2' 或 null），供发送时注入。 */
 	private lastInfo: string | null = null;
 
-	constructor(private readonly context: HandlerContext) {}
+	constructor(private readonly settings: SettingsService) {}
 
 	/** 当前编辑器上下文（cc-gui EditorContextCollector.collectContext 等价物）。 */
 	getCurrentSelectionInfo(): string | null {
@@ -32,6 +33,7 @@ export class EditorContextTracker {
 		this.disposables.push(
 			vscode.window.onDidChangeTextEditorSelection(() => this.scheduleUpdate()),
 		);
+		this.updateNow();
 	}
 
 	/** 立即推送当前上下文（webview 面板就绪时调用）。 */
@@ -41,16 +43,29 @@ export class EditorContextTracker {
 		}
 		try {
 			// 与 cc-gui 一致：关闭「自动打开文件」设置时清空 ContextBar。
-			const projectPath = this.context.getSettingsService().getPrimaryWorkspaceRoot();
-			if (projectPath && !this.context.getSettingsService().getAutoOpenFileEnabled(projectPath)) {
+			const projectPath = this.settings.getPrimaryWorkspaceRoot();
+			if (projectPath && !this.settings.getAutoOpenFileEnabled(projectPath)) {
 				this.clear();
 				return;
 			}
 
-			const editor = vscode.window.activeTextEditor;
+			// 优先获取 activeTextEditor；如果当前焦点在 webview（activeTextEditor 为 undefined），
+			// 尝试从 visibleTextEditors 中寻找可见的文件编辑器；若都不可见但已有 lastInfo 则保持，否则才清空。
+			let editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.uri.scheme !== 'file') {
-				this.clear();
-				return;
+				const visibleFileEditor = vscode.window.visibleTextEditors.find(
+					(e) => e.document.uri.scheme === 'file',
+				);
+				if (visibleFileEditor) {
+					editor = visibleFileEditor;
+				} else if (this.lastInfo) {
+					// 焦点临时切至 WebviewPanel 且分栏无可见编辑器时，广播保持最近一次选中的有效文件上下文
+					WebviewBroadcaster.broadcastJavaScript('addSelectionInfo', this.lastInfo);
+					return;
+				} else {
+					this.clear();
+					return;
+				}
 			}
 
 			let info = `@${editor.document.uri.fsPath}`;
@@ -66,7 +81,7 @@ export class EditorContextTracker {
 			}
 
 			this.lastInfo = info;
-			this.context.callJavaScript('addSelectionInfo', info);
+			WebviewBroadcaster.broadcastJavaScript('addSelectionInfo', info);
 		} catch (err) {
 			console.warn(`[EditorContextTracker] update failed: ${String(err)}`);
 		}
@@ -75,7 +90,7 @@ export class EditorContextTracker {
 	/** 清空上下文缓存并通知 webview（autoOpenFile 关闭等场景需同步调用）。 */
 	clear(): void {
 		this.lastInfo = null;
-		this.context.callJavaScript('clearSelectionInfo');
+		WebviewBroadcaster.broadcastJavaScript('clearSelectionInfo');
 	}
 
 	private scheduleUpdate(): void {

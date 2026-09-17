@@ -152,17 +152,25 @@ export class HistoryHandler extends BaseMessageHandler {
 		attempt: number,
 		seq: number,
 	): void {
-		if (seq !== this.historyLoadSeq) return;
+		if (seq !== this.historyLoadSeq) {
+			return;
+		}
 		const chunks: string[] = [];
 		let settled = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 
 		/** 结束本次尝试：failure 为 null 表示成功（成功路径直接推送，见下方 onComplete）。 */
 		const finish = (failure: { message: string; empty?: boolean } | null): void => {
-			if (settled || seq !== this.historyLoadSeq) return;
+			if (settled || seq !== this.historyLoadSeq) {
+				return;
+			}
 			settled = true;
-			if (timer) clearTimeout(timer);
-			if (failure === null) return;
+			if (timer) {
+				clearTimeout(timer);
+			}
+			if (failure === null) {
+				return;
+			}
 			if (attempt < HISTORY_MAX_ATTEMPTS) {
 				logWarn(`load_history_data attempt ${attempt} ${failure.message} — retrying`, 'HistoryHandler');
 				timer = setTimeout(() => this.requestSessions(daemon, directory, attempt + 1, seq), HISTORY_RETRY_DELAY_MS);
@@ -193,7 +201,9 @@ export class HistoryHandler extends BaseMessageHandler {
 				finish({ message: typeof err === 'string' && err.trim() !== '' ? err : 'Failed to list sessions' });
 			},
 			onComplete: (success) => {
-				if (settled) return;
+				if (settled) {
+					return;
+				}
 				if (!success) {
 					finish({ message: 'daemon reported failure' });
 					return;
@@ -205,7 +215,9 @@ export class HistoryHandler extends BaseMessageHandler {
 					return;
 				}
 				settled = true;
-				if (timer) clearTimeout(timer);
+				if (timer) {
+					clearTimeout(timer);
+				}
 				const favorites: Record<string, { favoritedAt: number }> = {};
 				const sessions = (rawSessions as Array<Record<string, any>>).map((s) => {
 					const sessionId = String(s?.id || s?.sessionId || '');

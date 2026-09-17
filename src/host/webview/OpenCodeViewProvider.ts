@@ -10,11 +10,16 @@
  */
 import * as vscode from 'vscode';
 import { readFileSync } from 'fs';
-import { MessageDispatcher } from '../router/MessageDispatcher';
-import { WebviewChannel } from '../router/HandlerContext';
+import { WebviewChannel, FileOps } from '../router/HandlerContext';
 import { ViewHost, BridgeMessage } from '../types';
 import { logDiagnostic, logVerbose } from '../util/DiagnosticLogger';
-import { DEFAULT_UI_PREFERENCES, type UiPreferences } from '../settings/SettingsService';
+import { DEFAULT_UI_PREFERENCES, type UiPreferences, type SettingsService } from '../settings/SettingsService';
+import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
+import type { EditorContextTracker } from '../context/EditorContextTracker';
+import type { TabManager } from '../tabs/TabManager';
+import { createChatInstance, type ChatInstance } from '../session/ChatInstance';
+import { TabHandler } from '../handlers/TabHandler';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 
 /**
  * 可接收广播的 webview 宿主：侧边栏视图（WebviewView）或编辑器分栏面板
@@ -23,29 +28,18 @@ import { DEFAULT_UI_PREFERENCES, type UiPreferences } from '../settings/Settings
  */
 export type BroadcastTarget = vscode.WebviewView | vscode.WebviewPanel;
 
-/** 广播通道：向所有存活 webview 推 `window.<fn>(...args)`。 */
-export class BroadcastChannel implements WebviewChannel {
-	private readonly views = new Set<BroadcastTarget>();
+export class ProviderWebviewChannel implements WebviewChannel {
+	private view: vscode.WebviewView | null = null;
+	private disposed = false;
 
-	attach(view: BroadcastTarget): void {
-		this.views.add(view);
-		view.onDidDispose(() => this.views.delete(view));
-	}
-
-	detachAll(): void {
-		this.views.clear();
-	}
-
-	get size(): number {
-		return this.views.size;
-	}
-
-	/**
-	 * 存活视图数量。侧边栏左/右 + 编辑器分栏共享同一会话，宿主据此区分
-	 * 「重新打开插件（应当是新会话）」与「再开一个视图看同一会话（应当补推快照）」。
-	 */
-	getViewCount(): number {
-		return this.views.size;
+	attach(view: vscode.WebviewView): void {
+		this.view = view;
+		this.disposed = false;
+		view.onDidDispose(() => {
+			if (this.view === view) {
+				this.view = null;
+			}
+		});
 	}
 
 	callJavaScript(functionName: string, ...args: string[]): void {
@@ -53,31 +47,40 @@ export class BroadcastChannel implements WebviewChannel {
 	}
 
 	postRaw(message: unknown): void {
-		const msg = message as { type?: string };
-		if (msg?.type === 'onTodoUpdated') {
-			console.log('[OpenCodeViewProvider] postRaw sending onTodoUpdated to', this.views.size, 'views');
+		if (this.disposed || !this.view) {
+			return;
 		}
-		for (const view of [...this.views]) {
-			try {
-				void view.webview.postMessage(message);
-			} catch {
-				// 面板已销毁：回收该视图
-				this.views.delete(view);
-			}
+		try {
+			void this.view.webview.postMessage(message);
+		} catch {
+			// view 已销毁
 		}
 	}
 
+	getViewCount(): number {
+		return this.view ? 1 : 0;
+	}
+
 	isDisposed(): boolean {
-		return this.views.size === 0;
+		return this.disposed;
+	}
+
+	dispose(): void {
+		this.disposed = true;
+		this.view = null;
 	}
 }
 
 export interface OpenCodeViewProviderOptions {
 	readonly extensionUri: vscode.Uri;
 	readonly host: ViewHost;
-	readonly channel: BroadcastChannel;
-	readonly dispatcher: MessageDispatcher;
-	/** webview 就绪后的额外处理（如回放会话状态）。 */
+	readonly settings: SettingsService;
+	readonly daemon: OpenCodeDaemonBridge;
+	readonly fileOps: FileOps;
+	readonly fallbackWorkingDirectoryResolver: () => string | null;
+	readonly editorContextTracker?: EditorContextTracker;
+	readonly tabManager?: TabManager;
+	readonly getUiPreferences?: () => UiPreferences;
 	readonly onReady?: (host: ViewHost) => void;
 }
 
@@ -90,14 +93,8 @@ export function readWebviewHtml(extensionUri: vscode.Uri): string {
 /**
  * 在 `<head>` 之后插入一段同步引导脚本，把 IDE 主题与已持久化的 UI 偏好在
  * 首帧之前写进 DOM。
- *
- * 背景：CSS 里 `:root` 变量默认是暗色，而 webview 过去要等 React 挂载、桥接
- * 建好、`get_ide_theme` 往返之后才切主题 —— 浅色 VS Code 下会先闪一帧暗色。
- * 这里把主题决策提前到解析 HTML 的同步阶段，彻底消除闪烁。
  */
 export function buildWebviewHtml(rawHtml: string, isDark: boolean, uiPreferences: UiPreferences): string {
-	// `<` 转义成 \u003c：JSON 里理论上只会出现枚举/数字/十六进制颜色，但一旦
-	// 将来塞进任意字符串，"</script>" 就会提前闭合脚本块。
 	const prefsJson = JSON.stringify(uiPreferences).replace(/</g, '\\u003c');
 	const bootstrap = [
 		'<script>',
@@ -106,7 +103,6 @@ export function buildWebviewHtml(rawHtml: string, isDark: boolean, uiPreferences
 		`var ideTheme=${JSON.stringify(isDark ? 'dark' : 'light')};`,
 		'window.__INITIAL_IDE_THEME__=ideTheme;',
 		'window.__INITIAL_UI_PREFERENCES__=prefs;',
-		// localStorage 里可能有更近一次的同会话写入；缺失时用宿主权威值兜底。
 		'try{var lt=localStorage.getItem("theme");if(lt==="light"||lt==="dark"||lt==="system"){prefs.theme=lt;}}catch(e){}',
 		'var theme=prefs.theme==="light"||prefs.theme==="dark"?prefs.theme:ideTheme;',
 		'document.documentElement.setAttribute("data-theme",theme);',
@@ -116,18 +112,11 @@ export function buildWebviewHtml(rawHtml: string, isDark: boolean, uiPreferences
 		'</script>',
 	].join('');
 
-	// 必须用正则匹配开标签，不能写死 '<head>'：构建产物里 <head> 常带属性
-	//（如 <head data-page-node-id="...">），此时 indexOf('<head>') 会落空，
-	// 转而匹配到 webview bundle 里某个字面量 '<head>'（HTML 处理库的字符串）。
-	// 引导脚本含 '</script>'，一旦插进脚本区就会把 bundle 拦腰截断，
-	// 之后的压缩代码被浏览器当成普通文本渲染出来（表现为“整页乱码”）。
 	const headMatch = /<head(?:\s[^>]*)?>/i.exec(rawHtml);
 	if (headMatch) {
 		const insertAt = headMatch.index + headMatch[0].length;
 		return rawHtml.slice(0, insertAt) + bootstrap + rawHtml.slice(insertAt);
 	}
-	// 退化路径：没有 head 就插在 <html> 之后，避免把内容顶到 doctype 之前
-	// （会触发 quirks mode，样式与布局都会走样）。
 	const htmlMatch = /<html(?:\s[^>]*)?>/i.exec(rawHtml);
 	if (htmlMatch) {
 		const insertAt = htmlMatch.index + htmlMatch[0].length;
@@ -139,22 +128,35 @@ export function buildWebviewHtml(rawHtml: string, isDark: boolean, uiPreferences
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 	private readonly extensionUri: vscode.Uri;
 	private readonly host: ViewHost;
-	private readonly channel: BroadcastChannel;
-	private readonly dispatcher: MessageDispatcher;
+	private readonly channel: ProviderWebviewChannel;
+	private readonly instance: ChatInstance;
 	private readonly onReady?: (host: ViewHost) => void;
-	/** 提供权威 UI 偏好（globalState），注入到引导脚本里。 */
 	private readonly getUiPreferences: () => UiPreferences;
 	private view: vscode.WebviewView | null = null;
 	private html: string | null = null;
+	private readonly unregisterBroadcaster: () => void;
 
-	constructor(options: OpenCodeViewProviderOptions & { getUiPreferences?: () => UiPreferences }) {
+	constructor(options: OpenCodeViewProviderOptions) {
 		this.extensionUri = options.extensionUri;
 		this.host = options.host;
-		this.channel = options.channel;
-		this.dispatcher = options.dispatcher;
-		this.onReady = options.onReady;
+		this.channel = new ProviderWebviewChannel();
+		this.unregisterBroadcaster = WebviewBroadcaster.register(this.channel);
 		this.getUiPreferences = options.getUiPreferences
 			?? (() => ({ ...DEFAULT_UI_PREFERENCES }));
+		this.onReady = options.onReady;
+
+		this.instance = createChatInstance({
+			channel: this.channel,
+			settings: options.settings,
+			daemon: options.daemon,
+			fileOps: options.fileOps,
+			fallbackWorkingDirectoryResolver: options.fallbackWorkingDirectoryResolver,
+			editorContextTracker: options.editorContextTracker,
+		});
+
+		if (options.tabManager) {
+			this.instance.dispatcher.registerHandler(new TabHandler(this.instance.context, options.tabManager));
+		}
 	}
 
 	resolveWebviewView(
@@ -176,7 +178,6 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		if (this.html === null) {
 			this.html = readWebviewHtml(this.extensionUri);
 		}
-		// 每次 resolve 重新生成：主题可能已经切换，UI 偏好也可能刚被改写。
 		webviewView.webview.html = buildWebviewHtml(
 			this.html,
 			vscode.window.activeColorTheme.kind !== vscode.ColorThemeKind.Light,
@@ -187,36 +188,33 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
 		webviewView.webview.onDidReceiveMessage((message: unknown) => {
 			const bridge = message as BridgeMessage | null;
-			// 高频路径：每条 webview→host 消息都会走到这里（含 200 字符 payload
-			// 预览），常驻写 OutputChannel 会无界累积宿主内存——仅 verbose 开启
-			// 时写入（见 DiagnosticLogger）。
-			logVerbose(`[OpenCodeViewProvider] RAW message: type=${typeof bridge?.type} keys=${bridge && typeof bridge === 'object' ? Object.keys(bridge).join(',') : 'N/A'} payloadPreview=${String(bridge?.payload).substring(0, 80)}`);
 			if (!bridge || bridge.type !== 'bridge' || typeof bridge.payload !== 'string') {
-				logVerbose(`[OpenCodeViewProvider] non-bridge message: type=${typeof bridge?.type} payload=${String(bridge?.payload).substring(0, 100)}`);
+				logVerbose(`[OpenCodeViewProvider:${this.host}] non-bridge message: type=${typeof bridge?.type}`);
 				return;
 			}
 			const { type, content } = parseWirePayload(bridge.payload);
 			if (!type) {
-				logVerbose(`[OpenCodeViewProvider] empty type from payload: ${bridge.payload.substring(0, 200)}`);
 				return;
 			}
-			// Webview debug logs — forwarded here from the webview via the cardDebug
-			// bridge event so they appear in the «OpenCode» Output channel.
-			// 同为高频路径（流式期间每次 updateMessages 都会触发），走 verbose 门控。
 			if (type === 'cardDebug') {
 				logDiagnostic(`[Webview] ${content}`, 'Webview');
 				return;
 			}
-			logVerbose(`[OpenCodeViewProvider] dispatch type=${type} content=${content.substring(0, 200)}`);
-			this.dispatcher.dispatch(type, content);
+			logVerbose(`[OpenCodeViewProvider:${this.host}] dispatch type=${type} content=${content.substring(0, 200)}`);
+			this.instance.dispatcher.dispatch(type, content);
 		});
 
 		this.onReady?.(this.host);
 	}
 
-	/** 该面板的存活 webview（用于判断是否可交互）。 */
 	isVisible(): boolean {
 		return this.view != null && this.view.visible;
+	}
+
+	dispose(): void {
+		this.unregisterBroadcaster();
+		this.channel.dispose();
+		this.instance.dispose();
 	}
 }
 

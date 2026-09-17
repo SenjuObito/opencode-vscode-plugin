@@ -23,6 +23,7 @@ import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { SettingsService } from '../settings/SettingsService';
 import { listSystemFontFamilies } from '../fonts/SystemFontEnumerator';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 
 const SUPPORTED_TYPES = [
 	'get_editor_font_config',
@@ -173,9 +174,11 @@ export class FontConfigHandler extends BaseMessageHandler {
 			lineSpacing: this.lineSpacing(fontSize),
 			fallbackFonts: names.slice(1),
 		};
-		this.callJavaScript('onEditorFontConfigReceived', JSON.stringify(config));
-		// main.tsx 的 applyEditorTypographyConfig 接收对象而非 JSON 字符串。
+		const json = JSON.stringify(config);
+		this.callJavaScript('onEditorFontConfigReceived', json);
 		this.callJavaScript('applyIdeaFontConfig', config as unknown as string);
+		WebviewBroadcaster.broadcastJavaScript('onEditorFontConfigReceived', json);
+		WebviewBroadcaster.broadcastJavaScript('applyIdeaFontConfig', config as unknown as string);
 	}
 
 	private pushFontList(): void {
@@ -227,10 +230,10 @@ export class FontConfigHandler extends BaseMessageHandler {
 	private pushResolvedFont(kind: 'ui' | 'code'): void {
 		const stored = this.getStoredSelection(kind);
 		const effective = kind === 'ui' ? this.resolveUiFont(stored) : this.resolveCodeFont(stored);
-		this.callJavaScript(
-			kind === 'ui' ? 'onUiFontConfigReceived' : 'onCodeFontConfigReceived',
-			JSON.stringify(effective),
-		);
+		const json = JSON.stringify(effective);
+		const fn = kind === 'ui' ? 'onUiFontConfigReceived' : 'onCodeFontConfigReceived';
+		this.callJavaScript(fn, json);
+		WebviewBroadcaster.broadcastJavaScript(fn, json);
 	}
 
 	private baseFontSize(): number {

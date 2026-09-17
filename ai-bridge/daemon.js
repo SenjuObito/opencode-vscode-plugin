@@ -619,14 +619,15 @@ async function runDaemonMain() {
 
     // Abort bypasses the turn queue — must run immediately to cancel active work.
     if (request.method === 'abort') {
-      const targetId = backgroundStreamRequestId;
+      const targetSessionId = request.params?.sessionId;
+      const targetRequestId = request.params?.requestId;
       _originalStderrWrite(
-        `[daemon] Abort requested, active turn: ${targetId || 'none'}\n`,
+        `[daemon] Abort requested for session=${targetSessionId || 'all'}, request=${targetRequestId || 'none'}\n`,
         'utf8'
       );
-      if (targetId) {
-        abortCurrentTurn().catch((e) => _originalStderrWrite(`[daemon] opencode abort error: ${e.message}\n`, 'utf8'));
-      }
+      abortCurrentTurn(targetSessionId).catch((e) =>
+        _originalStderrWrite(`[daemon] opencode abort error: ${e.message}\n`, 'utf8')
+      );
       writeRawLine({ id: request.id || '0', done: true, success: true });
       return;
     }

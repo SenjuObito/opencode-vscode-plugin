@@ -281,6 +281,19 @@ function _handleEvent(evt) {
   const sessionID = props?.sessionID;
   const turn = sessionID ? _activeTurns.get(sessionID) : null;
 
+  const runWithContext = (fn) => {
+    if (turn && turn.requestId) {
+      return requestContext.run({ id: turn.requestId }, fn);
+    }
+    return fn();
+  };
+
+  runWithContext(() => {
+    _dispatchInnerEvent(type, props, sessionID, turn);
+  });
+}
+
+function _dispatchInnerEvent(type, props, sessionID, turn) {
   switch (type) {
     case 'session.created':
     case 'session.updated':
@@ -561,8 +574,9 @@ function _settleTurn(turn, { success, error }) {
   }
 }
 
-function _createTurn() {
+function _createTurn(requestId = null) {
   return {
+    requestId,
     settled: false,
     success: false,
     promise: null,
@@ -737,7 +751,8 @@ export async function sendMessagePersistent(params = {}) {
   beginStream(sessionId);
   emitSessionId(sessionId);
 
-  const turn = _createTurn();
+  const currentReqId = requestContext.getStore()?.id ?? null;
+  const turn = _createTurn(currentReqId);
   turn.promise = new Promise((resolve, reject) => {
     turn.resolve = resolve;
     turn.reject = reject;
@@ -848,7 +863,8 @@ export async function sendShellPersistent(params = {}) {
   beginStream(sessionId);
   emitSessionId(sessionId);
 
-  const turn = _createTurn();
+  const currentReqId = requestContext.getStore()?.id ?? null;
+  const turn = _createTurn(currentReqId);
   turn.promise = new Promise((resolve, reject) => {
     turn.resolve = resolve;
     turn.reject = reject;
@@ -949,9 +965,15 @@ export async function preconnectPersistent(params = {}) {
  * Abort the active turn(s). Bypasses the command queue in daemon.js (runs
  * immediately, like the claude abort path). The opencode server settles the
  * turn with a `session.error`/`session.idle` which resolves the awaiting send.
+ *
+ * @param {string} [targetSessionId] - Optional session ID to abort. If omitted, aborts all active turns.
  */
-export async function abortCurrentTurn() {
-  const sessions = [..._activeTurns.keys()];
+export async function abortCurrentTurn(targetSessionId) {
+  const sessions = (targetSessionId && _activeTurns.has(targetSessionId))
+    ? [targetSessionId]
+    : targetSessionId
+      ? [] // 指定了不存在的 session，无需全局误杀
+      : [..._activeTurns.keys()];
   if (sessions.length === 0) return;
   for (const sessionId of sessions) {
     const turn = _activeTurns.get(sessionId);

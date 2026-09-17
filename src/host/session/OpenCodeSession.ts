@@ -72,6 +72,8 @@ export class OpenCodeSession {
 		lastNodeError: null,
 		wasAborted: false,
 	};
+	/** 当前正在进行的请求 ID，用于精准 abort */
+	private activeRequestId: string | null = null;
 
 	constructor(options: OpenCodeSessionOptions) {
 		this.context = options.context;
@@ -177,14 +179,19 @@ export class OpenCodeSession {
 		};
 
 		await this.daemon.request('opencode.send', params, {
+			onStart: (requestId) => {
+				this.activeRequestId = requestId;
+			},
 			onLine: (line) => this.processLine(line),
 			onStderr: (stderr) => {
 				// stderr 仅记录，不打断流
 			},
 			onError: (error) => {
+				this.activeRequestId = null;
 				this.messageHandler.onError(error);
 			},
 			onComplete: (success) => {
+				this.activeRequestId = null;
 				// wasAborted：用户主动中断不是错误，与 MarkerParser 对
 				// [SEND_ERROR] 的抑制保持同一语义。
 				if (!success && !this.streamCtx.hadSendError && !this.streamCtx.wasAborted) {
@@ -197,6 +204,7 @@ export class OpenCodeSession {
 				});
 			},
 			onAbort: () => {
+				this.activeRequestId = null;
 				this.streamCtx.wasAborted = true;
 				this.messageHandler.onComplete({ messages: this.state.getMessages(), success: false });
 			},
@@ -246,12 +254,17 @@ export class OpenCodeSession {
 		};
 
 		await this.daemon.request('opencode.shell', params, {
+			onStart: (requestId) => {
+				this.activeRequestId = requestId;
+			},
 			onLine: (line) => this.processLine(line),
 			onStderr: () => {},
 			onError: (error) => {
+				this.activeRequestId = null;
 				this.messageHandler.onError(error);
 			},
 			onComplete: (success) => {
+				this.activeRequestId = null;
 				if (!success && !this.streamCtx.hadSendError && !this.streamCtx.wasAborted) {
 					this.messageHandler.onError(this.streamCtx.lastNodeError ?? 'Shell 执行失败');
 				}
@@ -262,6 +275,7 @@ export class OpenCodeSession {
 				});
 			},
 			onAbort: () => {
+				this.activeRequestId = null;
 				this.streamCtx.wasAborted = true;
 				this.messageHandler.onComplete({ messages: this.state.getMessages(), success: false });
 			},
@@ -304,7 +318,10 @@ export class OpenCodeSession {
 		// 分支语义一致。
 		this.streamCtx.wasAborted = true;
 		this.onTurnEnded();
-		this.daemon.sendAbort();
+		const sessionId = this.state.getSessionId() ?? undefined;
+		const requestId = this.activeRequestId ?? undefined;
+		this.activeRequestId = null;
+		this.daemon.sendAbort(sessionId, requestId);
 	}
 
 	/**

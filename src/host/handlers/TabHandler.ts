@@ -1,8 +1,7 @@
 /**
- * TabHandler — port of cc-gui `handler/TabHandler.java`.
+ * TabHandler — 标签页消息处理器。
  *
- * `create_new_tab`（webview ChatHeader 的「新建标签页」按钮）→ TabManager 打开
- * 一个全新的原生编辑器 tab（独立会话），名称经 TabStateService 持久化。
+ * `create_new_tab` → TabManager 打开一个全新的原生编辑器 tab（独立会话）。
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';

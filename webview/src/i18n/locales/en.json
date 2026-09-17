@@ -23,7 +23,8 @@
     "gotIt": "Got it",
     "seconds": "s",
     "minutes": "m",
-    "optional": "Optional"
+    "optional": "Optional",
+    "more": "More"
   },
   "chat": {
     "exportMarkdown": "Export as Markdown",

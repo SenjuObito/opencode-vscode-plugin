@@ -19,6 +19,7 @@
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { SettingsService, DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from '../settings/SettingsService';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import * as vscode from 'vscode';
 import { isAbsolute, resolve } from 'path';
 import { existsSync, statSync } from 'fs';
@@ -187,8 +188,12 @@ export class SettingsHandler extends BaseMessageHandler {
 		return this.settings().getPrimaryWorkspaceRoot();
 	}
 
-	private pushJson(callback: string, payload: Record<string, unknown>): void {
-		this.callJavaScript(callback, JSON.stringify(payload));
+	private pushJson(callback: string, payload: Record<string, unknown>, broadcast = false): void {
+		const json = JSON.stringify(payload);
+		this.callJavaScript(callback, json);
+		if (broadcast) {
+			WebviewBroadcaster.broadcastJavaScript(callback, json);
+		}
 	}
 
 	// ── permission mode ────────────────────────────────────────────────────
@@ -267,6 +272,7 @@ export class SettingsHandler extends BaseMessageHandler {
 
 		this.settings().getStore().setGlobal(CLI_PATH_STORAGE_KEY, path);
 		this.callJavaScript('updateClaudeCliPath', JSON.stringify({ path }));
+		WebviewBroadcaster.broadcastJavaScript('updateClaudeCliPath', JSON.stringify({ path }));
 		this.callJavaScript(
 			'showSuccess',
 			path
@@ -339,6 +345,10 @@ export class SettingsHandler extends BaseMessageHandler {
 				}
 			}
 			this.settings().setCustomWorkingDirectory(projectPath, customWorkingDir);
+			this.pushJson('updateWorkingDirectory', {
+				projectPath,
+				customWorkingDir: customWorkingDir ?? '',
+			}, true);
 			this.callJavaScript('showSuccess', 'Working directory config saved');
 		} catch (ex) {
 			this.callJavaScript('showError', `Failed to save working directory config: ${String(ex)}`);
@@ -356,7 +366,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const sendShortcut = typeof json?.sendShortcut === 'string' ? json.sendShortcut : 'enter';
 			this.settings().setSendShortcut(sendShortcut);
-			this.pushJson('updateSendShortcut', { sendShortcut: this.settings().getSendShortcut() });
+			this.pushJson('updateSendShortcut', { sendShortcut: this.settings().getSendShortcut() }, true);
 		} catch {
 			this.callJavaScript('showError', 'Failed to save send shortcut setting');
 		}
@@ -388,7 +398,7 @@ export class SettingsHandler extends BaseMessageHandler {
 				// 启用时立即推送当前编辑器上下文，否则需等到下一次文件切换才显示。
 				this.context.pushEditorContext();
 			}
-			this.pushJson('updateAutoOpenFileEnabled', { autoOpenFileEnabled: enabled });
+			this.pushJson('updateAutoOpenFileEnabled', { autoOpenFileEnabled: enabled }, true);
 		} catch {
 			this.callJavaScript('showError', 'Failed to save auto open file config');
 		}
@@ -413,7 +423,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			this.settings().setPermissionDialogTimeoutSeconds(seconds);
 			this.pushJson('updatePermissionDialogTimeout', {
 				permissionDialogTimeoutSeconds: this.settings().getPermissionDialogTimeoutSeconds(),
-			});
+			}, true);
 		} catch {
 			this.callJavaScript('showError', 'Failed to save permission dialog timeout.');
 		}
@@ -472,6 +482,12 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.enabled === true;
 			this.settings().setSoundNotificationEnabled(enabled);
+			this.pushJson('updateSoundNotificationConfig', {
+				enabled: this.settings().getSoundNotificationEnabled(),
+				onlyWhenUnfocused: this.settings().getSoundOnlyWhenUnfocused(),
+				selectedSound: this.settings().getSelectedSound(),
+				customSoundPath: this.settings().getCustomSoundPath(),
+			}, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -480,6 +496,12 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.onlyWhenUnfocused === true;
 			this.settings().setSoundOnlyWhenUnfocused(enabled);
+			this.pushJson('updateSoundNotificationConfig', {
+				enabled: this.settings().getSoundNotificationEnabled(),
+				onlyWhenUnfocused: this.settings().getSoundOnlyWhenUnfocused(),
+				selectedSound: this.settings().getSelectedSound(),
+				customSoundPath: this.settings().getCustomSoundPath(),
+			}, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -488,6 +510,12 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const soundId = typeof json?.soundId === 'string' ? json.soundId : 'default';
 			this.settings().setSelectedSound(soundId);
+			this.pushJson('updateSoundNotificationConfig', {
+				enabled: this.settings().getSoundNotificationEnabled(),
+				onlyWhenUnfocused: this.settings().getSoundOnlyWhenUnfocused(),
+				selectedSound: this.settings().getSelectedSound(),
+				customSoundPath: this.settings().getCustomSoundPath(),
+			}, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -496,6 +524,12 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const path = typeof json?.path === 'string' ? json.path : '';
 			this.settings().setCustomSoundPath(path);
+			this.pushJson('updateSoundNotificationConfig', {
+				enabled: this.settings().getSoundNotificationEnabled(),
+				onlyWhenUnfocused: this.settings().getSoundOnlyWhenUnfocused(),
+				selectedSound: this.settings().getSelectedSound(),
+				customSoundPath: this.settings().getCustomSoundPath(),
+			}, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -527,7 +561,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.taskCompletionNotificationEnabled === true;
 			this.settings().setTaskCompletionNotificationEnabled(enabled);
-			this.pushJson('updateTaskCompletionNotificationEnabled', { taskCompletionNotificationEnabled: enabled });
+			this.pushJson('updateTaskCompletionNotificationEnabled', { taskCompletionNotificationEnabled: enabled }, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -542,7 +576,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.askUserQuestionNotificationEnabled === true;
 			this.settings().setAskUserQuestionNotificationEnabled(enabled);
-			this.pushJson('updateAskUserQuestionNotificationEnabled', { askUserQuestionNotificationEnabled: enabled });
+			this.pushJson('updateAskUserQuestionNotificationEnabled', { askUserQuestionNotificationEnabled: enabled }, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -557,7 +591,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.systemNotificationOnlyWhenUnfocused === true;
 			this.settings().setSystemNotificationOnlyWhenUnfocused(enabled);
-			this.pushJson('updateSystemNotificationOnlyWhenUnfocused', { systemNotificationOnlyWhenUnfocused: enabled });
+			this.pushJson('updateSystemNotificationOnlyWhenUnfocused', { systemNotificationOnlyWhenUnfocused: enabled }, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -572,7 +606,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.askUserQuestionSoundNotificationEnabled === true;
 			this.settings().setAskUserQuestionSoundNotificationEnabled(enabled);
-			this.pushJson('updateAskUserQuestionSoundNotificationEnabled', { askUserQuestionSoundNotificationEnabled: enabled });
+			this.pushJson('updateAskUserQuestionSoundNotificationEnabled', { askUserQuestionSoundNotificationEnabled: enabled }, true);
 		} catch { /* 静默忽略 */ }
 	}
 
@@ -608,7 +642,9 @@ export function pushUiPreferences(
 	callJavaScript: (functionName: string, ...args: string[]) => void,
 	settings: SettingsService,
 ): void {
-	callJavaScript('applyUiPreferences', JSON.stringify(settings.getUiPreferences()));
+	const json = JSON.stringify(settings.getUiPreferences());
+	callJavaScript('applyUiPreferences', json);
+	WebviewBroadcaster.broadcastJavaScript('applyUiPreferences', json);
 }
 
 /** webview i18n 支持的语言码（与 webview/src/i18n/config.ts resources 一致）。 */
@@ -628,12 +664,9 @@ export function pushUserLanguageConfig(
 	settings: SettingsService,
 ): void {
 	const stored = settings.getUserLanguage();
-	if (stored && stored.trim()) {
-		callJavaScript('applyIdeaLanguageConfig', JSON.stringify({ language: stored.trim(), source: 'user' }));
-		return;
-	}
-	callJavaScript(
-		'applyIdeaLanguageConfig',
-		JSON.stringify({ language: mapIdeLanguageToSupported(vscode.env.language), source: 'idea' }),
-	);
+	const payload = stored && stored.trim()
+		? JSON.stringify({ language: stored.trim(), source: 'user' })
+		: JSON.stringify({ language: mapIdeLanguageToSupported(vscode.env.language), source: 'idea' });
+	callJavaScript('applyIdeaLanguageConfig', payload);
+	WebviewBroadcaster.broadcastJavaScript('applyIdeaLanguageConfig', payload);
 }

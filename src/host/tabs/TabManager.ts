@@ -1,42 +1,43 @@
 /**
- * TabManager — 多标签页会话管理，对应 cc-gui `ui/toolwindow/ClaudeSDKToolWindow`
- * 的 tab 生命周期（创建 / 命名 / 会话绑定持久化）。
+ * TabManager — 多标签页会话管理器。
  *
- * cc-gui 每个 tab 是 IntelliJ 的原生 tab + 独立 `ClaudeChatWindow`。VS Code 的
- * 等价物是 `vscode.window.createWebviewPanel`（原生编辑器 tab），每个 tab 用
- * `createChatInstance` 装配一套独立 channel/context/session/handlers。
+ * 用户点击 VS Code 编辑器上的 OpenCode Buddy 按钮时，直接新建一个独立的对话标签页（WebviewPanel）。
+ * 标签页使用标准的 'OpenCode Buddy' 原生标题，无需自增序号。
  *
- *   create_new_tab（webview）→ TabManager.createNewTab()
- *     → createWebviewPanel('opencode-buddy.tab', name)
- *     → SingleWebviewChannel(panel) → ChatInstance → HTML → message 路由
- *     → TabStateService.saveTabName / saveTabSessionState
+ * 核心机制：
+ * 1. 每个 WebviewPanel 拥有独立的 ChatInstance（包含独立 OpenCodeSession、SingleWebviewChannel 与 handlers）。
+ * 2. 独立消息隔离，各个标签页可同时向 daemon 发起提问，并发流式输出，互不干扰。
+ * 3. 通过 WebviewBroadcaster 接入全局配置广播，任何标签页修改设置，所有标签页实时同步生效。
+ * 4. 设置 retainContextWhenHidden: true，切至后台时保持流式渲染与 DOM 状态。
+ * 5. 面板关闭时（onDidDispose）彻底释放资源。
  */
 import * as vscode from 'vscode';
-import { readFileSync } from 'fs';
 import { WebviewChannel } from '../router/HandlerContext';
-import { SettingsService, SettingsStore } from '../settings/SettingsService';
-import { TabStateService, TabSessionState } from '../settings/TabStateService';
+import { SettingsService } from '../settings/SettingsService';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { ChatInstance, createChatInstance, ChatInstanceDeps } from '../session/ChatInstance';
 import { BridgeMessage } from '../types';
-import { parseWirePayload } from '../webview/OpenCodeViewProvider';
+import { buildWebviewHtml, parseWirePayload, readWebviewHtml } from '../webview/OpenCodeViewProvider';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
+import { logDiagnostic, logVerbose } from '../util/DiagnosticLogger';
 
 const TAB_VIEW_TYPE = 'opencode-buddy.tab';
+const DEFAULT_TAB_TITLE = 'OpenCode Buddy';
+
+import type { EditorContextTracker } from '../context/EditorContextTracker';
 
 export interface TabManagerOptions {
 	readonly extensionUri: vscode.Uri;
 	readonly settings: SettingsService;
-	readonly settingsStore: SettingsStore;
 	readonly daemon: OpenCodeDaemonBridge;
 	readonly fileOps: ChatInstanceDeps['fileOps'];
 	readonly fallbackWorkingDirectoryResolver: () => string | null;
-	/** 依赖就绪回调（重启后恢复标签页时触发）。 */
-	readonly onTabOpened?: (tabId: string) => void;
+	readonly editorContextTracker?: EditorContextTracker;
 	readonly onLog?: (message: string) => void;
 }
 
 /** 单个 WebviewPanel 的 channel：callJavaScript 只发给该面板。 */
-class SingleWebviewChannel implements WebviewChannel {
+export class SingleWebviewChannel implements WebviewChannel {
 	private disposed = false;
 	constructor(private readonly webview: vscode.Webview) {}
 
@@ -66,20 +67,18 @@ class SingleWebviewChannel implements WebviewChannel {
 
 interface TabEntry {
 	tabId: string;
-	name: string;
 	panel: vscode.WebviewPanel;
 	channel: SingleWebviewChannel;
 	instance: ChatInstance;
+	unregisterBroadcaster: () => void;
 }
 
 export class TabManager {
-	private readonly tabState: TabStateService;
 	private readonly tabs = new Map<string, TabEntry>();
+	private tabCounter = 0;
 	private htmlCache: string | null = null;
 
-	constructor(private readonly options: TabManagerOptions) {
-		this.tabState = new TabStateService(options.settingsStore);
-	}
+	constructor(private readonly options: TabManagerOptions) {}
 
 	getTabCount(): number {
 		return this.tabs.size;
@@ -89,27 +88,25 @@ export class TabManager {
 		return [...this.tabs.keys()];
 	}
 
-	/** 打开一个全新的标签页（cc-gui create_new_tab）。 */
+	/** 新建并打开一个独立的对话标签页 */
 	openNewTab(): string {
-		const tabId = this.tabState.getNextTabIndex();
-		const name = this.tabState.getNextTabName();
-		const tab = this.spawnTab(tabId, name);
+		const tabId = `tab_${Date.now()}_${++this.tabCounter}`;
+		const tab = this.spawnTab(tabId);
 		this.tabs.set(tabId, tab);
-		this.options.onTabOpened?.(tabId);
 		return tabId;
 	}
 
-	/** 关闭并清理一个标签页（面板 dispose 时由宿主调用）。 */
+	/** 关闭并清理一个标签页 */
 	closeTab(tabId: string): void {
 		const tab = this.tabs.get(tabId);
 		if (!tab) {
 			return;
 		}
-		this.tabState.saveTabSessionState(tabId, this.snapshotSession(tab));
+		tab.unregisterBroadcaster();
 		tab.channel.dispose();
 		tab.instance.dispose();
 		this.tabs.delete(tabId);
-		this.options.onLog?.(`[TabManager] closed tab ${tab.name}`);
+		this.options.onLog?.(`[TabManager] closed tab ${tabId}`);
 	}
 
 	disposeAll(): void {
@@ -118,67 +115,68 @@ export class TabManager {
 		}
 	}
 
-	/** 快照当前会话绑定（供 TabStateService 持久化）。 */
-	private snapshotSession(tab: TabEntry): TabSessionState {
-		const session = tab.instance.session;
-		return {
-			provider: 'opencode',
-			sessionId: session.state.getSessionId(),
-			cwd: session.state.getCwd(),
-			model: session.state.getModel(),
-			permissionMode: session.state.getPermissionMode(),
-			reasoningEffort: session.state.getReasoningEffort(),
-		};
-	}
+	private spawnTab(tabId: string): TabEntry {
+		const { extensionUri, settings, daemon, fileOps, fallbackWorkingDirectoryResolver, editorContextTracker } = this.options;
+		const panel = vscode.window.createWebviewPanel(
+			TAB_VIEW_TYPE,
+			DEFAULT_TAB_TITLE,
+			vscode.ViewColumn.Beside,
+			{
+				enableScripts: true,
+				retainContextWhenHidden: true,
+				localResourceRoots: [
+					vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
+					vscode.Uri.joinPath(extensionUri, 'ai-bridge'),
+				],
+			},
+		);
 
-	private spawnTab(tabId: string, name: string): TabEntry {
-		const panel = vscode.window.createWebviewPanel(TAB_VIEW_TYPE, name, vscode.ViewColumn.Beside, {
-			enableScripts: true,
-			localResourceRoots: [
-				vscode.Uri.joinPath(this.options.extensionUri, 'dist', 'webview'),
-				vscode.Uri.joinPath(this.options.extensionUri, 'ai-bridge'),
-			],
-		});
+		const isDark = vscode.window.activeColorTheme.kind !== vscode.ColorThemeKind.Light;
+		const iconFile = isDark ? 'opencode-activity-dark.svg' : 'opencode-activity-light.svg';
+		panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', iconFile);
+
 		const channel = new SingleWebviewChannel(panel.webview);
+		const unregisterBroadcaster = WebviewBroadcaster.register(channel);
 
 		const instance = createChatInstance({
 			channel,
-			settings: this.options.settings,
-			daemon: this.options.daemon,
-			fileOps: this.options.fileOps,
-			fallbackWorkingDirectoryResolver: this.options.fallbackWorkingDirectoryResolver,
+			settings,
+			daemon,
+			fileOps,
+			fallbackWorkingDirectoryResolver,
+			editorContextTracker,
 		});
 
-		panel.webview.html = this.loadHtml();
+		if (this.htmlCache === null) {
+			this.htmlCache = readWebviewHtml(extensionUri);
+		}
+		panel.webview.html = buildWebviewHtml(
+			this.htmlCache,
+			isDark,
+			settings.getUiPreferences(),
+		);
 
 		panel.webview.onDidReceiveMessage((message: unknown) => {
 			const bridge = message as BridgeMessage | null;
 			if (!bridge || bridge.type !== 'bridge' || typeof bridge.payload !== 'string') {
-				console.error(`[TabManager] non-bridge message: type=${typeof bridge?.type} payload=${String(bridge?.payload).substring(0, 100)}`);
+				logVerbose(`[TabManager] non-bridge message: type=${typeof bridge?.type}`);
 				return;
 			}
 			const { type, content } = parseWirePayload(bridge.payload);
 			if (!type) {
-				console.error(`[TabManager] empty type from payload: ${bridge.payload.substring(0, 200)}`);
 				return;
 			}
-			console.log(`[TabManager] dispatch type=${type} content=${content.substring(0, 200)}`);
+			if (type === 'cardDebug') {
+				logDiagnostic(`[Webview] ${content}`, 'Webview');
+				return;
+			}
+			logVerbose(`[TabManager] dispatch type=${type} content=${content.substring(0, 200)}`);
 			instance.dispatcher.dispatch(type, content);
 		});
 
 		panel.onDidDispose(() => this.closeTab(tabId));
 
-		this.tabState.saveTabName(tabId, name);
-		this.options.onLog?.(`[TabManager] opened tab ${name} (${tabId})`);
-		return { tabId, name, panel, channel, instance };
-	}
-
-	private loadHtml(): string {
-		if (this.htmlCache !== null) {
-			return this.htmlCache;
-		}
-		const htmlPath = vscode.Uri.joinPath(this.options.extensionUri, 'dist', 'webview', 'index.html');
-		this.htmlCache = readFileSync(htmlPath.fsPath, 'utf-8');
-		return this.htmlCache;
+		this.options.onLog?.(`[TabManager] opened new chat tab (${tabId})`);
+		return { tabId, panel, channel, instance, unregisterBroadcaster };
 	}
 }

@@ -84,7 +84,7 @@
       },
       {
         "command": "opencode-buddy.openChat",
-        "title": "在编辑器分栏打开 OpenCode Buddy",
+        "title": "新建 OpenCode Buddy 对话",
         "category": "OpenCode Buddy",
         "icon": {
           "light": "media/opencode-activity-light.svg",

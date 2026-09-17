@@ -23,7 +23,8 @@
     "gotIt": "知道了",
     "seconds": "秒",
     "minutes": "分",
-    "optional": "可选"
+    "optional": "可选",
+    "more": "更多"
   },
   "chat": {
     "exportMarkdown": "导出会话为 Markdown",

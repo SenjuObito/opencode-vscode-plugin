@@ -33,6 +33,7 @@ function seedSessionFromPersistedSelection(settings: SettingsService, session: O
 }
 
 import { SessionHandler } from '../handlers/SessionHandler';
+import { FontConfigHandler } from '../handlers/FontConfigHandler';
 import { ModelProviderHandler } from '../handlers/ModelProviderHandler';
 import { SettingsHandler } from '../handlers/SettingsHandler';
 import { CliModelsHandler } from '../handlers/CliModelsHandler';
@@ -49,6 +50,8 @@ import { McpServerHandler } from '../handlers/McpServerHandler';
 import { McpMarketplaceHandler } from '../handlers/McpMarketplaceHandler';
 import { PermissionHandler } from '../handlers/PermissionHandler';
 import { TokenTrackerHandler } from '../handlers/TokenTrackerHandler';
+import { ExportHandler } from '../handlers/ExportHandler';
+import type { EditorContextTracker } from '../context/EditorContextTracker';
 
 export interface ChatInstanceDeps {
 	channel: WebviewChannel;
@@ -56,6 +59,7 @@ export interface ChatInstanceDeps {
 	daemon: OpenCodeDaemonBridge;
 	fileOps: FileOps;
 	fallbackWorkingDirectoryResolver: () => string | null;
+	editorContextTracker?: EditorContextTracker;
 }
 
 export interface ChatInstance {
@@ -64,6 +68,7 @@ export interface ChatInstance {
 	session: OpenCodeSession;
 	historyHandler: HistoryHandler;
 	permissionHandler: PermissionHandler;
+	fontConfigHandler: FontConfigHandler;
 	dispose(): void;
 }
 
@@ -75,9 +80,11 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 
 	const dispatcher = new MessageDispatcher();
 	const permissionHandler = new PermissionHandler(context);
+	const fontConfigHandler = new FontConfigHandler(context);
 	dispatcher.registerHandler(new SessionHandler(context));
 	dispatcher.registerHandler(new ModelProviderHandler(context));
 	dispatcher.registerHandler(new SettingsHandler(context));
+	dispatcher.registerHandler(fontConfigHandler);
 	dispatcher.registerHandler(new CliModelsHandler(context));
 	dispatcher.registerHandler(new CliStatusHandler(context));
 	dispatcher.registerHandler(new ContextHandler(context));
@@ -86,6 +93,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	dispatcher.registerHandler(new AgentHandler(context));
 	const historyHandler = new HistoryHandler(context);
 	dispatcher.registerHandler(historyHandler);
+	dispatcher.registerHandler(new ExportHandler(context));
 	dispatcher.registerHandler(new FileHandler(context));
 	dispatcher.registerHandler(new McpServerHandler(context));
 	dispatcher.registerHandler(new McpMarketplaceHandler(context));
@@ -94,12 +102,19 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	dispatcher.registerHandler(permissionHandler);
 	dispatcher.registerHandler(new TokenTrackerHandler(context));
 
+	if (deps.editorContextTracker) {
+		const tracker = deps.editorContextTracker;
+		context.setEditorContextClearer(() => tracker.clear());
+		context.setEditorContextPusher(() => tracker.updateNow());
+	}
+
 	const notificationService = new NotificationService(context);
 	const session = new OpenCodeSession({
 		context,
 		daemon: deps.daemon,
 		permissionHandler: (request) => permissionHandler.onPermissionRequested(request),
 		permissionClosedHandler: (kind, content) => permissionHandler.onPromptClosed(kind, content),
+		editorSelectionResolver: () => deps.editorContextTracker?.getCurrentSelectionInfo() ?? null,
 		onTurnCompleted: (info: TurnCompletedInfo) => {
 			if (info.sessionId) {
 				historyHandler.recordSession(info.sessionId, info.title, info.messageCount, session.state.getModel() ?? undefined);
@@ -116,6 +131,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		session,
 		historyHandler,
 		permissionHandler,
+		fontConfigHandler,
 		dispose: () => session.dispose(),
 	};
 }
