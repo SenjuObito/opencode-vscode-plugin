@@ -15,7 +15,7 @@ This project is primarily developed with AI assistance:
 - **AI Tools**: OpenCode (primary), Claude Code, WorkBuddy, Gemini
 - **AI Models**: Deepseek-v4-flash (primary), Gemini, Deepseek-v4-pro, MiMo V2.5, Ox Alpha, hy4, hy3
 
-A Gemini Pro subscription has been purchased; Deepseek cost 89 CNY. If you find this useful, a tip would help me recover the cost.
+A Gemini Pro subscription has been purchased; Deepseek cost 120 CNY. If you find this useful, a tip would help me recover the cost.
 
 ## Features
 

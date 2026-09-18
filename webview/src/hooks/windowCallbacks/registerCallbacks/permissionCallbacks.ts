@@ -24,11 +24,19 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   } = options;
 
   // Host-side failures (e.g. opencode.replyQuestion / replyPermission errors
-  // surfaced by PermissionHandler) land here as a user-visible toast.
+  // surfaced by PermissionHandler, or daemon startup errors) land here as a user-visible toast.
   window.showToast = (message) => {
     cardDebugLog(`[PCard][webview] showToast: ${message}`);
     addToast(String(message ?? ''), 'error');
   };
+
+  if (Array.isArray(window.__pendingToasts) && window.__pendingToasts.length > 0) {
+    for (const msg of window.__pendingToasts) {
+      cardDebugLog(`[PCard][webview] draining pending showToast: ${msg}`);
+      addToast(String(msg ?? ''), 'error');
+    }
+    delete window.__pendingToasts;
+  }
 
   // A question reply failed server-side — flip the optimistic "answered"
   // record back to an honest skipped state.

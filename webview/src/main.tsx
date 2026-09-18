@@ -17,7 +17,7 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { sendBridgeEvent } from './utils/bridge';
+import { sendBridgeEvent, cardDebugLog } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { debugLog } from './utils/debug';
 import { waitForBridge } from './utils/bridgeStartup';
@@ -233,6 +233,65 @@ function setCodeFontFaceStyle(config: CodeFontConfig) {
     ` font-display: swap; src: url("${escapeCssUrl(fontSourceUrl || '')}") format('${fontFormat}'); }`;
 }
 
+/**
+ * Probe local font availability and log font diagnostics.
+ * Evaluates whether configured fonts or system fallbacks are actually available
+ * in the current browser/OS environment (e.g. UOS 20 / Debian 10).
+ */
+function probeAndLogFontDiagnostics(contextTag: string) {
+  try {
+    const probeCandidates = [
+      latestUiFontConfig?.fontFamily,
+      latestCodeFontConfig?.fontFamily,
+      latestEditorFontConfig?.fontFamily,
+      'Noto Sans CJK SC',
+      'Noto Sans SC',
+      'Source Han Sans SC',
+      'WenQuanYi Micro Hei',
+      'Droid Sans Fallback',
+      'SimSun',
+      'Microsoft YaHei UI',
+      'Microsoft YaHei',
+      'PingFang SC',
+      'Hiragino Sans GB',
+      '-apple-system',
+      'BlinkMacSystemFont',
+      'Segoe UI',
+      'Inter',
+      'system-ui',
+      'sans-serif',
+      'monospace',
+    ].filter((f): f is string => Boolean(f && typeof f === 'string'));
+
+    const checkedStatus: Record<string, boolean> = {};
+    for (const fontName of probeCandidates) {
+      if (checkedStatus[fontName] !== undefined) continue;
+      try {
+        checkedStatus[fontName] = document.fonts ? document.fonts.check(`16px "${fontName}"`) : false;
+      } catch {
+        checkedStatus[fontName] = false;
+      }
+    }
+
+    const rootStyle = getComputedStyle(document.documentElement);
+    const uiFontVal = rootStyle.getPropertyValue('--cc-gui-ui-font-family').trim();
+    const codeFontVal = rootStyle.getPropertyValue('--cc-gui-code-font-family').trim();
+
+    cardDebugLog(`[FontDiagnostic:${contextTag}] Font Environment Diagnostic:`, {
+      latestUiConfig: latestUiFontConfig,
+      latestCodeConfig: latestCodeFontConfig,
+      latestEditorConfig: latestEditorFontConfig,
+      computedCssVars: {
+        '--cc-gui-ui-font-family': uiFontVal,
+        '--cc-gui-code-font-family': codeFontVal,
+      },
+      availabilityChecks: checkedStatus,
+    });
+  } catch (err) {
+    cardDebugLog(`[FontDiagnostic:${contextTag}] probe error:`, String(err));
+  }
+}
+
 function syncFontFamilies() {
   const root = document.documentElement;
   if (latestUiFontConfig) {
@@ -252,6 +311,8 @@ function syncFontFamilies() {
     // Keep legacy variable in sync so existing components continue to pick up the effective code font.
     root.style.setProperty('--idea-editor-font-family', codeFontFamilyValue);
   }
+
+  probeAndLogFontDiagnostics('sync');
 }
 
 function applyEditorTypographyConfig(config: {
@@ -497,6 +558,18 @@ if (typeof window !== 'undefined' && !window.updatePermissionDialogTimeout) {
   window.updatePermissionDialogTimeout = (json: string) => {
     debugLog('[Main] Storing pending permission dialog timeout, length=' + (json ? json.length : 0));
     window.__pendingPermissionDialogTimeout = json;
+  };
+}
+
+// Pre-register showToast to handle backend error toasts that arrive before React initializes
+if (typeof window !== 'undefined' && !window.showToast) {
+  debugLog('[Main] Pre-registering showToast placeholder');
+  window.showToast = (message: string) => {
+    debugLog('[Main] Storing pending toast:', message);
+    if (!window.__pendingToasts) {
+      window.__pendingToasts = [];
+    }
+    window.__pendingToasts.push(message);
   };
 }
 

@@ -15,7 +15,7 @@
 - **AI 工具**：OpenCode（主要）、Claude Code、WorkBuddy、Gemini
 - **AI 模型**：Deepseek-v4-flash（主要）、Gemini、Deepseek-v4-pro、MiMo V2.5、Ox Alpha、hy4、hy3
 
-目前已购买使用Gemini Pro套餐，Deepseek 成本 89 元人民币。
+目前已购买使用Gemini Pro套餐，Deepseek 成本 120 元人民币。
 大家如果觉得好用，希望赞赏可以让我回收成本。
 
 ## 功能特性

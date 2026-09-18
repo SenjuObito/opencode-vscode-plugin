@@ -18,6 +18,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logError } from '../util/DiagnosticLogger';
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
@@ -314,6 +315,8 @@ export class OpenCodeDaemonBridge {
 	private stopEpoch = 0;
 	private restartInProgress = false;
 	private daemonHeapWarned = false;
+	private lastErrorMessage = '';
+	private startPromise: Promise<boolean> | null = null;
 
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
@@ -321,6 +324,19 @@ export class OpenCodeDaemonBridge {
 		this.lifecycleListener = options.lifecycleListener;
 		this.onLog = options.onLog;
 		this.additionalEnv = options.additionalEnv;
+	}
+
+	getLastErrorMessage(): string {
+		return this.lastErrorMessage;
+	}
+
+	private showStartupErrorToast(detail: string): void {
+		const cleanDetail = detail.trim();
+		if (cleanDetail) {
+			const toastMsg = `OpenCode 服务启动失败：${cleanDetail}`;
+			this.log(`Broadcasting in-plugin error toast: ${toastMsg}`);
+			WebviewBroadcaster.broadcastJavaScript('showToast', toastMsg);
+		}
 	}
 
 	private log(message: string): void {
@@ -333,21 +349,39 @@ export class OpenCodeDaemonBridge {
 
 	/** 启动 daemon 并阻塞等待 ready（≤30s）。返回是否成功。 */
 	start(): Promise<boolean> {
-		if (this.daemonContext?.isActive && this.daemonContext.process.exitCode === null && this.daemonContext.readySignaled) {
+		if (this.isAlive()) {
 			this.log('Daemon already running');
 			return Promise.resolve(true);
+		}
+		if (this.startPromise) {
+			return this.startPromise;
 		}
 		if (this.restartInProgress) {
 			this.log('Daemon restart cleanup still in progress');
 			return Promise.resolve(false);
 		}
 		this.desiredRunning = true;
-		return this.executeStartAttempt();
+		this.startPromise = this.executeStartAttempt(false).finally(() => {
+			this.startPromise = null;
+		});
+		return this.startPromise;
 	}
 
-	private async executeStartAttempt(): Promise<boolean> {
-		this.log(`Starting daemon (attempt restartAttempts=${this.restartAttempts})`);
-		const startedProcess = this.launchProcess();
+	private async executeStartAttempt(isAutoRestart = false): Promise<boolean> {
+		this.log(`Starting daemon (attempt restartAttempts=${this.restartAttempts}, isAutoRestart=${isAutoRestart})`);
+		let startedProcess: ChildProcess;
+		try {
+			startedProcess = this.launchProcess();
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			this.lastErrorMessage = msg;
+			this.log(`Daemon launch process failed: ${msg}`);
+			if (!isAutoRestart) {
+				this.showStartupErrorToast(msg);
+			}
+			return false;
+		}
+
 		const generation = ++this.generationCounter;
 		const nowWall = Date.now();
 		const nowNanos = performance.now();
@@ -359,8 +393,16 @@ export class OpenCodeDaemonBridge {
 
 		const ready = await this.awaitDaemonReady(context);
 		if (!ready) {
-			this.log(`Daemon failed to signal ready: ${context.formatStderrTail()}`);
+			const stderrTail = context.formatStderrTail();
+			const errorDetail = context.stderrRing.length > 0
+				? context.stderrRing.join('\n')
+				: 'Daemon 进程未在规定时间内就绪或已提前退出';
+			this.lastErrorMessage = errorDetail;
+			this.log(`Daemon failed to signal ready: ${stderrTail}`);
 			this.failStartAttempt(context);
+			if (!isAutoRestart) {
+				this.showStartupErrorToast(errorDetail);
+			}
 			return false;
 		}
 
@@ -555,6 +597,10 @@ export class OpenCodeDaemonBridge {
 		);
 	}
 
+	isStarting(): boolean {
+		return this.startPromise !== null || this.restartInProgress;
+	}
+
 	async ensureRunning(): Promise<boolean> {
 		return this.isAlive() ? true : this.start();
 	}
@@ -707,6 +753,10 @@ export class OpenCodeDaemonBridge {
 		}
 		if (type === 'heartbeat') {
 			context.markHeartbeat(Date.now(), performance.now());
+			const serveRunning = obj.serveRunning as boolean | undefined;
+			if (serveRunning === false && context.activeRequestCount > 0) {
+				this.log(`[heartbeat:warn] Daemon reported serveRunning=false with ${context.activeRequestCount} active requests in-flight`);
+			}
 			// P4 守门：daemon 堆超阈值时告警一次（滞回解除）。daemon 持有
 			// opencode serve 连接与 turn 状态，长会话下堆增长是崩溃前兆。
 			const heap = typeof obj.memoryUsage === 'number' ? obj.memoryUsage : 0;
@@ -750,6 +800,7 @@ export class OpenCodeDaemonBridge {
 		}
 
 		if (typeof obj.stderr === 'string') {
+			this.log(`[daemon:stderr] ${obj.stderr}`);
 			pending.callback.onStderr?.(obj.stderr);
 		}
 	}
@@ -840,9 +891,12 @@ export class OpenCodeDaemonBridge {
 		);
 		if (shouldRestart) {
 			this.log(`Attempting restart (${attempts}/${MAX_RESTART_ATTEMPTS}, last uptime=${uptime}ms)`);
-			void this.executeStartAttempt();
+			void this.executeStartAttempt(true);
 		} else {
 			this.log(`Max restart attempts reached (${attempts} within ${RESTART_WINDOW_MS}ms window)`);
+			const err = context.stderrRing.length > 0 ? context.stderrRing.join('\n') : 'Daemon 进程异常退出且自动重启次数耗尽';
+			this.lastErrorMessage = err;
+			this.showStartupErrorToast(err);
 		}
 	}
 

@@ -37,6 +37,7 @@ import {
   abortCurrentTurn,
   getContextUsagePersistent,
 } from './services/opencode/opencode-daemon-service.js';
+import * as serveManager from './services/opencode/opencode-serve-manager.js';
 import { listModels as listOpenCodeModels } from './services/opencode/models-service.js';
 import { isWebviewControlledEnvVar, isDangerousEnvVar } from './config/api-config.js';
 
@@ -381,6 +382,8 @@ async function processRequest(request) {
       type: 'heartbeat',
       ts: Date.now(),
       sdkPreloaded,
+      serveRunning: serveManager.isRunning(),
+      nodeVersion: process.version,
       memoryUsage: process.memoryUsage().heapUsed,
     });
     return;
@@ -395,6 +398,9 @@ async function processRequest(request) {
       pid: process.pid,
       uptime: process.uptime(),
       sdkPreloaded,
+      serveRunning: serveManager.isRunning(),
+      serverUrl: serveManager.getServerUrl(),
+      nodeVersion: process.version,
       memoryUsage: process.memoryUsage(),
     });
     return;

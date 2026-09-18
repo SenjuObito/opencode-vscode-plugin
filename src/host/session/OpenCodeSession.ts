@@ -184,7 +184,7 @@ export class OpenCodeSession {
 			},
 			onLine: (line) => this.processLine(line),
 			onStderr: (stderr) => {
-				// stderr 仅记录，不打断流
+				logDiagnostic(stderr, 'Daemon');
 			},
 			onError: (error) => {
 				this.activeRequestId = null;
@@ -258,7 +258,9 @@ export class OpenCodeSession {
 				this.activeRequestId = requestId;
 			},
 			onLine: (line) => this.processLine(line),
-			onStderr: () => {},
+			onStderr: (stderr) => {
+				logDiagnostic(stderr, 'Daemon');
+			},
 			onError: (error) => {
 				this.activeRequestId = null;
 				this.messageHandler.onError(error);

@@ -19,7 +19,10 @@ import {
   needsShellOnWindows,
   commonCliBinDirs,
   enrichPathWithBinDirs,
+  probeSystemNode,
+  probeCliVersion,
 } from '../../utils/cli-path.js';
+import { logInfo, logWarn, logError, logDebug } from '../../utils/logger.js';
 
 /** @type {cp.ChildProcess | null} */
 let _process = null;
@@ -41,6 +44,59 @@ let _restartAttempts = 0;
 const MAX_RESTART_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 10000;
+
+const STDERR_RING_CAPACITY = 20;
+/** @type {string[]} */
+const _stderrRing = [];
+
+function appendStderr(line) {
+  if (!line) return;
+  _stderrRing.push(line);
+  while (_stderrRing.length > STDERR_RING_CAPACITY) {
+    _stderrRing.shift();
+  }
+}
+
+/**
+ * @returns {string[]} Snapshot of the last stderr lines from the serve process.
+ */
+export function getStderrTail() {
+  return _stderrRing.slice();
+}
+
+/** @type {Set<(info: { code: number | null, signal: NodeJS.Signals | null, uptime: number, stderrTail: string[] }) => void>} */
+const _exitListeners = new Set();
+
+/**
+ * Register a listener for serve process exit events (steady-state crashes or unexpected exits).
+ * @param {(info: { code: number | null, signal: NodeJS.Signals | null, uptime: number, stderrTail: string[] }) => void} callback
+ * @returns {() => void} Unsubscribe function
+ */
+export function onServeExit(callback) {
+  _exitListeners.add(callback);
+  return () => _exitListeners.delete(callback);
+}
+
+export function offServeExit(callback) {
+  _exitListeners.delete(callback);
+}
+
+function notifyExitListeners(info) {
+  for (const cb of _exitListeners) {
+    try {
+      cb(info);
+    } catch (err) {
+      console.error(`[opencode-serve-manager] exit listener threw: ${err?.message || err}`);
+    }
+  }
+}
+
+/**
+ * Reset auto-restart attempts budget (e.g. when a user actively initiates a new turn).
+ */
+export function resetRestartAttempts() {
+  _restartAttempts = 0;
+}
 
 /**
  * @returns {string | null} The URL the server was started on, if any.
@@ -182,8 +238,6 @@ async function doStart(port) {
     return url;
   }
 
-  console.error(`[opencode-serve-manager] Starting: ${binary} serve --port ${port}`);
-
   // Windows .cmd/.bat shims (and bare command names) require a shell so
   // PATHEXT can resolve the real executable. Enrich PATH with common user bin
   // dirs (pnpm global, Scoop shims, …) that an IDE-launched process often lacks.
@@ -197,9 +251,27 @@ async function doStart(port) {
     spawnOpts.shell = true;
   }
 
+  const systemNode = probeSystemNode(spawnEnv);
+  const cliVersion = probeCliVersion(binary, spawnEnv);
+
+  console.error('[opencode-serve-manager:env] ════════════════════════════════════════════════════');
+  console.error('[opencode-serve-manager:env] Runtime Environment Diagnostic:');
+  console.error(`[opencode-serve-manager:env]   - Daemon Node ExecPath: ${process.execPath} (${process.version})`);
+  console.error(`[opencode-serve-manager:env]   - System Node (PATH): ${systemNode ? `${systemNode.path} (${systemNode.version})` : 'none detected'}`);
+  console.error(`[opencode-serve-manager:env]   - Platform: ${process.platform} (${process.arch})`);
+  console.error(`[opencode-serve-manager:env]   - OpenCode CLI Resolved: ${binary}`);
+  console.error(`[opencode-serve-manager:env]   - OpenCode CLI Version: ${cliVersion || 'unknown'}`);
+  console.error(`[opencode-serve-manager:env]   - Target Port: ${port}`);
+  console.error('[opencode-serve-manager:env] ════════════════════════════════════════════════════');
+  console.error(`[opencode-serve-manager:spawn] Starting: ${binary} serve --port ${port}`);
+
+  const spawnStartedAt = Date.now();
+
   return new Promise((resolve, reject) => {
     const child = cp.spawn(binary, ['serve', '--port', String(port)], spawnOpts);
     _process = child;
+    const childPid = child.pid;
+    console.error(`[opencode-serve-manager:spawn] Spawned child process PID=${childPid}`);
 
     let settled = false;
 
@@ -215,6 +287,7 @@ async function doStart(port) {
         // A stable run resets the auto-restart backoff so a future crash gets a
         // fresh retry budget instead of inheriting a near-exhausted counter.
         _restartAttempts = 0;
+        console.error(`[opencode-serve-manager:ready] Server ready at ${value} in ${Date.now() - spawnStartedAt}ms`);
         resolve(value);
       }
     };
@@ -224,19 +297,21 @@ async function doStart(port) {
       settle('opencode serve 启动超时（15 秒）', true);
     }, 15_000);
 
-    // Log stderr for debugging
+    // Log stderr for debugging and capture into ring buffer
     let stderrBuf = '';
     child.stderr?.on('data', (data) => {
       stderrBuf += data.toString('utf-8');
       const lines = stderrBuf.split('\n').filter((l) => l.trim());
       if (lines.length > 0) {
-        console.error(`[opencode-serve-manager:stderr] ${lines.slice(-1)[0]}`);
+        const latest = lines.slice(-1)[0];
+        appendStderr(latest);
+        console.error(`[opencode-serve-manager:stderr] ${latest}`);
       }
     });
 
     // Process errors (e.g. spawn ENOENT, permission denied)
     child.on('error', (err) => {
-      console.error(`[opencode-serve-manager] process error: ${err.message}`);
+      console.error(`[opencode-serve-manager:error] Process error (PID=${childPid}): ${err.message}`);
       if (err.code === 'ENOENT') {
         settle(`找不到可执行文件: ${binary}`, true);
       } else {
@@ -244,9 +319,15 @@ async function doStart(port) {
       }
     });
 
-    // Unexpected early exit
+    // Unexpected early exit or crash
     child.on('exit', (code, signal) => {
-      console.error(`[opencode-serve-manager] exited: code=${code} signal=${signal}`);
+      const uptime = Date.now() - spawnStartedAt;
+      const tail = getStderrTail();
+      console.error(`[opencode-serve-manager:exit] Process PID=${childPid} exited: code=${code} signal=${signal} uptime=${uptime}ms`);
+      if (tail.length > 0) {
+        console.error(`[opencode-serve-manager:stderr_tail] ${tail.slice(-5).join(' | ')}`);
+      }
+
       if (!settled) {
         settle(`opencode 意外退出（退出码: ${code ?? signal}）`, true);
       } else {
@@ -255,6 +336,15 @@ async function doStart(port) {
           _process = null;
           _serverUrl = null;
         }
+
+        // Notify active turns and subscribers of the exit event
+        notifyExitListeners({
+          code,
+          signal,
+          uptime,
+          stderrTail: tail,
+        });
+
         // Steady-state crash (started successfully, not an intentional stop):
         // schedule a backoff auto-restart so the bridge self-heals without
         // waiting for the next outgoing request.

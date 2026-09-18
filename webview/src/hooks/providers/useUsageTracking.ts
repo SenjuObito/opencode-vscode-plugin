@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { CLI_ONLY_PROVIDERS } from './cliProviders';
-
 /**
  * Usage % / token counters and daemon alive status.
  * `isSdkInstalled(providerId)` now simply checks if the opencode daemon is alive.
@@ -57,14 +55,12 @@ export function useUsageTracking() {
 
   const isSdkInstalled = useCallback(
     (_providerId: string): boolean => {
-      if (CLI_ONLY_PROVIDERS.has(_providerId)) return true;
       return daemonAlive;
     },
     [daemonAlive],
   );
 
   const isSdkStatusKnown = useCallback((_providerId: string): boolean => {
-    if (CLI_ONLY_PROVIDERS.has(_providerId)) return true;
     return daemonStatusLoaded;
   }, [daemonStatusLoaded]);
 

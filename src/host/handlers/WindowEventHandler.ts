@@ -73,8 +73,8 @@ export class WindowEventHandler extends BaseMessageHandler {
 			this.callJavaScript('updateThinkingEnabled', JSON.stringify({ enabled: false }));
 			return true;
 		case 'check_daemon_status':
-			// 用户在「OpenCode serve 未运行」提示上点重试：重新探测并等待 serve 就绪。
-			this.sendDaemonStatus();
+			// 用户在「OpenCode serve 未运行」提示上点重试：重新拉起并探测等待 serve 就绪。
+			void this.handleCheckDaemonStatus();
 			return true;
 		case 'open_external_url':
 			this.handleOpenExternalUrl(content);
@@ -158,7 +158,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 		}
 
 		this.handleRefreshSlashCommands();
-		this.sendDaemonStatus();
+		void this.sendDaemonStatus();
 		this.sendLinkifyCapabilities();
 
 		// 语言回放：手动设置过 → source 'user'；否则跟随 IDE 界面语言。
@@ -716,6 +716,14 @@ export class WindowEventHandler extends BaseMessageHandler {
 		});
 	}
 
+	private async handleCheckDaemonStatus(): Promise<void> {
+		const daemon = this.context.getDaemon();
+		if (daemon && !daemon.isAlive() && !daemon.isStarting()) {
+			await daemon.start();
+		}
+		await this.sendDaemonStatus();
+	}
+
 	/**
 	 * 向 webview 推送 daemon / serve 状态。
 	 *
@@ -728,12 +736,22 @@ export class WindowEventHandler extends BaseMessageHandler {
 	 * - alive=true   → 先发 {serveReady:false}（保持 loading 转圈），再异步等待
 	 *                  opencode serve 真正就绪后才发 {serveReady:true} 让状态栏消失。
 	 */
-	private sendDaemonStatus(): void {
+	private async sendDaemonStatus(): Promise<void> {
 		const daemon = this.context.getDaemon();
-		const alive = daemon?.isAlive() ?? false;
+		if (!daemon) {
+			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+			return;
+		}
 
+		// 若 daemon 正在启动中，先发 loading 态并等待启动 Promise 完成
+		if (daemon.isStarting()) {
+			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false }));
+			await daemon.start();
+		}
+
+		const alive = daemon.isAlive();
 		if (!alive) {
-			// serve 进程都没起来，无需等待，直接进入「未运行」态。
+			// serve 进程都没起来，进入「未运行」态。
 			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
 			return;
 		}
@@ -744,7 +762,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 		// 异步等待 serve 就绪。复用 opencode.preconnect（内部 _ensureReady 会
 		// 轮询健康检查直到 serve 真正可查，幂等、可重复调用）。
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		daemon!.request(
+		daemon.request(
 			'opencode.preconnect',
 			{ cwd: directory },
 			{

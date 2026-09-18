@@ -24,6 +24,7 @@ import { HandlerContext } from '../router/HandlerContext';
 import { SettingsService } from '../settings/SettingsService';
 import { listSystemFontFamilies } from '../fonts/SystemFontEnumerator';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
+import { logDiagnostic } from '../util/DiagnosticLogger';
 
 const SUPPORTED_TYPES = [
 	'get_editor_font_config',
@@ -175,6 +176,7 @@ export class FontConfigHandler extends BaseMessageHandler {
 			fallbackFonts: names.slice(1),
 		};
 		const json = JSON.stringify(config);
+		logDiagnostic(`Pushed editor font config: ${json}`, 'FontConfigHandler');
 		this.callJavaScript('onEditorFontConfigReceived', json);
 		this.callJavaScript('applyIdeaFontConfig', config as unknown as string);
 		WebviewBroadcaster.broadcastJavaScript('onEditorFontConfigReceived', json);
@@ -231,6 +233,7 @@ export class FontConfigHandler extends BaseMessageHandler {
 		const stored = this.getStoredSelection(kind);
 		const effective = kind === 'ui' ? this.resolveUiFont(stored) : this.resolveCodeFont(stored);
 		const json = JSON.stringify(effective);
+		logDiagnostic(`Pushed resolved ${kind} font config: ${json}`, 'FontConfigHandler');
 		const fn = kind === 'ui' ? 'onUiFontConfigReceived' : 'onCodeFontConfigReceived';
 		this.callJavaScript(fn, json);
 		WebviewBroadcaster.broadcastJavaScript(fn, json);

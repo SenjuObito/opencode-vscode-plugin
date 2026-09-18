@@ -268,3 +268,47 @@ export function resolveOpenCodeCliPath() {
     ],
   });
 }
+
+/**
+ * Probe the system Node.js path and version from PATH.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ path: string, version: string } | null}
+ */
+export function probeSystemNode(env = process.env) {
+  try {
+    const nodeBin = whichOnPath('node');
+    if (!nodeBin) return null;
+    const versionOutput = execFileSync(nodeBin, ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env,
+      timeout: 3000,
+    });
+    const version = String(versionOutput || '').trim();
+    return { path: nodeBin, version };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe the OpenCode CLI version.
+ * @param {string} binaryPath
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string | null}
+ */
+export function probeCliVersion(binaryPath, env = process.env) {
+  if (!binaryPath) return null;
+  try {
+    const output = execFileSync(binaryPath, ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env,
+      timeout: 4000,
+    });
+    return String(output || '').trim();
+  } catch {
+    return null;
+  }
+}
+

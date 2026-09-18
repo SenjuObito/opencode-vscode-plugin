@@ -981,6 +981,11 @@ interface Window {
   __pendingDaemonStatus?: string;
 
   /**
+   * Pending error toasts before React window.showToast listener is mounted.
+   */
+  __pendingToasts?: string[];
+
+  /**
    * Execute context action from IDEA shortcut (copy/cut/send)
    */
   execContextAction?: (action: string) => void;
