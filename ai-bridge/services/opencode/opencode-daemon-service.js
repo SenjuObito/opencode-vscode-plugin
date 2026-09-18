@@ -122,27 +122,6 @@ serveManager.onServeExit(({ code, signal, uptime, stderrTail }) => {
   _sseSubs.clear();
 });
 
-const INACTIVITY_TIMEOUT_MS = 45_000;
-let _watchdogTimer = setInterval(async () => {
-  if (_activeTurns.size === 0) return;
-  const now = Date.now();
-  for (const [sessionId, turn] of _activeTurns) {
-    if (turn.settled) continue;
-    const inactiveDuration = now - (turn.lastActivityAt || turn.createdAt || now);
-    if (inactiveDuration > INACTIVITY_TIMEOUT_MS) {
-      console.error(`[OpenCodeDaemon:watchdog] Turn for sessionId=${sessionId} inactive for ${inactiveDuration}ms, probing serve...`);
-      const isAlive = serveManager.isRunning() && await sdk.health();
-      if (!isAlive && !turn.settled) {
-        console.error(`[OpenCodeDaemon:watchdog] Serve is unresponsive/dead. Forcibly failing turn for sessionId=${sessionId}`);
-        _settleTurn(turn, {
-          success: false,
-          error: { message: `OpenCode serve 服务无响应（超时 ${Math.round(inactiveDuration / 1000)} 秒），已自动中断当前生成` },
-        });
-      }
-    }
-  }
-}, 10_000);
-_watchdogTimer.unref();
 
 
 // =============================================================================
@@ -1096,10 +1075,6 @@ export async function getContextUsagePersistent(params = {}) {
  * SSE subscription and stop the serve process.
  */
 export async function shutdownPersistentRuntimes() {
-  if (_watchdogTimer) {
-    clearInterval(_watchdogTimer);
-  }
-
   // Abort active turns so awaiting sends settle (as "interrupted").
   for (const sessionId of [..._activeTurns.keys()]) {
     const turn = _activeTurns.get(sessionId);

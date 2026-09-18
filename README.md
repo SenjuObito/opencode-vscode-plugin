@@ -49,7 +49,7 @@ After installing the extension, you can open OpenCode Buddy in several ways:
   - `Open OpenCode Buddy Panel (Left)`
   - `New OpenCode Buddy Chat` (opens a standalone tab in an editor split for parallel sessions)
 
-<img src="media/home.png" width="600" alt="Chat main view">
+<img src="media/home.png" width="800" alt="Chat main view">
 
 *Screenshots show the UI in Simplified Chinese.*
 

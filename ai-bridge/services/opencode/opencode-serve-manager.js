@@ -86,7 +86,7 @@ function notifyExitListeners(info) {
     try {
       cb(info);
     } catch (err) {
-      console.error(`[opencode-serve-manager] exit listener threw: ${err?.message || err}`);
+      logError('opencode-serve-manager', `exit listener threw: ${err?.message || err}`);
     }
   }
 }
@@ -232,7 +232,7 @@ async function doStart(port) {
   // spawning a duplicate that would fail to bind. This also makes `preconnect`
   // cheap when serve is already warm.
   if (await waitForReady(url, 1500)) {
-    console.error(`[opencode-serve-manager] Reusing existing server on ${url}`);
+    logInfo('opencode-serve-manager', `Reusing existing server on ${url}`);
     _serverUrl = url;
     _started = true;
     return url;
@@ -254,16 +254,16 @@ async function doStart(port) {
   const systemNode = probeSystemNode(spawnEnv);
   const cliVersion = probeCliVersion(binary, spawnEnv);
 
-  console.error('[opencode-serve-manager:env] ════════════════════════════════════════════════════');
-  console.error('[opencode-serve-manager:env] Runtime Environment Diagnostic:');
-  console.error(`[opencode-serve-manager:env]   - Daemon Node ExecPath: ${process.execPath} (${process.version})`);
-  console.error(`[opencode-serve-manager:env]   - System Node (PATH): ${systemNode ? `${systemNode.path} (${systemNode.version})` : 'none detected'}`);
-  console.error(`[opencode-serve-manager:env]   - Platform: ${process.platform} (${process.arch})`);
-  console.error(`[opencode-serve-manager:env]   - OpenCode CLI Resolved: ${binary}`);
-  console.error(`[opencode-serve-manager:env]   - OpenCode CLI Version: ${cliVersion || 'unknown'}`);
-  console.error(`[opencode-serve-manager:env]   - Target Port: ${port}`);
-  console.error('[opencode-serve-manager:env] ════════════════════════════════════════════════════');
-  console.error(`[opencode-serve-manager:spawn] Starting: ${binary} serve --port ${port}`);
+  logInfo('opencode-serve-manager:env', '════════════════════════════════════════════════════');
+  logInfo('opencode-serve-manager:env', 'Runtime Environment Diagnostic:');
+  logInfo('opencode-serve-manager:env', `  - Daemon Node ExecPath: ${process.execPath} (${process.version})`);
+  logInfo('opencode-serve-manager:env', `  - System Node (PATH): ${systemNode ? `${systemNode.path} (${systemNode.version})` : 'none detected'}`);
+  logInfo('opencode-serve-manager:env', `  - Platform: ${process.platform} (${process.arch})`);
+  logInfo('opencode-serve-manager:env', `  - OpenCode CLI Resolved: ${binary}`);
+  logInfo('opencode-serve-manager:env', `  - OpenCode CLI Version: ${cliVersion || 'unknown'}`);
+  logInfo('opencode-serve-manager:env', `  - Target Port: ${port}`);
+  logInfo('opencode-serve-manager:env', '════════════════════════════════════════════════════');
+  logInfo('opencode-serve-manager:spawn', `Starting: ${binary} serve --port ${port}`);
 
   const spawnStartedAt = Date.now();
 
@@ -271,7 +271,7 @@ async function doStart(port) {
     const child = cp.spawn(binary, ['serve', '--port', String(port)], spawnOpts);
     _process = child;
     const childPid = child.pid;
-    console.error(`[opencode-serve-manager:spawn] Spawned child process PID=${childPid}`);
+    logInfo('opencode-serve-manager:spawn', `Spawned child process PID=${childPid}`);
 
     let settled = false;
 
@@ -287,7 +287,7 @@ async function doStart(port) {
         // A stable run resets the auto-restart backoff so a future crash gets a
         // fresh retry budget instead of inheriting a near-exhausted counter.
         _restartAttempts = 0;
-        console.error(`[opencode-serve-manager:ready] Server ready at ${value} in ${Date.now() - spawnStartedAt}ms`);
+        logInfo('opencode-serve-manager:ready', `Server ready at ${value} in ${Date.now() - spawnStartedAt}ms`);
         resolve(value);
       }
     };
@@ -305,13 +305,13 @@ async function doStart(port) {
       if (lines.length > 0) {
         const latest = lines.slice(-1)[0];
         appendStderr(latest);
-        console.error(`[opencode-serve-manager:stderr] ${latest}`);
+        logDebug('opencode-serve-manager:stderr', latest);
       }
     });
 
     // Process errors (e.g. spawn ENOENT, permission denied)
     child.on('error', (err) => {
-      console.error(`[opencode-serve-manager:error] Process error (PID=${childPid}): ${err.message}`);
+      logError('opencode-serve-manager:error', `Process error (PID=${childPid}): ${err.message}`);
       if (err.code === 'ENOENT') {
         settle(`找不到可执行文件: ${binary}`, true);
       } else {
@@ -323,9 +323,9 @@ async function doStart(port) {
     child.on('exit', (code, signal) => {
       const uptime = Date.now() - spawnStartedAt;
       const tail = getStderrTail();
-      console.error(`[opencode-serve-manager:exit] Process PID=${childPid} exited: code=${code} signal=${signal} uptime=${uptime}ms`);
+      logInfo('opencode-serve-manager:exit', `Process PID=${childPid} exited: code=${code} signal=${signal} uptime=${uptime}ms`);
       if (tail.length > 0) {
-        console.error(`[opencode-serve-manager:stderr_tail] ${tail.slice(-5).join(' | ')}`);
+        logDebug('opencode-serve-manager:stderr_tail', tail.slice(-5).join(' | '));
       }
 
       if (!settled) {
@@ -392,18 +392,19 @@ export function isRunning() {
 function scheduleAutoRestart() {
   if (_stopRequested || _process) return;
   if (_restartAttempts >= MAX_RESTART_ATTEMPTS) {
-    console.error('[opencode-serve-manager] Auto-restart limit reached; giving up on opencode serve');
+    logWarn('opencode-serve-manager', 'Auto-restart limit reached; giving up on opencode serve');
     return;
   }
   const delay = Math.min(BACKOFF_BASE_MS * 2 ** _restartAttempts, BACKOFF_MAX_MS);
   _restartAttempts += 1;
-  console.error(
-    `[opencode-serve-manager] Scheduling auto-restart in ${delay}ms (attempt ${_restartAttempts}/${MAX_RESTART_ATTEMPTS})`,
+  logInfo(
+    'opencode-serve-manager',
+    `Scheduling auto-restart in ${delay}ms (attempt ${_restartAttempts}/${MAX_RESTART_ATTEMPTS})`,
   );
   setTimeout(() => {
     if (_stopRequested || _process) return; // a newer process owns the slot now
     start(_lastPort).catch((err) => {
-      console.error(`[opencode-serve-manager] auto-restart failed: ${err?.message || err}`);
+      logError('opencode-serve-manager', `auto-restart failed: ${err?.message || err}`);
     });
   }, delay);
 }
@@ -426,13 +427,13 @@ export async function stop() {
   const proc = _process;
   if (!proc) return;
 
-  console.error('[opencode-serve-manager] Stopping opencode serve...');
+  logInfo('opencode-serve-manager', 'Stopping opencode serve...');
 
   const isWin = process.platform === 'win32';
 
   return new Promise((resolve) => {
     const forceKill = setTimeout(() => {
-      console.error(`[opencode-serve-manager] Timeout — force killing${isWin ? ' (taskkill)' : ' (SIGKILL)'}`);
+      logWarn('opencode-serve-manager', `Timeout — force killing${isWin ? ' (taskkill)' : ' (SIGKILL)'}`);
       if (proc && proc.exitCode === null) {
         if (isWin) {
           // Windows: use taskkill to kill the process tree (spawned with shell: true
@@ -453,7 +454,7 @@ export async function stop() {
 
     proc.on('exit', () => {
       clearTimeout(forceKill);
-      console.error('[opencode-serve-manager] opencode serve stopped');
+      logInfo('opencode-serve-manager', 'opencode serve stopped');
       if (_process === proc) {
         _process = null;
         _serverUrl = null;

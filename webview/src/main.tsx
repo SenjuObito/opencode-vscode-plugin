@@ -425,7 +425,7 @@ window.applyIdeaLanguageConfig = applyLanguageConfig;
 window.playNotificationSound = (json: string) => {
   try {
     const payload = JSON.parse(json) as { soundId?: string; variant?: string; customDataBase64?: string };
-    console.error(`[Main] playNotificationSound received payload=${json.slice(0, 140)}`);
+    cardDebugLog(`[Main] playNotificationSound received payload=${json.slice(0, 140)}`);
     playNotificationSound(payload);
   } catch {
     // ignore malformed payloads
@@ -544,10 +544,7 @@ if (typeof window !== 'undefined' && !window.updateDaemonStatus) {
     // CustomEvents dispatched before the listener is attached are lost, so this
     // slot prevents early daemon status pushes from being dropped.
     window.__pendingDaemonStatus = json;
-    // console.error is forwarded to the host (PluginFileLogger, tag WEBVIEW) in
-    // dev/runIde builds; use it so the dispatcher probe lands in the same trace
-    // file as the useUsageTracking probes (listener_installed / handler_fired).
-    console.error('[Probe] updateDaemonStatus dispatcher called: ' + json);
+    cardDebugLog('[Probe] updateDaemonStatus dispatcher called:', json);
     window.dispatchEvent(new CustomEvent('updateDaemonStatus', { detail: json }));
   };
 }

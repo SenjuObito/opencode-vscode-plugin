@@ -50,7 +50,7 @@
   - `打开 OpenCode Buddy 面板（左侧）`
   - `新建 OpenCode Buddy 对话`（在编辑器分栏打开独立标签页，支持多个独立会话并发）
 
-<img src="media/home.png" width="600" alt="聊天主界面">
+<img src="media/home.png" width="800" alt="聊天主界面">
 
 *截图展示为简体中文界面。*
 

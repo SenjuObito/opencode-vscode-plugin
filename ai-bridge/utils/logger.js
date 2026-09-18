@@ -15,19 +15,19 @@ function formatMessage(tag, message, error) {
 }
 
 export function logInfo(tag, message) {
-  console.error(formatMessage(tag, message));
+  console.error(`[LOG:INFO] ${formatMessage(tag, message)}`);
 }
 
 export function logWarn(tag, message) {
-  console.error(formatMessage(`WARN:${tag}`, message));
+  console.error(`[LOG:WARN] ${formatMessage(tag, message)}`);
 }
 
 export function logError(tag, message, error) {
-  console.error(formatMessage(`ERROR:${tag}`, message, error));
+  console.error(`[LOG:ERROR] ${formatMessage(tag, message, error)}`);
 }
 
 export function logDebug(tag, message) {
   if (process.env.AI_BRIDGE_LOG_LEVEL !== 'error') {
-    console.error(formatMessage(`DEBUG:${tag}`, message));
+    console.error(`[LOG:DEBUG] ${formatMessage(tag, message)}`);
   }
 }

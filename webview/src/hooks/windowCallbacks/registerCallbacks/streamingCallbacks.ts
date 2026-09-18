@@ -132,17 +132,6 @@ export function collectUnresolvedToolUseIds(
 /**
  * Timeout (ms) for detecting a stalled stream.  If no content/thinking delta
  * arrives for this duration while isStreamingRef is still true, the frontend
- * auto-recovers by forcing the stream-end cleanup.  This guards against the
- * backend onStreamEnd signal being silently dropped by JCEF.
- *
- * Set to 60s to avoid false positives during long tool execution phases
- * (e.g., command execution, file operations) where no content deltas arrive
- * but the backend is still actively processing.  The backend heartbeat
- * mechanism in StreamMessageCoalescer keeps __lastStreamActivityAt bumped
- * via periodic updateMessages re-pushes.
- */
-const STREAM_STALL_TIMEOUT_MS = 60_000;
-const STREAM_STALL_CHECK_INTERVAL_MS = 5_000;
 
 /**
  * Whether a streaming assistant bubble has any renderable content yet.
@@ -235,25 +224,10 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   const startStallWatchdog = () => {
+    // Intentionally no-op: do not auto-interrupt streaming turns on inactivity,
+    // as long-running commands, large codebase indexing, or deep reasoning may take arbitrarily long.
     clearStallWatchdog();
     window.__lastStreamActivityAt = Date.now();
-    window.__stallWatchdogInterval = setInterval(() => {
-      if (!isStreamingRef.current) {
-        clearStallWatchdog();
-        return;
-      }
-      const elapsed = Date.now() - (window.__lastStreamActivityAt ?? 0);
-      if (elapsed >= STREAM_STALL_TIMEOUT_MS) {
-        console.warn(
-          `[StreamWatchdog] Stream stalled for ${elapsed}ms — forcing stream-end recovery`,
-        );
-        clearStallWatchdog();
-        // Trigger the same cleanup as onStreamEnd
-        if (typeof window.onStreamEnd === 'function') {
-          window.onStreamEnd();
-        }
-      }
-    }, STREAM_STALL_CHECK_INTERVAL_MS);
   };
 
   window.onStreamStart = (mode?: string | boolean) => {

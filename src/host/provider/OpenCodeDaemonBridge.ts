@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logError } from '../util/DiagnosticLogger';
+import { PluginFileLogger } from '../util/PluginFileLogger';
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -681,7 +682,22 @@ export class OpenCodeDaemonBridge {
 		rl.on('line', (line) => {
 			if (this.isCurrent(context) && context.isActive) {
 				context.appendStderr(line);
-				this.log(`[daemon:stderr] ${line}`);
+				const match = line.match(/^\[LOG:(DEBUG|INFO|WARN|ERROR)\]\s*(.*)$/);
+				if (match) {
+					const level = match[1];
+					const msg = match[2];
+					if (level === 'DEBUG') {
+						PluginFileLogger.debug('DAEMON', msg);
+					} else if (level === 'INFO') {
+						PluginFileLogger.info('DAEMON', msg);
+					} else if (level === 'WARN') {
+						PluginFileLogger.warn('DAEMON', msg);
+					} else {
+						PluginFileLogger.error('DAEMON', msg);
+					}
+				} else {
+					this.log(`[daemon:stderr] ${line}`);
+				}
 			}
 		});
 	}
