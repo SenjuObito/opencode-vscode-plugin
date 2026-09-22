@@ -30,43 +30,14 @@ export class CliModelsHandler extends BaseMessageHandler {
 			this.pushError(provider, `Unsupported CLI provider for model list: ${provider}`);
 			return true;
 		}
-		void this.listModels(provider, true);
+		void this.listModels(provider);
 		return true;
 	}
 
-	/**
-	 * 预热缓存：只把结果写进 globalState，不推给 webview（激活阶段 webview
-	 * 往往还没注册 setCliModels 回调）。
-	 *
-	 * 模型目录要等 daemon 起来 → `opencode serve` 拉起 → `config.providers()`
-	 * 往返，第一次打开面板时串行等这一整套就是用户感知到的「模型列表加载很慢」。
-	 * 预热把它挪到激活阶段完成。
-	 */
-	async warmCache(): Promise<void> {
-		await this.listModels('opencode', false);
-	}
-
-	/**
-	 * @param pushToWebview 是否把结果推给前端。true 时**先回缓存**（UI 立刻有
-	 *   内容可渲染），再后台刷新一次；false 只用于预热。
-	 */
-	private async listModels(provider: string, pushToWebview: boolean): Promise<void> {
-		const settings = this.context.getSettingsService();
-		if (pushToWebview) {
-			const cached = settings.getCachedCliModels();
-			if (cached) {
-				// The persisted list may predate this build and lack limit metadata;
-				// merging is a no-op then and a real warm-up otherwise.
-				this.primeCatalog(cached);
-				this.callJavaScript('setCliModels', JSON.stringify(cached));
-			}
-		}
-
+	private async listModels(provider: string): Promise<void> {
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
-			if (pushToWebview) {
-				this.pushError(provider, 'Daemon not ready');
-			}
+			this.pushError(provider, 'Daemon not ready');
 			return;
 		}
 
@@ -74,9 +45,7 @@ export class CliModelsHandler extends BaseMessageHandler {
 		const ok = await daemon.request('opencode.getModels', {}, {
 			onLine: (line) => chunks.push(line),
 			onError: (error) => {
-				if (pushToWebview) {
-					this.pushError(provider, error);
-				}
+				this.pushError(provider, error);
 			},
 			onComplete: (success) => {
 				if (!success) {
@@ -84,24 +53,19 @@ export class CliModelsHandler extends BaseMessageHandler {
 				}
 				const payload = this.extractJsonObject(chunks.join('\n'));
 				if (!payload) {
-					if (pushToWebview) {
-						this.pushError(provider, 'No model list JSON in opencode.getModels output');
-					}
+					this.pushError(provider, 'No model list JSON in opencode.getModels output');
 					return;
 				}
 				if (typeof payload.provider !== 'string' || payload.provider === '') {
 					payload.provider = provider;
 				}
-				settings.setCachedCliModels(payload);
 				// Teach the context-window catalog before the webview sees the list,
 				// so the very next usage push resolves the real model limit.
 				this.primeCatalog(payload);
-				if (pushToWebview) {
-					this.callJavaScript('setCliModels', JSON.stringify(payload));
-				}
+				this.callJavaScript('setCliModels', JSON.stringify(payload));
 			},
 		});
-		if (!ok && pushToWebview) {
+		if (!ok) {
 			this.pushError(provider, 'Daemon unavailable for model list');
 		}
 	}

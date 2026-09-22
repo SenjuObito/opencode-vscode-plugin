@@ -436,12 +436,13 @@ export class WindowEventHandler extends BaseMessageHandler {
 			return;
 		}
 		this.compactSettled = true;
+		const targetSessionId = this.compactSessionId ?? '';
 		this.clearCompactState();
 		if (success) {
-			this.callJavaScript('onCompactSuccess', '');
+			this.callJavaScript('onCompactSuccess', targetSessionId);
 		} else {
 			// showError 只在设置视图注册；对话视图用 onCompactError toast。
-			this.callJavaScript('onCompactError', detail ?? '');
+			this.callJavaScript('onCompactError', targetSessionId, detail ?? '');
 		}
 	}
 

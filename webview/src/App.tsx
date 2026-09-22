@@ -169,6 +169,7 @@ const App = () => {
     setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
+    resetToPreferredModel,
     handleModeSelect, handleModelSelect,
     handleReasoningChange, handleToggleThinking,
     handleSendShortcutChange,
@@ -298,9 +299,11 @@ const App = () => {
     setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
     setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setStatus, setLoading, setIsThinking, setStreamingActive, setSessionLoading,
+    setIsCompacting, setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
+    onResetToPreferredModel: resetToPreferredModel,
     clearToasts, addToast, t,
   });
 
@@ -582,7 +585,10 @@ const App = () => {
         // ignore malformed payloads
       }
     };
-    window.onCompactSuccess = () => {
+    window.onCompactSuccess = (targetSessionId?: string) => {
+      if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
+        return;
+      }
       setIsCompacting(false);
       setCompactingStartTime(null);
       setMessages((prev) => [...prev, createCompactSuccessNotice(t('chat.compactSuccess'))]);
@@ -591,7 +597,10 @@ const App = () => {
         scrollToBottom();
       });
     };
-    window.onCompactError = (detail?: string) => {
+    window.onCompactError = (targetSessionId?: string, detail?: string) => {
+      if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
+        return;
+      }
       setIsCompacting(false);
       setCompactingStartTime(null);
       setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
@@ -614,6 +623,7 @@ const App = () => {
     t, addToast, clearToasts,
     setMessages, setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
+    setIsCompacting, setCompactingStartTime,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setPermissionMode, setCurrentProvider,
     setOpenCodePermissionMode,
@@ -791,7 +801,9 @@ const App = () => {
     applyRevertState(false);
     resetShareState();
     handleCancelCompact();
-  }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact]);
+    setIsCompacting(false);
+    setCompactingStartTime(null);
+  }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact, setIsCompacting, setCompactingStartTime]);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
   const handleSubmit = useCallback((

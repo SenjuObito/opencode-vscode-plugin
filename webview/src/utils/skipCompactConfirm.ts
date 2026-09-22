@@ -15,6 +15,8 @@
  * Internal call sites that gate "should we bypass the dialog?" stay with the raw pair.
  */
 
+import { updateUiPreferences } from './uiPreferences';
+
 export const SKIP_COMPACT_CONFIRM_KEY = 'skipCompactConfirm';
 export const SKIP_COMPACT_CONFIRM_EVENT = 'skipCompactConfirmChanged';
 
@@ -53,6 +55,8 @@ export function setSkipCompactConfirm(value: boolean): void {
     console.warn('[skipCompactConfirm] failed to persist:', error);
     return;
   }
+
+  updateUiPreferences({ skipCompactConfirm: value });
 
   const detail: SkipCompactConfirmChangedDetail = { enabled: value };
   window.dispatchEvent(new CustomEvent(SKIP_COMPACT_CONFIRM_EVENT, { detail }));

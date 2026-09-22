@@ -7,6 +7,7 @@ import type {
   PermissionMode,
   ReasoningEffort,
 } from '../../components/ChatInputBox/types';
+import { readPinnedModelIds } from '../../components/ChatInputBox/modelSelectUtils';
 
 const STORAGE_KEY = 'model-selection-state';
 const REASONING_VALUES = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -47,11 +48,17 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
+      const initialTabProvider = typeof window.__INITIAL_TAB_PROVIDER__ === 'string'
+        ? window.__INITIAL_TAB_PROVIDER__.trim()
+        : '';
       const initialTabModel = typeof window.__INITIAL_TAB_MODEL__ === 'string'
+        && (!initialTabProvider || initialTabProvider === 'opencode')
         ? window.__INITIAL_TAB_MODEL__.trim()
         : '';
+      const pinned = readPinnedModelIds('opencode');
+      const firstPinned = pinned.length > 0 ? pinned[0] : null;
 
-      let restoredOpenCodeModel = OPENCODE_DEFAULT_MODEL_ID;
+      let restoredOpenCodeModel = firstPinned || OPENCODE_DEFAULT_MODEL_ID;
       let restoredOpenCodePermissionMode: PermissionMode = 'build';
 
       const applyOpenCodeModel = (modelId: unknown) => {
@@ -77,10 +84,12 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
 
         const openCodeModelCandidate = initialTabModel.length > 0
           ? initialTabModel
-          : state.openCodeModel;
+          : (firstPinned || state.openCodeModel);
         applyOpenCodeModel(openCodeModelCandidate);
       } else if (initialTabModel.length > 0) {
         applyOpenCodeModel(initialTabModel);
+      } else if (firstPinned) {
+        applyOpenCodeModel(firstPinned);
       }
 
       setOpenCodePermissionMode(restoredOpenCodePermissionMode);

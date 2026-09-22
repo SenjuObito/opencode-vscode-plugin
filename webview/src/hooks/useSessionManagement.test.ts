@@ -67,6 +67,30 @@ describe('useSessionManagement', () => {
     expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
   });
 
+  it('calls onResetToPreferredModel when creating a new session', () => {
+    const mocks = createMocks();
+    const onResetToPreferredModel = vi.fn();
+
+    const { result } = renderHook(() =>
+      useSessionManagement({
+        messages: [],
+        loading: false,
+        historyData: null,
+        currentSessionId: 'old-session',
+        onResetToPreferredModel,
+        ...mocks,
+        t,
+      })
+    );
+
+    act(() => {
+      result.current.createNewSession();
+    });
+
+    expect(onResetToPreferredModel).toHaveBeenCalledTimes(1);
+    expect(window.sendToJava).toHaveBeenCalledWith('create_new_session:');
+  });
+
 
   it('applies repeated history deletes against the latest state', () => {
     let historyData = {

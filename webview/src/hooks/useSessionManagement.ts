@@ -32,12 +32,16 @@ interface UseSessionManagementOptions {
   setIsThinking: (thinking: boolean) => void;
   setStreamingActive: (active: boolean) => void;
   setSessionLoading: (loading: boolean) => void;
+  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
+  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
   /** Clears async subagent task events so stale completions cannot leak across sessions. */
   setTaskEvents?: React.Dispatch<React.SetStateAction<TaskEventMap>>;
   /** Clears SSE todos so stale todo lists cannot leak across sessions. */
   setSseTodos?: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
   /** Clears polled sidechain histories so stale transcripts cannot leak across sessions. */
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
+  /** Resets selected model to first preferred (pinned) model for new session. */
+  onResetToPreferredModel?: () => void;
   clearToasts: () => void;
   addToast: (message: string, type?: ToastType) => void;
   t: TFunction;
@@ -87,9 +91,12 @@ export function useSessionManagement({
   setIsThinking,
   setStreamingActive,
   setSessionLoading,
+  setIsCompacting,
+  setCompactingStartTime,
   setTaskEvents,
   setSseTodos,
   setSubagentHistories,
+  onResetToPreferredModel,
   clearToasts,
   addToast,
   t,
@@ -133,7 +140,12 @@ export function useSessionManagement({
       setLoadingState(false);
       setIsThinking(false);
       setStreamingActive(false);
+      setIsCompacting?.(false);
+      setCompactingStartTime?.(null);
     }
+    // Also explicitly reset compacting in all paths during session transition
+    setIsCompacting?.(false);
+    setCompactingStartTime?.(null);
     setMessages([]);
     if (nextSessionId !== null) {
       setSessionLoading(true);
@@ -201,6 +213,7 @@ export function useSessionManagement({
       // proceed directly. Preference is read fresh each call so the setting
       // page toggle takes effect immediately.
       if (getSkipNewSessionConfirm()) {
+        onResetToPreferredModel?.();
         beginSessionTransition(null, null);
         sendBridgeEvent('create_new_session');
         return;
@@ -210,28 +223,31 @@ export function useSessionManagement({
       setShowNewSessionConfirm(true);
     } else {
       // If empty and not loading, directly create new session
+      onResetToPreferredModel?.();
       beginSessionTransition(null, null);
       sendBridgeEvent('create_new_session');
     }
-  }, [beginSessionTransition, messages.length, loading]);
+  }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
+    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('create_new_session');
-  }, [beginSessionTransition, loading]);
+  }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
+    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('set_provider', providerId);
     sendBridgeEvent('create_new_session');
-  }, [beginSessionTransition, loading]);
+  }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   // Confirm new session
   const handleConfirmNewSession = useCallback(() => {
@@ -240,10 +256,11 @@ export function useSessionManagement({
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
+    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('create_new_session');
     pendingActionRef.current = null;
-  }, [beginSessionTransition, loading]);
+  }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   // Cancel new session
   const handleCancelNewSession = useCallback(() => {
@@ -256,10 +273,11 @@ export function useSessionManagement({
     setShowInterruptConfirm(false);
     // Send interrupt signal and create new session
     sendBridgeEvent('interrupt_session');
+    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('create_new_session');
     pendingActionRef.current = null;
-  }, [beginSessionTransition]);
+  }, [beginSessionTransition, onResetToPreferredModel]);
 
   // Cancel interrupt
   const handleCancelInterrupt = useCallback(() => {
@@ -361,6 +379,7 @@ export function useSessionManagement({
         if (loading) {
           sendBridgeEvent('interrupt_session');
         }
+        onResetToPreferredModel?.();
         beginSessionTransition(null, null);
         startedSessionTransition = true;
         // Set flag to suppress next updateStatus toast
@@ -370,7 +389,7 @@ export function useSessionManagement({
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast]);
+  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, onResetToPreferredModel]);
 
   // Batch delete history sessions
   const deleteHistorySessions = useCallback((sessionIds: string[]) => {
@@ -406,6 +425,7 @@ export function useSessionManagement({
         if (loading) {
           sendBridgeEvent('interrupt_session');
         }
+        onResetToPreferredModel?.();
         beginSessionTransition(null, null);
         startedSessionTransition = true;
         suppressNextStatusToastRef.current = true;
@@ -414,7 +434,7 @@ export function useSessionManagement({
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast]);
+  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast, onResetToPreferredModel]);
 
   // Export history session
   const exportHistorySession = useCallback((sessionId: string, title: string) => {

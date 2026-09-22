@@ -2,6 +2,7 @@ import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ButtonArea } from './ButtonArea';
 import { useCliModels } from '../../hooks/providers/useCliModels';
+import { __resetPinnedModelsStoreForTests, writePinnedModelIds } from './modelSelectUtils';
 import type { ModelInfo } from './types';
 
 vi.mock('react-i18next', () => ({
@@ -44,11 +45,13 @@ describe('ButtonArea 模型自动纠偏（延迟）', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
+    __resetPinnedModelsStoreForTests();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    __resetPinnedModelsStoreForTests();
   });
 
   const baseProps = {
@@ -160,5 +163,27 @@ describe('ButtonArea 模型自动纠偏（延迟）', () => {
       await vi.advanceTimersByTimeAsync(10000);
     });
     expect(onModelSelect).not.toHaveBeenCalled();
+  });
+
+  it('模型持续缺失时优先回退到置顶的第一个模型', async () => {
+    const onModelSelect = vi.fn();
+    writePinnedModelIds('opencode', ['opencode/claude-sonnet-4-5']);
+    mockUseCliModels.mockReturnValue(
+      cliModelsResult({ cliDefaultModel: 'opencode/gpt-5' }),
+    );
+
+    render(
+      <ButtonArea
+        {...baseProps}
+        selectedModel="opencode/gone-model"
+        onModelSelect={onModelSelect}
+      />,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(onModelSelect).toHaveBeenCalledTimes(1);
+    expect(onModelSelect).toHaveBeenCalledWith('opencode/claude-sonnet-4-5');
   });
 });

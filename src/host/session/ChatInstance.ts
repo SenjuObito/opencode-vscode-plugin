@@ -18,9 +18,12 @@ import { NotificationService } from '../notifications/NotificationService';
  * SessionState——frontend_ready 经 applyBackendTabState 推给 webview 恢复。
  */
 function seedSessionFromPersistedSelection(settings: SettingsService, session: OpenCodeSession): void {
+	const pinned = settings.getPinnedModels()['opencode'];
+	const firstPinned = Array.isArray(pinned) && pinned.length > 0 ? pinned[0] : null;
 	const lastModel = settings.getLastSelectedModel();
-	if (lastModel) {
-		session.state.setModel(lastModel);
+	const initialModel = firstPinned || lastModel;
+	if (initialModel) {
+		session.state.setModel(initialModel);
 	}
 	const lastMode = settings.getLastPermissionMode();
 	if (lastMode) {

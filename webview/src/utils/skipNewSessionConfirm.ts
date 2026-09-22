@@ -20,6 +20,8 @@
  * Internal call sites that gate "should we bypass the dialog?" stay with the raw pair.
  */
 
+import { updateUiPreferences } from './uiPreferences';
+
 export const SKIP_NEW_SESSION_CONFIRM_KEY = 'skipNewSessionConfirm';
 export const SKIP_NEW_SESSION_CONFIRM_EVENT = 'skipNewSessionConfirmChanged';
 
@@ -58,6 +60,8 @@ export function setSkipNewSessionConfirm(value: boolean): void {
     console.warn('[skipNewSessionConfirm] failed to persist:', error);
     return;
   }
+
+  updateUiPreferences({ skipNewSessionConfirm: value });
 
   const detail: SkipNewSessionConfirmChangedDetail = { enabled: value };
   window.dispatchEvent(new CustomEvent(SKIP_NEW_SESSION_CONFIRM_EVENT, { detail }));

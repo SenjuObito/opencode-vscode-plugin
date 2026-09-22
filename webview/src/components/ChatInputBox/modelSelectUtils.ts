@@ -242,13 +242,13 @@ export function getFirstPreferredModelId(
   availableModels: ModelInfo[],
   cliDefaultModel?: string | null,
 ): string | null {
+  const pinnedIds = readPinnedModelIds(provider);
   if (!availableModels || availableModels.length === 0) {
-    return null;
+    return pinnedIds.length > 0 ? pinnedIds[0] : (cliDefaultModel ?? null);
   }
   const availableSet = new Set(availableModels.map((m) => m.id));
 
   // 1. User's pinned models
-  const pinnedIds = readPinnedModelIds(provider);
   for (const id of pinnedIds) {
     if (availableSet.has(id)) {
       return id;

@@ -209,24 +209,17 @@ async function warmupDaemon(
 	}
 	const cwd = settings.getPrimaryWorkspaceRoot() ?? undefined;
 
-	// preconnect 与模型缓存并发下发：daemon 的共享通道允许多个只读/准备命令并行
-	await Promise.all([
-		daemon.request(
-			'opencode.preconnect',
-			{ cwd: cwd ?? undefined },
-			{
-				onLine: () => {},
-				onError: (err) => console.warn(`[extension] Warmup preconnect failed: ${err}`),
-				onComplete: () => {},
-			},
-		),
-		daemon.request('opencode.getModels', {}, {
+	// 启动时预热 serve 连接
+	await daemon.request(
+		'opencode.preconnect',
+		{ cwd: cwd ?? undefined },
+		{
 			onLine: () => {},
-			onError: (err) => console.warn(`[extension] Warmup getModels failed: ${err}`),
+			onError: (err) => console.warn(`[extension] Warmup preconnect failed: ${err}`),
 			onComplete: () => {},
-		}),
-	]);
-	console.log('[extension] OpenCode preconnect and model catalog cache warm');
+		},
+	);
+	console.log('[extension] OpenCode preconnect ready');
 }
 
 /** 解析 daemon 脚本：优先打包产物，否则回退到源码 ESM。 */

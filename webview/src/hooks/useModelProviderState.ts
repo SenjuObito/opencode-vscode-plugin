@@ -1,10 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent } from '../utils/bridge';
-import type {
-  PermissionMode,
-  ReasoningEffort,
+import {
+  OPENCODE_DEFAULT_MODEL_ID,
+  type PermissionMode,
+  type ReasoningEffort,
 } from '../components/ChatInputBox/types';
+import { useCliModels } from './providers/useCliModels';
+import { resolveProviderModels } from '../components/ChatInputBox/resolveProviderModels';
+import { getFirstPreferredModelId } from '../components/ChatInputBox/modelSelectUtils';
 import { useOpenCodeProvider } from './providers/useOpenCodeProvider';
 import { useUsageTracking } from './providers/useUsageTracking';
 import { useProviderSettings } from './providers/useProviderSettings';
@@ -87,6 +91,24 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     addToast(enabled ? t('toast.thinkingEnabled') : t('toast.thinkingDisabled'), 'success');
   }, [addToast, t]);
 
+  const { cliModels, cliDefaultModel, cliCatalogHasEntries } = useCliModels(currentProvider);
+  const availableModels = useMemo(() => {
+    return resolveProviderModels({
+      provider: currentProvider,
+      cliModels,
+      cliCatalogHasEntries,
+    });
+  }, [currentProvider, cliModels, cliCatalogHasEntries]);
+
+  const resetToPreferredModel = useCallback(() => {
+    const preferred = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel);
+    const targetModel = preferred || OPENCODE_DEFAULT_MODEL_ID;
+    if (targetModel) {
+      setSelectedOpenCodeModel(targetModel);
+      sendBridgeEvent('set_model', targetModel);
+    }
+  }, [currentProvider, availableModels, cliDefaultModel, setSelectedOpenCodeModel]);
+
   return {
     ...openCode,
     ...usage,
@@ -97,6 +119,7 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
     reasoningEffort, setReasoningEffort,
     currentSdkInstalled,
     currentProviderRef,
+    resetToPreferredModel,
     handleModeSelect,
     handleModelSelect,
     handleProviderSelect,

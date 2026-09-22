@@ -158,8 +158,13 @@ describe('modelSelectUtils', () => {
       { id: 'opencode/m-third', label: 'Third Model' },
     ];
 
-    it('returns null when available models list is empty', () => {
+    it('returns null when available models list is empty and no pinned models exist', () => {
       expect(getFirstPreferredModelId('opencode', [])).toBeNull();
+    });
+
+    it('returns the first pinned model even when available models list is empty', () => {
+      writePinnedModelIds('opencode', ['opencode/m-pinned']);
+      expect(getFirstPreferredModelId('opencode', [])).toBe('opencode/m-pinned');
     });
 
     it('returns the first pinned model if it exists in available models', () => {

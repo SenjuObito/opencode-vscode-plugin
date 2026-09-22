@@ -53,8 +53,6 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 };
 
 const UI_PREFERENCES_KEY = 'uiPreferences';
-/** opencode 模型目录缓存（避免每次打开插件都等一轮 daemon round-trip）。 */
-const CLI_MODELS_CACHE_KEY = 'opencode.cliModelsCache';
 
 export class SettingsService {
 	private workspaceRoots: string[];
@@ -297,25 +295,6 @@ export class SettingsService {
 		const next = SettingsService.sanitize({ ...this.getUiPreferences(), ...patch });
 		this.store.setGlobal(UI_PREFERENCES_KEY, next);
 		return next;
-	}
-
-	// ── 模型目录缓存（全局）─────────────────────────────────────────────
-
-	/**
-	 * 上次成功拉取的模型目录 payload（原样缓存，直接回给 webview）。
-	 * 用途：插件刚打开时先渲染缓存，再后台刷新，避免模型选择器空转数秒。
-	 */
-	getCachedCliModels(): Record<string, unknown> | null {
-		const stored = this.store.getGlobal(CLI_MODELS_CACHE_KEY);
-		if (!stored || typeof stored !== 'object') {
-			return null;
-		}
-		const payload = stored as Record<string, unknown>;
-		return Array.isArray(payload.models) ? payload : null;
-	}
-
-	setCachedCliModels(payload: Record<string, unknown>): void {
-		this.store.setGlobal(CLI_MODELS_CACHE_KEY, payload);
 	}
 
 	// ── 模型置顶（全局）─────────────────────────────────────────────────

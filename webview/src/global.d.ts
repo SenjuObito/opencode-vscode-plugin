@@ -747,12 +747,12 @@ interface Window {
   /**
    * Compact (summarize) session success callback
    */
-  onCompactSuccess?: () => void;
+  onCompactSuccess?: (targetSessionId?: string) => void;
 
   /**
    * Compact (summarize) session failure callback (detail = daemon error text)
    */
-  onCompactError?: (detail?: string) => void;
+  onCompactError?: (targetSessionId?: string, detail?: string) => void;
 
   /**
    * Update project info
