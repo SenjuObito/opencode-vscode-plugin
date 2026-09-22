@@ -11,9 +11,11 @@
     "back": "返回",
     "close": "关闭",
     "newSession": "新会话",
+    "newTab": "新建标签页",
     "dontAskAgain": "不再提示",
     "history": "历史记录",
     "settings": "设置",
+    "more": "更多",
     "thinking": "思考",
     "thinkingProcess": "思考过程",
     "success": "成功",
@@ -23,8 +25,7 @@
     "gotIt": "知道了",
     "seconds": "秒",
     "minutes": "分",
-    "optional": "可选",
-    "more": "更多"
+    "optional": "可选"
   },
   "chat": {
     "exportMarkdown": "导出会话为 Markdown",
@@ -129,6 +130,8 @@
     "shareTooltip": "分享会话",
     "unshareTooltip": "取消分享会话",
     "shareSuccess": "链接已复制到剪贴板",
+    "unshareSuccess": "已取消分享会话",
+    "unshareFailed": "取消分享失败",
     "attachmentFile": "[附件: {{fileName}}]",
     "unknownFile": "未知文件",
     "attachmentsUploaded": "[已上传附件]",
@@ -194,7 +197,7 @@
     "title": "设置",
     "basic": {
       "title": "基础配置",
-      "description": "配置页面主题、语言和运行环境",
+      "description": "配置页面主题、语言和 Node.js 运行环境",
       "tabs": {
         "appearance": "外观",
         "behavior": "行为",
@@ -202,8 +205,8 @@
       },
       "theme": {
         "label": "界面主题",
-        "system": "跟随 VS Code",
-        "systemDesc": "自动跟随 VS Code 主题",
+        "system": "跟随 IDE",
+        "systemDesc": "自动跟随 IDE 主题",
         "light": "亮色",
         "lightDesc": "清爽明亮，适合白天使用",
         "dark": "暗色",
@@ -211,7 +214,7 @@
       },
       "language": {
         "label": "界面语言",
-        "followIde": "跟随 VS Code",
+        "followIde": "跟随 IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -222,6 +225,18 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Node.js 路径",
+        "placeholder": "Windows: C:\\Program Files\\nodejs\\node.exe (必须以 .exe 结尾) | macOS/Linux: /usr/local/bin/node",
+        "hint": "在终端中运行",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "获取实际的 Node.js 可执行文件路径。为空时插件会自动尝试检测 Node.js。⚠️ Windows 用户注意：路径必须指向完整的可执行文件（node.exe），不能只填写目录。",
+        "versionTooLow": "Node.js 版本过低，插件需要 v{{minVersion}} 或更高版本才能正常运行",
+        "invalidPath": "路径无效：{{reason}}",
+        "pathNotFound": "文件不存在，请检查路径是否正确",
+        "invalidFileName": "Windows 下路径必须以 node.exe 结尾，macOS/Linux 下必须以 node 结尾",
+        "cannotExecute": "文件存在但无法执行，请检查文件权限"
       },
       "workingDirectory": {
         "label": "工作目录",
@@ -240,14 +255,14 @@
       "editorFont": {
         "label": "UI 字体",
         "hint": "这里修改的是插件界面字体。代码可以使用单独的代码字体。",
-        "followOption": "跟随 VS Code UI 字体（{{font}}）",
+        "followOption": "跟随 IDEA UI 字体（{{font}}）",
         "systemFontsGroup": "系统字体",
         "customOption": "自定义 UI 字体文件",
         "customPathLabel": "UI 字体文件路径",
         "customPathPlaceholder": "选择或输入 .ttf / .otf UI 字体文件路径",
         "browse": "浏览",
-        "warningUnavailable": "UI 字体不可用，当前已回退到 VS Code UI 字体",
-        "statusFollowEditor": "当前跟随 VS Code UI 字体：{{font}}",
+        "warningUnavailable": "UI 字体不可用，当前已回退到 IDEA UI 字体",
+        "statusFollowEditor": "当前跟随 IDEA UI 字体：{{font}}",
         "statusCustom": "当前使用自定义 UI 字体：{{font}}"
       },
       "codeFont": {
@@ -324,10 +339,10 @@
         "hint": "开启后，当 opencode 向你提问时播放已配置的提示音。会使用下方的音效选择和焦点规则。"
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "仅在 VS Code 未聚焦时显示系统通知",
+        "label": "仅在 IDE 未聚焦时显示系统通知",
         "enabled": "已开启",
         "disabled": "已关闭",
-        "hint": "开启后，仅在 VS Code 窗口未聚焦时显示任务完成和提问系统通知。"
+        "hint": "开启后，仅在 IDE 窗口未聚焦时显示任务完成和提问系统通知。"
       },
       "sendShortcut": {
         "label": "发送快捷键",
@@ -358,7 +373,7 @@
         "follow": "跟随界面",
         "followDesc": "跟随当前聊天界面明暗主题",
         "editor": "跟随编辑器",
-        "editorDesc": "尽量贴近 VS Code 编辑器的 diff 氛围",
+        "editorDesc": "尽量贴近 IDE 编辑器的 diff 氛围",
         "light": "浅色",
         "lightDesc": "更轻、更贴近当前设置页背景",
         "softDark": "柔和深色",
@@ -369,8 +384,8 @@
         "enabled": "已开启",
         "disabled": "已关闭",
         "hint": "开启后，AI 完成任务时会播放提示音，方便您离开屏幕时也能知道任务已完成。",
-        "onlyWhenUnfocused": "仅在 VS Code 未聚焦时播放提示音",
-        "onlyWhenUnfocusedHint": "开启后，仅在 VS Code 窗口未聚焦时播放任务完成和提问提示音。",
+        "onlyWhenUnfocused": "仅在 IDE 未聚焦时播放提示音",
+        "onlyWhenUnfocusedHint": "开启后，仅在 IDE 窗口未聚焦时播放任务完成和提问提示音。",
         "selectSound": "提示音",
         "soundDefault": "默认",
         "soundChime": "清脆铃声",
@@ -405,7 +420,7 @@
         "hint": "关闭后，点击 Token 统计或执行 /compact 时将直接压缩，不再弹出确认窗口"
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI 路径",
+        "label": "OpenCode 路径",
         "placeholder": "例如 /usr/local/bin/opencode — 留空则自动查找",
         "hint": "可选的自定义 opencode 二进制路径，用于启动 opencode 服务。留空则按 PATH 与默认安装位置（~/.opencode/bin）自动探测。保存后重启守护进程生效。"
       }
@@ -500,7 +515,7 @@
     "mcpDesc": "配置和管理 Model Context Protocol 服务器",
     "agents": "Agents",
     "agentsDesc": "管理和配置AI代理",
-    "skills": "技能",
+    "skills": "Skills",
     "skillsDesc": "管理和配置技能模块",
     "other": {
       "title": "其他设置",
@@ -561,7 +576,7 @@
     "communityQrAlt": "赞赏二维码",
     "communityQrAltAlipay": "支付宝赞赏二维码",
     "communityQrAltPayPal": "PayPal 赞赏二维码",
-    "projectDesc": "本项目是 OpenCode Buddy VS Code 插件 (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "本项目是 OpenCode Buddy IntelliJ IDEA 插件 (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub 开源地址",
     "githubDesc": "本项目已在 GitHub 开源，欢迎 Star 支持",
     "githubCopyBtn": "复制开源地址",
@@ -719,6 +734,7 @@
       "export": "导出",
       "import": "导入",
       "createAgent": "创建提示词",
+      "createAgentHint": "点击跳转到提示词设置页面进行创建",
       "customAgents": "自定义提示词",
       "noAgents": "暂无自定义提示词",
       "noAgentsDropdown": "暂无提示词",
@@ -780,7 +796,34 @@
         "selectHint": "选择要导出的提示词",
         "confirmExport": "确认导出"
       }
-    }
+    },
+    "commands": {
+      "title": "命令（提示词）",
+      "description": "管理 opencode 命令 markdown 文件。全局：~/.config/opencode/command，项目：.opencode/command。在聊天中用 /命令名 调用。",
+      "library": "提示词库",
+      "libraryTitle": "提示词库 — 导入内置模板",
+      "new": "新建",
+      "newName": "new-command",
+      "import": "导入",
+      "edit": "编辑",
+      "delete": "删除",
+      "empty": "当前作用域还没有命令。",
+      "confirmDelete": "删除命令 \"{{name}}\"？",
+      "editorTitle": "命令文件",
+      "namePlaceholder": "命令名",
+      "scope": {
+        "global": "全局",
+        "project": "项目"
+      },
+      "templates": {
+        "review": "审查当前变更的缺陷与风格问题",
+        "explain": "用通俗语言解释文件或符号",
+        "tests": "为目标代码生成单元测试",
+        "refactor": "在不改变行为的前提下重构代码",
+        "commit": "生成符合规范的提交信息"
+      }
+    },
+    "prompts": "命令（提示词）"
   },
   "history": {
     "title": "历史会话",
@@ -1484,6 +1527,10 @@
   "models": {
     "addModel": "添加模型",
     "searchPlaceholder": "搜索模型",
+    "refresh": "刷新模型列表",
+    "refreshing": "正在刷新...",
+    "refreshSuccess": "刷新成功",
+    "refreshFailed": "刷新失败",
     "noModelsFound": "未找到模型",
     "hiddenModelCount": "+ 还有 {{count}} 个模型。输入以搜索。",
     "pinned": "置顶",

@@ -29,6 +29,8 @@ const SUPPORTED_TYPES = [
 	'set_mode',
 	'set_reasoning_effort',
 	'get_ide_theme',
+	'get_opencode_cli_path',
+	'set_opencode_cli_path',
 	'get_claude_cli_path',
 	'set_claude_cli_path',
 	'get_working_directory',
@@ -58,6 +60,8 @@ const SUPPORTED_TYPES = [
 	'set_ask_user_question_sound_notification_enabled',
 	'get_ui_preferences',
 	'set_ui_preferences',
+	'get_pinned_models',
+	'set_pinned_models',
 ];
 
 /** opencode TUI 自定义二进制路径的全局存储键（wire 协议名仍为 claude_cli_path）。 */
@@ -86,9 +90,11 @@ export class SettingsHandler extends BaseMessageHandler {
 			case 'get_ide_theme':
 				this.handleGetIdeTheme();
 				return true;
+			case 'get_opencode_cli_path':
 			case 'get_claude_cli_path':
 				this.handleGetCliPath();
 				return true;
+			case 'set_opencode_cli_path':
 			case 'set_claude_cli_path':
 				this.handleSetCliPath(content);
 				return true;
@@ -173,6 +179,12 @@ export class SettingsHandler extends BaseMessageHandler {
 		case 'set_ui_preferences':
 			this.handleSetUiPreferences(content);
 			return true;
+		case 'get_pinned_models':
+			this.pushPinnedModels();
+			return true;
+		case 'set_pinned_models':
+			this.handleSetPinnedModels(content);
+			return true;
 		default:
 			return false;
 		}
@@ -241,15 +253,19 @@ export class SettingsHandler extends BaseMessageHandler {
 		this.callJavaScript('onIdeThemeReceived', JSON.stringify({ isDark }));
 	}
 
-	// ── opencode TUI 路径（wire 协议沿用 claude_cli_path 名，语义为 opencode 二进制）──
+	// ── opencode CLI 路径（wire 协议支持 get_opencode_cli_path / get_claude_cli_path）──
 
 	private getCliPathSetting(): string {
-		const value = this.settings().getStore().getGlobal(CLI_PATH_STORAGE_KEY);
+		const value = this.settings().getStore().getGlobal('opencodeCliPath')
+			?? this.settings().getStore().getGlobal(CLI_PATH_STORAGE_KEY);
 		return typeof value === 'string' ? value : '';
 	}
 
 	private handleGetCliPath(): void {
-		this.callJavaScript('updateClaudeCliPath', JSON.stringify({ path: this.getCliPathSetting() }));
+		const path = this.getCliPathSetting();
+		const payload = JSON.stringify({ path });
+		this.callJavaScript('updateOpencodeCliPath', payload);
+		this.callJavaScript('updateClaudeCliPath', payload);
 	}
 
 	private handleSetCliPath(content: string): void {
@@ -260,24 +276,33 @@ export class SettingsHandler extends BaseMessageHandler {
 				path = json.path.trim();
 			}
 		} catch {
-			// 无 JSON 载荷
+			if (typeof content === 'string') {
+				path = content.trim();
+			}
 		}
 
 		if (path !== '' && !existsSync(path)) {
-			this.callJavaScript('showError', `Opencode binary not found: ${path}`);
-			// 回显旧值，前端输入框与实际存储保持一致
-			this.callJavaScript('updateClaudeCliPath', JSON.stringify({ path: this.getCliPathSetting() }));
+			this.callJavaScript('showError', `OpenCode binary not found: ${path}`);
+			const current = this.getCliPathSetting();
+			const payload = JSON.stringify({ path: current });
+			this.callJavaScript('updateOpencodeCliPath', payload);
+			this.callJavaScript('updateClaudeCliPath', payload);
 			return;
 		}
 
 		this.settings().getStore().setGlobal(CLI_PATH_STORAGE_KEY, path);
-		this.callJavaScript('updateClaudeCliPath', JSON.stringify({ path }));
-		WebviewBroadcaster.broadcastJavaScript('updateClaudeCliPath', JSON.stringify({ path }));
+		this.settings().getStore().setGlobal('opencodeCliPath', path);
+
+		const payload = JSON.stringify({ path });
+		this.callJavaScript('updateOpencodeCliPath', payload);
+		this.callJavaScript('updateClaudeCliPath', payload);
+		WebviewBroadcaster.broadcastJavaScript('updateOpencodeCliPath', payload);
+		WebviewBroadcaster.broadcastJavaScript('updateClaudeCliPath', payload);
 		this.callJavaScript(
 			'showSuccess',
 			path
-				? 'Opencode TUI path saved. Restarting daemon to apply...'
-				: 'Opencode TUI path cleared. Restarting daemon to auto-detect...',
+				? 'OpenCode path saved. Restarting daemon to apply...'
+				: 'OpenCode path cleared. Restarting daemon to auto-detect...',
 		);
 
 		// 重启 daemon 使注入的 OPENCODE_BIN 生效（懒式：下次请求时重新拉起 serve）。
@@ -632,9 +657,36 @@ export class SettingsHandler extends BaseMessageHandler {
 			return;
 		}
 		this.settings().setUiPreferences(patch);
-		// 回推归一化后的完整值，保证 webview 与宿主一致（非法输入会被纠正）。
 		this.pushUiPreferences();
 	}
+
+	private pushPinnedModels(): void {
+		pushPinnedModels((fn, ...args) => this.callJavaScript(fn, ...args), this.settings());
+	}
+
+	private handleSetPinnedModels(content: string): void {
+		let patch: Record<string, string[]> = {};
+		try {
+			const parsed = JSON.parse(content) as Record<string, string[]>;
+			if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+				patch = parsed;
+			}
+		} catch {
+			return;
+		}
+		this.settings().setPinnedModels(patch);
+		this.pushPinnedModels();
+	}
+}
+
+/** 推送权威模型置顶配置给 webview。 */
+export function pushPinnedModels(
+	callJavaScript: (functionName: string, ...args: string[]) => void,
+	settings: SettingsService,
+): void {
+	const json = JSON.stringify(settings.getPinnedModels());
+	callJavaScript('applyPinnedModels', json);
+	WebviewBroadcaster.broadcastJavaScript('applyPinnedModels', json);
 }
 
 /** 推送权威 UI 偏好（frontend_ready 与 get/set_ui_preferences 共用）。 */

@@ -235,8 +235,11 @@ export class FontConfigHandler extends BaseMessageHandler {
 		const json = JSON.stringify(effective);
 		logDiagnostic(`Pushed resolved ${kind} font config: ${json}`, 'FontConfigHandler');
 		const fn = kind === 'ui' ? 'onUiFontConfigReceived' : 'onCodeFontConfigReceived';
+		const applyFn = kind === 'ui' ? 'applyUiFontConfig' : 'applyCodeFontConfig';
 		this.callJavaScript(fn, json);
+		this.callJavaScript(applyFn, json);
 		WebviewBroadcaster.broadcastJavaScript(fn, json);
+		WebviewBroadcaster.broadcastJavaScript(applyFn, json);
 	}
 
 	private baseFontSize(): number {

@@ -1,9 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ModelSelect } from './ModelSelect';
-import { CLAUDE_MODELS, CODEX_MODELS } from '../types';
 import type { ModelInfo } from '../types';
-import { STORAGE_KEYS } from '../../../types/provider';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -22,12 +20,7 @@ describe('ModelSelect', () => {
     localStorage.clear();
   });
 
-  it('rerender 后应读取最新的 Claude 模型映射', () => {
-    localStorage.setItem(
-      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
-      JSON.stringify({ sonnet: 'glm-4' }),
-    );
-
+  it('displays model label from props directly', () => {
     const { rerender } = render(
       <ModelSelect
         value={sonnetModel.id}
@@ -37,84 +30,42 @@ describe('ModelSelect', () => {
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toContain('glm-4');
-
-    localStorage.setItem(
-      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
-      JSON.stringify({ sonnet: 'glm-5' }),
-    );
+    expect(screen.getByRole('button').textContent).toContain('Sonnet 4.6');
 
     rerender(
       <ModelSelect
         value={sonnetModel.id}
         onChange={vi.fn()}
-        models={[sonnetModel]}
+        models={[{ ...sonnetModel, label: 'Sonnet 4.7' }]}
         currentProvider="claude"
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toContain('glm-5');
+    expect(screen.getByRole('button').textContent).toContain('Sonnet 4.7');
   });
 
-  it('没有具体映射时应回退到全局 main 映射', () => {
-    localStorage.setItem(
-      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
-      JSON.stringify({ main: 'glm-4.7', fable: 'glm-5.2' }),
-    );
-
+  it('falls back to model id when label is not provided', () => {
     render(
       <ModelSelect
         value="claude-fable-5"
         onChange={vi.fn()}
         models={[
           sonnetModel,
-          { id: 'claude-fable-5', label: 'Fable 5', description: 'Fable 5 · Most powerful · Mythos-class' },
+          { id: 'claude-fable-5', label: '', description: 'Fable 5' },
         ]}
         currentProvider="claude"
       />,
     );
 
-    expect(screen.getByRole('button').textContent).toContain('glm-5.2');
+    expect(screen.getByRole('button').textContent).toContain('claude-fable-5');
   });
 
-  it('Claude 内置模型列表应按目标顺序展示最新模型，并移除旧可见项', () => {
-    expect(CLAUDE_MODELS.map((model) => model.id)).toEqual([
-      'claude-fable-5',
-      'claude-opus-5',
-      'claude-opus-4-8',
-      'claude-sonnet-5',
-      'claude-sonnet-4-7',
-      'claude-haiku-4-5',
-    ]);
-    const ids = CLAUDE_MODELS.map((model) => model.id);
-    expect(ids).not.toContain('claude-opus-4-7');
-    expect(ids).not.toContain('claude-opus-4-6');
-    expect(ids).not.toContain('claude-sonnet-4-6');
-    expect(ids.some((id) => id.endsWith('[1m]'))).toBe(false);
-  });
-
-  it('Codex 内置模型列表应与目标设计一致', () => {
-    expect(CODEX_MODELS.map((model) => model.id)).toEqual([
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-      'gpt-5.5',
-      'gpt-5.4',
-    ]);
-  });
-
-  it('loading 时应显示加载状态', () => {
+  it('loading 且模型为空时应显示下拉加载状态', () => {
     render(
       <ModelSelect
         value="opencode-default"
         onChange={vi.fn()}
-        models={[
-          {
-            id: 'opencode-default',
-            label: 'OpenCode Default',
-            description: 'Use OpenCode CLI default model',
-          },
-        ]}
+        models={[]}
         currentProvider="opencode"
         loading
       />,
@@ -158,7 +109,7 @@ describe('ModelSelect', () => {
       <ModelSelect
         value="auto"
         onChange={vi.fn()}
-        models={[{ id: 'auto', label: 'PI Auto' }]}
+        models={[]}
         currentProvider="pi"
         loading
         error="timeout"
@@ -217,4 +168,139 @@ describe('ModelSelect', () => {
     const pinnedSection = screen.getByTestId('model-section-__pinned__');
     expect(pinnedSection.textContent).toContain('deepseek/Deepseek-V4-Flash-Free');
   });
+
+  it('点击搜索栏刷新按钮时应触发 onRefresh 并正确切换状态', () => {
+    vi.useFakeTimers();
+    const onRefresh = vi.fn();
+    const { rerender } = render(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    const refreshBtn = screen.getByTestId('model-refresh-button');
+    expect(refreshBtn).toBeTruthy();
+    expect(refreshBtn.classList.contains('is-loading')).toBe(false);
+
+    // 点击刷新
+    fireEvent.click(refreshBtn);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(refreshBtn.classList.contains('is-loading')).toBe(true);
+
+    // 模拟 loading 变为 true
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={true}
+      />,
+    );
+    expect(screen.getByTestId('model-refresh-button').classList.contains('is-loading')).toBe(true);
+
+    // 模拟 50ms 后请求成功，loading 变为 false
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={false}
+      />,
+    );
+
+    // 此时仍在 minSpin (600ms) 缓冲中
+    expect(screen.getByTestId('model-refresh-button').classList.contains('is-loading')).toBe(true);
+
+    // 走完 600ms
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const updatedBtn = screen.getByTestId('model-refresh-button');
+    expect(updatedBtn.classList.contains('is-success')).toBe(true);
+    expect(updatedBtn.querySelector('.codicon-check')).toBeTruthy();
+
+    // 走完 1200ms success 显示
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(updatedBtn.classList.contains('is-success')).toBe(false);
+    expect(updatedBtn.querySelector('.codicon-refresh')).toBeTruthy();
+
+    vi.useRealTimers();
+  });
+
+  it('刷新失败时按钮应显示 error 状态', () => {
+    vi.useFakeTimers();
+    const onRefresh = vi.fn();
+    const { rerender } = render(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    const refreshBtn = screen.getByTestId('model-refresh-button');
+
+    fireEvent.click(refreshBtn);
+    expect(refreshBtn.classList.contains('is-loading')).toBe(true);
+
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={true}
+      />,
+    );
+
+    // 模拟请求失败
+    rerender(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+        onRefresh={onRefresh}
+        loading={false}
+        error="fetch failed"
+      />,
+    );
+
+    // 走完 600ms
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const updatedBtn = screen.getByTestId('model-refresh-button');
+    expect(updatedBtn.classList.contains('is-error')).toBe(true);
+    expect(updatedBtn.querySelector('.codicon-error')).toBeTruthy();
+
+    // 走完 1500ms error 显示
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(updatedBtn.classList.contains('is-error')).toBe(false);
+    expect(updatedBtn.querySelector('.codicon-refresh')).toBeTruthy();
+
+    vi.useRealTimers();
+  });
 });
+
+

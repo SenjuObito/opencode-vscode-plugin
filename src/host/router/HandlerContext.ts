@@ -100,6 +100,18 @@ export class HandlerContext {
 		this.editorContextPusher?.();
 	}
 
+	/** 宿主注入的字体配置推送钩子（FontConfigHandler.pushInitialConfig）。 */
+	private fontConfigPusher: (() => void) | null = null;
+
+	setFontConfigPusher(pusher: (() => void) | null): void {
+		this.fontConfigPusher = pusher;
+	}
+
+	/** 立即推送字体配置（编辑器字体、已保存的 UI/代码字体）到 webview（frontend_ready 时调用）。 */
+	pushFontConfig(): void {
+		this.fontConfigPusher?.();
+	}
+
 	getChannel(): WebviewChannel {
 		return this.channel;
 	}

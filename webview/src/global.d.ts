@@ -126,6 +126,14 @@ interface Window {
    * Triggers Markdown re-rendering to fix incorrect rendering on first history load.
    */
   historyLoadComplete?: (expectedMessageCount?: string | number) => void;
+  /** Legacy Codex callback — kept as no-op. Does NOT release session transition guard. */
+  codexHistoryPageRenderComplete?: () => void;
+  /** Begin a Codex history page transfer (paginated history loading). */
+  beginCodexHistoryPage?: (json: string) => void;
+  /** Append a batch of messages to an in-progress Codex history page. */
+  appendCodexHistoryPageBatch?: (pageId: string, json: string) => void;
+  /** Complete and apply a Codex history page transfer. */
+  completeCodexHistoryPage?: (json: string) => void;
   /** Early history completion buffered before React installs the real callback. */
   __pendingHistoryLoadComplete?: { expectedMessageCount?: string | number };
   /** Number of messages in the latest full backend snapshot accepted by this page. */
@@ -231,6 +239,19 @@ interface Window {
    * Payload: `{ path: string }` — fills the custom-sound input (not saved).
    */
   onSoundFileSelected?: (json: string) => void;
+
+  /**
+   * Node.js path configuration callback
+   */
+  updateNodePath?: (path: string) => void;
+
+  /**
+   * Opencode commands / prompts callbacks
+   */
+  onCommandsList?: (json: string) => void;
+  onCommandsRead?: (json: string) => void;
+  onCommandsSaved?: (json: string) => void;
+  onCommandsDeleted?: (json: string) => void;
 
   /**
    * Session state restored callback - fired when a history session is loaded
@@ -497,6 +518,11 @@ interface Window {
   showSuccessI18n?: (i18nKey: string) => void;
 
   /**
+   * System font list push
+   */
+  onSystemFontListReceived?: (jsonStr: string) => void;
+
+  /**
    * Update skills list
    */
   updateSkills?: (json: string) => void;
@@ -634,11 +660,6 @@ interface Window {
   onCodeFontConfigReceived?: (json: string) => void;
 
   /**
-   * System font list received callback - receives the host's enumerable font families
-   */
-  onSystemFontListReceived?: (jsonStr: string) => void;
-
-  /**
    * IDE theme received callback - receives IDE theme configuration
    */
   onIdeThemeReceived?: (json: string) => void;
@@ -655,6 +676,13 @@ interface Window {
    * behaviour settings survive webview teardown.
    */
   applyUiPreferences?: (json: string) => void;
+
+  /**
+   * Authoritative pinned models pushed by Java host from ~/.opencodebuddy/config.json.
+   */
+  applyPinnedModels?: (json: string) => void;
+  __INITIAL_PINNED_MODELS__?: Record<string, string[]>;
+  __pendingPinnedModels?: Record<string, string[]> | string;
 
   /**
    * Update agents list
@@ -690,6 +718,16 @@ interface Window {
    * Share session failure callback - receives optional daemon error detail
    */
   onShareError?: (detail?: string) => void;
+
+  /**
+   * Unshare session success callback
+   */
+  onUnshareSuccess?: () => void;
+
+  /**
+   * Unshare session failure callback - receives optional daemon error detail
+   */
+  onUnshareError?: (detail?: string) => void;
 
   /**
    * Fork session success callback - receives JSON `{ sessionId: <new session id> }`
@@ -877,6 +915,20 @@ interface Window {
   __prependedHistoryMessageCount?: number;
   /** Backend index represented by the first non-prepended message; zero means its full prefix is present. */
   __messageBaseIndex?: number;
+  /**
+   * Turn range of the last completed Codex history page. completeCodexHistoryPage
+   * checks prepend contiguity against it, so it is written only on completion.
+   */
+  __codexHistoryPageInfo?: {
+    pageId: string;
+    sessionId: string;
+    mode: 'prepend' | 'replace';
+    fromTurn: number;
+    toTurn: number;
+    totalTurns: number;
+    hasMore: boolean;
+    loadedMessageCount: number;
+  };
   /** Cancel pending rAF-deferred updateMessages (set by messageCallbacks, called by onStreamEnd). */
   __cancelPendingUpdateMessages?: () => void;
 
@@ -944,6 +996,11 @@ interface Window {
   __pendingPlanApprovalDialogRequests?: string[];
 
   /**
+   * Pending error toasts before React window.showToast listener is mounted.
+   */
+  __pendingToasts?: string[];
+
+  /**
    * Pending updateMessages payload before React initialization
    */
   __pendingUpdateMessages?: string | { json: string; sequence?: number | null };
@@ -979,11 +1036,6 @@ interface Window {
    * listener is attached are lost; this slot preserves the latest payload.
    */
   __pendingDaemonStatus?: string;
-
-  /**
-   * Pending error toasts before React window.showToast listener is mounted.
-   */
-  __pendingToasts?: string[];
 
   /**
    * Execute context action from IDEA shortcut (copy/cut/send)
@@ -1087,6 +1139,7 @@ interface Window {
           defaultModel?: string;
         }
   ) => void;
+  __pendingCliModels?: unknown;
 }
 
 declare module 'mermaid' {

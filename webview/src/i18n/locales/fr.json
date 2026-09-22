@@ -11,9 +11,11 @@
     "back": "Retour",
     "close": "Fermer",
     "newSession": "Nouvelle session",
+    "newTab": "Nouvel onglet",
     "dontAskAgain": "Ne plus demander",
     "history": "Historique",
     "settings": "Paramètres",
+    "more": "Plus",
     "thinking": "Réflexion",
     "thinkingProcess": "Processus de réflexion",
     "success": "Succès",
@@ -173,7 +175,7 @@
     "title": "Paramètres",
     "basic": {
       "title": "Configuration de base",
-      "description": "Configurer le thème de la page, la langue et l'environnement d'exécution",
+      "description": "Configurer le thème de la page, la langue et l'environnement d'exécution Node.js",
       "tabs": {
         "appearance": "Apparence",
         "behavior": "Comportement",
@@ -201,6 +203,14 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Chemin Node.js",
+        "placeholder": "ex. C:\\Program Files\\nodejs\\node.exe ou /usr/local/bin/node",
+        "hint": "Exécuter dans le terminal",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "pour obtenir le chemin de l'exécutable Node.js réel. Laisser vide pour la détection automatique.",
+        "versionTooLow": "La version de Node.js est trop ancienne. Le plugin nécessite v{{minVersion}} ou supérieur pour fonctionner correctement"
       },
       "workingDirectory": {
         "label": "Working Directory",
@@ -371,7 +381,7 @@
         "hint": "Lorsqu'elle est désactivée, cliquer sur les stats de tokens ou exécuter /compact compactera directement sans demander de confirmation."
       },
       "opencodeCliPath": {
-        "label": "Chemin du TUI Opencode",
+        "label": "Chemin d'OpenCode",
         "placeholder": "ex. /usr/local/bin/opencode — laisser vide pour détection auto",
         "hint": "Binaire opencode personnalisé (facultatif) utilisé pour démarrer le service opencode. Laissez vide pour rechercher dans le PATH et les emplacements par défaut (~/.opencode/bin). Prend effet après le redémarrage du démon lors de la sauvegarde."
       }
@@ -467,8 +477,8 @@
       }
     },
     "sidebar": {
-      "expand": "Développer la barre latérale",
-      "collapse": "Réduire la barre latérale"
+      "expand": "Expand Sidebar",
+      "collapse": "Collapse Sidebar"
     },
     "community": "Soutenir",
     "communityDesc": "Scannez le code QR ci-dessous pour soutenir l'auteur et contribuer à la maintenance du projet",
@@ -478,7 +488,7 @@
     "communityQrAlt": "Code QR de soutien",
     "communityQrAltAlipay": "Code QR de soutien Alipay",
     "communityQrAltPayPal": "Code QR de soutien PayPal",
-    "projectDesc": "Ce projet est l'extension VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "Ce projet est le plugin IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "Dépôt GitHub",
     "githubDesc": "Ce projet est open source sur GitHub. Mettez une étoile pour nous soutenir !",
     "githubCopyBtn": "Copier l'URL du dépôt",
@@ -628,6 +638,7 @@
       "title": "Invites",
       "create": "Créer",
       "createAgent": "Créer un Invite",
+      "createAgentHint": "Cliquez pour accéder à la page de configuration des invites",
       "customAgents": "Invites personnalisés",
       "noAgents": "Aucun invite personnalisé",
       "noAgentsDropdown": "Aucun invite",
@@ -1216,41 +1227,41 @@
     "loadingSession": "Chargement de la conversation…"
   },
   "skills": {
-    "title": "Compétences",
+    "title": "Skills",
     "all": "Tous",
     "global": "Global",
     "local": "Local",
-    "filterEnabled": "Filtrer les Skills activées",
-    "enabled": "Activées",
-    "filterDisabled": "Filtrer les Skills désactivées",
-    "disabled": "Désactivées",
-    "searchPlaceholder": "Rechercher des Skills...",
-    "whatIsSkills": "Que sont les Skills ?",
-    "importSkill": "Importer un Skill",
-    "importGlobalSkill": "Importer un Skill global",
-    "importLocalSkill": "Importer un Skill local",
+    "filterEnabled": "Filter enabled Skills",
+    "enabled": "Enabled",
+    "filterDisabled": "Filter disabled Skills",
+    "disabled": "Disabled",
+    "searchPlaceholder": "Search Skills...",
+    "whatIsSkills": "What are Skills?",
+    "importSkill": "Import Skill",
+    "importGlobalSkill": "Import Global Skill",
+    "importLocalSkill": "Import Local Skill",
     "importUserSkill": "Importer un Skill utilisateur",
     "importRepoSkill": "Importer un Skill de dépôt",
     "user": "Utilisateur",
     "repo": "Dépôt",
     "description": "Description",
-    "noDescription": "Aucune description",
-    "noSkills": "Aucune Skill",
+    "noDescription": "No description",
+    "noSkills": "No Skills",
     "noMatchingSkills": "Aucun Skill correspondant trouvé",
-    "importHint": "Cliquez sur le bouton + pour importer un fichier ou un dossier de Skill",
-    "deleteTitle": "Supprimer le Skill",
-    "deleteMessage": "Êtes-vous sûr de vouloir supprimer le Skill {{scope}} \"{{name}}\" ?\n\nCette action est irréversible.",
+    "importHint": "Click + button to import Skill file or folder",
+    "deleteTitle": "Delete Skill",
+    "deleteMessage": "Are you sure you want to delete {{scope}} Skill \"{{name}}\"?\n\nThis action cannot be undone.",
     "deleteMessageGlobal": "global",
     "deleteMessageLocal": "local",
     "deleteMessageUser": "utilisateur",
     "deleteMessageRepo": "de dépôt",
-    "importSuccess": "{{count}} Skills importées avec succès",
-    "importSuccessOne": "1 Skill importée avec succès",
-    "importPartialSuccess": "{{count}}/{{total}} Skills importées avec succès, certaines ont échoué",
-    "importFailed": "Échec de l'importation du Skill",
-    "deleteSuccess": "Skill supprimée avec succès",
-    "toggleSuccess": "Statut du Skill mis à jour",
-    "toggleFailed": "Échec de la mise à jour du statut du Skill",
+    "importSuccess": "Successfully imported {{count}} Skills",
+    "importSuccessOne": "Successfully imported 1 Skill",
+    "importPartialSuccess": "Successfully imported {{count}}/{{total}} Skills, some failed",
+    "importFailed": "Failed to import Skill",
+    "deleteSuccess": "Successfully deleted Skill",
+    "toggleSuccess": "Updated Skill status",
+    "toggleFailed": "Failed to update Skill status",
     "deleteFailed": "Échec de la suppression du Skill",
     "enableSuccess": "Skill activé avec succès : {{name}}",
     "disableSuccess": "Skill désactivé avec succès : {{name}}",
@@ -1314,12 +1325,12 @@
         "structure": {
           "title": "Structure d'une Skill",
           "description": "Une Skill Codex est un dossier contenant un fichier SKILL.md :",
-          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Requis : fichier de définition de compétence\n    ├── templates/        # Optionnel : fichiers de modèle\n    └── references/       # Optionnel : matériaux de référence"
+          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Required: skill definition file\n    ├── templates/        # Optional: template files\n    └── references/       # Optional: reference materials"
         },
         "format": {
           "title": "Format SKILL.md",
           "description": "Les fichiers SKILL.md utilisent le format YAML frontmatter + Markdown :",
-          "example": "---\nname: my-skill-name\ndescription: Description de la compétence et quand l'utiliser\n---\n\n# Instructions de Skill\n\nContenu d'instruction détaillé...",
+          "example": "---\nname: my-skill-name\ndescription: Skill description and when to use\n---\n\n# Skill Instructions\n\nDetailed instruction content...",
           "hint": "name et description sont des champs obligatoires"
         },
         "configuration": {
@@ -1357,6 +1368,8 @@
   "models": {
     "addModel": "Ajouter un modèle",
     "searchPlaceholder": "Rechercher des modèles",
+    "refresh": "Actualiser la liste des modèles",
+    "refreshing": "Actualisation en cours...",
     "noModelsFound": "Aucun modèle trouvé",
     "hiddenModelCount": "+ {{count}} modèles supplémentaires. Tapez pour rechercher.",
     "pinned": "Épinglés",

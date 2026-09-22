@@ -11,9 +11,11 @@
     "back": "Back",
     "close": "Close",
     "newSession": "New Session",
+    "newTab": "New Tab",
     "dontAskAgain": "Don't ask again",
     "history": "History",
     "settings": "Settings",
+    "more": "More",
     "thinking": "Thinking",
     "thinkingProcess": "Thinking Process",
     "success": "Success",
@@ -23,8 +25,7 @@
     "gotIt": "Got it",
     "seconds": "s",
     "minutes": "m",
-    "optional": "Optional",
-    "more": "More"
+    "optional": "Optional"
   },
   "chat": {
     "exportMarkdown": "Export as Markdown",
@@ -129,6 +130,8 @@
     "shareTooltip": "Share session",
     "unshareTooltip": "Unshare session",
     "shareSuccess": "Link copied to clipboard",
+    "unshareSuccess": "Session unshared",
+    "unshareFailed": "Failed to unshare session",
     "attachmentFile": "[Attachment: {{fileName}}]",
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[Attachments Uploaded]",
@@ -194,7 +197,7 @@
     "title": "Settings",
     "basic": {
       "title": "Basic Configuration",
-      "description": "Configure page theme, language and runtime environment",
+      "description": "Configure page theme, language and Node.js environment",
       "tabs": {
         "appearance": "Appearance",
         "behavior": "Behavior",
@@ -202,8 +205,8 @@
       },
       "theme": {
         "label": "Theme",
-        "system": "Follow VS Code",
-        "systemDesc": "Automatically follow VS Code theme",
+        "system": "Follow IDE",
+        "systemDesc": "Automatically follow IDE theme",
         "light": "Light",
         "lightDesc": "Fresh and bright, suitable for daytime use",
         "dark": "Dark",
@@ -211,7 +214,7 @@
       },
       "language": {
         "label": "Language",
-        "followIde": "Follow VS Code",
+        "followIde": "Follow IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -222,6 +225,18 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Node.js Path",
+        "placeholder": "Windows: C:\\Program Files\\nodejs\\node.exe (must end with .exe) | macOS/Linux: /usr/local/bin/node",
+        "hint": "Run in terminal",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "to get the actual Node.js executable path. Leave empty to auto-detect. ⚠️ Windows users: Path must point to the full executable file (node.exe), not just the directory.",
+        "versionTooLow": "Node.js version is too low. The plugin requires v{{minVersion}} or higher to run properly",
+        "invalidPath": "Invalid path: {{reason}}",
+        "pathNotFound": "File does not exist, please check the path",
+        "invalidFileName": "Path must end with node.exe on Windows, or node on macOS/Linux",
+        "cannotExecute": "File exists but cannot be executed, please check file permissions"
       },
       "workingDirectory": {
         "label": "Working Directory",
@@ -240,14 +255,14 @@
       "editorFont": {
         "label": "UI Font",
         "hint": "This controls the plugin UI font only. Code can use a separate code font.",
-        "followOption": "Follow VS Code UI font ({{font}})",
+        "followOption": "Follow IDEA UI font ({{font}})",
         "systemFontsGroup": "System Fonts",
         "customOption": "Custom UI font file",
         "customPathLabel": "UI font file path",
         "customPathPlaceholder": "Choose or enter a .ttf / .otf UI font file path",
         "browse": "Browse",
-        "warningUnavailable": "UI font unavailable, currently using VS Code UI font",
-        "statusFollowEditor": "Currently following VS Code UI font: {{font}}",
+        "warningUnavailable": "UI font unavailable, currently using IDEA UI font",
+        "statusFollowEditor": "Currently following IDEA UI font: {{font}}",
         "statusCustom": "Currently using custom UI font: {{font}}"
       },
       "codeFont": {
@@ -324,10 +339,10 @@
         "hint": "When enabled, plays the configured alert sound when opencode asks you a question. Uses the sound selection and focus rules below."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "Show system notifications only when VS Code is unfocused",
+        "label": "Show system notifications only when IDE is unfocused",
         "enabled": "Enabled",
         "disabled": "Disabled",
-        "hint": "When enabled, task completion and question system notifications are shown only while VS Code is unfocused."
+        "hint": "When enabled, task completion and question system notifications are shown only while the IDE is unfocused."
       },
       "sendShortcut": {
         "label": "Send Shortcut",
@@ -358,7 +373,7 @@
         "follow": "Follow UI",
         "followDesc": "Match the current chat UI light or dark theme",
         "editor": "Follow Editor",
-        "editorDesc": "Stay closer to the VS Code editor diff atmosphere",
+        "editorDesc": "Stay closer to the IDE editor diff atmosphere",
         "light": "Light",
         "lightDesc": "Cleaner and better integrated with the settings page",
         "softDark": "Soft Dark",
@@ -369,8 +384,8 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When enabled, a notification sound will play when AI completes a task, so you'll know even when away from the screen.",
-        "onlyWhenUnfocused": "Play alert sounds only when VS Code is unfocused",
-        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while VS Code is unfocused.",
+        "onlyWhenUnfocused": "Play alert sounds only when IDE is unfocused",
+        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while the IDE is unfocused.",
         "selectSound": "Notification Sound",
         "soundDefault": "Default",
         "soundChime": "Chime",
@@ -405,7 +420,7 @@
         "hint": "When disabled, clicking token stats or running /compact will compact immediately without asking for confirmation."
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI Path",
+        "label": "OpenCode Path",
         "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
         "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
       }
@@ -556,7 +571,7 @@
     "communityQrAlt": "Sponsor QR code",
     "communityQrAltAlipay": "Alipay sponsor QR code",
     "communityQrAltPayPal": "PayPal sponsor QR code",
-    "projectDesc": "This project is the OpenCode Buddy VS Code extension (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "This project is the OpenCode Buddy IntelliJ IDEA plugin (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub Repository",
     "githubDesc": "This project is open source on GitHub. Star us to show your support!",
     "githubCopyBtn": "Copy Repository URL",
@@ -714,6 +729,7 @@
       "export": "Export",
       "import": "Import",
       "createAgent": "Create Prompt",
+      "createAgentHint": "Click to go to prompt settings page to create",
       "customAgents": "Custom Prompts",
       "noAgents": "No custom prompts",
       "noAgentsDropdown": "No prompts",
@@ -775,7 +791,34 @@
         "selectHint": "Select prompts to export",
         "confirmExport": "Confirm Export"
       }
-    }
+    },
+    "commands": {
+      "title": "Commands (Prompts)",
+      "description": "Manage opencode command markdown files. Global: ~/.config/opencode/command, project: .opencode/command. Run them in chat with /name.",
+      "library": "Prompt Library",
+      "libraryTitle": "Prompt Library — import a built-in template",
+      "new": "New",
+      "newName": "new-command",
+      "import": "Import",
+      "edit": "Edit",
+      "delete": "Delete",
+      "empty": "No commands in this scope yet.",
+      "confirmDelete": "Delete command \"{{name}}\"?",
+      "editorTitle": "Command file",
+      "namePlaceholder": "command name",
+      "scope": {
+        "global": "Global",
+        "project": "Project"
+      },
+      "templates": {
+        "review": "Review current changes for bugs and style issues",
+        "explain": "Explain a file or symbol in plain language",
+        "tests": "Generate unit tests for the target code",
+        "refactor": "Refactor code without changing behaviour",
+        "commit": "Generate a conventional commit message"
+      }
+    },
+    "prompts": "Commands (Prompts)"
   },
   "history": {
     "title": "History",
@@ -1479,6 +1522,10 @@
   "models": {
     "addModel": "Add Model",
     "searchPlaceholder": "Search models",
+    "refresh": "Refresh model list",
+    "refreshing": "Refreshing...",
+    "refreshSuccess": "Refresh succeeded",
+    "refreshFailed": "Refresh failed",
     "noModelsFound": "No models found",
     "hiddenModelCount": "+ {{count}} more models. Type to search.",
     "pinned": "Pinned",

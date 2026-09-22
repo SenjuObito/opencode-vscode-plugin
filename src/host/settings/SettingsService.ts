@@ -317,6 +317,30 @@ export class SettingsService {
 	setCachedCliModels(payload: Record<string, unknown>): void {
 		this.store.setGlobal(CLI_MODELS_CACHE_KEY, payload);
 	}
+
+	// ── 模型置顶（全局）─────────────────────────────────────────────────
+
+	getPinnedModels(): Record<string, string[]> {
+		const stored = this.store.getGlobal('pinned_models');
+		if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+			return {};
+		}
+		return stored as Record<string, string[]>;
+	}
+
+	setPinnedModels(patch: Record<string, string[]>): Record<string, string[]> {
+		const current = this.getPinnedModels();
+		const next = { ...current };
+		for (const [provider, ids] of Object.entries(patch)) {
+			if (!Array.isArray(ids) || ids.length === 0) {
+				delete next[provider];
+			} else {
+				next[provider] = ids.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
+			}
+		}
+		this.store.setGlobal('pinned_models', next);
+		return next;
+	}
 }
 
 /** workspaceState/globalState Memento 的同步 Store 实现（宿主注入）。 */

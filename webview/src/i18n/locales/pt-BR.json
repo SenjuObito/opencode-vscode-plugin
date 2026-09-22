@@ -11,9 +11,11 @@
     "back": "Voltar",
     "close": "Fechar",
     "newSession": "Nova Sessão",
+    "newTab": "Nova aba",
     "dontAskAgain": "Não perguntar novamente",
     "history": "Histórico",
     "settings": "Configurações",
+    "more": "Mais",
     "thinking": "Pensando",
     "thinkingProcess": "Processo de Raciocínio",
     "success": "Sucesso",
@@ -173,7 +175,7 @@
     "title": "Configurações",
     "basic": {
       "title": "Configuração Básica",
-      "description": "Configurar tema da página, idioma e ambiente de execução",
+      "description": "Configurar tema da página, idioma e ambiente Node.js",
       "tabs": {
         "appearance": "Aparência",
         "behavior": "Comportamento",
@@ -201,6 +203,14 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Caminho do Node.js",
+        "placeholder": "ex: C:\\Program Files\\nodejs\\node.exe ou /usr/local/bin/node",
+        "hint": "Execute no terminal",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "para obter o caminho real do executável Node.js. Deixe vazio para detecção automática.",
+        "versionTooLow": "A versão do Node.js é muito baixa. O plugin requer v{{minVersion}} ou superior para funcionar corretamente"
       },
       "workingDirectory": {
         "label": "Diretório de Trabalho",
@@ -382,7 +392,7 @@
         "hint": "Quando desativado, clicar nas estatísticas de tokens ou executar /compact irá compactar diretamente sem pedir confirmação."
       },
       "opencodeCliPath": {
-        "label": "Caminho do TUI do Opencode",
+        "label": "Caminho do OpenCode",
         "placeholder": "ex.: /usr/local/bin/opencode — deixe vazio para detecção automática",
         "hint": "Binário opencode personalizado (opcional) usado para iniciar o serviço do opencode. Deixe vazio para buscar no PATH e nos locais de instalação padrão (~/.opencode/bin). Tem efeito após o daemon reiniciar ao salvar."
       }
@@ -435,7 +445,7 @@
     "mcpDesc": "Configurar e gerenciar servidores do Model Context Protocol",
     "agents": "Agentes",
     "agentsDesc": "Gerenciar e configurar agentes de IA",
-    "skills": "Habilidades",
+    "skills": "Skills",
     "skillsDesc": "Gerenciar e configurar módulos de skill",
     "other": {
       "title": "Outras Configurações",
@@ -491,7 +501,7 @@
     "communityQrAlt": "QR code de apoio",
     "communityQrAltAlipay": "QR code de apoio Alipay",
     "communityQrAltPayPal": "QR code de apoio PayPal",
-    "projectDesc": "Este projeto é a extensão VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "Este projeto é o plugin IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "Repositório GitHub",
     "githubDesc": "Este projeto é open source no GitHub. Dê uma estrela para mostrar seu apoio!",
     "githubCopyBtn": "Copiar URL do Repositório",
@@ -648,6 +658,7 @@
       "export": "Exportar",
       "import": "Importar",
       "createAgent": "Criar Prompt",
+      "createAgentHint": "Clique para ir à página de configurações de prompts para criar",
       "customAgents": "Prompts Personalizados",
       "noAgents": "Sem prompts personalizados",
       "noAgentsDropdown": "Sem prompts",
@@ -1414,6 +1425,8 @@
   "models": {
     "addModel": "Adicionar Modelo",
     "searchPlaceholder": "Pesquisar modelos",
+    "refresh": "Atualizar lista de modelos",
+    "refreshing": "Atualizando...",
     "noModelsFound": "Nenhum modelo encontrado",
     "hiddenModelCount": "+ {{count}} modelos adicionais. Digite para pesquisar.",
     "pinned": "Fixados",

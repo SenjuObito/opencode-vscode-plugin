@@ -6,6 +6,8 @@
 
 import type { ModelInfo } from './types';
 
+import { sendBridgeEvent } from '../../utils/bridge';
+
 /** Show search once the list is long enough to scroll through. */
 export const MODEL_SEARCH_THRESHOLD = 8;
 
@@ -50,46 +52,98 @@ export function shouldGroupModels(models: ModelInfo[]): boolean {
   return false;
 }
 
+let inMemoryPinnedModels: Record<string, string[]> = {};
+let hasHydratedFromInitial = false;
+
+function ensureHydrated(): void {
+  if (hasHydratedFromInitial) return;
+  hasHydratedFromInitial = true;
+
+  // 1. Initial injection from Java backend config.json
+  if (typeof window !== 'undefined' && window.__INITIAL_PINNED_MODELS__ && typeof window.__INITIAL_PINNED_MODELS__ === 'object') {
+    inMemoryPinnedModels = { ...window.__INITIAL_PINNED_MODELS__ };
+  } else if (typeof window !== 'undefined' && window.__pendingPinnedModels) {
+    applyPinnedModelsPayload(window.__pendingPinnedModels);
+  } else {
+    // 2. localStorage fallback mirror
+    try {
+      const raw = localStorage.getItem(PINNED_MODELS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          inMemoryPinnedModels = parsed as Record<string, string[]>;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function applyPinnedModelsPayload(payload: unknown): void {
+  let store: Record<string, string[]> | null = null;
+  if (typeof payload === 'string') {
+    try {
+      store = JSON.parse(payload);
+    } catch {
+      return;
+    }
+  } else if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    store = payload as Record<string, string[]>;
+  }
+
+  if (store) {
+    inMemoryPinnedModels = { ...inMemoryPinnedModels, ...store };
+    try {
+      localStorage.setItem(PINNED_MODELS_STORAGE_KEY, JSON.stringify(inMemoryPinnedModels));
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function installPinnedModelsBridge(): void {
+  if (typeof window === 'undefined') return;
+  window.applyPinnedModels = (json: string) => {
+    applyPinnedModelsPayload(json);
+  };
+  if (window.__pendingPinnedModels) {
+    applyPinnedModelsPayload(window.__pendingPinnedModels);
+    delete window.__pendingPinnedModels;
+  }
+}
+
+export function __resetPinnedModelsStoreForTests(): void {
+  inMemoryPinnedModels = {};
+  hasHydratedFromInitial = false;
+}
+
 export function readPinnedModelIds(providerId: string): string[] {
   if (!providerId) return [];
-  try {
-    const raw = localStorage.getItem(PINNED_MODELS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
-    const list = (parsed as Record<string, unknown>)[providerId];
-    if (!Array.isArray(list)) return [];
+  ensureHydrated();
+  const list = inMemoryPinnedModels[providerId];
+  if (Array.isArray(list)) {
     return list.filter((id): id is string => typeof id === 'string' && id.length > 0);
-  } catch {
-    return [];
   }
+  return [];
 }
 
 export function writePinnedModelIds(providerId: string, modelIds: string[]): void {
   if (!providerId) return;
+  ensureHydrated();
+  const next = { ...inMemoryPinnedModels };
+  if (modelIds.length === 0) {
+    delete next[providerId];
+  } else {
+    next[providerId] = [...modelIds];
+  }
+  inMemoryPinnedModels = next;
   try {
-    const raw = localStorage.getItem(PINNED_MODELS_STORAGE_KEY);
-    let store: Record<string, string[]> = {};
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as unknown;
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          store = parsed as Record<string, string[]>;
-        }
-      } catch {
-        store = {};
-      }
-    }
-    const next = { ...store };
-    if (modelIds.length === 0) {
-      delete next[providerId];
-    } else {
-      next[providerId] = [...modelIds];
-    }
     localStorage.setItem(PINNED_MODELS_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // sandboxed / quota — ignore
   }
+  sendBridgeEvent('set_pinned_models', JSON.stringify({ [providerId]: modelIds }));
 }
 
 /** Toggle pin; returns the next pinned id list for this provider. */
@@ -175,4 +229,37 @@ export function buildModelDropdownSections(
 
   const totalShown = sections.reduce((n, s) => n + s.models.length, 0);
   return { sections, hiddenCount: Math.max(0, models.length - totalShown) };
+}
+
+/**
+ * Resolve the user's preferred first model:
+ * 1. The first pinned model that exists in available models.
+ * 2. The CLI default model if valid.
+ * 3. The first available model in the list.
+ */
+export function getFirstPreferredModelId(
+  provider: string,
+  availableModels: ModelInfo[],
+  cliDefaultModel?: string | null,
+): string | null {
+  if (!availableModels || availableModels.length === 0) {
+    return null;
+  }
+  const availableSet = new Set(availableModels.map((m) => m.id));
+
+  // 1. User's pinned models
+  const pinnedIds = readPinnedModelIds(provider);
+  for (const id of pinnedIds) {
+    if (availableSet.has(id)) {
+      return id;
+    }
+  }
+
+  // 2. CLI default model
+  if (cliDefaultModel && availableSet.has(cliDefaultModel)) {
+    return cliDefaultModel;
+  }
+
+  // 3. First model in list
+  return availableModels[0].id;
 }

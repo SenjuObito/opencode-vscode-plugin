@@ -8,7 +8,7 @@ import { HandlerContext } from '../router/HandlerContext';
 import { logDiagnostic, logDiagnosticBlock } from '../util/DiagnosticLogger';
 import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { pushHistoryData, upsertSessionSummary } from '../session/SessionHistoryStore';
-import { pushUserLanguageConfig, pushUiPreferences } from './SettingsHandler';
+import { pushUserLanguageConfig, pushUiPreferences, pushPinnedModels } from './SettingsHandler';
 
 const SUPPORTED_TYPES = [
 	'heartbeat',
@@ -168,6 +168,12 @@ export class WindowEventHandler extends BaseMessageHandler {
 		// UI 偏好回放（主题 / 字号 / 配色 / diff / 行为开关）：webview 的
 		// localStorage 在 VS Code 重建 webview 后会丢，宿主才是权威源。
 		pushUiPreferences((fn, ...args) => this.callJavaScript(fn, ...args), this.context.getSettingsService());
+
+		// 置顶模型回放（跨会话持久化）
+		pushPinnedModels((fn, ...args) => this.callJavaScript(fn, ...args), this.context.getSettingsService());
+
+		// 字体配置回放（编辑器字体、已保存的 UI 字体与代码字体）
+		this.context.pushFontConfig();
 
 		// 推送当前编辑器上下文（需在 webview JS 就绪后调用）。
 		this.context.pushEditorContext();

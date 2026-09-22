@@ -22,7 +22,6 @@ describe('useCliModels', () => {
   });
 
   afterEach(() => {
-    delete window.setCliModels;
     __resetCliModelsCacheForTests();
     vi.useRealTimers();
   });
@@ -131,6 +130,115 @@ describe('useCliModels', () => {
     expect(second.result.current.cliCatalogHasEntries).toBe(true);
     expect(second.result.current.cliDefaultModel).toBe('openai/gpt-5');
     expect(second.result.current.cliModelsLoading).toBe(false);
+  });
+
+  it('silently triggers get_cli_models in background on initial plugin open even if cache exists', () => {
+    // 1. Initial mount fetches and populates cache
+    const first = renderHook(() => useCliModels('opencode'));
+    expect(sendBridgeEventMock).toHaveBeenCalledTimes(1);
+    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
+
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      defaultModel: 'openai/gpt-5',
+      models: [{ id: 'openai/gpt-5', label: 'gpt-5' }],
+    });
+    first.unmount();
+
+    // 2. Second mount in same session: reuses cache without extra bridge call
+    sendBridgeEventMock.mockClear();
+    const second = renderHook(() => useCliModels('opencode'));
+    expect(sendBridgeEventMock).not.toHaveBeenCalled();
+    expect(second.result.current.cliModelsLoading).toBe(false);
+    expect(second.result.current.cliModels.map((m) => m.id)).toEqual(['openai/gpt-5']);
+  });
+
+  it('hydrates immediately from window.__pendingCliModels if present on mount', () => {
+    window.__pendingCliModels = JSON.stringify({
+      success: true,
+      provider: 'opencode',
+      models: [{ id: 'opencode/nemotron-3-ultra-free', label: 'Nemotron' }],
+    });
+
+    const { result } = renderHook(() => useCliModels('opencode'));
+    expect(window.__pendingCliModels).toBeUndefined();
+    expect(result.current.cliModels).toEqual([
+      { id: 'opencode/nemotron-3-ultra-free', label: 'Nemotron' },
+    ]);
+    expect(result.current.cliCatalogHasEntries).toBe(true);
+    expect(result.current.cliModelsLoading).toBe(false);
+  });
+
+  it('refreshCliModels forces a new fetch and synchronizes loading state across multiple hook instances', () => {
+    // 1. Initial mount and hydration
+    const hook1 = renderHook(() => useCliModels('opencode'));
+    const hook2 = renderHook(() => useCliModels('opencode'));
+
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [{ id: 'opencode/big-pickle', label: 'Big Pickle' }],
+    });
+
+    expect(hook1.result.current.cliModelsLoading).toBe(false);
+    expect(hook2.result.current.cliModelsLoading).toBe(false);
+
+    sendBridgeEventMock.mockClear();
+
+    // 2. Trigger refresh from hook1
+    act(() => {
+      hook1.result.current.refreshCliModels('opencode');
+    });
+
+    // Both hooks must immediately see loading = true
+    expect(sendBridgeEventMock).toHaveBeenCalledWith('get_cli_models', 'opencode');
+    expect(hook1.result.current.cliModelsLoading).toBe(true);
+    expect(hook2.result.current.cliModelsLoading).toBe(true);
+
+    // 3. Emit updated models
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'opencode/big-pickle', label: 'Big Pickle' },
+        { id: 'opencode/nemotron-3', label: 'Nemotron 3' },
+      ],
+    });
+
+    // Both hooks must synchronously see updated models and loading = false
+    expect(hook1.result.current.cliModelsLoading).toBe(false);
+    expect(hook2.result.current.cliModelsLoading).toBe(false);
+    expect(hook1.result.current.cliModels).toHaveLength(2);
+    expect(hook2.result.current.cliModels).toHaveLength(2);
+  });
+
+  it('handles backend error payload and updates error status while clearing loading', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+    expect(result.current.cliModelsLoading).toBe(true);
+
+    emitCliModels({
+      success: false,
+      provider: 'opencode',
+      error: 'Daemon failed to start serve',
+      models: [],
+    });
+
+    expect(result.current.cliModelsLoading).toBe(false);
+    expect(result.current.cliModelsError).toBe('Daemon failed to start serve');
+    expect(result.current.cliModels).toEqual(OPENCODE_MODELS); // Falls back to default models
+  });
+
+  it('gracefully ignores malformed JSON or payloads without provider', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+
+    act(() => {
+      window.setCliModels?.('invalid json {');
+      window.setCliModels?.(JSON.stringify({ models: [] })); // missing provider
+    });
+
+    // State remains unaffected
+    expect(result.current.cliModelsLoading).toBe(true);
   });
 });
 

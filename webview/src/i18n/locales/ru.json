@@ -10,10 +10,12 @@
     "add": "Добавить",
     "back": "Назад",
     "close": "Закрыть",
-    "newSession": "Новый чат",
+    "newSession": "Новый сеанс",
+    "newTab": "Новая вкладка",
     "dontAskAgain": "Больше не спрашивать",
     "history": "История",
     "settings": "Настройки",
+    "more": "Еще",
     "thinking": "Размышляю",
     "thinkingProcess": "Процесс размышления",
     "success": "Успешно",
@@ -173,7 +175,7 @@
     "title": "Настройки",
     "basic": {
       "title": "Основные настройки",
-      "description": "Тема, язык и окружение",
+      "description": "Тема, язык и окружение Node.js",
       "tabs": {
         "appearance": "Внешний вид",
         "behavior": "Поведение",
@@ -201,6 +203,14 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Путь к Node.js",
+        "placeholder": "например, C:\\Program Files\\nodejs\\node.exe или /usr/local/bin/node",
+        "hint": "Выполните в терминале",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "чтобы узнать путь к исполняемому файлу Node.js. Оставьте пустым для автоопределения.",
+        "versionTooLow": "Версия Node.js слишком старая. Плагин требует v{{minVersion}} или выше"
       },
       "workingDirectory": {
         "label": "Рабочая директория",
@@ -371,7 +381,7 @@
         "hint": "При отключении нажатие на статистику токенов или выполнение /compact будет сразу сжимать диалог без подтверждения."
       },
       "opencodeCliPath": {
-        "label": "Путь к TUI Opencode",
+        "label": "Путь к OpenCode",
         "placeholder": "напр. /usr/local/bin/opencode — оставьте пустым для автовыбора",
         "hint": "Необязательный пользовательский бинарный файл opencode для запуска сервиса opencode. Оставьте пустым для поиска в PATH и стандартных местах установки (~/.opencode/bin). Вступает в силу после перезапуска демона при сохранении."
       }
@@ -490,7 +500,7 @@
     "communityQrAlt": "QR-код для поддержки",
     "communityQrAltAlipay": "QR-код для поддержки Alipay",
     "communityQrAltPayPal": "QR-код для поддержки PayPal",
-    "projectDesc": "Этот проект — расширение VS Code OpenCode Buddy (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "Этот проект — плагин IntelliJ IDEA OpenCode Buddy (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "Репозиторий GitHub",
     "githubDesc": "Этот проект с открытым исходным кодом на GitHub. Поставьте звезду в поддержку!",
     "githubCopyBtn": "Скопировать URL репозитория",
@@ -640,6 +650,7 @@
       "title": "Промпты",
       "create": "Создать",
       "createAgent": "Создать промпта",
+      "createAgentHint": "Нажмите для перехода на страницу настройки промптов",
       "customAgents": "Пользовательские промпты",
       "noAgents": "Нет пользовательских промптов",
       "noAgentsDropdown": "Нет промптов",
@@ -1383,6 +1394,8 @@
   "models": {
     "addModel": "Добавить модель",
     "searchPlaceholder": "Поиск моделей",
+    "refresh": "Обновить список моделей",
+    "refreshing": "Обновление...",
     "noModelsFound": "Модели не найдены",
     "hiddenModelCount": "+ {{count}} дополнительных моделей. Введите текст для поиска.",
     "pinned": "Закреплённые",

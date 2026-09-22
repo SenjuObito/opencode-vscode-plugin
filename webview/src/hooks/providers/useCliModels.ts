@@ -1,22 +1,65 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
 import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
 
 type CliModelsByProvider = Record<string, ModelInfo[]>;
 
+interface CliModelsState {
+  modelsByProvider: CliModelsByProvider;
+  defaultModelByProvider: Record<string, string>;
+  catalogHasEntriesByProvider: Record<string, boolean>;
+  loadingProvider: string | null;
+  errorByProvider: Record<string, string>;
+}
+
 /** Java/Host may never answer get_cli_models — don't leave the spinner on forever. */
 const CLI_MODELS_TIMEOUT_MS = 15_000;
 
-const modelsCache: CliModelsByProvider = {};
-const defaultModelCache: Record<string, string> = {};
-const catalogHasEntriesCache: Record<string, boolean> = {};
+let state: CliModelsState = {
+  modelsByProvider: {},
+  defaultModelByProvider: {},
+  catalogHasEntriesByProvider: {},
+  loadingProvider: null,
+  errorByProvider: {},
+};
+
+const listeners = new Set<() => void>();
+let pendingLoadTimer: { provider: string; timer: ReturnType<typeof setTimeout> } | null = null;
+let hasPluginInitFetched = false;
+
+function notifyListeners() {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function clearPendingLoad() {
+  if (pendingLoadTimer) {
+    clearTimeout(pendingLoadTimer.timer);
+    pendingLoadTimer = null;
+  }
+}
 
 /** Test-only: clear module caches between cases. */
 export function __resetCliModelsCacheForTests() {
-  for (const key of Object.keys(modelsCache)) delete modelsCache[key];
-  for (const key of Object.keys(defaultModelCache)) delete defaultModelCache[key];
-  for (const key of Object.keys(catalogHasEntriesCache)) delete catalogHasEntriesCache[key];
+  state = {
+    modelsByProvider: {},
+    defaultModelByProvider: {},
+    catalogHasEntriesByProvider: {},
+    loadingProvider: null,
+    errorByProvider: {},
+  };
+  clearPendingLoad();
+  hasPluginInitFetched = false;
+  if (typeof window !== 'undefined') {
+    window.setCliModels = handleIncomingCliModels;
+  }
+  notifyListeners();
 }
 
 function fallbackModels(providerId: string): ModelInfo[] {
@@ -41,8 +84,6 @@ function normalizeModels(raw: unknown): ModelInfo[] {
     const variants = Array.isArray(row.variants)
       ? row.variants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
       : undefined;
-    // 上下文额度必须透传：daemon 目录是它唯一的来源，丢掉就只能退回 host 硬编码表。
-    // 额度是正整数，非整数一律当脏数据丢掉，不做四舍五入。
     const rawContextWindow = Number(row.contextWindow);
     const contextWindow = Number.isInteger(rawContextWindow) && rawContextWindow > 0
       ? rawContextWindow
@@ -58,139 +99,162 @@ function normalizeModels(raw: unknown): ModelInfo[] {
   return out;
 }
 
+export function handleIncomingCliModels(
+  dataOrStr: string | { provider?: string; models?: unknown; success?: boolean; error?: string; defaultModel?: unknown }
+) {
+  let payload: { provider?: string; models?: unknown; success?: boolean; error?: string; defaultModel?: unknown } | null = null;
+  if (typeof dataOrStr === 'string') {
+    try {
+      payload = JSON.parse(dataOrStr);
+    } catch {
+      return;
+    }
+  } else if (dataOrStr && typeof dataOrStr === 'object') {
+    payload = dataOrStr;
+  }
+  if (!payload?.provider) return;
+  const provider = payload.provider;
+  const models = normalizeModels(payload.models);
+  const resolvedModels = models.length > 0 ? models : fallbackModels(provider);
+
+  const defaultModel = typeof payload.defaultModel === 'string' && payload.defaultModel.trim()
+    ? payload.defaultModel.trim()
+    : null;
+  const nextDefaults = { ...state.defaultModelByProvider };
+  if (defaultModel) {
+    nextDefaults[provider] = defaultModel;
+  } else {
+    delete nextDefaults[provider];
+  }
+
+  const nextErrors = { ...state.errorByProvider };
+  if (payload.success === false) {
+    const message = typeof payload.error === 'string' && payload.error.trim()
+      ? payload.error.trim()
+      : 'unknown error';
+    nextErrors[provider] = message;
+  } else {
+    delete nextErrors[provider];
+  }
+
+  if (pendingLoadTimer?.provider === provider) {
+    clearPendingLoad();
+  }
+
+  state = {
+    ...state,
+    modelsByProvider: {
+      ...state.modelsByProvider,
+      [provider]: resolvedModels,
+    },
+    catalogHasEntriesByProvider: {
+      ...state.catalogHasEntriesByProvider,
+      [provider]: models.length > 0,
+    },
+    defaultModelByProvider: nextDefaults,
+    errorByProvider: nextErrors,
+    loadingProvider: state.loadingProvider === provider ? null : state.loadingProvider,
+  };
+
+  notifyListeners();
+}
+
+function beginLoad(providerId: string) {
+  clearPendingLoad();
+  const nextErrors = { ...state.errorByProvider };
+  delete nextErrors[providerId];
+
+  state = {
+    ...state,
+    loadingProvider: providerId,
+    errorByProvider: nextErrors,
+  };
+  notifyListeners();
+
+  sendBridgeEvent('get_cli_models', providerId);
+
+  pendingLoadTimer = {
+    provider: providerId,
+    timer: setTimeout(() => {
+      pendingLoadTimer = null;
+      state = {
+        ...state,
+        loadingProvider: state.loadingProvider === providerId ? null : state.loadingProvider,
+        errorByProvider: {
+          ...state.errorByProvider,
+          [providerId]: 'timeout',
+        },
+      };
+      notifyListeners();
+    }, CLI_MODELS_TIMEOUT_MS),
+  };
+}
+
+// Global window registration
+if (typeof window !== 'undefined') {
+  window.setCliModels = handleIncomingCliModels;
+  if (window.__pendingCliModels) {
+    const pending = window.__pendingCliModels;
+    delete window.__pendingCliModels;
+    handleIncomingCliModels(pending as any);
+  }
+}
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+const getSnapshot = () => state;
+
 /**
  * Loads model catalogs for OpenCode via channel-manager listModels.
  */
 export function useCliModels(currentProvider: string = 'opencode') {
-  const [modelsByProvider, setModelsByProvider] = useState<CliModelsByProvider>(() => ({ ...modelsCache }));
-  const [defaultModelByProvider, setDefaultModelByProvider] = useState<Record<string, string>>(
-    () => ({ ...defaultModelCache }),
-  );
-  const [catalogHasEntriesByProvider, setCatalogHasEntriesByProvider] = useState<Record<string, boolean>>(
-    () => ({ ...catalogHasEntriesCache }),
-  );
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [errorByProvider, setErrorByProvider] = useState<Record<string, string>>({});
-  const pendingLoadRef = useRef<{ provider: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  if (typeof window !== 'undefined' && window.__pendingCliModels) {
+    const pending = window.__pendingCliModels;
+    delete window.__pendingCliModels;
+    handleIncomingCliModels(pending as any);
+  }
 
-  const clearPendingLoad = useCallback(() => {
-    if (pendingLoadRef.current) {
-      clearTimeout(pendingLoadRef.current.timer);
-      pendingLoadRef.current = null;
+  const currentSnapshot = useSyncExternalStore(subscribe, getSnapshot);
+
+  useEffect(() => {
+    if (!hasPluginInitFetched) {
+      hasPluginInitFetched = true;
+      if (!currentSnapshot.modelsByProvider[currentProvider]?.length) {
+        beginLoad(currentProvider);
+      } else {
+        sendBridgeEvent('get_cli_models', currentProvider);
+      }
+      return;
     }
-  }, []);
 
-  const beginLoad = useCallback((providerId: string) => {
-    clearPendingLoad();
-    setLoadingProvider(providerId);
-    setErrorByProvider((prev) => {
-      if (!(providerId in prev)) return prev;
-      const next = { ...prev };
-      delete next[providerId];
-      return next;
-    });
-    sendBridgeEvent('get_cli_models', providerId);
-    pendingLoadRef.current = {
-      provider: providerId,
-      timer: setTimeout(() => {
-        pendingLoadRef.current = null;
-        setLoadingProvider((current) => (current === providerId ? null : current));
-        setErrorByProvider((prev) => ({ ...prev, [providerId]: 'timeout' }));
-      }, CLI_MODELS_TIMEOUT_MS),
-    };
-  }, [clearPendingLoad]);
-
-  useEffect(() => {
-    const handler = (dataOrStr: string | { provider?: string; models?: unknown; success?: boolean; error?: string; defaultModel?: unknown }) => {
-      let payload: { provider?: string; models?: unknown; success?: boolean; error?: string; defaultModel?: unknown } | null = null;
-      if (typeof dataOrStr === 'string') {
-        try {
-          payload = JSON.parse(dataOrStr);
-        } catch {
-          return;
-        }
-      } else if (dataOrStr && typeof dataOrStr === 'object') {
-        payload = dataOrStr;
-      }
-      if (!payload?.provider) return;
-      const provider = payload.provider;
-      const models = normalizeModels(payload.models);
-      const resolvedModels = models.length > 0 ? models : fallbackModels(provider);
-      modelsCache[provider] = resolvedModels;
-      catalogHasEntriesCache[provider] = models.length > 0;
-      setModelsByProvider((prev) => ({
-        ...prev,
-        [provider]: resolvedModels,
-      }));
-      setCatalogHasEntriesByProvider((prev) => ({ ...prev, [provider]: models.length > 0 }));
-      const defaultModel = typeof payload.defaultModel === 'string' && payload.defaultModel.trim()
-        ? payload.defaultModel.trim()
-        : null;
-      if (defaultModel) {
-        defaultModelCache[provider] = defaultModel;
-      } else {
-        delete defaultModelCache[provider];
-      }
-      setDefaultModelByProvider((prev) => {
-        const next = { ...prev };
-        if (defaultModel) {
-          next[provider] = defaultModel;
-        } else {
-          delete next[provider];
-        }
-        return next;
-      });
-      if (payload.success === false) {
-        const message = typeof payload.error === 'string' && payload.error.trim()
-          ? payload.error.trim()
-          : 'unknown error';
-        setErrorByProvider((prev) => ({ ...prev, [provider]: message }));
-      } else {
-        setErrorByProvider((prev) => {
-          if (!(provider in prev)) return prev;
-          const next = { ...prev };
-          delete next[provider];
-          return next;
-        });
-      }
-      if (pendingLoadRef.current?.provider === provider) {
-        clearPendingLoad();
-      }
-      setLoadingProvider((current) => (current === provider ? null : current));
-    };
-
-    window.setCliModels = handler;
-    return () => {
-      if (window.setCliModels === handler) {
-        delete window.setCliModels;
-      }
-      clearPendingLoad();
-    };
-  }, [clearPendingLoad]);
-
-  useEffect(() => {
-    if (modelsByProvider[currentProvider]?.length) return;
+    if (currentSnapshot.modelsByProvider[currentProvider]?.length) return;
     beginLoad(currentProvider);
-  }, [currentProvider, modelsByProvider, beginLoad]);
+  }, [currentProvider, currentSnapshot.modelsByProvider]);
 
   const refreshCliModels = useCallback((providerId: string) => {
     beginLoad(providerId);
-  }, [beginLoad]);
+  }, []);
 
-  const cliModels = modelsByProvider[currentProvider]?.length
-    ? modelsByProvider[currentProvider]
+  const cliModels = currentSnapshot.modelsByProvider[currentProvider]?.length
+    ? currentSnapshot.modelsByProvider[currentProvider]
     : fallbackModels(currentProvider);
 
   return {
     cliModels,
-    cliModelsLoading: loadingProvider === currentProvider,
-    cliModelsError: errorByProvider[currentProvider] ?? null,
-    cliDefaultModel: defaultModelByProvider[currentProvider] ?? null,
-    cliCatalogHasEntries: catalogHasEntriesByProvider[currentProvider] ?? false,
+    cliModelsLoading: currentSnapshot.loadingProvider === currentProvider,
+    cliModelsError: currentSnapshot.errorByProvider[currentProvider] ?? null,
+    cliDefaultModel: currentSnapshot.defaultModelByProvider[currentProvider] ?? null,
+    cliCatalogHasEntries: currentSnapshot.catalogHasEntriesByProvider[currentProvider] ?? false,
     refreshCliModels,
-    modelsByProvider,
+    modelsByProvider: currentSnapshot.modelsByProvider,
   };
 }
 
 export type UseCliModelsReturn = ReturnType<typeof useCliModels>;
+
 

@@ -11,9 +11,11 @@
     "back": "返回",
     "close": "關閉",
     "newSession": "新會話",
+    "newTab": "新增分頁",
     "dontAskAgain": "不再詢問",
     "history": "歷史記錄",
     "settings": "設定",
+    "more": "更多",
     "thinking": "思考",
     "thinkingProcess": "思考過程",
     "success": "成功",
@@ -173,7 +175,7 @@
     "title": "設定",
     "basic": {
       "title": "基礎配置",
-      "description": "配置頁面主題、語言和執行環境",
+      "description": "配置頁面主題、語言和 Node.js 執行環境",
       "tabs": {
         "appearance": "外觀",
         "behavior": "行為",
@@ -181,8 +183,8 @@
       },
       "theme": {
         "label": "介面主題",
-        "system": "跟隨 VS Code",
-        "systemDesc": "自動跟隨 VS Code 主題",
+        "system": "跟隨 IDE",
+        "systemDesc": "自動跟隨 IDE 主題",
         "light": "亮色",
         "lightDesc": "清爽明亮，適合白天使用",
         "dark": "暗色",
@@ -190,7 +192,7 @@
       },
       "language": {
         "label": "介面語言",
-        "followIde": "跟隨 VS Code",
+        "followIde": "跟隨 IDE",
         "simplifiedChinese": "简体中文",
         "traditionalChinese": "繁體中文",
         "english": "English",
@@ -201,6 +203,14 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Node.js 路徑",
+        "placeholder": "例如 C:\\Program Files\\nodejs\\node.exe 或 /usr/local/bin/node",
+        "hint": "在終端中執行",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "獲取實際的 Node.js 可執行檔案路徑。為空時外掛會自動嘗試檢測 Node.js。",
+        "versionTooLow": "Node.js 版本過低，外掛需要 v{{minVersion}} 或更高版本才能正常運行"
       },
       "workingDirectory": {
         "label": "Working Directory",
@@ -219,23 +229,21 @@
       "editorFont": {
         "label": "UI 字體",
         "hint": "這裡修改的是外掛介面字體。程式碼可以使用獨立的程式碼字體。",
-        "followOption": "跟隨 VS Code UI 字體（{{font}}）",
-        "systemFontsGroup": "系統字體",
+        "followOption": "跟隨 IDEA UI 字體（{{font}}）",
         "customOption": "自訂 UI 字體檔案",
         "customPathLabel": "UI 字體檔案路徑",
         "customPathPlaceholder": "選擇或輸入 .ttf / .otf UI 字體檔案路徑",
         "browse": "瀏覽",
-        "warningUnavailable": "UI 字體不可用，目前已回退到 VS Code UI 字體",
-        "statusFollowEditor": "目前跟隨 VS Code UI 字體：{{font}}",
+        "warningUnavailable": "UI 字體不可用，目前已回退到 IDEA UI 字體",
+        "statusFollowEditor": "目前跟隨 IDEA UI 字體：{{font}}",
         "statusCustom": "目前使用自訂 UI 字體：{{font}}"
       },
       "codeFont": {
         "label": "程式碼字體",
         "hint": "Markdown 程式碼和命令區塊會使用這個字體。",
         "followOption": "跟隨編輯器字體（{{font}}）",
-        "systemFontsGroup": "系統字體",
         "customOption": "自訂程式碼字體檔案",
-        "customPathLabel": "程式碼字体檔案路徑",
+        "customPathLabel": "程式碼字體檔案路徑",
         "customPathPlaceholder": "選擇或輸入 .ttf / .otf 程式碼字體檔案路徑",
         "browse": "瀏覽",
         "warningUnavailable": "程式碼字體不可用，目前已回退到編輯器字體",
@@ -373,7 +381,7 @@
         "hint": "關閉後，點選 Token 統計或執行 /compact 時將直接壓縮，不再彈出確認視窗"
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI 路徑",
+        "label": "OpenCode 路徑",
         "placeholder": "例如 /usr/local/bin/opencode — 留空則自動查找",
         "hint": "可選的自訂 opencode 二進位路徑，用於啟動 opencode 服務。留空則按 PATH 與預設安裝位置（~/.opencode/bin）自動探測。儲存後重啟守護程序生效。"
       }
@@ -426,7 +434,7 @@
     },
     "agents": "Agents",
     "agentsDesc": "管理和配置AI代理",
-    "skills": "技能",
+    "skills": "Skills",
     "skillsDesc": "管理和配置技能模組",
     "other": {
       "title": "其他設定",
@@ -474,8 +482,8 @@
       }
     },
     "sidebar": {
-      "expand": "展開側邊欄",
-      "collapse": "收起側邊欄"
+      "expand": "Expand Sidebar",
+      "collapse": "Collapse Sidebar"
     },
     "community": "贊助支持",
     "communityDesc": "掃描二維碼贊助作者，支持項目持續維護",
@@ -485,7 +493,7 @@
     "communityQrAlt": "贊助二維碼",
     "communityQrAltAlipay": "支付寶贊助二維碼",
     "communityQrAltPayPal": "PayPal 贊助二維碼",
-    "projectDesc": "本專案是 OpenCode Buddy VS Code 插件 (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "本專案是 OpenCode Buddy IntelliJ IDEA 插件 (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub 開源地址",
     "githubDesc": "本專案已在 GitHub 開源，歡迎 Star 支持",
     "githubCopyBtn": "複製開源地址",
@@ -635,6 +643,7 @@
       "title": "提示詞",
       "create": "建立",
       "createAgent": "建立提示詞",
+      "createAgentHint": "點選跳轉到提示詞設定頁面進行建立",
       "customAgents": "自訂提示詞",
       "noAgents": "暫無自訂提示詞",
       "noAgentsDropdown": "暫無提示詞",
@@ -1226,41 +1235,41 @@
     "loadingSession": "正在載入對話，請稍候…"
   },
   "skills": {
-    "title": "技能",
+    "title": "Skills",
     "all": "全部",
     "global": "全局",
     "local": "本項目",
-    "filterEnabled": "篩選已啟用的 Skills",
-    "enabled": "啟用",
-    "filterDisabled": "篩選已停用的 Skills",
-    "disabled": "停用",
-    "searchPlaceholder": "搜尋 Skills...",
-    "whatIsSkills": "什麼是 Skills?",
-    "importSkill": "匯入 Skill",
-    "importGlobalSkill": "匯入全局 Skill",
-    "importLocalSkill": "匯入本專案 Skill",
+    "filterEnabled": "Filter enabled Skills",
+    "enabled": "Enabled",
+    "filterDisabled": "Filter disabled Skills",
+    "disabled": "Disabled",
+    "searchPlaceholder": "Search Skills...",
+    "whatIsSkills": "What are Skills?",
+    "importSkill": "Import Skill",
+    "importGlobalSkill": "Import Global Skill",
+    "importLocalSkill": "Import Local Skill",
     "importUserSkill": "匯入使用者 Skill",
     "importRepoSkill": "匯入儲存庫 Skill",
     "user": "使用者",
     "repo": "儲存庫",
     "description": "描述",
     "noDescription": "暫無描述",
-    "noSkills": "暫無 Skills",
+    "noSkills": "No Skills",
     "noMatchingSkills": "未找到匹配的技能",
-    "importHint": "點選 + 按鈕匯入 Skill 檔案或資料夾",
-    "deleteTitle": "刪除 Skill",
-    "deleteMessage": "確定要刪除{{scope}} Skill \"{{name}}\" 嗎？\n\n此操作無法復原。",
-    "deleteMessageGlobal": "全局",
-    "deleteMessageLocal": "本專案",
+    "importHint": "Click + button to import Skill file or folder",
+    "deleteTitle": "Delete Skill",
+    "deleteMessage": "Are you sure you want to delete {{scope}} Skill \"{{name}}\"?\n\nThis action cannot be undone.",
+    "deleteMessageGlobal": "global",
+    "deleteMessageLocal": "local",
     "deleteMessageUser": "使用者",
     "deleteMessageRepo": "儲存庫",
-    "importSuccess": "已成功匯入 {{count}} 個 Skills",
-    "importSuccessOne": "已成功匯入 1 個 Skill",
-    "importPartialSuccess": "成功匯入 {{count}}/{{total}} 個 Skills，部分失敗",
-    "importFailed": "匯入 Skill 失敗",
-    "deleteSuccess": "已成功刪除 Skill",
-    "toggleSuccess": "已更新 Skill 狀態",
-    "toggleFailed": "更新 Skill 狀態失敗",
+    "importSuccess": "Successfully imported {{count}} Skills",
+    "importSuccessOne": "Successfully imported 1 Skill",
+    "importPartialSuccess": "Successfully imported {{count}}/{{total}} Skills, some failed",
+    "importFailed": "Failed to import Skill",
+    "deleteSuccess": "Successfully deleted Skill",
+    "toggleSuccess": "Updated Skill status",
+    "toggleFailed": "Failed to update Skill status",
     "deleteFailed": "刪除 Skill 失敗",
     "enableSuccess": "已成功啟用 Skill: {{name}}",
     "disableSuccess": "已成功停用 Skill: {{name}}",
@@ -1324,12 +1333,12 @@
         "structure": {
           "title": "Skill 結構",
           "description": "Codex Skill 是一個包含 SKILL.md 檔案的資料夾：",
-          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # 必須：技能定義檔案\n    ├── templates/        # 可選：範本檔案\n    └── references/       # 可選：參考資料"
+          "example": ".agents/skills/\n└── my-skill/\n    ├── SKILL.md          # Required: skill definition file\n    ├── templates/        # Optional: template files\n    └── references/       # Optional: reference materials"
         },
         "format": {
           "title": "SKILL.md 格式",
           "description": "SKILL.md 檔案使用 YAML frontmatter + Markdown 格式：",
-          "example": "---\nname: my-skill-name\ndescription: 技能描述和使用時機\n---\n\n# 技能指令\n\n詳細的指令內容...",
+          "example": "---\nname: my-skill-name\ndescription: Skill description and when to use\n---\n\n# Skill Instructions\n\nDetailed instruction content...",
           "hint": "name 和 description 是必填欄位"
         },
         "configuration": {
@@ -1367,6 +1376,8 @@
   "models": {
     "addModel": "新增模型",
     "searchPlaceholder": "搜尋模型",
+    "refresh": "重新整理模型列表",
+    "refreshing": "正在重新整理...",
     "noModelsFound": "找不到模型",
     "hiddenModelCount": "+ 還有 {{count}} 個模型。輸入以搜尋。",
     "pinned": "置頂",

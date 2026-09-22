@@ -11,9 +11,11 @@
     "back": "戻る",
     "close": "閉じる",
     "newSession": "新規セッション",
+    "newTab": "新規タブ",
     "dontAskAgain": "次回から表示しない",
     "history": "履歴",
     "settings": "設定",
+    "more": "詳細",
     "thinking": "思考中",
     "thinkingProcess": "思考プロセス",
     "success": "成功",
@@ -173,7 +175,7 @@
     "title": "設定",
     "basic": {
       "title": "基本設定",
-      "description": "ページテーマ、言語、実行環境を設定",
+      "description": "ページテーマ、言語、Node.js環境を設定",
       "tabs": {
         "appearance": "外観",
         "behavior": "動作",
@@ -201,6 +203,14 @@
         "russian": "Русский",
         "korean": "한국어",
         "portuguese": "Português (Brasil)"
+      },
+      "nodePath": {
+        "label": "Node.jsパス",
+        "placeholder": "例: C:\\Program Files\\nodejs\\node.exe または /usr/local/bin/node",
+        "hint": "ターミナルで実行",
+        "hintCommand": "node -p \"process.execPath\"",
+        "hintText": "実際のNode.js実行可能ファイルのパスを取得します。空欄の場合は自動検出します。",
+        "versionTooLow": "Node.jsのバージョンが低すぎます。プラグインを正常に動作させるにはv{{minVersion}}以上が必要です"
       },
       "workingDirectory": {
         "label": "作業ディレクトリ",
@@ -371,7 +381,7 @@
         "hint": "無効にすると、Token統計をクリックまたは/compactを実行した際、確認ダイアログを表示せず直接圧縮します。"
       },
       "opencodeCliPath": {
-        "label": "Opencode TUI パス",
+        "label": "OpenCode パス",
         "placeholder": "例: /usr/local/bin/opencode — 空欄で自動検出",
         "hint": "opencode サービスの起動に使うカスタム opencode バイナリ（任意）。空欄の場合は PATH と既定のインストール先（~/.opencode/bin）を自動検索します。保存後にデーモンが再起動されて反映されます。"
       }
@@ -472,8 +482,8 @@
       }
     },
     "sidebar": {
-      "expand": "サイドバーを展開",
-      "collapse": "サイドバーを折りたたむ"
+      "expand": "Expand Sidebar",
+      "collapse": "Collapse Sidebar"
     },
     "community": "寄付支援",
     "communityDesc": "下のQRコードをスキャンして著者を支援し、プロジェクトの継続的なメンテナンスをサポートします",
@@ -483,7 +493,7 @@
     "communityQrAlt": "寄付QRコード",
     "communityQrAltAlipay": "Alipay 寄付QRコード",
     "communityQrAltPayPal": "PayPal 寄付QRコード",
-    "projectDesc": "このプロジェクトは OpenCode Buddy VS Code 拡張機能です (https://github.com/SenjuObito/opencode-vscode-plugin.git)",
+    "projectDesc": "このプロジェクトは OpenCode Buddy IntelliJ IDEA プラグインです (https://github.com/SenjuObito/opencode-idea-gui.git)",
     "githubTitle": "GitHub リポジトリ",
     "githubDesc": "このプロジェクトは GitHub でオープンソースです。Star で応援してください！",
     "githubCopyBtn": "リポジトリURLをコピー",
@@ -633,6 +643,7 @@
       "title": "プロンプト",
       "create": "作成",
       "createAgent": "プロンプトを作成",
+      "createAgentHint": "クリックしてプロンプト設定ページに移動して作成",
       "customAgents": "カスタムプロンプト",
       "noAgents": "カスタムプロンプトなし",
       "noAgentsDropdown": "プロンプトなし",
@@ -1362,6 +1373,8 @@
   "models": {
     "addModel": "モデル追加",
     "searchPlaceholder": "モデルを検索",
+    "refresh": "モデル一覧を更新",
+    "refreshing": "更新中...",
     "noModelsFound": "モデルが見つかりません",
     "hiddenModelCount": "+ {{count}} 件のモデルがあります。入力して検索してください。",
     "pinned": "ピン留め",

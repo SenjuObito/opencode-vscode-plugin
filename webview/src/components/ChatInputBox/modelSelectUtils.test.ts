@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ModelInfo } from './types';
 import {
+  __resetPinnedModelsStoreForTests,
+  applyPinnedModelsPayload,
   buildModelDropdownSections,
+  getFirstPreferredModelId,
   getModelProviderGroup,
   PINNED_GROUP_ID,
   PINNED_MODELS_STORAGE_KEY,
@@ -23,6 +26,7 @@ const models: ModelInfo[] = [
 describe('modelSelectUtils', () => {
   beforeEach(() => {
     localStorage.clear();
+    __resetPinnedModelsStoreForTests();
   });
 
   describe('getModelProviderGroup', () => {
@@ -82,6 +86,11 @@ describe('modelSelectUtils', () => {
       const raw = JSON.parse(localStorage.getItem(PINNED_MODELS_STORAGE_KEY) || '{}');
       expect(raw.opencode).toBeUndefined();
     });
+
+    it('applies pinned models from host config payload', () => {
+      applyPinnedModelsPayload(JSON.stringify({ opencode: ['opencode/custom-1'] }));
+      expect(readPinnedModelIds('opencode')).toEqual(['opencode/custom-1']);
+    });
   });
 
   describe('buildModelDropdownSections', () => {
@@ -132,6 +141,37 @@ describe('modelSelectUtils', () => {
       const { sections } = buildModelDropdownSections(models, ['opencode/big-pickle']);
       const allIds = sections.flatMap((s) => s.models.map((m) => m.id));
       expect(allIds.filter((id) => id === 'opencode/big-pickle')).toHaveLength(1);
+    });
+  });
+
+  describe('getFirstPreferredModelId', () => {
+    const sampleModels: ModelInfo[] = [
+      { id: 'opencode/m-first', label: 'First Model' },
+      { id: 'opencode/m-second', label: 'Second Model' },
+      { id: 'opencode/m-third', label: 'Third Model' },
+    ];
+
+    it('returns null when available models list is empty', () => {
+      expect(getFirstPreferredModelId('opencode', [])).toBeNull();
+    });
+
+    it('returns the first pinned model if it exists in available models', () => {
+      writePinnedModelIds('opencode', ['opencode/m-third', 'opencode/m-second']);
+      expect(getFirstPreferredModelId('opencode', sampleModels, 'opencode/m-first')).toBe('opencode/m-third');
+    });
+
+    it('skips non-existent pinned models and uses the next valid pinned model', () => {
+      writePinnedModelIds('opencode', ['opencode/m-nonexistent', 'opencode/m-second']);
+      expect(getFirstPreferredModelId('opencode', sampleModels, 'opencode/m-first')).toBe('opencode/m-second');
+    });
+
+    it('returns cliDefaultModel when no pinned models exist', () => {
+      expect(getFirstPreferredModelId('opencode', sampleModels, 'opencode/m-second')).toBe('opencode/m-second');
+    });
+
+    it('returns the first available model when no pinned models and no valid cliDefaultModel exist', () => {
+      expect(getFirstPreferredModelId('opencode', sampleModels, null)).toBe('opencode/m-first');
+      expect(getFirstPreferredModelId('opencode', sampleModels, 'opencode/m-unknown')).toBe('opencode/m-first');
     });
   });
 });

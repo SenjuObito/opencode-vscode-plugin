@@ -183,6 +183,9 @@
 }
 
 .selector-search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 8px;
 }
 
@@ -197,8 +200,8 @@
 
 .selector-search-input {
   box-sizing: border-box;
-  width: 100%;
-  min-width: 180px;
+  flex: 1;
+  min-width: 0;
   padding: 5px 8px;
   border: 1px solid var(--dropdown-border);
   border-radius: 4px;
@@ -211,6 +214,54 @@
 
 .selector-search-input:focus {
   border-color: var(--accent-color);
+}
+
+.selector-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  background: var(--button-bg, transparent);
+  border: 1px solid var(--dropdown-border, transparent);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.selector-refresh-btn:hover:not(:disabled) {
+  background: var(--button-hover);
+  color: var(--text-primary);
+  border-color: var(--accent-color);
+}
+
+.selector-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.selector-refresh-btn.is-success {
+  color: var(--vscode-testing-iconPassed, #49c068);
+}
+
+.selector-refresh-btn.is-error {
+  color: var(--vscode-testing-iconFailed, #f14c4c);
+}
+
+.selector-refresh-icon.spinning {
+  animation: selector-spin 1s linear infinite;
+}
+
+@keyframes selector-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Model dropdown: group headers + pin controls (OpenCode long catalogs) */

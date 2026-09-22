@@ -42,6 +42,8 @@ interface ModelSelectProps {
   error?: string | null;
   /** Retries the CLI model catalog fetch for the current provider. */
   onRetry?: () => void;
+  /** Refreshes the model catalog. */
+  onRefresh?: () => void;
   onAddModel?: () => void;
 }
 
@@ -55,6 +57,8 @@ const LOADING_OPTION_STYLE: React.CSSProperties = {
 /**
  * ModelSelect - Model selector component for OpenCode models
  */
+type RefreshFeedbackState = 'idle' | 'loading' | 'success' | 'error';
+
 export const ModelSelect = ({
   value,
   onChange,
@@ -63,12 +67,17 @@ export const ModelSelect = ({
   loading = false,
   error = null,
   onRetry,
+  onRefresh,
   onAddModel,
 }: ModelSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedModelIds(currentProvider));
+  const [refreshState, setRefreshState] = useState<RefreshFeedbackState>('idle');
+  const refreshStartTimeRef = useRef<number>(0);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevLoadingRef = useRef(loading);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -84,6 +93,40 @@ export const ModelSelect = ({
   useEffect(() => {
     setPinnedIds(readPinnedModelIds(currentProvider));
   }, [currentProvider]);
+
+  useEffect(() => {
+    if (prevLoadingRef.current && !loading) {
+      if (refreshState === 'loading') {
+        const elapsed = Date.now() - refreshStartTimeRef.current;
+        const minSpinMs = 600;
+        const remaining = Math.max(0, minSpinMs - elapsed);
+
+        const finishTimer = setTimeout(() => {
+          const nextState: RefreshFeedbackState = error ? 'error' : 'success';
+          setRefreshState(nextState);
+
+          const resetDelay = nextState === 'error' ? 1500 : 1200;
+          resetTimerRef.current = setTimeout(() => {
+            setRefreshState('idle');
+            resetTimerRef.current = null;
+          }, resetDelay);
+        }, remaining);
+
+        return () => {
+          clearTimeout(finishTimer);
+        };
+      }
+    }
+    prevLoadingRef.current = loading;
+  }, [loading, error, refreshState]);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) {
+        clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
 
   const isSelectedModel = (modelId: string): boolean => modelId === value;
 
@@ -183,6 +226,46 @@ export const ModelSelect = ({
     return sectionLabel;
   };
 
+  const handleRefreshClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (refreshState === 'loading' || loading) {
+      return;
+    }
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
+    setRefreshState('loading');
+    refreshStartTimeRef.current = Date.now();
+    if (onRefresh) {
+      onRefresh();
+    } else if (onRetry) {
+      onRetry();
+    }
+  }, [refreshState, loading, onRefresh, onRetry]);
+
+  const isRefreshing = loading || refreshState === 'loading';
+  const refreshButtonClass = [
+    'selector-refresh-btn',
+    isRefreshing ? 'is-loading' : '',
+    refreshState === 'success' ? 'is-success' : '',
+    refreshState === 'error' ? 'is-error' : '',
+  ].filter(Boolean).join(' ');
+
+  let refreshTooltip = t('models.refresh', { defaultValue: 'Refresh models' });
+  let refreshIconClass = 'codicon-refresh';
+
+  if (isRefreshing) {
+    refreshTooltip = t('models.refreshing', { defaultValue: 'Refreshing...' });
+    refreshIconClass = 'codicon-loading codicon-modifier-spin';
+  } else if (refreshState === 'success') {
+    refreshTooltip = t('models.refreshSuccess', { defaultValue: 'Refresh succeeded' });
+    refreshIconClass = 'codicon-check';
+  } else if (refreshState === 'error') {
+    refreshTooltip = t('models.refreshFailed', { defaultValue: 'Refresh failed' });
+    refreshIconClass = 'codicon-error';
+  }
+
   return (
     <div style={RELATIVE_INLINE_BLOCK_STYLE}>
       <button
@@ -213,7 +296,7 @@ export const ModelSelect = ({
               : `${DROPDOWN_MAX_HEIGHT_PX}px`,
           }}
         >
-          {showSearch && (
+          {(showSearch || onRefresh || onRetry) && (
             <div className="selector-search-row selector-search-row--sticky">
               <input
                 className="selector-search-input"
@@ -225,10 +308,23 @@ export const ModelSelect = ({
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               />
+              {(onRefresh || onRetry) && (
+                <button
+                  type="button"
+                  className={refreshButtonClass}
+                  data-testid="model-refresh-button"
+                  onClick={handleRefreshClick}
+                  title={refreshTooltip}
+                  disabled={isRefreshing}
+                  aria-label={refreshTooltip}
+                >
+                  <span className={`codicon ${refreshIconClass}`} />
+                </button>
+              )}
             </div>
           )}
           <div className="model-selector-list" style={DROPDOWN_LIST_STYLE}>
-            {loading && (
+            {loading && models.length === 0 && (
               <div
                 className="selector-option selector-option-status"
                 data-testid="model-loading"
@@ -318,16 +414,16 @@ export const ModelSelect = ({
               </div>
             )}
             {onAddModel && (
-              <>
-                <div className="selector-divider" />
-                <div
-                  className="selector-option selector-option-add"
-                  onClick={() => { onAddModel(); setIsOpen(false); setSearchQuery(''); }}
-                >
-                  <span className="codicon codicon-add selector-add-icon" />
-                  <span>{t('models.addModel')}</span>
-                </div>
-              </>
+              <div className="selector-divider" />
+            )}
+            {onAddModel && (
+              <div
+                className="selector-option selector-option-add"
+                onClick={() => { onAddModel(); setIsOpen(false); setSearchQuery(''); }}
+              >
+                <span className="codicon codicon-add selector-add-icon" />
+                <span>{t('models.addModel')}</span>
+              </div>
             )}
           </div>
         </div>

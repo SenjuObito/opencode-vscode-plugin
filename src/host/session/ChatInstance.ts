@@ -107,6 +107,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		context.setEditorContextClearer(() => tracker.clear());
 		context.setEditorContextPusher(() => tracker.updateNow());
 	}
+	context.setFontConfigPusher(() => fontConfigHandler.pushInitialConfig());
 
 	const notificationService = new NotificationService(context);
 	const session = new OpenCodeSession({
