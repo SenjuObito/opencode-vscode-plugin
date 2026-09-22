@@ -89,31 +89,44 @@ export class McpServerHandler extends BaseMessageHandler {
 	}
 
 	/**
-	 * 配置文件是持久化状态的权威来源；只有在读取配置文件失败时才回退到
-	 * daemon（后者只反映当前进程里已加载的 server）。
+	 * 配置文件是持久化状态的权威来源；支持工作区配置合并。
+	 * 若配置文件中为 0 个服务器，则自动查询常驻 daemon 作为运行时 fallback 兜底。
 	 */
 	private handleGetServers(): void {
+		const workspaceRoot = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		let servers: McpServerEntry[] = [];
 		try {
-			const servers = this.configService.listServers();
-			logDiagnostic(`[MCP] get_mcp_servers from config count=${servers.length}`);
+			servers = this.configService.listServers(workspaceRoot);
+			logDiagnostic(`[MCP] get_mcp_servers from config count=${servers.length} (workspace: ${workspaceRoot ?? 'none'})`);
 			this.callJavaScript('updateMcpServers', JSON.stringify(servers));
-			return;
 		} catch (err) {
 			logDiagnostic(`[MCP] config read failed, falling back to daemon: ${String(err)}`);
 		}
-		this.requestMcp(
-			'opencode.listMcpServers',
-			(payload) => {
-				const servers = payload && Array.isArray(payload.servers) ? payload.servers : [];
-				this.callJavaScript('updateMcpServers', JSON.stringify(servers));
-			},
-			() => this.callJavaScript('updateMcpServers', JSON.stringify([])),
-		);
+
+		// 若配置文件中未找到任何 server，尝试从常驻运行中的 daemon 获取运行时列表进行 fallback 兜底
+		if (servers.length === 0) {
+			this.requestMcp(
+				'opencode.listMcpServers',
+				workspaceRoot ? { directory: workspaceRoot } : {},
+				(payload) => {
+					const daemonServers = payload && Array.isArray(payload.servers) ? payload.servers : [];
+					if (daemonServers.length > 0) {
+						logDiagnostic(`[MCP] get_mcp_servers loaded ${daemonServers.length} servers from daemon fallback`);
+						this.callJavaScript('updateMcpServers', JSON.stringify(daemonServers));
+					}
+				},
+				() => {
+					// fallback 失败无需再次调用，已在上面推过 []
+				},
+			);
+		}
 	}
 
 	private handleGetStatus(): void {
+		const workspaceRoot = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
 		this.requestMcp(
 			'opencode.getMcpStatus',
+			workspaceRoot ? { directory: workspaceRoot } : {},
 			(payload) => {
 				const raw = payload && Array.isArray(payload.statuses) ? payload.statuses : [];
 				const statuses: McpStatusItem[] = raw.map((s) => {
@@ -247,7 +260,8 @@ export class McpServerHandler extends BaseMessageHandler {
 	/** 写操作后回推最新列表，让设置页立刻反映结果。 */
 	private pushServerList(): void {
 		try {
-			this.callJavaScript('updateMcpServers', JSON.stringify(this.configService.listServers()));
+			const workspaceRoot = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+			this.callJavaScript('updateMcpServers', JSON.stringify(this.configService.listServers(workspaceRoot)));
 		} catch (err) {
 			logDiagnostic(`[MCP] push server list failed: ${String(err)}`);
 		}
@@ -255,6 +269,7 @@ export class McpServerHandler extends BaseMessageHandler {
 
 	private requestMcp(
 		method: string,
+		params: Record<string, unknown>,
 		onPayload: (payload: Record<string, unknown> | null) => void,
 		onFail: () => void,
 	): void {
@@ -264,7 +279,7 @@ export class McpServerHandler extends BaseMessageHandler {
 			return;
 		}
 		const chunks: string[] = [];
-		void daemon.request(method, {}, {
+		void daemon.request(method, params, {
 			onLine: (line) => chunks.push(line),
 			onError: () => onFail(),
 			onComplete: (success) => {

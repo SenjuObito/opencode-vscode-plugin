@@ -79,9 +79,26 @@ export class McpConfigService {
 		return join(base, 'opencode', 'opencode.json');
 	}
 
-	/** 读取整个配置；文件缺失或格式异常时返回空对象（不抛错）。 */
-	readConfig(): OpencodeConfigFile {
-		const path = McpConfigService.resolveConfigPath();
+	/** 解析工作区/项目级 opencode.json 配置路径。 */
+	static resolveProjectConfigPath(projectPath?: string | null): string | null {
+		if (!projectPath || projectPath.trim() === '') {
+			return null;
+		}
+		const candidates = [
+			join(projectPath, 'opencode.json'),
+			join(projectPath, '.opencode', 'opencode.json'),
+			join(projectPath, '.opencode.json'),
+		];
+		for (const candidate of candidates) {
+			if (existsSync(candidate)) {
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	/** 读取指定路径的配置；文件缺失或格式异常时返回空对象（不抛错）。 */
+	readConfigFromPath(path: string): OpencodeConfigFile {
 		if (!existsSync(path)) {
 			return {};
 		}
@@ -96,6 +113,11 @@ export class McpConfigService {
 		return {};
 	}
 
+	/** 读取全局配置；文件缺失或格式异常时返回空对象（不抛错）。 */
+	readConfig(): OpencodeConfigFile {
+		return this.readConfigFromPath(McpConfigService.resolveConfigPath());
+	}
+
 	/** 原子写：先写临时文件再 rename，并在写前滚动备份一份。 */
 	writeConfig(config: OpencodeConfigFile): void {
 		const path = McpConfigService.resolveConfigPath();
@@ -108,22 +130,41 @@ export class McpConfigService {
 		renameSync(temp, path);
 	}
 
-	/** 返回配置里的全部 MCP 服务器（含仅 `{ enabled }` 的覆盖项）。 */
-	listServers(): McpServerEntry[] {
-		const config = this.readConfig();
-		const mcp = config.mcp;
-		if (!mcp || typeof mcp !== 'object') {
-			return [];
+	/**
+	 * 返回配置里的全部 MCP 服务器（含全局与工作区配置合并）。
+	 * 工作区同名条目覆盖全局配置。
+	 */
+	listServers(workspaceRoot?: string | null): McpServerEntry[] {
+		const serverMap = new Map<string, McpServerEntry>();
+
+		const loadFromConfig = (config: OpencodeConfigFile) => {
+			const mcp = config.mcp;
+			if (!mcp || typeof mcp !== 'object') {
+				return;
+			}
+			for (const id of Object.keys(mcp)) {
+				const raw = mcp[id] ?? {};
+				serverMap.set(id, {
+					id,
+					name: id,
+					server: fromOpencodeSpec(raw),
+					enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
+				});
+			}
+		};
+
+		// 1. 读取全局配置 ~/.config/opencode/opencode.json
+		loadFromConfig(this.readConfig());
+
+		// 2. 读取项目级配置（若存在）
+		if (workspaceRoot) {
+			const projectConfigPath = McpConfigService.resolveProjectConfigPath(workspaceRoot);
+			if (projectConfigPath) {
+				loadFromConfig(this.readConfigFromPath(projectConfigPath));
+			}
 		}
-		return Object.keys(mcp).map((id) => {
-			const raw = mcp[id] ?? {};
-			return {
-				id,
-				name: id,
-				server: fromOpencodeSpec(raw),
-				enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
-			};
-		});
+
+		return Array.from(serverMap.values());
 	}
 
 	/** 新增或整体替换一个服务器（id 冲突时覆盖）。 */
