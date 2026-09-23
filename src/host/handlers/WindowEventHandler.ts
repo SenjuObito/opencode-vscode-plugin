@@ -9,6 +9,9 @@ import { logDiagnostic, logDiagnosticBlock } from '../util/DiagnosticLogger';
 import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { pushHistoryData, upsertSessionSummary } from '../session/SessionHistoryStore';
 import { pushUserLanguageConfig, pushUiPreferences, pushPinnedModels } from './SettingsHandler';
+import { updateModelContextWindows } from '../util/ModelContextWindowCatalog';
+import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
+
 
 const SUPPORTED_TYPES = [
 	'heartbeat',
@@ -255,7 +258,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 			}
 			try {
 				const obj = JSON.parse(line) as Record<string, unknown>;
-				if (obj && (obj.commands !== undefined || obj.success !== undefined)) {
+				if (obj && (obj.commands !== undefined || obj.models !== undefined || obj.success !== undefined)) {
 					return obj;
 				}
 			} catch {
@@ -723,6 +726,8 @@ export class WindowEventHandler extends BaseMessageHandler {
 		});
 	}
 
+	private sendDaemonStatusInFlight = false;
+
 	private async handleCheckDaemonStatus(): Promise<void> {
 		const daemon = this.context.getDaemon();
 		if (daemon && !daemon.isAlive() && !daemon.isStarting()) {
@@ -732,65 +737,129 @@ export class WindowEventHandler extends BaseMessageHandler {
 	}
 
 	/**
-	 * 向 webview 推送 daemon / serve 状态。
+	 * 向 webview 推送 daemon / serve / models 就绪状态。
 	 *
-	 * 关键点：状态栏（"正在检查 opencode serve 状态..."）必须等到 serve 真正
-	 * 就绪才消失，而不是 daemon 进程一拉起就消失——否则会出现「首次加载历史会话
-	 * 时 serve 尚在预热、listMessages 打到冷 serve 返回空消息」的竞态。
+	 * 关键点：状态栏（"正在检查 opencode serve 状态..."）必须等到：
+	 * 1. opencode serve 进程成功启动且连通；
+	 * 2. 模型列表成功从 opencode serve 获取并推送给 webview；
+	 * 两个阶段均完成之后，才发 { alive: true, serveReady: true } 让状态栏消失。
 	 *
-	 * 协议：updateDaemonStatus 事件携带 { alive, serveReady }：
-	 * - alive=false  → 立即置 daemonStatusLoaded=true，webview 切到「未运行」态可重试；
-	 * - alive=true   → 先发 {serveReady:false}（保持 loading 转圈），再异步等待
-	 *                  opencode serve 真正就绪后才发 {serveReady:true} 让状态栏消失。
+	 * 若任一阶段失败（如 CLI 缺失、serve 退出、模型列表为空/报错）：
+	 * 立即推送 { alive: false, serveReady: false } 切到「未运行」可重试态，展示失败与重试按钮。
 	 */
 	private async sendDaemonStatus(): Promise<void> {
-		const daemon = this.context.getDaemon();
-		if (!daemon) {
-			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+		if (this.sendDaemonStatusInFlight) {
 			return;
 		}
+		this.sendDaemonStatusInFlight = true;
 
-		// 若 daemon 正在启动中，先发 loading 态并等待启动 Promise 完成
-		if (daemon.isStarting()) {
+		try {
+			const daemon = this.context.getDaemon();
+			if (!daemon) {
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				return;
+			}
+
+			// 1. 先发 loading 态，让状态栏保持转圈显示「正在检查...」
 			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false }));
-			await daemon.start();
-		}
 
-		const alive = daemon.isAlive();
-		if (!alive) {
-			// serve 进程都没起来，进入「未运行」态。
-			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
-			return;
-		}
-
-		// 先发 loading 态，让状态栏继续显示「正在检查...」。
-		this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false }));
-
-		// 异步等待 serve 就绪。复用 opencode.preconnect（内部 _ensureReady 会
-		// 轮询健康检查直到 serve 真正可查，幂等、可重复调用）。
-		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		daemon.request(
-			'opencode.preconnect',
-			{ cwd: directory },
-			{
-				onLine: () => {},
-				onError: () => {
-					// serve 起不来（如二进制缺失）：落到「未运行」态，让用户可点重试，
-					// 而不是无限 loading 转圈。
+			// 若 daemon 正在启动中或尚未存活，等待启动完成
+			if (daemon.isStarting() || !daemon.isAlive()) {
+				const started = await daemon.start();
+				if (!started || !daemon.isAlive()) {
 					this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+					return;
+				}
+			}
+
+			// 2. 阶段一：异步等待 serve 就绪（opencode.preconnect）
+			const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+			const preconnectOk = await new Promise<boolean>((resolve) => {
+				daemon.request(
+					'opencode.preconnect',
+					{ cwd: directory },
+					{
+						onLine: () => {},
+						onError: () => resolve(false),
+						onComplete: (success: boolean) => resolve(success),
+					},
+				);
+			});
+
+			if (!preconnectOk) {
+				// serve 启动失败或异常退出：落到「未运行」可重试态
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				return;
+			}
+
+			// 3. 阶段二：获取模型列表并校验
+			const modelsOk = await this.fetchAndPushModels(daemon, 'opencode');
+			if (modelsOk) {
+				// serve 真正就绪 且 模型列表成功获取分发：发最终信号让状态栏消失
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: true }));
+			} else {
+				// 模型列表获取失败：落到「未运行」可重试态
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+			}
+		} finally {
+			this.sendDaemonStatusInFlight = false;
+		}
+	}
+
+	/** 获取模型列表并同步推送到 webview 与上下文窗口目录 */
+	private async fetchAndPushModels(daemon: OpenCodeDaemonBridge, provider: string): Promise<boolean> {
+		const chunks: string[] = [];
+		return new Promise<boolean>((resolve) => {
+			daemon.request('opencode.getModels', {}, {
+				onLine: (line) => chunks.push(line),
+				onError: (error) => {
+					this.pushModelError(provider, error);
+					resolve(false);
 				},
-				onComplete: (success: boolean) => {
-					if (success) {
-						// serve 真正就绪：发最终信号让状态栏消失。
-						this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: true }));
-					} else {
-						// serve 未能就绪：同样落到「未运行」可重试态。
-						this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				onComplete: (success) => {
+					if (!success) {
+						resolve(false);
+						return;
 					}
+					const payload = this.extractJsonObject(chunks.join('\n'));
+					if (!payload || payload.success === false) {
+						const err = (typeof payload?.error === 'string' && payload.error)
+							? payload.error
+							: 'No model list returned';
+						this.pushModelError(provider, err);
+						resolve(false);
+						return;
+					}
+					if (typeof payload.provider !== 'string' || payload.provider === '') {
+						payload.provider = provider;
+					}
+					try {
+						updateModelContextWindows(payload);
+						this.context.getSession()?.republishUsageFromHistory();
+					} catch (e) {
+						// ignore catalog update error
+					}
+					this.callJavaScript('setCliModels', JSON.stringify(payload));
+					const models = Array.isArray(payload.models) ? payload.models : [];
+					resolve(models.length > 0);
 				},
-			},
+			});
+		});
+	}
+
+	private pushModelError(provider: string, message: string): void {
+		this.callJavaScript(
+			'setCliModels',
+			JSON.stringify({
+				success: false,
+				provider: provider ?? 'opencode',
+				error: message ?? 'unknown error',
+				models: [],
+			}),
 		);
 	}
+
+
 
 	private sendLinkifyCapabilities(): void {
 		this.callJavaScript(

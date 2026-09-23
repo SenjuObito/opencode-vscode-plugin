@@ -318,6 +318,7 @@ export class OpenCodeDaemonBridge {
 	private daemonHeapWarned = false;
 	private lastErrorMessage = '';
 	private startPromise: Promise<boolean> | null = null;
+	private lastServeRunning: boolean | null = null;
 
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
@@ -770,6 +771,18 @@ export class OpenCodeDaemonBridge {
 		if (type === 'heartbeat') {
 			context.markHeartbeat(Date.now(), performance.now());
 			const serveRunning = obj.serveRunning as boolean | undefined;
+			if (serveRunning !== undefined) {
+				if (this.lastServeRunning !== null && this.lastServeRunning !== serveRunning) {
+					if (!serveRunning) {
+						this.log('[heartbeat:warn] opencode serve process crashed/exited — notifying webviews');
+						WebviewBroadcaster.broadcastRaw({
+							type: 'updateDaemonStatus',
+							args: [JSON.stringify({ alive: false, serveReady: false })],
+						});
+					}
+				}
+				this.lastServeRunning = serveRunning;
+			}
 			if (serveRunning === false && context.activeRequestCount > 0) {
 				this.log(`[heartbeat:warn] Daemon reported serveRunning=false with ${context.activeRequestCount} active requests in-flight`);
 			}
