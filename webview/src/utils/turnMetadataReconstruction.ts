@@ -43,10 +43,10 @@ function asRawObject(message: ClaudeMessage): ClaudeRawMessage | null {
   return message.raw && typeof message.raw === 'object' ? message.raw : null;
 }
 
-/** Parse the transcript timestamp off a message's raw JSONL line. */
+/** Parse the transcript timestamp off a message's raw JSONL line or top-level timestamp. */
 function getRawTimestamp(message: ClaudeMessage): number | null {
   const raw = asRawObject(message);
-  const ts = raw?.timestamp;
+  const ts = raw?.timestamp ?? message.timestamp;
   if (typeof ts === 'number' && Number.isFinite(ts)) return ts;
   if (typeof ts === 'string' && ts) {
     const parsed = Date.parse(ts);
@@ -166,17 +166,25 @@ export function reconstructTurnMetadata(
     const lastAssistant = messages[lastAssistantIndex];
     let updated = lastAssistant;
 
-    // Duration: last assistant raw timestamp minus prompt raw timestamp.
+    const raw = asRawObject(lastAssistant);
+
+    // Duration: prefer raw.durationMs if already computed, else diff timestamps.
     if (typeof lastAssistant.durationMs !== 'number') {
-      const promptTs = getRawTimestamp(messages[startIndex]);
-      const assistantTs = getRawTimestamp(lastAssistant);
-      if (promptTs != null && assistantTs != null && assistantTs >= promptTs) {
-        updated = { ...updated, durationMs: assistantTs - promptTs };
+      const rawDuration = typeof raw?.durationMs === 'number' && Number.isFinite(raw.durationMs) && raw.durationMs >= 0
+        ? raw.durationMs
+        : null;
+      if (rawDuration != null) {
+        updated = { ...updated, durationMs: rawDuration };
+      } else {
+        const promptTs = getRawTimestamp(messages[startIndex]);
+        const assistantTs = getRawTimestamp(lastAssistant);
+        if (promptTs != null && assistantTs != null && assistantTs >= promptTs) {
+          updated = { ...updated, durationMs: assistantTs - promptTs };
+        }
       }
     }
 
     // Token usage: only when the raw is an object without an existing turnUsage.
-    const raw = asRawObject(lastAssistant);
     if (raw && raw.turnUsage == null) {
       const turnUsage = sumTurnUsage(assistantMessages);
       if (turnUsage) {

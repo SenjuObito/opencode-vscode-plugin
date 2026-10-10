@@ -240,10 +240,6 @@ interface Window {
    */
   onSoundFileSelected?: (json: string) => void;
 
-  /**
-   * Node.js path configuration callback
-   */
-  updateNodePath?: (path: string) => void;
 
   /**
    * Opencode commands / prompts callbacks

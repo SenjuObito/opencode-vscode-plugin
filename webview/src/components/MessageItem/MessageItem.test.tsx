@@ -340,4 +340,59 @@ describe('MessageItem token usage display', () => {
     expect(screen.getByText('0:03')).toBeTruthy();
     expect(screen.queryByText(/输入/)).toBeNull();
   });
+
+  it('renders token usage when native opencode tokens is present without turnUsage', () => {
+    const message: ClaudeMessage = {
+      type: 'assistant',
+      content: 'Hello with opencode tokens',
+      durationMs: 3500,
+      raw: {
+        message: {
+          content: [{ type: 'text', text: 'Hello with opencode tokens' }],
+        },
+        tokens: {
+          input: 158,
+          output: 162,
+          reasoning: 175,
+          cache: {
+            read: 20480,
+            write: 0,
+          },
+        },
+      } as any,
+    };
+
+    renderMessageItem(message);
+
+    expect(screen.getByText('0:03')).toBeTruthy();
+    expect(screen.getByText(/输入 20\.6K/)).toBeTruthy();
+    expect(screen.getByText(/输出 162/)).toBeTruthy();
+  });
+
+  it('renders token usage and cost when durationMs is undefined (decoupled from duration)', () => {
+    const message: ClaudeMessage = {
+      type: 'assistant',
+      content: 'Hello without durationMs',
+      raw: {
+        message: {
+          content: [{ type: 'text', text: 'Hello without durationMs' }],
+        },
+        turnUsage: {
+          input_tokens: 1500,
+          output_tokens: 300,
+          cache_read_input_tokens: 2000,
+          cache_creation_input_tokens: 0,
+        },
+        turnCostUsd: 0.0052,
+      } as any,
+    };
+
+    renderMessageItem(message, { detailedOutputEnabled: true });
+
+    expect(screen.queryByText('本次耗时')).toBeNull();
+    expect(screen.getByText(/输入 3\.5K/)).toBeTruthy();
+    expect(screen.getByText(/输出 300/)).toBeTruthy();
+    expect(screen.getByText('$0.0052')).toBeTruthy();
+  });
 });
+

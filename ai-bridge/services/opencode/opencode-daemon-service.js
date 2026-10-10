@@ -183,12 +183,19 @@ function resolveAgentParam(params) {
 function tokensToUsage(tokens) {
   if (!tokens || typeof tokens !== 'object') return null;
   const cache = tokens.cache && typeof tokens.cache === 'object' ? tokens.cache : {};
+  const input = Number(tokens.input) || 0;
+  const output = Number(tokens.output) || 0;
+  const reasoning = Number(tokens.reasoning) || 0;
+  const cacheRead = Number(cache.read) || 0;
+  const cacheWrite = Number(cache.write) || 0;
+  const total = Number(tokens.total) || (input + output + reasoning + cacheRead + cacheWrite);
   return {
-    input_tokens: Number(tokens.input) || 0,
-    output_tokens: Number(tokens.output) || 0,
-    reasoning_tokens: Number(tokens.reasoning) || 0,
-    cache_read_input_tokens: Number(cache.read) || 0,
-    cache_creation_input_tokens: Number(cache.write) || 0,
+    input_tokens: input,
+    output_tokens: output,
+    reasoning_tokens: reasoning,
+    cache_read_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    total_tokens: total,
   };
 }
 
@@ -851,6 +858,7 @@ export async function sendMessagePersistent(params = {}) {
     ? turn.lastInfo
     : await _fetchFinalAssistantMessage(sessionId, directory);
   const usage = tokensToUsage(finalMessage?.tokens ?? turn.stepTokens);
+  if (usage && typeof finalMessage?.cost === 'number') usage.cost = finalMessage.cost;
   if (usage) emitUsage(usage);
   endStream({ sessionId, message: finalMessage || turn.lastInfo || { sessionID: sessionId } });
   console.log(JSON.stringify({ success: true, sessionId }));
@@ -939,6 +947,7 @@ export async function sendShellPersistent(params = {}) {
     ? turn.lastInfo
     : await _fetchFinalAssistantMessage(sessionId, directory);
   const usage = tokensToUsage(finalMessage?.tokens ?? turn.stepTokens);
+  if (usage && typeof finalMessage?.cost === 'number') usage.cost = finalMessage.cost;
   if (usage) emitUsage(usage);
   endStream({ sessionId, message: finalMessage || turn.lastInfo || { sessionID: sessionId } });
   console.log(JSON.stringify({ success: true, sessionId }));
@@ -1046,15 +1055,45 @@ export async function getContextUsagePersistent(params = {}) {
       try {
         // 用量估算的兜底：失败就退回缓存/默认值，不要中断状态推送。
         const messages = await sdk.listMessages(sessionId, directory, { tolerateError: true });
+        let foundModelId = safeParams.model || null;
+        let foundProviderId = null;
         if (Array.isArray(messages)) {
           for (let i = messages.length - 1; i >= 0; i -= 1) {
             const m = messages[i];
             const info = m && typeof m.info === 'object' ? m.info : m;
             if (info?.role === 'assistant' && info?.tokens) {
-              usedTokens = (Number(info.tokens.input) || 0) + (Number(info.tokens.output) || 0);
-              maxTokens = info.tokens.total ?? null;
+              const cache = info.tokens.cache && typeof info.tokens.cache === 'object' ? info.tokens.cache : {};
+              const inp = Number(info.tokens.input) || 0;
+              const out = Number(info.tokens.output) || 0;
+              const rzn = Number(info.tokens.reasoning) || 0;
+              const cr = Number(cache.read) || 0;
+              const cw = Number(cache.write) || 0;
+              usedTokens = Number(info.tokens.total) || (inp + out + rzn + cr + cw);
+              foundModelId = info.modelID || foundModelId;
+              foundProviderId = info.providerID || null;
               break;
             }
+          }
+        }
+        if (foundModelId) {
+          try {
+            const providers = await sdk.getProviders(directory);
+            if (Array.isArray(providers)) {
+              for (const p of providers) {
+                if (foundProviderId && p?.id !== foundProviderId) continue;
+                const bareModel = typeof foundModelId === 'string' ? foundModelId.split('/').pop() : '';
+                const mInfo = p?.models?.[foundModelId] || (bareModel ? p?.models?.[bareModel] : null);
+                if (mInfo?.limit?.context) {
+                  const limit = Number(mInfo.limit.context);
+                  if (Number.isFinite(limit) && limit > 0) {
+                    maxTokens = limit;
+                    break;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            logDebug('getContextUsage getProviders failed:', e?.message || e);
           }
         }
         _contextUsageCache.set(cacheKey, { usedTokens, maxTokens, at: Date.now() });

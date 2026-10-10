@@ -210,17 +210,20 @@ interface TokenUsageInfo {
  */
 function extractTokenUsage(raw: ClaudeMessage['raw']): TokenUsageInfo | null {
   if (!raw || typeof raw !== 'object') return null;
-  const usageSrc = (raw as Record<string, unknown>).turnUsage;
+  const r = raw as Record<string, unknown>;
+  const usageSrc = (r.turnUsage ?? r.tokens) as Record<string, unknown> | undefined;
   if (!usageSrc || typeof usageSrc !== 'object') return null;
-  const usage = usageSrc as Record<string, unknown>;
+
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
-  const nonCacheInput = num(usage.input_tokens);
-  const cacheCreation = num(usage.cache_creation_input_tokens);
-  const cacheRead = num(usage.cache_read_input_tokens);
-  const output = num(usage.output_tokens);
+  const cache = (usageSrc.cache && typeof usageSrc.cache === 'object' ? usageSrc.cache : {}) as Record<string, unknown>;
+  const nonCacheInput = num(usageSrc.input_tokens ?? usageSrc.input);
+  const cacheCreation = num(usageSrc.cache_creation_input_tokens ?? cache.write);
+  const cacheRead = num(usageSrc.cache_read_input_tokens ?? cache.read);
+  const output = num(usageSrc.output_tokens ?? usageSrc.output);
   const input = nonCacheInput + cacheCreation + cacheRead;
   if (input === 0 && output === 0) return null;
-  const rawCost = (raw as Record<string, unknown>).turnCostUsd;
+
+  const rawCost = r.turnCostUsd ?? usageSrc.cost;
   const costUsd = typeof rawCost === 'number' && Number.isFinite(rawCost) && rawCost > 0 ? rawCost : undefined;
   return {
     inputTokens: input,
@@ -906,25 +909,33 @@ export const MessageItem = memo(function MessageItem({
       )}
 
       {/* Duration and token display after last assistant message */}
-      {message.type === 'assistant' && !isMessageStreaming && typeof message.durationMs === 'number' && (
-        <div className="message-duration">
-          <span className="message-duration-inner">
-            <span className="message-duration-flag codicon codicon-clock"></span>
-            <span className="message-duration-cost">{t('chat.totalDuration')}</span>
-            <span className="message-duration-value">{formatDurationMs(message.durationMs)}</span>
-            {(() => {
-              const tokenInfo = extractTokenUsage(message.raw);
-              if (!tokenInfo) return null;
-              const cacheHitRatio = detailedOutputEnabled ? formatCacheHitRatio(tokenInfo) : null;
-              const cacheHitLabel = cacheHitRatio
-                ? t('chat.cacheHitsWithRatio', {
-                  tokens: formatTokenCount(tokenInfo.cacheReadTokens),
-                  ratio: cacheHitRatio,
-                })
-                : '';
-              return (
+      {message.type === 'assistant' && !isMessageStreaming && (() => {
+        const durationMs = typeof message.durationMs === 'number' ? message.durationMs : null;
+        const hasDuration = durationMs !== null;
+        const tokenInfo = extractTokenUsage(message.raw);
+        if (!hasDuration && !tokenInfo) return null;
+
+        const cacheHitRatio = detailedOutputEnabled && tokenInfo ? formatCacheHitRatio(tokenInfo) : null;
+        const cacheHitLabel = cacheHitRatio
+          ? t('chat.cacheHitsWithRatio', {
+            tokens: formatTokenCount(tokenInfo!.cacheReadTokens),
+            ratio: cacheHitRatio,
+          })
+          : '';
+
+        return (
+          <div className="message-duration">
+            <span className="message-duration-inner">
+              {durationMs !== null && (
                 <>
-                  <span className="message-duration-separator">·</span>
+                  <span className="message-duration-flag codicon codicon-clock"></span>
+                  <span className="message-duration-cost">{t('chat.totalDuration')}</span>
+                  <span className="message-duration-value">{formatDurationMs(durationMs)}</span>
+                </>
+              )}
+              {tokenInfo && (
+                <>
+                  {hasDuration && <span className="message-duration-separator">·</span>}
                   <span
                     className="message-duration-tokens"
                     title={t('chat.tokenUsageDetail', {
@@ -946,11 +957,11 @@ export const MessageItem = memo(function MessageItem({
                     </>
                   )}
                 </>
-              );
-            })()}
-          </span>
-        </div>
-      )}
+              )}
+            </span>
+          </div>
+        );
+      })()}
     </div>
   );
 });

@@ -23,7 +23,12 @@ function convertMessage(msg: ChatMessage): JsonObject {
 		content: truncateErrorContent(msg.content ?? ''),
 	};
 	if (msg.raw != null && isObject(msg.raw)) {
-		msgObj.raw = truncateRawForTransport(msg.raw);
+		const raw = truncateRawForTransport(msg.raw);
+		msgObj.raw = raw;
+		const rawDuration = (raw as Record<string, unknown>).durationMs;
+		if (typeof rawDuration === 'number') {
+			msgObj.durationMs = rawDuration;
+		}
 	}
 	return msgObj;
 }
@@ -148,9 +153,10 @@ function buildTransportRaw(raw: JsonObject): JsonObject {
 	copyFieldIfPresent(raw, transport, 'isCompactSummary');
 	copyFieldIfPresent(raw, transport, 'isVisibleInTranscriptOnly');
 	copyFieldIfPresent(raw, transport, 'summarizeMetadata');
-	copyFieldIfPresent(raw, transport, 'origin');
 	copyFieldIfPresent(raw, transport, 'turnUsage');
 	copyFieldIfPresent(raw, transport, 'turnCostUsd');
+	copyFieldIfPresent(raw, transport, 'tokens');
+	copyFieldIfPresent(raw, transport, 'durationMs');
 	copyToolUseResultIfPresent(raw, transport);
 
 	if (raw.content !== undefined) {

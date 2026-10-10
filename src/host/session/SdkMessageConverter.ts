@@ -33,9 +33,10 @@ export interface SdkPart {
 export interface SdkMessageInfo {
 	id?: string;
 	role?: string;
-	time?: { start?: number; end?: number };
+	time?: { start?: number; end?: number; created?: number; completed?: number };
 	model?: string;
 	tokens?: Record<string, unknown>;
+	cost?: number;
 	[key: string]: unknown;
 }
 
@@ -51,8 +52,13 @@ export function convertSdkMessage(entry: SdkMessageEntry): ChatMessage[] {
 	const role = typeof info.role === 'string' ? info.role : '';
 
 	// SDK time 是 epoch 毫秒；缺省用当前时间（恢复显示无强时序要求）。
-	const timestamp =
-		typeof info.time?.start === 'number' && info.time.start > 0 ? info.time.start : Date.now();
+	const created =
+		typeof info.time?.created === 'number' && info.time.created > 0
+			? info.time.created
+			: typeof info.time?.start === 'number' && info.time.start > 0
+				? info.time.start
+				: Date.now();
+	const timestamp = created;
 
 	if (role === 'user') {
 		return [buildUserMessage(parts, info, timestamp)];
@@ -301,8 +307,42 @@ function buildAssistantMessages(
 	if (typeof info.model === 'string') {
 		raw.model = info.model;
 	}
+	if (typeof info.modelID === 'string') {
+		raw.model = info.modelID;
+	}
+	const completed =
+		typeof info.time?.completed === 'number' && info.time.completed > 0
+			? info.time.completed
+			: typeof info.time?.end === 'number' && info.time.end > 0
+				? info.time.end
+				: null;
+	if (completed !== null && completed >= timestamp) {
+		raw.durationMs = completed - timestamp;
+	}
 	if (isObject(info.tokens)) {
 		raw.tokens = info.tokens;
+		const t = info.tokens as Record<string, unknown>;
+		const cache = isObject(t.cache) ? (t.cache as Record<string, unknown>) : {};
+		const inputTokens = Number(t.input) || 0;
+		const outputTokens = Number(t.output) || 0;
+		const reasoningTokens = Number(t.reasoning) || 0;
+		const cacheReadTokens = Number(cache.read) || 0;
+		const cacheCreationTokens = Number(cache.write) || 0;
+		const totalTokens =
+			Number(t.total) || (inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheCreationTokens);
+		const turnUsage: Record<string, unknown> = {
+			input_tokens: inputTokens,
+			output_tokens: outputTokens,
+			reasoning_tokens: reasoningTokens,
+			cache_read_input_tokens: cacheReadTokens,
+			cache_creation_input_tokens: cacheCreationTokens,
+			total_tokens: totalTokens,
+		};
+		raw.turnUsage = turnUsage;
+		(raw.message as Record<string, unknown>).usage = turnUsage;
+		if (typeof info.cost === 'number' && info.cost > 0) {
+			raw.turnCostUsd = info.cost;
+		}
 	}
 
 	const assistant = createMessage(MessageType.ASSISTANT, text, raw, timestamp);

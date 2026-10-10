@@ -804,6 +804,7 @@ export class MessageHandler implements MessageCallback {
 			this.callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
 			this.ensureCurrentAssistantMessageExists();
 			this.backfillUsageToAssistantMessage(usageJson);
+			this.attachTurnUsageToAssistantMessage(usageJson);
 		} catch {
 			// 解析失败忽略
 		}
@@ -929,6 +930,47 @@ export class MessageHandler implements MessageCallback {
 			return;
 		}
 		message.usage = usageJson;
+	}
+
+	/** 挂载规范化的 turnUsage 与 turnCostUsd 到当前 assistant 消息，供前端详细输出展示。 */
+	private attachTurnUsageToAssistantMessage(usageJson: JsonObject): void {
+		const current = this.currentAssistantMessage;
+		if (!current) {
+			return;
+		}
+		if (current.raw == null || !isObject(current.raw)) {
+			current.raw = {};
+		}
+		const raw = current.raw as JsonObject;
+		const input = typeof usageJson.input_tokens === 'number' ? usageJson.input_tokens : 0;
+		const output = typeof usageJson.output_tokens === 'number' ? usageJson.output_tokens : 0;
+		const reasoning = typeof usageJson.reasoning_tokens === 'number' ? usageJson.reasoning_tokens : 0;
+		const cacheRead = typeof usageJson.cache_read_input_tokens === 'number'
+			? usageJson.cache_read_input_tokens
+			: typeof usageJson.cache_read === 'number'
+				? usageJson.cache_read
+				: 0;
+		const cacheCreation = typeof usageJson.cache_creation_input_tokens === 'number'
+			? usageJson.cache_creation_input_tokens
+			: typeof usageJson.cache_creation === 'number'
+				? usageJson.cache_creation
+				: 0;
+
+		const turnUsage: JsonObject = {
+			input_tokens: input,
+			cache_creation_input_tokens: cacheCreation,
+			cache_read_input_tokens: cacheRead,
+			output_tokens: output + reasoning,
+			reasoning_tokens: reasoning,
+			total_tokens: input + cacheCreation + cacheRead + output + reasoning,
+		};
+		raw.turnUsage = turnUsage;
+
+		if (typeof usageJson.cost === 'number' && Number.isFinite(usageJson.cost) && usageJson.cost > 0) {
+			raw.turnCostUsd = usageJson.cost;
+		}
+
+		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 	}
 
 	private handleSessionTitle(content: string): void {
