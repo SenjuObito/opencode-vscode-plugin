@@ -66,6 +66,8 @@ interface BasicConfigSectionProps {
   // New-session confirm dialog (positive semantics: true = shown)
   newSessionConfirmEnabled?: boolean;
   onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
+  keepPreviousSessionRunningOnNew?: boolean;
+  onKeepPreviousSessionRunningOnNewChange?: (enabled: boolean) => void;
   // Compact confirm dialog (positive semantics: true = shown)
   compactConfirmEnabled?: boolean;
   onCompactConfirmEnabledChange?: (enabled: boolean) => void;
@@ -160,6 +162,8 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
           newSessionConfirmEnabled={props.newSessionConfirmEnabled}
           onNewSessionConfirmEnabledChange={props.onNewSessionConfirmEnabledChange}
+          keepPreviousSessionRunningOnNew={props.keepPreviousSessionRunningOnNew}
+          onKeepPreviousSessionRunningOnNewChange={props.onKeepPreviousSessionRunningOnNewChange}
           compactConfirmEnabled={props.compactConfirmEnabled}
           onCompactConfirmEnabledChange={props.onCompactConfirmEnabledChange}
           soundNotificationEnabled={props.soundNotificationEnabled}

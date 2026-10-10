@@ -363,7 +363,11 @@ export class OpenCodeSession {
 	 * 新建会话：重置状态并建立新会话（daemon 侧 SDK createSession 会在
 	 * [MESSAGE_START] 里回传新的 session_id）。
 	 */
-	resetSession(): void {
+	resetSession(options?: { keepRunning?: boolean }): void {
+		if (options?.keepRunning && this.activeRequestId && this.daemon) {
+			this.daemon.detachRequest(this.activeRequestId);
+			this.activeRequestId = null;
+		}
 		const seq = this.adapter.coalescer.resetStreamState();
 		this.context.callJavaScript('clearMessages', String(seq));
 		this.state.clearMessages();

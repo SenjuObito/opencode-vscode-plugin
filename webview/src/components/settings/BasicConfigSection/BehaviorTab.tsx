@@ -89,6 +89,8 @@ export interface BehaviorTabProps {
    */
   newSessionConfirmEnabled?: boolean;
   onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
+  keepPreviousSessionRunningOnNew?: boolean;
+  onKeepPreviousSessionRunningOnNewChange?: (enabled: boolean) => void;
   /**
    * Whether the "compact session" confirm dialog is enabled (i.e. shown).
    * Positive semantics: `true` = dialog shows, `false` = silently compact.
@@ -130,6 +132,8 @@ const BehaviorTab = ({
   onDiffExpandedByDefaultChange = () => {},
   newSessionConfirmEnabled = true,
   onNewSessionConfirmEnabledChange = () => {},
+  keepPreviousSessionRunningOnNew = false,
+  onKeepPreviousSessionRunningOnNewChange = () => {},
   compactConfirmEnabled = true,
   onCompactConfirmEnabledChange = () => {},
   soundNotificationEnabled = false,
@@ -291,6 +295,32 @@ const BehaviorTab = ({
         <small className={styles.formHint}>
           <span className="codicon codicon-info" />
           <span>{t('settings.basic.newSessionConfirm.hint')}</span>
+        </small>
+      </div>
+
+      {/* Keep previous session running on new session toggle */}
+      <div className={styles.streamingSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-history" />
+          <span className={styles.fieldLabel}>{t('settings.basic.keepPreviousSessionRunning.label')}</span>
+        </div>
+        <label className={styles.toggleWrapper}>
+          <input
+            type="checkbox"
+            className={styles.toggleInput}
+            checked={keepPreviousSessionRunningOnNew}
+            onChange={(e) => onKeepPreviousSessionRunningOnNewChange(e.target.checked)}
+          />
+          <span className={styles.toggleSlider} />
+          <span className={styles.toggleLabel}>
+            {keepPreviousSessionRunningOnNew
+              ? t('settings.basic.keepPreviousSessionRunning.enabled')
+              : t('settings.basic.keepPreviousSessionRunning.disabled')}
+          </span>
+        </label>
+        <small className={styles.formHint}>
+          <span className="codicon codicon-info" />
+          <span>{t('settings.basic.keepPreviousSessionRunning.hint')}</span>
         </small>
       </div>
 

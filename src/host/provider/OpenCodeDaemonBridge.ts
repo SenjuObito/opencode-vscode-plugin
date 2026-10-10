@@ -589,6 +589,41 @@ export class OpenCodeDaemonBridge {
 		}
 	}
 
+	/**
+	 * 将指定 request 与前端 Webview 通道脱钩（Detach）。
+	 * 后台 daemon 与 opencode serve 进程继续执行该 turn 并持久化入库，
+	 * 但静默消费后续 chunk 与 delta，不再向所属 Webview 转发流式更新。
+	 */
+	detachRequest(requestId: string): void {
+		const context = this.daemonContext;
+		if (!context) {
+			return;
+		}
+		const handler = context.pendingRequests.get(requestId);
+		if (!handler) {
+			return;
+		}
+		const originalCallback = handler.callback;
+		handler.callback = {
+			onLine: () => {
+				// 静默消费，切断向原 Webview 的推流
+			},
+			onStderr: (stderr) => {
+				originalCallback.onStderr?.(stderr);
+			},
+			onError: (error) => {
+				this.log(`[detached:${requestId}] error: ${error}`);
+			},
+			onComplete: (success) => {
+				this.log(`[detached:${requestId}] completed: ${success}`);
+			},
+			onAbort: () => {
+				this.log(`[detached:${requestId}] aborted`);
+			},
+		};
+		this.log(`Detached request ${requestId} (session: ${handler.sessionId ?? 'unknown'}) for background execution`);
+	}
+
 	isAlive(): boolean {
 		const context = this.daemonContext;
 		return (

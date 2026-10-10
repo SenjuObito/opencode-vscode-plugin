@@ -60,7 +60,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 				// 心跳由 daemon 生命周期管理；这里仅确认存活
 				return true;
 			case 'create_new_session':
-				this.handleCreateNewSession();
+				this.handleCreateNewSession(content);
 				return true;
 			case 'frontend_ready':
 				this.handleFrontendReady();
@@ -115,12 +115,23 @@ export class WindowEventHandler extends BaseMessageHandler {
 		}
 	}
 
-	private handleCreateNewSession(): void {
+	private handleCreateNewSession(content?: string): void {
 		const session = this.context.getSession();
 		if (!session) {
 			return;
 		}
-		session.resetSession();
+		let keepRunning = this.context.getSettingsService().getUiPreferences().keepPreviousSessionRunningOnNew;
+		if (content) {
+			try {
+				const parsed = JSON.parse(content) as Record<string, unknown>;
+				if (typeof parsed?.keepRunning === 'boolean') {
+					keepRunning = parsed.keepRunning;
+				}
+			} catch {
+				// content 可能不是 JSON
+			}
+		}
+		session.resetSession({ keepRunning });
 		this.callJavaScript('showLoading', 'false');
 	}
 

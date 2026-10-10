@@ -413,6 +413,12 @@
         "disabled": "已关闭",
         "hint": "关闭后，在已有消息的会话中点击新建将直接创建，不再弹出确认窗口"
       },
+      "keepPreviousSessionRunning": {
+        "label": "新建会话保持旧会话执行",
+        "enabled": "后台保持执行",
+        "disabled": "新建时中止旧会话",
+        "hint": "开启后，同窗口新建会话或执行 /new 等命令时，正在回答的旧会话将在后台继续执行不被中止"
+      },
       "compactConfirm": {
         "label": "压缩会话时二次确认",
         "enabled": "已开启",

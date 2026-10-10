@@ -413,6 +413,12 @@
         "disabled": "Disabled",
         "hint": "When disabled, creating a new session in a conversation with existing messages will skip the confirmation dialog."
       },
+      "keepPreviousSessionRunning": {
+        "label": "Keep Previous Session Running",
+        "enabled": "Keep running in background",
+        "disabled": "Abort when creating new",
+        "hint": "When enabled, creating a new session or running /new in the same window will keep the previous running session alive in the background instead of aborting it."
+      },
       "compactConfirm": {
         "label": "Compact Session Confirmation",
         "enabled": "Enabled",
