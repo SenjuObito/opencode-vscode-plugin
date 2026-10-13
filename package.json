@@ -105,9 +105,12 @@
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "link:core": "pnpm link ../opencode-buddy-core",
+    "unlink:core": "pnpm unlink opencode-buddy-core && pnpm install --force"
   },
   "dependencies": {
+    "opencode-buddy-core": "github:SenjuObito/opencode-buddy-core#v0.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

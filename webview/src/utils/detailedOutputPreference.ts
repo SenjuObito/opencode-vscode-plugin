@@ -1,3 +1,13 @@
+/**
+ * detailedOutputPreference.ts
+ *
+ * 统一委托给 uiPreferences.ts 进行权威管理，彻底消除私有 localStorage 分裂。
+ */
+import {
+  getUiPreferences,
+  updateUiPreferences,
+} from './uiPreferences';
+
 export const DETAILED_OUTPUT_ENABLED_KEY = 'detailedOutputEnabled';
 export const DETAILED_OUTPUT_ENABLED_EVENT = 'detailed-output-enabled-changed';
 
@@ -6,27 +16,14 @@ export interface DetailedOutputEnabledChangedDetail {
 }
 
 export function getDetailedOutputEnabled(): boolean {
-  try {
-    return localStorage.getItem(DETAILED_OUTPUT_ENABLED_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  return getUiPreferences().detailedOutputEnabled;
 }
 
 export function setDetailedOutputEnabled(enabled: boolean): void {
-  try {
-    if (enabled) {
-      localStorage.setItem(DETAILED_OUTPUT_ENABLED_KEY, 'true');
-    } else {
-      localStorage.removeItem(DETAILED_OUTPUT_ENABLED_KEY);
-    }
-  } catch (error) {
-    console.warn('[detailedOutputPreference] failed to persist:', error);
-    return;
-  }
-
-  window.dispatchEvent(new CustomEvent<DetailedOutputEnabledChangedDetail>(
-    DETAILED_OUTPUT_ENABLED_EVENT,
-    { detail: { enabled } }
-  ));
+  updateUiPreferences({ detailedOutputEnabled: enabled });
+  window.dispatchEvent(
+    new CustomEvent<DetailedOutputEnabledChangedDetail>(DETAILED_OUTPUT_ENABLED_EVENT, {
+      detail: { enabled },
+    }),
+  );
 }

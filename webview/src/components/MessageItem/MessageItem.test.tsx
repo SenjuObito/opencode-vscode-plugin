@@ -71,6 +71,8 @@ function renderMessageItem(
   message: ClaudeMessage,
   options: {
     detailedOutputEnabled?: boolean;
+    isLast?: boolean;
+    loading?: boolean;
   } = {},
 ) {
   return render(
@@ -78,8 +80,9 @@ function renderMessageItem(
       message={message}
       messageIndex={0}
       messageKey="message-0"
-      isLast={false}
+      isLast={options.isLast ?? false}
       streamingActive={false}
+      loading={options.loading ?? false}
       isThinking={false}
       t={t}
       getMessageText={getMessageText}
@@ -170,7 +173,7 @@ describe('MessageItem copy button visibility', () => {
 });
 
 describe('MessageItem token usage display', () => {
-  it('shows whole-turn token usage without detailed extras by default', () => {
+  it('hides token usage and cost when detailed output is disabled by default', () => {
     const message: ClaudeMessage = {
       type: 'assistant',
       content: 'Hello',
@@ -190,7 +193,8 @@ describe('MessageItem token usage display', () => {
     renderMessageItem(message);
 
     expect(screen.getByText('0:16')).toBeTruthy();
-    expect(screen.getByText('输入 1.2K / 输出 456')).toBeTruthy();
+    expect(screen.queryByText(/输入/)).toBeNull();
+    expect(screen.queryByText(/输出/)).toBeNull();
     expect(screen.queryByText(/\$0\.0060/)).toBeNull();
   });
 
@@ -247,7 +251,7 @@ describe('MessageItem token usage display', () => {
     );
   });
 
-  it('hides cache hit ratio when detailed output is disabled', () => {
+  it('hides token usage when detailed output is disabled', () => {
     const message: ClaudeMessage = {
       type: 'assistant',
       content: 'Hello',
@@ -267,7 +271,8 @@ describe('MessageItem token usage display', () => {
 
     renderMessageItem(message);
 
-    expect(screen.getByText('输入 36.3K / 输出 353')).toBeTruthy();
+    expect(screen.getByText('0:10')).toBeTruthy();
+    expect(screen.queryByText(/输入/)).toBeNull();
     expect(screen.queryByText(/缓存命中/)).toBeNull();
   });
 
@@ -362,11 +367,12 @@ describe('MessageItem token usage display', () => {
       } as any,
     };
 
-    renderMessageItem(message);
+    renderMessageItem(message, { detailedOutputEnabled: true });
 
     expect(screen.getByText('0:03')).toBeTruthy();
     expect(screen.getByText(/输入 20\.6K/)).toBeTruthy();
     expect(screen.getByText(/输出 162/)).toBeTruthy();
+    expect(screen.getByText(/思考 175/)).toBeTruthy();
   });
 
   it('renders token usage and cost when durationMs is undefined (decoupled from duration)', () => {
@@ -393,6 +399,29 @@ describe('MessageItem token usage display', () => {
     expect(screen.getByText(/输入 3\.5K/)).toBeTruthy();
     expect(screen.getByText(/输出 300/)).toBeTruthy();
     expect(screen.getByText('$0.0052')).toBeTruthy();
+  });
+
+  it('does NOT render duration when the current turn is still active (loading=true and isLast=true)', () => {
+    const message: ClaudeMessage = {
+      type: 'assistant',
+      content: 'Thinking and calling tool...',
+      durationMs: 18000,
+      raw: {
+        durationMs: 18000,
+        message: {
+          content: [
+            { type: 'text', text: 'Calling tool' },
+            { type: 'tool_use', id: 'call_1', name: 'bash', input: { command: 'sleep 60' } },
+          ],
+        },
+      } as any,
+    };
+
+    renderMessageItem(message, { isLast: true, loading: true });
+
+    // 严禁在执行中显示本次耗时
+    expect(screen.queryByText('本次耗时')).toBeNull();
+    expect(screen.queryByText('0:18')).toBeNull();
   });
 });
 

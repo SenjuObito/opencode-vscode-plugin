@@ -4,10 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  opencode-buddy-core: link:../opencode-buddy-core
+
 importers:
 
   .:
     dependencies:
+      opencode-buddy-core:
+        specifier: link:../opencode-buddy-core
+        version: link:../opencode-buddy-core
       react:
         specifier: ^18.3.1
         version: 18.3.1

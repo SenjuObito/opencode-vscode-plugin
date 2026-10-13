@@ -24,7 +24,7 @@ interface UseChatInputCompletionsCoordinatorOptions {
   setCursorAfterPath: (path: string | null) => void;
   closeAllCompletionsRef: MutableRefObject<() => void>;
   handleInputRef: MutableRefObject<() => void>;
-  currentProvider: string;
+  currentProvider?: string;
 }
 
 function replaceTextAndSync(
@@ -52,7 +52,6 @@ export function useChatInputCompletionsCoordinator({
   setCursorAfterPath,
   closeAllCompletionsRef,
   handleInputRef,
-  currentProvider,
 }: UseChatInputCompletionsCoordinatorOptions) {
   const renderFileTagsRef = useRef<() => void>(() => {});
 
@@ -164,7 +163,7 @@ export function useChatInputCompletionsCoordinator({
     fileCompletion,
     commandCompletion,
     dollarCommandCompletion,
-    isDollarTriggerEnabled: currentProvider === 'codex',
+    isDollarTriggerEnabled: false,
   });
 
   // Note: completion objects are fresh object literals each render (NOT stable

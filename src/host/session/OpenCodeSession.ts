@@ -99,9 +99,32 @@ export class OpenCodeSession {
 		this.callbackHandler.setCallback(this.adapter);
 	}
 
+	hasActiveRequest(): boolean {
+		return this.activeRequestId !== null;
+	}
+
+	getActiveRequestId(): string | null {
+		return this.activeRequestId;
+	}
+
 	getAdapter(): SessionCallbackAdapter {
 		return this.adapter;
 	}
+
+	setAttached(attached: boolean): void {
+		this.adapter.setAttached(attached);
+	}
+
+	isAttached(): boolean {
+		return this.adapter.isAttached();
+	}
+
+	private callView(functionName: string, ...args: string[]): void {
+		if (this.isAttached()) {
+			this.context.callJavaScript(functionName, ...args);
+		}
+	}
+
 
 	/**
 	 * 发送一条消息。non-blocking；结果经流管道异步回传 webview。
@@ -360,16 +383,30 @@ export class OpenCodeSession {
 	}
 
 	/**
-	 * 新建会话：重置状态并建立新会话（daemon 侧 SDK createSession 会在
-	 * [MESSAGE_START] 里回传新的 session_id）。
+	 * 新建会话：根据 keepRunning 开关决定是否停止旧会话或脱钩继续执行。
+	 * 重置当前会话状态机，为新对话分配独立上下文。
 	 */
 	resetSession(options?: { keepRunning?: boolean }): void {
-		if (options?.keepRunning && this.activeRequestId && this.daemon) {
-			this.daemon.detachRequest(this.activeRequestId);
-			this.activeRequestId = null;
+		const keepRunning = options?.keepRunning !== undefined
+			? options.keepRunning
+			: this.context.getSettingsService().getUiPreferences().keepPreviousSessionRunningOnNew;
+
+		const isBusy = this.state.isBusy() || this.activeRequestId != null;
+		if (isBusy) {
+			if (keepRunning) {
+				// 保持旧会话在后台继续运行：将当前活跃请求从 Webview 通道脱钩（Detach）
+				if (this.activeRequestId && this.daemon) {
+					this.daemon.detachRequest(this.activeRequestId);
+					this.activeRequestId = null;
+				}
+			} else {
+				// 停止旧会话：发送 abort 信号，收尾 turn 并释放资源
+				this.interrupt();
+			}
 		}
+
 		const seq = this.adapter.coalescer.resetStreamState();
-		this.context.callJavaScript('clearMessages', String(seq));
+		this.callView('clearMessages', String(seq));
 		this.state.clearMessages();
 		this.messageHandler.resetTurnState();
 		this.state.setSessionId(null);
@@ -378,7 +415,7 @@ export class OpenCodeSession {
 		this.state.setError(null);
 		this.state.setRevertState(null);
 		// 新会话无 redo 状态，同步前端隐藏 Redo 按钮
-		this.context.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert: false }));
+		this.callView('onRevertStateUpdate', JSON.stringify({ hasRevert: false }));
 		this.onSessionEnded?.();
 	}
 
@@ -390,8 +427,8 @@ export class OpenCodeSession {
 		for (const m of messages) {
 			this.state.addMessage(m as ChatMessage);
 		}
-		this.context.callJavaScript('clearMessages', String(seq));
-		this.context.callJavaScript(
+		this.callView('clearMessages', String(seq));
+		this.callView(
 			'updateMessages',
 			convertMessagesToJson(this.state.getMessages()),
 			String(seq),

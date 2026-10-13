@@ -28,6 +28,8 @@ interface ReconstructedTurnUsage {
   cache_creation_input_tokens: number;
   cache_read_input_tokens: number;
   output_tokens: number;
+  reasoning_tokens?: number;
+  total_tokens?: number;
 }
 
 export interface ReconstructTurnMetadataOptions {
@@ -93,44 +95,113 @@ function positiveNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+function extractMessageTokens(msg: ClaudeMessage): {
+  id?: string;
+  input: number;
+  cacheCreation: number;
+  cacheRead: number;
+  output: number;
+  reasoning: number;
+  cost?: number;
+} | null {
+  const raw = asRawObject(msg);
+  if (!raw) return null;
+  const rawMsg = raw.message as Record<string, unknown> | undefined;
+  const usageSrc = (raw.turnUsage ?? raw.tokens ?? rawMsg?.usage ?? raw.usage) as Record<string, unknown> | undefined;
+  if (!usageSrc || typeof usageSrc !== 'object') return null;
+
+  const cache = (usageSrc.cache && typeof usageSrc.cache === 'object' ? usageSrc.cache : {}) as Record<string, unknown>;
+  const cacheCreation = positiveNumber(usageSrc.cache_creation_input_tokens ?? usageSrc.cache_creation ?? cache.write);
+  const cacheRead = positiveNumber(usageSrc.cache_read_input_tokens ?? usageSrc.cache_read ?? cache.read);
+  const reasoning = positiveNumber(usageSrc.reasoning_tokens ?? usageSrc.reasoning);
+
+  const rawInput = positiveNumber(usageSrc.input_tokens ?? usageSrc.input);
+  const rawOutput = positiveNumber(usageSrc.output_tokens ?? usageSrc.output);
+
+  let input = rawInput;
+  if (usageSrc.cache && typeof usageSrc.cache === 'object' && Object.keys(usageSrc.cache).length > 0) {
+    if (rawInput >= cacheRead + cacheCreation) {
+      input = rawInput - cacheRead - cacheCreation;
+    }
+  }
+
+  const output = rawOutput;
+
+  const rawCost = typeof raw.turnCostUsd === 'number' && raw.turnCostUsd > 0
+    ? raw.turnCostUsd
+    : typeof raw.cost === 'number' && raw.cost > 0
+      ? raw.cost
+      : typeof usageSrc.cost === 'number' && usageSrc.cost > 0
+        ? usageSrc.cost
+        : typeof usageSrc.total_cost === 'number' && usageSrc.total_cost > 0
+          ? usageSrc.total_cost
+          : undefined;
+
+  const id = typeof raw.id === 'string'
+    ? raw.id
+    : typeof rawMsg?.id === 'string'
+      ? rawMsg.id
+      : undefined;
+
+  return { id, input, cacheCreation, cacheRead, output, reasoning, cost: rawCost };
+}
+
 /**
- * Sum message.usage across the turn's assistant messages. Transcript lines that
+ * Sum usage across the turn's assistant messages. Transcript lines that
  * belong to the same API response share message.id and carry identical usage,
  * so usage is counted once per unique id.
  */
-function sumTurnUsage(assistantMessages: ClaudeMessage[]): ReconstructedTurnUsage | null {
-  const usage: ReconstructedTurnUsage = {
-    input_tokens: 0,
-    cache_creation_input_tokens: 0,
-    cache_read_input_tokens: 0,
-    output_tokens: 0,
-  };
+function sumTurnUsage(assistantMessages: ClaudeMessage[]): {
+  turnUsage: ReconstructedTurnUsage;
+  turnCostUsd?: number;
+} | null {
   const seenIds = new Set<string>();
+  let totalInput = 0;
+  let totalCacheCreation = 0;
+  let totalCacheRead = 0;
+  let totalOutput = 0;
+  let totalReasoning = 0;
+  let totalCost = 0;
   let found = false;
 
   for (const message of assistantMessages) {
-    const raw = asRawObject(message);
-    const rawMessage = raw?.message as Record<string, unknown> | undefined;
-    const callUsage = rawMessage?.usage as Record<string, unknown> | undefined;
-    if (!callUsage || typeof callUsage !== 'object') continue;
+    const extracted = extractMessageTokens(message);
+    if (!extracted) continue;
 
-    const id = typeof rawMessage?.id === 'string' ? rawMessage.id : null;
-    if (id) {
-      if (seenIds.has(id)) continue;
-      seenIds.add(id);
+    if (extracted.id) {
+      if (seenIds.has(extracted.id)) continue;
+      seenIds.add(extracted.id);
     }
 
-    usage.input_tokens += positiveNumber(callUsage.input_tokens);
-    usage.cache_creation_input_tokens += positiveNumber(callUsage.cache_creation_input_tokens);
-    usage.cache_read_input_tokens += positiveNumber(callUsage.cache_read_input_tokens);
-    usage.output_tokens += positiveNumber(callUsage.output_tokens);
     found = true;
+    totalInput += extracted.input;
+    totalCacheCreation += extracted.cacheCreation;
+    totalCacheRead += extracted.cacheRead;
+    totalOutput += extracted.output;
+    totalReasoning += extracted.reasoning;
+    if (extracted.cost) {
+      totalCost += extracted.cost;
+    }
   }
 
   if (!found) return null;
-  const total = usage.input_tokens + usage.cache_creation_input_tokens
-    + usage.cache_read_input_tokens + usage.output_tokens;
-  return total > 0 ? usage : null;
+  const total = totalInput + totalOutput;
+  if (total <= 0 && totalCacheRead <= 0) return null;
+
+  const turnUsage: ReconstructedTurnUsage = {
+    input_tokens: totalInput,
+    cache_creation_input_tokens: totalCacheCreation,
+    cache_read_input_tokens: totalCacheRead,
+    output_tokens: totalOutput,
+  };
+  if (totalReasoning > 0) {
+    turnUsage.reasoning_tokens = totalReasoning;
+  }
+
+  return {
+    turnUsage,
+    ...(totalCost > 0 ? { turnCostUsd: totalCost } : {}),
+  };
 }
 
 export function reconstructTurnMetadata(
@@ -184,11 +255,18 @@ export function reconstructTurnMetadata(
       }
     }
 
-    // Token usage: only when the raw is an object without an existing turnUsage.
+    // Token usage: calculate turn usage when missing.
     if (raw && raw.turnUsage == null) {
-      const turnUsage = sumTurnUsage(assistantMessages);
-      if (turnUsage) {
-        updated = { ...updated, raw: { ...raw, turnUsage } };
+      const turnAgg = sumTurnUsage(assistantMessages);
+      if (turnAgg) {
+        updated = {
+          ...updated,
+          raw: {
+            ...raw,
+            turnUsage: turnAgg.turnUsage,
+            ...(turnAgg.turnCostUsd !== undefined ? { turnCostUsd: turnAgg.turnCostUsd } : {}),
+          },
+        };
       }
     }
 

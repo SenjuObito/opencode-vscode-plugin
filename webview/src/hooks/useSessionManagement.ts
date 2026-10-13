@@ -177,6 +177,7 @@ export function useSessionManagement({
     setUsageUsedTokens(undefined);
     setUsageMaxTokens(undefined);
 
+
     // FIX: Safety timeout to auto-release the session transition guard.
     // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
     // during webview reload, or a backend error that prevents the callback),
@@ -225,7 +226,11 @@ export function useSessionManagement({
       if (getSkipNewSessionConfirm()) {
         onResetToPreferredModel?.();
         beginSessionTransition(null, null);
-        sendBridgeEvent('create_new_session');
+        if (keepRunning) {
+          sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
+        } else {
+          sendBridgeEvent('create_new_session');
+        }
         return;
       }
       // If there are messages but not loading, show new session confirmation
@@ -235,7 +240,11 @@ export function useSessionManagement({
       // If empty and not loading, directly create new session
       onResetToPreferredModel?.();
       beginSessionTransition(null, null);
-      sendBridgeEvent('create_new_session');
+      if (keepRunning) {
+        sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
+      } else {
+        sendBridgeEvent('create_new_session');
+      }
     }
   }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
 
@@ -273,7 +282,6 @@ export function useSessionManagement({
   const handleConfirmNewSession = useCallback(() => {
     setShowNewSessionConfirm(false);
     const keepRunning = getKeepPreviousSessionRunningOnNew();
-    // [FIX] Safety check: if loading started while dialog was open and keepRunning is disabled, send interrupt first
     if (loading && !keepRunning) {
       sendBridgeEvent('interrupt_session');
     }
@@ -296,7 +304,6 @@ export function useSessionManagement({
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
-    // Send interrupt signal and create new session
     sendBridgeEvent('interrupt_session');
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
@@ -362,16 +369,13 @@ export function useSessionManagement({
       return;
     }
 
-    // Switching to a different session: interrupt first if the AI is
-    // mid-reply, then do a full session swap.
+    // Switching to a different session: let host SessionManager handle
+    // background preservation or lifecycle transition. Never interrupt blindly.
     cardDebugLog('[SessionManagement] different session, calling beginSessionTransition');
-    if (loading) {
-      sendBridgeEvent('interrupt_session');
-    }
     beginSessionTransition(sessionId, session?.title ?? null);
     sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
     setCurrentView('chat');
-  }, [beginSessionTransition, loading, setCurrentView, currentSessionId]);
+  }, [beginSessionTransition, setCurrentView, currentSessionId]);
 
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {

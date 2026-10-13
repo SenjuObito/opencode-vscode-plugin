@@ -7,7 +7,6 @@
  */
 
 import type { MutableRefObject } from 'react';
-import { cardDebugLog } from '../../utils/bridge';
 
 export interface ResetTransientUiStateOptions {
   clearToasts: () => void;
@@ -46,9 +45,6 @@ export interface ResetTransientUiStateOptions {
  */
 export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) => {
   return (skipSessionLoading?: boolean) => {
-    const shouldSkipSS = skipSessionLoading || window.__sessionTransitioning;
-    cardDebugLog('[resetTransientUiState] skipSessionLoading:', skipSessionLoading, 'transitioning:', window.__sessionTransitioning, '→ skip:', shouldSkipSS);
-    cardDebugLog('[resetTransientUiState] BEFORE: sessionLoading will', shouldSkipSS ? 'BE KEPT' : 'be SET TO false');
     opts.clearToasts();
     opts.setStatus('');
     opts.setLoading(false);
@@ -59,10 +55,7 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     opts.setCompactingStartTime?.(null);
     const shouldSkip = skipSessionLoading || window.__sessionTransitioning;
     if (!shouldSkip) {
-      cardDebugLog('[resetTransientUiState] EXECUTING: setSessionLoading(false)');
       opts.setSessionLoading(false);
-    } else {
-      cardDebugLog('[resetTransientUiState] SKIPPED: setSessionLoading not called');
     }
     opts.isStreamingRef.current = false;
     opts.useBackendStreamingRenderRef.current = false;
@@ -90,6 +83,8 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     // (not clearMessages, which cancels them itself), so without this a buffered
     // frame would later fire its deferred processUpdateMessages — with
     // isStreamingRef already cleared here — and resurrect the cleared messages.
+    // Reset min accepted sequence to prevent previous session's high sequence from blocking new session's messages
+    window.__minAcceptedUpdateSequence = 0;
     if (typeof window.__cancelPendingUpdateMessages === 'function') {
       window.__cancelPendingUpdateMessages();
     }

@@ -17,6 +17,10 @@ import {
   getDetailedOutputEnabled,
   type DetailedOutputEnabledChangedDetail,
 } from '../utils/detailedOutputPreference';
+import {
+  UI_PREFERENCES_CHANGED_EVENT,
+  type UiPreferencesChangedDetail,
+} from '../utils/uiPreferences';
 
 /** Keep pagination aligned to complete user turns so assistant/tool chains are never split. */
 const INITIAL_VISIBLE_TURNS = 5;
@@ -375,8 +379,18 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
         setDetailedOutputEnabled(custom.detail.enabled);
       }
     };
+    const onUiPreferencesChanged = (event: Event) => {
+      const custom = event as CustomEvent<UiPreferencesChangedDetail>;
+      if (custom.detail?.preferences && typeof custom.detail.preferences.detailedOutputEnabled === 'boolean') {
+        setDetailedOutputEnabled(custom.detail.preferences.detailedOutputEnabled);
+      }
+    };
     window.addEventListener(DETAILED_OUTPUT_ENABLED_EVENT, handler);
-    return () => window.removeEventListener(DETAILED_OUTPUT_ENABLED_EVENT, handler);
+    window.addEventListener(UI_PREFERENCES_CHANGED_EVENT, onUiPreferencesChanged);
+    return () => {
+      window.removeEventListener(DETAILED_OUTPUT_ENABLED_EVENT, handler);
+      window.removeEventListener(UI_PREFERENCES_CHANGED_EVENT, onUiPreferencesChanged);
+    };
   }, []);
 
   const visibleMessages = useMemo(
@@ -461,6 +475,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
               messageKey={messageKey}
               isLast={messageIndex === displayMessages.length - 1}
               streamingActive={streamingActive}
+              loading={loading}
               isThinking={isThinking}
               t={t}
               getMessageText={getMessageText}

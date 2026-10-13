@@ -42,6 +42,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 	private readonly model: () => string | null;
 	private readonly windowBaseIndex: () => number;
 	private active = true;
+	private attached = true;
 	private streamEndSignalSent = false;
 	private streamEndFallbackTimer: NodeJS.Timeout | null = null;
 
@@ -77,6 +78,14 @@ export class SessionCallbackAdapter implements SessionCallback {
 		return this.streamCoalescer;
 	}
 
+	setAttached(attached: boolean): void {
+		this.attached = attached;
+	}
+
+	isAttached(): boolean {
+		return this.attached && this.active;
+	}
+
 	deactivate(): void {
 		this.active = false;
 		this.contentDeltaThrottler.dispose();
@@ -89,7 +98,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 	}
 
 	private isInactive(): boolean {
-		return !this.active;
+		return !this.active || !this.attached;
 	}
 
 	private safeRun(label: string, action: () => void): void {
@@ -191,13 +200,23 @@ export class SessionCallbackAdapter implements SessionCallback {
 	}
 
 	onStreamEnd(): void {
-		if (this.isInactive()) {
+		if (!this.active) {
 			return;
 		}
 		this.streamEndSignalSent = false;
 		this.safeRun('contentDeltaThrottler.flushNow', () => this.contentDeltaThrottler.flushNow());
 		this.safeRun('thinkingDeltaThrottler.flushNow', () => this.thinkingDeltaThrottler.flushNow());
 		this.safeRun('streamCoalescer.onStreamEnd', () => this.streamCoalescer.onStreamEnd());
+
+		// 触发宿主侧 Turn 结束回调（收敛 busy/loading 状态与会话生命周期）
+		if (this.streamEndCallback) {
+			this.safeRun('streamEndCallback', this.streamEndCallback);
+		}
+
+		// 后台会话（!this.attached）：内部流状态与 onTurnEnded 回调已完成，无需向前端 Webview 派发 UI 帧。
+		if (!this.attached) {
+			return;
+		}
 
 		// ── onStreamEnd 双路径 ──
 		// 主路径：在 flush 回调里按顺序发，保证前端先收到最终快照再收到流结束信号。
@@ -234,9 +253,6 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.safeRun('callJavaScript(showLoading, false)', () =>
 			this.jsTarget.callJavaScript('showLoading', 'false'),
 		);
-		if (this.streamEndCallback) {
-			this.safeRun('streamEndCallback', this.streamEndCallback);
-		}
 	}
 
 	private cancelStreamEndFallback(): void {

@@ -156,3 +156,111 @@ suite('createChatInstance Assembly', () => {
 		tracker.dispose();
 	});
 });
+
+suite('OpenCodeSession resetSession behavior on new session', () => {
+	test('aborts in-flight session when keepRunning is false', () => {
+		const channel = new FakeWebviewChannel();
+		const settings = new SettingsService(createFakeSettingsStore(), ['/workspace']);
+		let abortedSessionId: string | undefined;
+		let abortedRequestId: string | undefined;
+		const fakeDaemon = {
+			sendAbort: (sessionId?: string, requestId?: string) => {
+				abortedSessionId = sessionId;
+				abortedRequestId = requestId;
+			},
+			detachRequest: () => {},
+		} as unknown as OpenCodeDaemonBridge;
+
+		const instance = createChatInstance({
+			channel,
+			settings,
+			daemon: fakeDaemon,
+			fileOps: {} as FileOps,
+			fallbackWorkingDirectoryResolver: () => '/workspace',
+		});
+
+		const session = instance.session;
+		session.state.setSessionId('sess-1');
+		session.state.setBusy(true);
+		(session as any).activeRequestId = 'req-1';
+
+		session.resetSession({ keepRunning: false });
+
+		assert.strictEqual(abortedSessionId, 'sess-1');
+		assert.strictEqual(abortedRequestId, 'req-1');
+		assert.strictEqual(session.state.isBusy(), false);
+		assert.strictEqual(session.state.getSessionId(), null);
+
+		instance.dispose();
+	});
+
+	test('detaches in-flight session when keepRunning is true without aborting', () => {
+		const channel = new FakeWebviewChannel();
+		const settings = new SettingsService(createFakeSettingsStore(), ['/workspace']);
+		let detachedRequestId: string | undefined;
+		let abortCalled = false;
+		const fakeDaemon = {
+			sendAbort: () => {
+				abortCalled = true;
+			},
+			detachRequest: (requestId: string) => {
+				detachedRequestId = requestId;
+			},
+		} as unknown as OpenCodeDaemonBridge;
+
+		const instance = createChatInstance({
+			channel,
+			settings,
+			daemon: fakeDaemon,
+			fileOps: {} as FileOps,
+			fallbackWorkingDirectoryResolver: () => '/workspace',
+		});
+
+		const session = instance.session;
+		session.state.setSessionId('sess-2');
+		session.state.setBusy(true);
+		(session as any).activeRequestId = 'req-2';
+
+		session.resetSession({ keepRunning: true });
+
+		assert.strictEqual(detachedRequestId, 'req-2');
+		assert.strictEqual(abortCalled, false);
+		assert.strictEqual(session.state.isBusy(), false);
+		assert.strictEqual(session.state.getSessionId(), null);
+
+		instance.dispose();
+	});
+
+	test('falls back to settings preference when options.keepRunning is not specified', () => {
+		const channel = new FakeWebviewChannel();
+		const store = createFakeSettingsStore();
+		// 默认 keepPreviousSessionRunningOnNew 为 false
+		const settings = new SettingsService(store, ['/workspace']);
+		let abortCount = 0;
+		const fakeDaemon = {
+			sendAbort: () => {
+				abortCount++;
+			},
+			detachRequest: () => {},
+		} as unknown as OpenCodeDaemonBridge;
+
+		const instance = createChatInstance({
+			channel,
+			settings,
+			daemon: fakeDaemon,
+			fileOps: {} as FileOps,
+			fallbackWorkingDirectoryResolver: () => '/workspace',
+		});
+
+		const session = instance.session;
+		session.state.setSessionId('sess-3');
+		session.state.setBusy(true);
+		(session as any).activeRequestId = 'req-3';
+
+		session.resetSession();
+		assert.strictEqual(abortCount, 1);
+
+		instance.dispose();
+	});
+});
+

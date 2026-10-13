@@ -291,29 +291,57 @@ export class HistoryHandler extends BaseMessageHandler {
 			// content 本身即 sessionId
 		}
 
-		const session = this.context.getSession();
-		if (!session) {
-			return;
-		}
-
 		// 会话级模型/模式/推理力度的恢复不再依赖 webview 传入的行内值（历史
 		// 快照从不更新，恢复旧值会把用户刚切换的选择覆盖掉——模型回退 bug）。
 		// 跨会话加载时由 fetchAndRestoreMessages 从 daemon `session.get` 读
 		// opencode 权威状态后推送恢复。
 
+		const sessionManager = this.context.getSessionManager();
 		const daemon = this.context.getDaemon();
 
+		if (sessionManager) {
+			const activeSession = sessionManager.getActiveSession();
+			if (activeSession.state.getSessionId() === sessionId) {
+				// 同会话软刷新
+				if (!daemon || activeSession.state.isBusy()) {
+					this.callJavaScript('historyLoadComplete');
+					return;
+				}
+				this.callJavaScript('setSessionId', sessionId);
+				void this.fetchAndRestoreMessages(daemon, activeSession, sessionId, false);
+				return;
+			}
+
+			const { session, isBackground } = sessionManager.switchToSession(sessionId);
+			const summary = this.getSessions().find((s) => s.sessionId === sessionId);
+			if (summary) {
+				this.callJavaScript('updateSessionTitle', sessionId, summary.title);
+			}
+
+			if (isBackground) {
+				// 后台会话命中！switchToSession 已在内部把内存中最新消息完整同步给 Webview 并通知 historyLoadComplete
+				return;
+			}
+
+			if (!daemon) {
+				this.finishSessionLoad(session, sessionId);
+				return;
+			}
+
+			void this.fetchAndRestoreMessages(daemon, session, sessionId, true);
+			return;
+		}
+
+		const session = this.context.getSession();
+		if (!session) {
+			return;
+		}
+
 		if (session.state.getSessionId() === sessionId) {
-			// 已在该会话 —— cc-gui ChatWindowDelegate 的同会话语义是「软刷新」
-			// （reloadActiveSessionMessages），绝不静默早退：前端
-			// beginSessionTransition 已清屏并上锁，早退会让用户面对空屏直到
-			// 15s 安全超时。流式中则 defer：不打断在途回复，只释放前端锁。
 			if (!daemon || session.state.isBusy()) {
 				this.callJavaScript('historyLoadComplete');
 				return;
 			}
-			// 重发一次 setSessionId 以释放 webview 的 __sessionTransitioning，
-			// 否则随后的 updateMessages 会被过渡守卫丢弃。
 			this.callJavaScript('setSessionId', sessionId);
 			void this.fetchAndRestoreMessages(daemon, session, sessionId, false);
 			return;
@@ -324,10 +352,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			return;
 		}
 
-		session.resetSession();
-		// 无条件设置并推送 sessionId：刚 fork 出的会话不在本地历史缓存里，
-		// 若被 if (summary) 门控，webview 的 __sessionTransitioning 过渡锁
-		// 永不释放，后续恢复的消息会被守卫全部丢弃（表现为空白对话）。
+		session.resetSession({ keepRunning: true });
 		session.state.setSessionId(sessionId);
 		this.callJavaScript('setSessionId', sessionId);
 		const summary = this.getSessions().find((s) => s.sessionId === sessionId);

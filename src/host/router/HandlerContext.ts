@@ -4,6 +4,7 @@
  * the current session, model/provider, and settings.
  */
 import type { OpenCodeSession } from '../session/OpenCodeSession';
+import type { SessionManager } from '../session/SessionManager';
 import type { SettingsService } from '../settings/SettingsService';
 import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 
@@ -36,6 +37,7 @@ export interface FileOps {
 }
 
 export class HandlerContext {
+	private sessionManager: SessionManager | null = null;
 	private session: OpenCodeSession | null = null;
 	private currentModel: string | null = null;
 	private currentProvider = 'opencode';
@@ -136,11 +138,22 @@ export class HandlerContext {
 	}
 
 	getSession(): OpenCodeSession | null {
+		if (this.sessionManager) {
+			return this.sessionManager.getActiveSession();
+		}
 		return this.session;
 	}
 
 	setSession(session: OpenCodeSession | null): void {
 		this.session = session;
+	}
+
+	getSessionManager(): SessionManager | null {
+		return this.sessionManager;
+	}
+
+	setSessionManager(sessionManager: SessionManager | null): void {
+		this.sessionManager = sessionManager;
 	}
 
 	getCurrentModel(): string | null {

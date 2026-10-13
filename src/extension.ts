@@ -244,11 +244,6 @@ function resolveDaemonScript(extensionPath: string): string {
 			return directNodeModules;
 		}
 	}
-	// Check sibling directory (for local multi-repo development)
-	const siblingCore = join(extensionPath, '..', 'opencode-buddy-core', 'daemon.js');
-	if (existsSync(siblingCore)) {
-		return siblingCore;
-	}
 	const bundled = join(extensionPath, 'dist', 'ai-bridge.js');
 	if (existsSync(bundled)) {
 		return bundled;

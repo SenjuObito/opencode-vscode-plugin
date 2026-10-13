@@ -237,6 +237,7 @@ export class MessageHandler implements MessageCallback {
 		this.state.updateLastModifiedTime();
 
 		if (wasStreaming) {
+			this.finalizeTurnDuration();
 			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 			this.callbackHandler.notifyStreamEnd();
 		}
@@ -586,6 +587,7 @@ export class MessageHandler implements MessageCallback {
 		}
 
 		this.ensureRawBlocksConsistency();
+		this.finalizeTurnDuration();
 
 		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 		this.callbackHandler.notifyStreamEnd();
@@ -593,6 +595,38 @@ export class MessageHandler implements MessageCallback {
 		this.state.setLoading(false);
 		this.state.updateLastModifiedTime();
 		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
+	}
+
+	/**
+	 * 权威结算本次 Turn 耗时并写入 Assistant 消息实体（以及 raw.durationMs）。
+	 */
+	private finalizeTurnDuration(): void {
+		const turnStartTime = this.state.getActiveTurnStartTime();
+		if (turnStartTime) {
+			const durationMs = Math.max(0, Date.now() - turnStartTime);
+			const targetAssistantMsg = this.currentAssistantMessage || this.findLastAssistantMessage();
+			if (targetAssistantMsg) {
+				if (targetAssistantMsg.durationMs === undefined) {
+					targetAssistantMsg.durationMs = durationMs;
+				}
+				if (targetAssistantMsg.raw && typeof targetAssistantMsg.raw === 'object') {
+					const rawObj = targetAssistantMsg.raw as Record<string, unknown>;
+					if (rawObj.durationMs === undefined) {
+						rawObj.durationMs = durationMs;
+					}
+				}
+			}
+		}
+	}
+
+	private findLastAssistantMessage(): ChatMessage | undefined {
+		const messages = this.state.getMessages();
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].type === MessageType.ASSISTANT) {
+				return messages[i];
+			}
+		}
+		return undefined;
 	}
 
 	/**
@@ -618,6 +652,7 @@ export class MessageHandler implements MessageCallback {
 		}
 
 		this.ensureRawBlocksConsistency();
+		this.finalizeTurnDuration();
 
 		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 		this.callbackHandler.notifyStreamEnd();

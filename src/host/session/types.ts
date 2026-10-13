@@ -16,6 +16,7 @@ export interface ChatMessage {
 	content: string;
 	timestamp: number;
 	raw?: unknown; // raw SDK JSON object (message blocks, usage, …)
+	durationMs?: number;
 }
 
 /** Minimal permission request (Phase 4 wires the full dialog + reply path). */

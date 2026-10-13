@@ -534,6 +534,14 @@ export class OpenCodeDaemonBridge {
 	 */
 	sendAbort(sessionId?: string, requestId?: string): void {
 		const context = this.daemonContext;
+		let effectiveSessionId = sessionId;
+		if (!effectiveSessionId && requestId && context) {
+			const handler = context.pendingRequests.get(requestId);
+			if (handler?.sessionId) {
+				effectiveSessionId = handler.sessionId;
+			}
+		}
+
 		if (context?.isActive && context.process.exitCode === null) {
 			try {
 				context.process.stdin?.write(
@@ -541,12 +549,12 @@ export class OpenCodeDaemonBridge {
 						id: `abort-${Date.now()}`,
 						method: 'abort',
 						params: {
-							...(sessionId ? { sessionId } : {}),
+							...(effectiveSessionId ? { sessionId: effectiveSessionId } : {}),
 							...(requestId ? { requestId } : {}),
 						},
 					}) + '\n',
 				);
-				this.log(`Sent abort command (sessionId=${sessionId ?? 'all'}, requestId=${requestId ?? 'none'})`);
+				this.log(`Sent abort command (sessionId=${effectiveSessionId ?? 'all'}, requestId=${requestId ?? 'none'})`);
 			} catch {
 				/* ignore */
 			}

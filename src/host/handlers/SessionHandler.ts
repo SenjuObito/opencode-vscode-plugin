@@ -150,11 +150,13 @@ export class SessionHandler extends BaseMessageHandler {
 	}
 
 	private handleInterruptSession(): void {
-		const session = this.context.getSession();
-		if (!session) {
-			return;
+		const sessionManager = this.context.getSessionManager();
+		if (sessionManager) {
+			sessionManager.interruptActiveSession();
+		} else {
+			const session = this.context.getSession();
+			session?.interrupt();
 		}
-		session.interrupt();
 		// 中断后同步前端流结束状态
 		this.callJavaScript('onStreamEnd', '-1');
 		this.callJavaScript('showLoading', 'false');

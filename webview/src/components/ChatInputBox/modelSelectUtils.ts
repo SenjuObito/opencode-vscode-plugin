@@ -146,11 +146,11 @@ export function writePinnedModelIds(providerId: string, modelIds: string[]): voi
   sendBridgeEvent('set_pinned_models', JSON.stringify({ [providerId]: modelIds }));
 }
 
-/** Toggle pin; returns the next pinned id list for this provider (newly pinned placed at front). */
+/** Toggle pin; returns the next pinned id list for this provider (earlier pinned models remain at front). */
 export function togglePinnedModelId(providerId: string, modelId: string): string[] {
   const current = readPinnedModelIds(providerId);
   const exists = current.includes(modelId);
-  const next = exists ? current.filter((id) => id !== modelId) : [modelId, ...current];
+  const next = exists ? current.filter((id) => id !== modelId) : [...current, modelId];
   writePinnedModelIds(providerId, next);
   return next;
 }

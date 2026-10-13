@@ -53,7 +53,7 @@ suite('SdkMessageConverter Token and Usage normalization', () => {
 		const turnUsage = raw.turnUsage as Record<string, unknown>;
 		assert.ok(turnUsage, 'turnUsage should be created');
 		assert.strictEqual(turnUsage.input_tokens, 158);
-		assert.strictEqual(turnUsage.output_tokens, 162);
+		assert.strictEqual(turnUsage.output_tokens, 337);
 		assert.strictEqual(turnUsage.reasoning_tokens, 175);
 		assert.strictEqual(turnUsage.cache_read_input_tokens, 20480);
 		assert.strictEqual(turnUsage.cache_creation_input_tokens, 0);

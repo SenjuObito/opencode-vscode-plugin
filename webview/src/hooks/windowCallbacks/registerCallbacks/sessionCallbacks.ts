@@ -9,7 +9,7 @@ import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
-import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { sendBridgeEvent } from '../../../utils/bridge';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
 const CUSTOM_TITLE_MAX_LENGTH = 50;
@@ -30,7 +30,6 @@ export function registerSessionCallbacks(
 
   window.setSessionId = (sessionId: string) => {
     const oldId = currentSessionIdRef.current;
-    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
     releaseSessionTransition();
     currentSessionIdRef.current = sessionId;
     setCurrentSessionId(sessionId);
