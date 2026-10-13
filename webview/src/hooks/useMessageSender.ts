@@ -120,8 +120,8 @@ export function useMessageSender({
       return true;
     }
 
-    // /plan - switch to plan mode (Claude only; Codex sends as normal text)
-    if (PLAN_COMMANDS.has(command) && currentProvider === 'claude') {
+    // /plan - switch to plan mode
+    if (PLAN_COMMANDS.has(command)) {
       if (handleModeSelect) {
         handleModeSelect('plan');
         addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
@@ -130,25 +130,16 @@ export function useMessageSender({
     }
 
     return false;
-  }, [setCurrentView, handleModeSelect, currentProvider, addToast, t]);
+  }, [setCurrentView, handleModeSelect, addToast, t]);
 
   /**
    * Check for context usage command (/context)
-   * Only available for Claude provider. Opens a dialog to display context window usage.
+   * Opens a dialog to display context window usage.
    */
   const checkContextCommand = useCallback((text: string): boolean => {
     if (!text.startsWith('/')) return false;
     const command = text.split(WHITESPACE_REGEX)[0].toLowerCase();
     if (CONTEXT_COMMANDS.has(command)) {
-      if (currentProvider !== 'claude') {
-        addToast(t('chat.commandProviderOnly', {
-          command,
-          provider: 'Claude',
-          defaultValue: `${command} is only available for Claude provider`,
-        }), 'warning');
-        return true;
-      }
-
       const requestId = createContextUsageRequestId();
 
       // Open dialog with loading state immediately
@@ -169,7 +160,7 @@ export function useMessageSender({
       return true;
     }
     return false;
-  }, [currentProvider, selectedModel, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
+  }, [selectedModel, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
 
   /**
    * Check for unimplemented slash commands

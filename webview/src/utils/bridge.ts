@@ -1,4 +1,5 @@
 import { isJavaFqcnCandidate, normalizeFileNavigationTarget, parseFileLinkTarget } from './linkify';
+import type { BridgeMessageType } from '../types/protocol';
 
 const BRIDGE_UNAVAILABLE_WARNED = new Set<string>();
 const SAFE_BROWSER_PROTOCOLS = /^(https?|mailto):/i;
@@ -173,6 +174,12 @@ const callBridge = (payload: string) => {
 
 export const sendBridgeEvent = (event: string, content = '') => {
   return callBridge(`${event}:${content}`);
+};
+
+/** 强类型桥接调用函数 */
+export const sendTypedBridgeEvent = <T>(event: BridgeMessageType, payload?: T): boolean => {
+  const content = payload === undefined ? '' : typeof payload === 'string' ? payload : JSON.stringify(payload);
+  return sendBridgeEvent(event, content);
 };
 
 /** Send a debug log from the webview to the Extension Host Debug Console and file log. */

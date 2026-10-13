@@ -73,7 +73,7 @@ export const ButtonArea = ({
   const latestCatalogRef = useRef({ models: availableModels, selectedModel, cliDefaultModel });
   latestCatalogRef.current = { models: availableModels, selectedModel, cliDefaultModel };
   useEffect(() => {
-    const isDynamicProvider = currentProvider === 'opencode' || currentProvider === 'codex';
+    const isDynamicProvider = currentProvider === 'opencode';
     if (!isDynamicProvider) return;
     // Only correct once a *real* catalog arrived. Static fallback lists
     // (OPENCODE_MODELS = just "opencode-default", CODEX built-ins, …) must not

@@ -744,4 +744,59 @@ describe('useSessionManagement', () => {
     expect(window.__sessionTransitioning).toBe(false);
     expect(window.__sessionTransitionToken).toBeNull();
   });
+
+  it('sends keepRunning=true without interrupting when keepPreviousSessionRunningOnNew is enabled and loading', () => {
+    localStorage.setItem('keepPreviousSessionRunningOnNew', 'true');
+    localStorage.setItem('skipNewSessionConfirm', 'true');
+    const mocks = createMocks();
+
+    const { result } = renderHook(() =>
+      useSessionManagement({
+        messages: [{ type: 'user', content: 'hello' } as any],
+        loading: true,
+        historyData: null,
+        currentSessionId: 'sess-active',
+        ...mocks,
+        t,
+      })
+    );
+
+    act(() => {
+      result.current.createNewSession();
+    });
+
+    const calls = (window.sendToJava as any).mock.calls.map((c: unknown[]) => c[0]);
+    expect(calls).toContain('create_new_session:{"keepRunning":true}');
+    expect(calls).not.toContain('interrupt_session:');
+
+    localStorage.removeItem('keepPreviousSessionRunningOnNew');
+    localStorage.removeItem('skipNewSessionConfirm');
+  });
+
+  it('forceCreateNewSession sends keepRunning=true without interrupt when keepPreviousSessionRunningOnNew is enabled', () => {
+    localStorage.setItem('keepPreviousSessionRunningOnNew', 'true');
+    const mocks = createMocks();
+
+    const { result } = renderHook(() =>
+      useSessionManagement({
+        messages: [{ type: 'user', content: 'hello' } as any],
+        loading: true,
+        historyData: null,
+        currentSessionId: 'sess-active',
+        ...mocks,
+        t,
+      })
+    );
+
+    act(() => {
+      result.current.forceCreateNewSession();
+    });
+
+    const calls = (window.sendToJava as any).mock.calls.map((c: unknown[]) => c[0]);
+    expect(calls).toContain('create_new_session:{"keepRunning":true}');
+    expect(calls).not.toContain('interrupt_session:');
+
+    localStorage.removeItem('keepPreviousSessionRunningOnNew');
+  });
 });
+

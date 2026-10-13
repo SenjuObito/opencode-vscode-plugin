@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ModelSelect } from './ModelSelect';
 import type { ModelInfo } from '../types';
+import { __resetPinnedModelsStoreForTests } from '../modelSelectUtils';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -18,6 +19,7 @@ describe('ModelSelect', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    __resetPinnedModelsStoreForTests();
   });
 
   it('displays model label from props directly', () => {
@@ -167,6 +169,31 @@ describe('ModelSelect', () => {
     expect(screen.getByTestId('model-group-__pinned__')).toBeTruthy();
     const pinnedSection = screen.getByTestId('model-section-__pinned__');
     expect(pinnedSection.textContent).toContain('deepseek/Deepseek-V4-Flash-Free');
+  });
+
+  it('依次置顶多个模型时，先置顶的模型应显示在置顶列表的最上方', () => {
+    render(
+      <ModelSelect
+        value="opencode/big-pickle"
+        onChange={vi.fn()}
+        models={openCodeModels}
+        currentProvider="opencode"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    // 先置顶 deepseek
+    fireEvent.click(screen.getByTestId('model-pin-deepseek/deepseek-v4-flash-free'));
+    // 再置顶 anthropic
+    fireEvent.click(screen.getByTestId('model-pin-anthropic/claude-sonnet-4'));
+
+    const pinnedSection = screen.getByTestId('model-section-__pinned__');
+    const pinnedOptions = pinnedSection.querySelectorAll('.selector-option');
+    expect(pinnedOptions).toHaveLength(2);
+    // 先置顶的 deepseek 排在最上方
+    expect(pinnedOptions[0].getAttribute('data-testid')).toBe('model-option-deepseek/deepseek-v4-flash-free');
+    // 后置顶的 anthropic 排在下方
+    expect(pinnedOptions[1].getAttribute('data-testid')).toBe('model-option-anthropic/claude-sonnet-4');
   });
 
   it('点击搜索栏刷新按钮时应触发 onRefresh 并正确切换状态', () => {

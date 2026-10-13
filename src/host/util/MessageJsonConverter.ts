@@ -30,6 +30,9 @@ function convertMessage(msg: ChatMessage): JsonObject {
 			msgObj.durationMs = rawDuration;
 		}
 	}
+	if (typeof msg.durationMs === 'number') {
+		msgObj.durationMs = msg.durationMs;
+	}
 	return msgObj;
 }
 

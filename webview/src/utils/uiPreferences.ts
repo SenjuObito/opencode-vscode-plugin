@@ -21,6 +21,10 @@
 import { sendBridgeEvent } from './bridge';
 import { getStoredDiffTheme, type DiffThemeMode } from './diffTheme';
 import { CHAT_BAR_COLOR_STORAGE_KEY } from './chatBarTheme';
+import {
+  DETAILED_OUTPUT_ENABLED_EVENT,
+  type DetailedOutputEnabledChangedDetail,
+} from './detailedOutputPreference';
 
 export interface UiPreferences {
   /** 'system' = follow the VS Code color theme. */
@@ -212,6 +216,10 @@ function emit(source: UiPreferencesChangedDetail['source']): void {
   window.dispatchEvent(new CustomEvent<UiPreferencesChangedDetail>(
     UI_PREFERENCES_CHANGED_EVENT,
     { detail: { preferences: current, source } },
+  ));
+  window.dispatchEvent(new CustomEvent<DetailedOutputEnabledChangedDetail>(
+    DETAILED_OUTPUT_ENABLED_EVENT,
+    { detail: { enabled: current.detailedOutputEnabled } },
   ));
 }
 

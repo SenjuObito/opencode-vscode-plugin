@@ -28,6 +28,7 @@ export interface MessageItemProps {
   messageKey: string;
   isLast: boolean;
   streamingActive: boolean;
+  loading?: boolean;
   isThinking: boolean;
   t: TFunction;
   getMessageText: (message: ClaudeMessage) => string;
@@ -188,6 +189,7 @@ interface TokenUsageInfo {
   /** Total input-side tokens for the turn (non-cache input + cache write + cache read). */
   inputTokens: number;
   outputTokens: number;
+  reasoningTokens: number;
   nonCacheInputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
@@ -196,39 +198,63 @@ interface TokenUsageInfo {
 
 /**
  * Extract whole-turn token usage from a message's raw JSON.
- *
- * Reads the `turnUsage` field stamped by the backend when a turn completes
- * (ClaudeMessageHandler.handleResult / CodexMessageHandler.handleResultMessage).
- * It aggregates every API call in the turn, normalized to the Claude usage
- * schema (input_tokens excludes cache; cache fields are separate).
- *
- * Do NOT read `raw.message.usage` or `raw.usage` here: those carry per-API-call
- * and session-cumulative values that feed the context-usage status bar, and
- * would understate (Claude) or overstate (Codex) what this turn consumed.
- *
- * Returns null when no turn usage is available (aborted turns, history replay).
+ * Robustly parses both OpenCode native tokens and normalized turnUsage schemas.
  */
 function extractTokenUsage(raw: ClaudeMessage['raw']): TokenUsageInfo | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
-  const usageSrc = (r.turnUsage ?? r.tokens) as Record<string, unknown> | undefined;
+  const rawMsg = (r.message && typeof r.message === 'object' ? r.message : {}) as Record<string, unknown>;
+  const usageSrc = (r.turnUsage ?? r.tokens ?? rawMsg.usage ?? r.usage) as Record<string, unknown> | undefined;
   if (!usageSrc || typeof usageSrc !== 'object') return null;
 
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
   const cache = (usageSrc.cache && typeof usageSrc.cache === 'object' ? usageSrc.cache : {}) as Record<string, unknown>;
-  const nonCacheInput = num(usageSrc.input_tokens ?? usageSrc.input);
-  const cacheCreation = num(usageSrc.cache_creation_input_tokens ?? cache.write);
-  const cacheRead = num(usageSrc.cache_read_input_tokens ?? cache.read);
-  const output = num(usageSrc.output_tokens ?? usageSrc.output);
-  const input = nonCacheInput + cacheCreation + cacheRead;
-  if (input === 0 && output === 0) return null;
 
-  const rawCost = r.turnCostUsd ?? usageSrc.cost;
+  const cacheRead = num(usageSrc.cache_read_input_tokens ?? usageSrc.cache_read ?? cache.read);
+  const cacheCreation = num(usageSrc.cache_creation_input_tokens ?? usageSrc.cache_creation ?? cache.write);
+  const reasoning = num(usageSrc.reasoning_tokens ?? usageSrc.reasoning);
+
+  const rawInput = num(usageSrc.input_tokens ?? usageSrc.input);
+  const rawOutput = num(usageSrc.output_tokens ?? usageSrc.output);
+  const totalTokens = num(usageSrc.total_tokens ?? usageSrc.total);
+
+  let inputTokens = rawInput;
+  let nonCacheInputTokens = rawInput;
+
+  if (rawInput > 0) {
+    if (totalTokens > 0) {
+      if (Math.abs(totalTokens - (rawInput + rawOutput)) <= 1) {
+        inputTokens = rawInput;
+        nonCacheInputTokens = Math.max(0, rawInput - cacheRead - cacheCreation);
+      } else if (Math.abs(totalTokens - (rawInput + cacheRead + cacheCreation + rawOutput)) <= 1) {
+        inputTokens = rawInput + cacheRead + cacheCreation;
+        nonCacheInputTokens = rawInput;
+      }
+    } else {
+      if (usageSrc.tokens || usageSrc.input !== undefined) {
+        inputTokens = rawInput >= cacheRead + cacheCreation ? rawInput : rawInput + cacheRead + cacheCreation;
+        nonCacheInputTokens = Math.max(0, inputTokens - cacheRead - cacheCreation);
+      } else {
+        inputTokens = rawInput + cacheRead + cacheCreation;
+        nonCacheInputTokens = rawInput;
+      }
+    }
+  }
+
+  const outputTokens = rawOutput > 0 ? rawOutput : reasoning;
+
+  if (inputTokens === 0 && outputTokens === 0 && cacheRead === 0 && reasoning === 0) {
+    return null;
+  }
+
+  const rawCost = r.turnCostUsd ?? r.cost ?? usageSrc.cost ?? usageSrc.total_cost;
   const costUsd = typeof rawCost === 'number' && Number.isFinite(rawCost) && rawCost > 0 ? rawCost : undefined;
+
   return {
-    inputTokens: input,
-    outputTokens: output,
-    nonCacheInputTokens: nonCacheInput,
+    inputTokens,
+    outputTokens,
+    reasoningTokens: reasoning,
+    nonCacheInputTokens,
     cacheCreationTokens: cacheCreation,
     cacheReadTokens: cacheRead,
     ...(costUsd !== undefined ? { costUsd } : {}),
@@ -251,8 +277,8 @@ function formatUsdCost(cost: number): string {
 
 function formatCacheHitRatio(tokenInfo: TokenUsageInfo): string | null {
   if (tokenInfo.cacheReadTokens <= 0 || tokenInfo.inputTokens <= 0) return null;
-  const ratio = Math.round((tokenInfo.cacheReadTokens / tokenInfo.inputTokens) * 100);
-  return `${Math.min(100, Math.max(0, ratio))}%`;
+  const ratio = Math.min(100, Math.max(1, Math.round((tokenInfo.cacheReadTokens / tokenInfo.inputTokens) * 100)));
+  return `${ratio}%`;
 }
 
 function isToolBlockOfType(block: ClaudeContentBlock, toolNames: Set<string>): boolean {
@@ -423,6 +449,7 @@ export const MessageItem = memo(function MessageItem({
   messageKey,
   isLast,
   streamingActive,
+  loading,
   isThinking,
   t,
   getMessageText,
@@ -474,6 +501,7 @@ export const MessageItem = memo(function MessageItem({
 
   const isLastAssistantMessage = message.type === 'assistant' && isLast;
   const isMessageStreaming = streamingActive && isLastAssistantMessage;
+  const isTurnActive = isLastAssistantMessage && (Boolean(loading) || streamingActive);
 
   // Cache markdown content extraction for better performance
   const markdownContent = useMemo(() => {
@@ -909,17 +937,43 @@ export const MessageItem = memo(function MessageItem({
       )}
 
       {/* Duration and token display after last assistant message */}
-      {message.type === 'assistant' && !isMessageStreaming && (() => {
-        const durationMs = typeof message.durationMs === 'number' ? message.durationMs : null;
+      {message.type === 'assistant' && !isMessageStreaming && !isTurnActive && (() => {
+        // 中间纯工具调用步骤（非终态回复）不展示回合终态耗时
+        const contentBlocks = getContentBlocks(message);
+        const hasText = contentBlocks.some((b) => b.type === 'text' && typeof b.text === 'string' && b.text.trim().length > 0);
+        const hasTool = contentBlocks.some((b) => b.type === 'tool_use');
+        if (hasTool && !hasText && !isLast) {
+          return null;
+        }
+
+        const rawObj = (message.raw && typeof message.raw === 'object' ? message.raw : {}) as Record<string, unknown>;
+        const durationMs = typeof message.durationMs === 'number'
+          ? message.durationMs
+          : (typeof rawObj.durationMs === 'number' && Number.isFinite(rawObj.durationMs) && rawObj.durationMs >= 0
+            ? rawObj.durationMs
+            : null);
         const hasDuration = durationMs !== null;
         const tokenInfo = extractTokenUsage(message.raw);
-        if (!hasDuration && !tokenInfo) return null;
+        if (!hasDuration && (!detailedOutputEnabled || !tokenInfo)) return null;
 
-        const cacheHitRatio = detailedOutputEnabled && tokenInfo ? formatCacheHitRatio(tokenInfo) : null;
+        const cacheHitRatio = tokenInfo ? formatCacheHitRatio(tokenInfo) : null;
         const cacheHitLabel = cacheHitRatio
           ? t('chat.cacheHitsWithRatio', {
             tokens: formatTokenCount(tokenInfo!.cacheReadTokens),
             ratio: cacheHitRatio,
+          })
+          : '';
+
+        const reasoningLabel = tokenInfo && tokenInfo.reasoningTokens > 0
+          ? `（思考 ${formatTokenCount(tokenInfo.reasoningTokens)}）`
+          : '';
+
+        const tokenDetailTitle = tokenInfo
+          ? t('chat.tokenUsageDetail', {
+            input: formatTokenCount(tokenInfo.nonCacheInputTokens),
+            cacheWrite: formatTokenCount(tokenInfo.cacheCreationTokens),
+            cacheRead: formatTokenCount(tokenInfo.cacheReadTokens),
+            output: formatTokenCount(tokenInfo.outputTokens),
           })
           : '';
 
@@ -933,24 +987,19 @@ export const MessageItem = memo(function MessageItem({
                   <span className="message-duration-value">{formatDurationMs(durationMs)}</span>
                 </>
               )}
-              {tokenInfo && (
+              {detailedOutputEnabled && tokenInfo && (
                 <>
                   {hasDuration && <span className="message-duration-separator">·</span>}
                   <span
                     className="message-duration-tokens"
-                    title={t('chat.tokenUsageDetail', {
-                      input: formatTokenCount(tokenInfo.nonCacheInputTokens),
-                      cacheWrite: formatTokenCount(tokenInfo.cacheCreationTokens),
-                      cacheRead: formatTokenCount(tokenInfo.cacheReadTokens),
-                      output: formatTokenCount(tokenInfo.outputTokens),
-                    })}
+                    title={tokenDetailTitle}
                   >
                     {t('chat.tokenUsage', {
                       input: `${formatTokenCount(tokenInfo.inputTokens)}${cacheHitLabel}`,
-                      output: formatTokenCount(tokenInfo.outputTokens),
+                      output: `${formatTokenCount(tokenInfo.outputTokens)}${reasoningLabel}`,
                     })}
                   </span>
-                  {detailedOutputEnabled && tokenInfo.costUsd !== undefined && (
+                  {tokenInfo.costUsd !== undefined && (
                     <>
                       <span className="message-duration-separator">·</span>
                       <span className="message-duration-tokens">{formatUsdCost(tokenInfo.costUsd)}</span>

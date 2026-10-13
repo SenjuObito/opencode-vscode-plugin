@@ -222,13 +222,35 @@ async function warmupDaemon(
 	console.log('[extension] OpenCode preconnect ready');
 }
 
-/** 解析 daemon 脚本：优先打包产物，否则回退到源码 ESM。 */
+/** 解析 daemon 脚本：优先环境变量本地调试目录，次优先已安装的 opencode-buddy-core 依赖，次优先打包产物，最后回退到源码 ESM。 */
 function resolveDaemonScript(extensionPath: string): string {
+	const devBridgePath = process.env.OPENCODE_DEV_BRIDGE_PATH || process.env.OPENCODE_BRIDGE_PATH;
+	if (devBridgePath) {
+		const devDaemon = join(devBridgePath, 'daemon.js');
+		if (existsSync(devDaemon)) {
+			console.log(`[extension] Using dev bridge path from env: ${devDaemon}`);
+			return devDaemon;
+		}
+	}
+	try {
+		const installedDaemon = require.resolve('opencode-buddy-core/daemon.js', { paths: [extensionPath] });
+		if (existsSync(installedDaemon)) {
+			return installedDaemon;
+		}
+	} catch {
+		// Not installed via standard package resolution, check node_modules directly
+		const directNodeModules = join(extensionPath, 'node_modules', 'opencode-buddy-core', 'daemon.js');
+		if (existsSync(directNodeModules)) {
+			return directNodeModules;
+		}
+	}
 	const bundled = join(extensionPath, 'dist', 'ai-bridge.js');
 	if (existsSync(bundled)) {
 		return bundled;
 	}
-	return join(extensionPath, 'ai-bridge', 'daemon.js');
+	throw new Error(
+		"opencode-buddy-core daemon.js not found. Please ensure dependencies are installed via 'pnpm install' or OPENCODE_DEV_BRIDGE_PATH is configured.",
+	);
 }
 
 function pushDaemonStatus(_channel: BroadcastChannel, alive: boolean): void {

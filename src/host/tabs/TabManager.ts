@@ -126,7 +126,6 @@ export class TabManager {
 				retainContextWhenHidden: true,
 				localResourceRoots: [
 					vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
-					vscode.Uri.joinPath(extensionUri, 'ai-bridge'),
 				],
 			},
 		);

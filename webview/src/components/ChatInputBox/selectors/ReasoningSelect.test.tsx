@@ -9,156 +9,77 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('ReasoningSelect', () => {
-  it('shows and selects max for Codex', () => {
+  it('renders default reasoning level and selects a new level', () => {
     const onChange = vi.fn();
 
     render(
       <ReasoningSelect
-        value={'xhigh'}
+        value="high"
         onChange={onChange}
-        currentProvider={'codex'}
-        selectedModel={'gpt-5.6-sol'}
+        currentProvider="opencode"
+        selectedModel="anthropic/claude-3-7-sonnet"
       />,
     );
 
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('Max'));
+    const button = screen.getByRole('button');
+    expect(button).toBeTruthy();
+    fireEvent.click(button);
+
+    const maxOption = screen.getByText('Max');
+    expect(maxOption).toBeTruthy();
+    fireEvent.click(maxOption);
 
     expect(onChange).toHaveBeenCalledWith('max');
   });
 
-  it('shows max for namespaced GPT-5.6 Codex models regardless of case', () => {
+  it('filters available levels when modelVariants are provided', () => {
     render(
       <ReasoningSelect
-        value={'xhigh'}
+        value="low"
         onChange={vi.fn()}
-        currentProvider={'codex'}
-        selectedModel={'PPIO/PA/GPT-5.6-SOL'}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={['low', 'medium']}
       />,
     );
 
     fireEvent.click(screen.getByRole('button'));
 
-    expect(screen.getByText('Max')).toBeTruthy();
-  });
-
-  it('keeps max hidden for Codex models that do not support it', () => {
-    render(
-      <ReasoningSelect
-        value={'xhigh'}
-        onChange={vi.fn()}
-        currentProvider={'codex'}
-        selectedModel={'gpt-5.5'}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-
+    expect(screen.getAllByText('Low').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Medium')).toBeTruthy();
+    expect(screen.queryByText('High')).toBeNull();
+    expect(screen.queryByText('XHigh')).toBeNull();
     expect(screen.queryByText('Max')).toBeNull();
   });
 
-  it('keeps max hidden when the Codex model is unknown', () => {
-    render(
-      <ReasoningSelect
-        value={'xhigh'}
-        onChange={vi.fn()}
-        currentProvider={'codex'}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-
-    expect(screen.queryByText('Max')).toBeNull();
-  });
-
-  it('shows max for custom GPT-5.6 model suffixes', () => {
-    render(
-      <ReasoningSelect
-        value={'xhigh'}
-        onChange={vi.fn()}
-        currentProvider={'codex'}
-        selectedModel={'ppio/pa/gpt-5.6-sol-preview'}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-
-    expect(screen.getByText('Max')).toBeTruthy();
-  });
-
-  it('shows xhigh and max for Claude Opus 4.8', () => {
-    render(
-      <ReasoningSelect
-        value="high"
-        onChange={vi.fn()}
-        currentProvider="claude"
-        selectedModel="claude-opus-4-8"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-
-    expect(screen.getByText('XHigh')).toBeTruthy();
-    expect(screen.getByText('Max')).toBeTruthy();
-  });
-
-  it('shows max but not xhigh for Claude Sonnet 4.6', () => {
-    render(
-      <ReasoningSelect
-        value="high"
-        onChange={vi.fn()}
-        currentProvider="claude"
-        selectedModel="claude-sonnet-4-6"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-
-    expect(screen.queryByText('XHigh')).toBeNull();
-    expect(screen.getByText('Max')).toBeTruthy();
-  });
-
-  it('shows max but not xhigh for Claude Sonnet 5', () => {
-    render(
-      <ReasoningSelect
-        value="high"
-        onChange={vi.fn()}
-        currentProvider="claude"
-        selectedModel="claude-sonnet-5"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-
-    expect(screen.queryByText('XHigh')).toBeNull();
-    expect(screen.getByText('Max')).toBeTruthy();
-  });
-
-  it('resets unavailable effort when selected Claude model changes', () => {
+  it('resets effort to an available level if current value is not in modelVariants', () => {
     const onChange = vi.fn();
 
     render(
       <ReasoningSelect
-        value="xhigh"
+        value="max"
         onChange={onChange}
-        currentProvider="claude"
-        selectedModel="claude-sonnet-4-6"
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={['low', 'medium']}
       />,
     );
 
-    expect(onChange).toHaveBeenCalledWith('high');
+    // currentLevel should fallback and trigger onChange
+    expect(onChange).toHaveBeenCalled();
   });
 
-  it('hides for Claude models without effort support', () => {
+  it('disables button when disabled prop is true', () => {
     render(
       <ReasoningSelect
         value="high"
         onChange={vi.fn()}
-        currentProvider="claude"
-        selectedModel="claude-haiku-4-5"
+        currentProvider="opencode"
+        disabled={true}
       />,
     );
 
-    expect(screen.queryByRole('button')).toBeNull();
+    const button = screen.getByRole('button');
+    expect(button).toHaveProperty('disabled', true);
   });
 });

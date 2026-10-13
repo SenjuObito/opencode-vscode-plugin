@@ -10,7 +10,7 @@
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 import type { ContextUsageData } from '../../../components/ContextUsageDialog';
-import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
+import { sendBridgeEvent } from '../../../utils/bridge';
 import { debugError } from '../../../utils/debug';
 import {
   appendOptimisticMessageIfMissing,
@@ -141,7 +141,6 @@ export function registerMessageCallbacks(
   };
 
   const processUpdateMessages = (json: string, sequence: number | null = null, baseIndexArg?: string | number | null) => {
-    cardDebugLog('[processUpdateMessages] called, seq:', sequence, 'isStreaming:', isStreamingRef.current, 'jsonLen:', json.length, 'transitioning:', window.__sessionTransitioning);
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
     // cannot resurrect cleared messages when a transition starts between the
@@ -150,12 +149,10 @@ export function registerMessageCallbacks(
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
     if (window.__sessionTransitioning) {
-      cardDebugLog('[processUpdateMessages] BLOCKED: sessionTransitioning');
       return;
     }
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
     if (sequence != null && sequence < minAcceptedSequence) {
-      cardDebugLog('[processUpdateMessages] BLOCKED: seq', sequence, '< minAccepted', minAcceptedSequence);
       return;
     }
 
@@ -475,9 +472,7 @@ export function registerMessageCallbacks(
   window.updateMessages = (json, sequenceArg, baseIndexArg) => {
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
-    cardDebugLog('[updateMessages] called, transitioning:', window.__sessionTransitioning, 'seq:', sequenceArg, 'jsonLen:', json?.length);
     if (window.__sessionTransitioning) {
-      cardDebugLog('[updateMessages] BLOCKED by sessionTransitioning');
       return;
     }
     const sequence = parseSequence(sequenceArg);
@@ -645,7 +640,7 @@ export function registerMessageCallbacks(
     addToast(message);
   };
 
-  window.showLoading = (value) => {
+  window.showLoading = (value, turnStartTime) => {
     const isLoading = isTruthy(value);
 
     // FIX: Ignore loading=false during streaming — onStreamEnd handles it uniformly.
@@ -656,31 +651,20 @@ export function registerMessageCallbacks(
     // Notify backend about loading state change for tab indicator
     sendBridgeEvent('tab_loading_changed', JSON.stringify({ loading: isLoading }));
 
+    const parsedStartTime =
+      turnStartTime !== undefined && turnStartTime !== null && turnStartTime !== ''
+        ? Number(turnStartTime)
+        : null;
+
     setLoading((prevLoading) => {
       if (isLoading) {
-        if (!prevLoading) {
+        if (parsedStartTime !== null && Number.isFinite(parsedStartTime) && parsedStartTime > 0) {
+          setLoadingStartTime(parsedStartTime);
+        } else if (!prevLoading) {
           setLoadingStartTime(Date.now());
         }
       } else {
-        // Stamp durationMs on the last assistant message when loading ends.
-        // Skip if onStreamEnd already stamped it (avoids double-write race).
-        setLoadingStartTime((prevStartTime) => {
-          if (prevStartTime != null) {
-            const durationMs = Date.now() - prevStartTime;
-            setMessages((prev) => {
-              for (let i = prev.length - 1; i >= 0; i--) {
-                if (prev[i].type === 'assistant') {
-                  if (typeof prev[i].durationMs === 'number') return prev;
-                  const next = [...prev];
-                  next[i] = { ...next[i], durationMs };
-                  return next;
-                }
-              }
-              return prev;
-            });
-          }
-          return null;
-        });
+        setLoadingStartTime(null);
       }
       return isLoading;
     });
@@ -767,8 +751,6 @@ export function registerMessageCallbacks(
   };
 
   window.clearMessages = (barrierSequenceArg) => {
-    cardDebugLog('[clearMessages] called, transitioning:', window.__sessionTransitioning, 'barrierSeq:', barrierSequenceArg);
-    cardDebugLog('[clearMessages] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     // Advance the sequence barrier so any updateMessages still in flight from
     // the previous session are rejected. Such a snapshot may already have been
     // dispatched to JS and be sitting in the JCEF IPC channel, so neither the
@@ -777,12 +759,7 @@ export function registerMessageCallbacks(
     // the backend coalescer's post-reset updateSequence; stale snapshots carry a
     // strictly smaller sequence. Closes the "new session does not clear" race.
     const barrierSequence = parseSequence(barrierSequenceArg);
-    if (barrierSequence != null) {
-      window.__minAcceptedUpdateSequence = Math.max(
-        window.__minAcceptedUpdateSequence ?? 0,
-        barrierSequence,
-      );
-    }
+    window.__minAcceptedUpdateSequence = barrierSequence ?? 0;
     // Cancel any pending deferred updateMessages to prevent stale data from
     // being applied after messages are cleared.
     if (pendingUpdateRaf !== null) {
@@ -874,10 +851,7 @@ export function registerMessageCallbacks(
   };
 
   window.historyLoadComplete = (expectedMessageCountArg) => {
-    cardDebugLog('[HistoryLoadComplete] called, transitioning BEFORE release:', window.__sessionTransitioning, 'expectedMsgCount:', expectedMessageCountArg);
-    cardDebugLog('[HistoryLoadComplete] stack:', new Error().stack?.split('\n').slice(1, 4).join(' | '));
     releaseSessionTransition();
-    cardDebugLog('[HistoryLoadComplete] transitioning AFTER release:', window.__sessionTransitioning);
     // Defer sessionLoading=false so the loading indicator has time to render.
     // setTimeout(0) is too fast — React 18 batches it into the same frame as
     // the message update, so the UI jumps from empty→messages with no visible

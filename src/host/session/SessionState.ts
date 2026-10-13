@@ -42,6 +42,7 @@ export class SessionState {
 	private busy = false;
 	private loading = false;
 	private error: string | null = null;
+	private activeTurnStartTime: number | null = null;
 
 	// ── 消息历史 ──
 	private readonly messages: ChatMessage[] = [];
@@ -114,9 +115,27 @@ export class SessionState {
 		return this.revertState;
 	}
 
+	private sessionIdListeners: Array<(id: string) => void> = [];
+
+	onSessionIdAssigned(listener: (id: string) => void): () => void {
+		this.sessionIdListeners.push(listener);
+		return () => {
+			this.sessionIdListeners = this.sessionIdListeners.filter((l) => l !== listener);
+		};
+	}
+
 	// Setters
 	setSessionId(sessionId: string | null): void {
 		this.sessionId = sessionId;
+		if (sessionId) {
+			for (const listener of this.sessionIdListeners) {
+				try {
+					listener(sessionId);
+				} catch {
+					/* ignore */
+				}
+			}
+		}
 	}
 	setChannelId(channelId: string | null): void {
 		this.channelId = channelId;
@@ -124,8 +143,21 @@ export class SessionState {
 	setBusy(busy: boolean): void {
 		this.busy = busy;
 	}
+	getActiveTurnStartTime(): number | null {
+		return this.activeTurnStartTime;
+	}
+	setActiveTurnStartTime(time: number | null): void {
+		this.activeTurnStartTime = time;
+	}
 	setLoading(loading: boolean): void {
 		this.loading = loading;
+		if (loading) {
+			if (this.activeTurnStartTime === null) {
+				this.activeTurnStartTime = Date.now();
+			}
+		} else {
+			this.activeTurnStartTime = null;
+		}
 	}
 	setError(error: string | null): void {
 		this.error = error;

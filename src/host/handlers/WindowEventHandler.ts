@@ -116,11 +116,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 	}
 
 	private handleCreateNewSession(content?: string): void {
-		const session = this.context.getSession();
-		if (!session) {
-			return;
-		}
-		let keepRunning = this.context.getSettingsService().getUiPreferences().keepPreviousSessionRunningOnNew;
+		let keepRunning = true;
 		if (content) {
 			try {
 				const parsed = JSON.parse(content) as Record<string, unknown>;
@@ -131,8 +127,16 @@ export class WindowEventHandler extends BaseMessageHandler {
 				// content 可能不是 JSON
 			}
 		}
-		session.resetSession({ keepRunning });
-		this.callJavaScript('showLoading', 'false');
+
+		const sessionManager = this.context.getSessionManager();
+		if (sessionManager) {
+			sessionManager.createNewSession(keepRunning);
+		} else {
+			const session = this.context.getSession();
+			session?.resetSession({ keepRunning });
+			this.callJavaScript('showLoading', 'false');
+			this.callJavaScript('historyLoadComplete');
+		}
 	}
 
 	/** frontend_ready：回放会话状态 / provider / mode / 依赖 / slash 命令 / linkify。 */

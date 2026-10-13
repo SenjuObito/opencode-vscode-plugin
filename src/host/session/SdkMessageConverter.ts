@@ -76,6 +76,25 @@ export function convertSdkMessages(entries: SdkMessageEntry[]): ChatMessage[] {
 	for (const entry of Array.isArray(entries) ? entries : []) {
 		out.push(...convertSdkMessage(entry));
 	}
+
+	// 领域模型约束：清理中间过程消息上的误导性局部耗时。
+	// 若一条 assistant 消息紧随其后的是 [tool_result]，说明它仅发起了工具调用，
+	// 属于交互回合（Turn）的中间步骤，绝非该回合的最终结算，不应携带 durationMs。
+	for (let i = 0; i < out.length; i++) {
+		const msg = out[i];
+		if (msg.type === MessageType.ASSISTANT) {
+			const nextMsg = out[i + 1];
+			const isFollowedByToolResult =
+				nextMsg && nextMsg.type === MessageType.USER && nextMsg.content === '[tool_result]';
+			if (isFollowedByToolResult) {
+				if (msg.raw && typeof msg.raw === 'object') {
+					delete (msg.raw as Record<string, unknown>).durationMs;
+				}
+				delete (msg as any).durationMs;
+			}
+		}
+	}
+
 	return out;
 }
 
@@ -332,7 +351,7 @@ function buildAssistantMessages(
 			Number(t.total) || (inputTokens + outputTokens + reasoningTokens + cacheReadTokens + cacheCreationTokens);
 		const turnUsage: Record<string, unknown> = {
 			input_tokens: inputTokens,
-			output_tokens: outputTokens,
+			output_tokens: outputTokens + reasoningTokens,
 			reasoning_tokens: reasoningTokens,
 			cache_read_input_tokens: cacheReadTokens,
 			cache_creation_input_tokens: cacheCreationTokens,

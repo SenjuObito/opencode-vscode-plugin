@@ -71,7 +71,7 @@ describe('useMessageSender - /context command', () => {
     expect(payload.requestId).toBeTruthy();
   });
 
-  it('sends get_context_usage with [1m] suffix when longContext is enabled', () => {
+  it('sends get_context_usage with selected model when longContext is enabled', () => {
     const opts = createOptions({
       selectedModel: 'claude-opus-4-8',
       longContextEnabled: true,
@@ -86,7 +86,7 @@ describe('useMessageSender - /context command', () => {
     expect(window.sendToJava).toHaveBeenCalledTimes(1);
     const call = (window.sendToJava as any).mock.calls[0][0] as string;
     const payload = JSON.parse(call.substring('get_context_usage:'.length));
-    expect(payload.model).toBe('claude-opus-4-8[1m]');
+    expect(payload.model).toBe('claude-opus-4-8');
   });
 
   it('opens dialog with loading state before sending bridge event', () => {
@@ -107,27 +107,6 @@ describe('useMessageSender - /context command', () => {
     // Dialog opened BEFORE bridge event sent
     expect(openContextUsageDialog.mock.invocationCallOrder[0]).toBeLessThan(
       (window.sendToJava as any).mock.invocationCallOrder[0],
-    );
-  });
-
-  it('shows warning toast and does not send bridge event for Codex provider', () => {
-    const addToast = vi.fn();
-    const opts = createOptions({
-      currentProvider: 'codex',
-      addToast,
-    });
-
-    const { result } = renderHook(() => useMessageSender(opts));
-
-    act(() => {
-      result.current.handleSubmit('/context');
-    });
-
-    expect(window.sendToJava).not.toHaveBeenCalled();
-    expect(addToast).toHaveBeenCalledTimes(1);
-    expect(addToast).toHaveBeenCalledWith(
-      expect.stringContaining('Claude'),
-      'warning',
     );
   });
 
@@ -191,7 +170,7 @@ describe('useMessageSender - /context command', () => {
     expect(payload.reasoningEffort).toBe('high');
   });
 
-  it('omits reasoning effort for Claude models without adaptive thinking support', () => {
+  it('passes through reasoning effort consistently', () => {
     const opts = createOptions({
       currentProvider: 'claude',
       selectedModel: 'claude-haiku-4-5',
@@ -205,7 +184,7 @@ describe('useMessageSender - /context command', () => {
     });
 
     const payload = getBridgePayload('send_message');
-    expect(payload).not.toHaveProperty('reasoningEffort');
+    expect(payload.reasoningEffort).toBe('low');
   });
 
   it('includes explicit non-default Claude reasoning effort in plain message payload', () => {

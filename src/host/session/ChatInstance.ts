@@ -11,6 +11,7 @@ import { MessageDispatcher } from '../router/MessageDispatcher';
 import { SettingsService } from '../settings/SettingsService';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { OpenCodeSession, TurnCompletedInfo } from './OpenCodeSession';
+import { SessionManager } from './SessionManager';
 import { NotificationService } from '../notifications/NotificationService';
 
 /**
@@ -69,6 +70,7 @@ export interface ChatInstance {
 	context: HandlerContext;
 	dispatcher: MessageDispatcher;
 	session: OpenCodeSession;
+	sessionManager: SessionManager;
 	historyHandler: HistoryHandler;
 	permissionHandler: PermissionHandler;
 	fontConfigHandler: FontConfigHandler;
@@ -113,29 +115,35 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	context.setFontConfigPusher(() => fontConfigHandler.pushInitialConfig());
 
 	const notificationService = new NotificationService(context);
-	const session = new OpenCodeSession({
+	const sessionManager = new SessionManager({
 		context,
 		daemon: deps.daemon,
 		permissionHandler: (request) => permissionHandler.onPermissionRequested(request),
 		permissionClosedHandler: (kind, content) => permissionHandler.onPromptClosed(kind, content),
 		editorSelectionResolver: () => deps.editorContextTracker?.getCurrentSelectionInfo() ?? null,
 		onTurnCompleted: (info: TurnCompletedInfo) => {
+			const active = sessionManager.getActiveSession();
 			if (info.sessionId) {
-				historyHandler.recordSession(info.sessionId, info.title, info.messageCount, session.state.getModel() ?? undefined);
+				historyHandler.recordSession(info.sessionId, info.title, info.messageCount, active.state.getModel() ?? undefined);
 			}
 			notificationService.onTurnCompleted(info);
 		},
+		onSessionCreated: (newSession) => {
+			seedSessionFromPersistedSelection(deps.settings, newSession);
+		},
 	});
-	context.setSession(session);
-	seedSessionFromPersistedSelection(deps.settings, session);
+	context.setSessionManager(sessionManager);
+	context.setSession(sessionManager.getActiveSession());
+	seedSessionFromPersistedSelection(deps.settings, sessionManager.getActiveSession());
 
 	return {
 		context,
 		dispatcher,
-		session,
+		session: sessionManager.getActiveSession(),
+		sessionManager,
 		historyHandler,
 		permissionHandler,
 		fontConfigHandler,
-		dispose: () => session.dispose(),
+		dispose: () => sessionManager.dispose(),
 	};
 }

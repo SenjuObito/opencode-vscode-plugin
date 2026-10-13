@@ -71,7 +71,7 @@ interface Window {
   /**
    * Show loading indicator
    */
-  showLoading?: (value: string | boolean) => void;
+  showLoading?: (value: string | boolean, turnStartTime?: string | number) => void;
 
   /**
    * Show thinking status

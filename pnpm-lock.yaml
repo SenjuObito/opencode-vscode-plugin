@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      opencode-buddy-core:
+        specifier: github:SenjuObito/opencode-buddy-core#v0.1.0
+        version: https://codeload.github.com/SenjuObito/opencode-buddy-core/tar.gz/5751c13cc3fd4723309be65bfddb7b47ea1bee7e
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -281,6 +284,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@opencode-ai/sdk@1.19.0':
+    resolution: {integrity: sha512-lDFYTD6qxzq1mfwxF6Kq1DAs6rEwF4xoZ2I3G1sB7hAZ8Yb28JurtSmmcK7ZzZ8Z4qBUYbZimHJ6DM4JFq5amw==}
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -1164,6 +1170,10 @@ packages:
     resolution: {integrity: sha512-VXJjc87FScF88uafS3JllDgvAm+c/Slfz06lorj2uAY34rlUu0Nt+v8wreiImcrgAjjIHp1rXpTDlLOGw29WwQ==}
     engines: {node: '>=18'}
 
+  opencode-buddy-core@https://codeload.github.com/SenjuObito/opencode-buddy-core/tar.gz/5751c13cc3fd4723309be65bfddb7b47ea1bee7e:
+    resolution: {gitHosted: true, integrity: sha512-kmjrLrqATKdT/6UWRRIYjwxRFLbTKRdJM13PAbqvQFTVL4HpfbuifjsqSQOpnSQAjqzNX0uN0tw22EAH4bAgBA==, tarball: https://codeload.github.com/SenjuObito/opencode-buddy-core/tar.gz/5751c13cc3fd4723309be65bfddb7b47ea1bee7e}
+    version: 0.1.0
+
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
@@ -1768,6 +1778,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@opencode-ai/sdk@1.19.0':
+    dependencies:
+      cross-spawn: 7.0.6
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
@@ -2817,6 +2831,10 @@ snapshots:
   onetime@7.0.0:
     dependencies:
       mimic-function: 5.0.1
+
+  opencode-buddy-core@https://codeload.github.com/SenjuObito/opencode-buddy-core/tar.gz/5751c13cc3fd4723309be65bfddb7b47ea1bee7e:
+    dependencies:
+      '@opencode-ai/sdk': 1.19.0
 
   optionator@0.9.4:
     dependencies:
