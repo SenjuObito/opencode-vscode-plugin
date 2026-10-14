@@ -1,5 +1,5 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import PermissionDialog from './PermissionDialog';
 import type { PermissionRequest } from './PermissionDialog';
 
@@ -33,11 +33,12 @@ vi.mock('../hooks/useDialogCountdownTimeout', () => ({
   },
 }));
 
+const setDialogHeightMock = vi.fn();
 vi.mock('../hooks/useDialogResize', () => ({
   useDialogResize: () => ({
     dialogRef: { current: null },
     dialogHeight: null,
-    setDialogHeight: vi.fn(),
+    setDialogHeight: setDialogHeightMock,
     handleResizeStart: vi.fn(),
   }),
 }));
@@ -57,7 +58,7 @@ const renderDialog = (request: PermissionRequest | null, onApproveAlways?: (id: 
   const onApprove = vi.fn();
   const onSkip = vi.fn();
   const approveAlways = onApproveAlways ?? vi.fn();
-  render(
+  const result = render(
     <PermissionDialog
       isOpen
       request={request}
@@ -66,7 +67,7 @@ const renderDialog = (request: PermissionRequest | null, onApproveAlways?: (id: 
       onApproveAlways={approveAlways}
     />,
   );
-  return { onApprove, onSkip, approveAlways };
+  return { onApprove, onSkip, approveAlways, ...result };
 };
 
 describe('PermissionDialog', () => {
@@ -74,6 +75,10 @@ describe('PermissionDialog', () => {
     countdown.state = { remainingSeconds: 100, isTimeWarning: false };
     countdown.markSubmitted.mockClear();
     countdown.lastOpts = null;
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('renders nothing when closed or no request', () => {
@@ -128,5 +133,67 @@ describe('PermissionDialog', () => {
     renderDialog(mkRequest());
     expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
     expect(document.querySelector('.permission-dialog-v3-options')).toBeTruthy();
+  });
+
+  it('can be minimized to a single bar and restored on click', () => {
+    renderDialog(mkRequest());
+    expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
+
+    const collapseBtn = document.querySelector('.permission-dialog-collapse-btn');
+    expect(collapseBtn).toBeTruthy();
+    fireEvent.click(collapseBtn!);
+
+    // Should be in minimized mode
+    expect(document.querySelector('.permission-dialog-v3')).toBeFalsy();
+    expect(document.querySelector('.permission-dialog-minimized')).toBeTruthy();
+    expect(document.querySelector('.permission-dialog-overlay.collapsed-mode')).toBeTruthy();
+
+    // Clicking the expand button restores the full dialog
+    const expandBtn = document.querySelector('.permission-dialog-expand-btn');
+    expect(expandBtn).toBeTruthy();
+    fireEvent.click(expandBtn!);
+
+    expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
+    expect(document.querySelector('.permission-dialog-minimized')).toBeFalsy();
+  });
+
+  it('restores dialog when clicking on the minimized card body', () => {
+    renderDialog(mkRequest());
+    fireEvent.click(document.querySelector('.permission-dialog-collapse-btn')!);
+
+    const minimizedCard = document.querySelector('.permission-dialog-minimized');
+    expect(minimizedCard).toBeTruthy();
+    fireEvent.click(minimizedCard!);
+
+    expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
+  });
+
+  it('resets minimized state when a new request arrives', () => {
+    const { rerender } = render(
+      <PermissionDialog
+        isOpen
+        request={mkRequest({ channelId: 'req-1' })}
+        onApprove={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+
+    // Minimize
+    fireEvent.click(document.querySelector('.permission-dialog-collapse-btn')!);
+    expect(document.querySelector('.permission-dialog-minimized')).toBeTruthy();
+
+    // New request arrives
+    rerender(
+      <PermissionDialog
+        isOpen
+        request={mkRequest({ channelId: 'req-2' })}
+        onApprove={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+
+    // Automatically expanded
+    expect(document.querySelector('.permission-dialog-v3')).toBeTruthy();
+    expect(document.querySelector('.permission-dialog-minimized')).toBeFalsy();
   });
 });

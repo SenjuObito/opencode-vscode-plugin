@@ -72,8 +72,9 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
 }) => {
   const [showCommand, setShowCommand] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(false);
   const {t} = useTranslation();
-  const {dialogRef, dialogHeight, setDialogHeight, handleResizeStart} = useDialogResize({minHeight: 150});
+  const {dialogRef, dialogHeight, setDialogHeight, handleResizeStart, resetDialogHeight} = useDialogResize({minHeight: 150});
 
   const submittedRef = React.useRef(false);
 
@@ -110,12 +111,20 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
     onSkip(request.channelId);
   }, [request, onSkip]);
 
+  const lastChannelIdRef = React.useRef<string | null>(null);
+
   useEffect(() => {
     if (isOpen && request) {
-      submittedRef.current = false;
-      setShowCommand(true);
-      setSelectedIndex(0);
-      setDialogHeight(null);
+      if (lastChannelIdRef.current !== request.channelId) {
+        lastChannelIdRef.current = request.channelId;
+        submittedRef.current = false;
+        setShowCommand(true);
+        setSelectedIndex(0);
+        setIsMinimized(false);
+        setDialogHeight(null);
+      }
+    } else {
+      lastChannelIdRef.current = null;
     }
   }, [isOpen, request?.channelId, setDialogHeight]);
 
@@ -166,6 +175,45 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
     return translated;
   };
 
+  if (isMinimized) {
+    return (
+      <div className={`permission-dialog-overlay collapsed-mode ${isTimeWarning ? 'warning-mode' : ''}`}>
+        <div
+          className="permission-dialog-minimized"
+          onClick={() => setIsMinimized(false)}
+          title={t('chat.expand', '展开')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsMinimized(false);
+            }
+          }}
+        >
+          <div className="minimized-header">
+            <span className="codicon codicon-shield minimized-icon" />
+            <span className="minimized-title">{getToolTitle(request.toolName)}</span>
+          </div>
+          <div className="minimized-actions" onClick={(e) => e.stopPropagation()}>
+            <span className={`countdown-timer ${isTimeWarning ? 'warning' : ''}`}>
+              <span className="codicon codicon-clock" />
+              <span className="countdown-time">{formatCountdown(remainingSeconds)}</span>
+            </span>
+            <button
+              className="permission-dialog-expand-btn"
+              onClick={() => setIsMinimized(false)}
+              title={t('chat.expand', '展开')}
+              aria-label={t('chat.expand', '展开')}
+            >
+              <span className="codicon codicon-chevron-up" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`permission-dialog-overlay ${isTimeWarning ? 'warning-mode' : ''}`}
@@ -175,13 +223,28 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
         className="permission-dialog-v3"
         style={dialogHeight ? {height: dialogHeight, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' as const} : undefined}
       >
-        <div className="permission-dialog-v3-resize-handle" onPointerDown={handleResizeStart} />
+        <div
+          className="permission-dialog-v3-resize-handle"
+          onPointerDown={handleResizeStart}
+          onDoubleClick={resetDialogHeight}
+          title={t('chat.doubleClickResetHeight', '双击恢复自适应高度')}
+        />
         <div className="permission-dialog-v3-header-row">
           <h3 className="permission-dialog-v3-title">{getToolTitle(request.toolName)}</h3>
-          <span className={`countdown-timer ${isTimeWarning ? 'warning' : ''}`}>
-            <span className="codicon codicon-clock" />
-            <span className="countdown-time">{formatCountdown(remainingSeconds)}</span>
-          </span>
+          <div className="permission-dialog-v3-header-actions">
+            <span className={`countdown-timer ${isTimeWarning ? 'warning' : ''}`}>
+              <span className="codicon codicon-clock" />
+              <span className="countdown-time">{formatCountdown(remainingSeconds)}</span>
+            </span>
+            <button
+              className="permission-dialog-collapse-btn"
+              onClick={() => setIsMinimized(true)}
+              title={t('chat.collapse', '最小化')}
+              aria-label={t('chat.collapse', '最小化')}
+            >
+              <span className="codicon codicon-chevron-down" />
+            </button>
+          </div>
         </div>
         <p className="permission-dialog-v3-subtitle">{t('permission.fromExternalProcess', '来自外部进程的请求')}</p>
 

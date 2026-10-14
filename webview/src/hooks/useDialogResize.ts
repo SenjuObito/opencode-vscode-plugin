@@ -9,7 +9,10 @@ interface UseDialogResizeReturn {
   dialogHeight: number | null;
   setDialogHeight: React.Dispatch<React.SetStateAction<number | null>>;
   handleResizeStart: (e: React.PointerEvent) => void;
+  resetDialogHeight: () => void;
 }
+
+const DRAG_THRESHOLD_PX = 4;
 
 /**
  * Hook for dialog drag-to-resize behavior.
@@ -18,14 +21,20 @@ interface UseDialogResizeReturn {
 export function useDialogResize({ minHeight = 150 }: UseDialogResizeOptions = {}): UseDialogResizeReturn {
   const [dialogHeight, setDialogHeight] = useState<number | null>(null);
   const isDraggingRef = useRef(false);
+  const hasMovedRef = useRef(false);
   const dragStartYRef = useRef(0);
   const dragStartHeightRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  const resetDialogHeight = useCallback(() => {
+    setDialogHeight(null);
+  }, []);
 
   const handleResizeStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     isDraggingRef.current = true;
+    hasMovedRef.current = false;
     dragStartYRef.current = e.clientY;
     dragStartHeightRef.current = dialogRef.current?.offsetHeight ?? 0;
     document.body.style.cursor = 'ns-resize';
@@ -36,12 +45,17 @@ export function useDialogResize({ minHeight = 150 }: UseDialogResizeOptions = {}
     const handleResizeMove = (e: PointerEvent) => {
       if (!isDraggingRef.current) return;
       const delta = dragStartYRef.current - e.clientY;
+      if (!hasMovedRef.current && Math.abs(delta) < DRAG_THRESHOLD_PX) {
+        return;
+      }
+      hasMovedRef.current = true;
       const newHeight = Math.max(minHeight, Math.min(window.innerHeight * 0.9, dragStartHeightRef.current + delta));
       setDialogHeight(newHeight);
     };
     const handleResizeEnd = () => {
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
+      hasMovedRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -52,11 +66,12 @@ export function useDialogResize({ minHeight = 150 }: UseDialogResizeOptions = {}
       window.removeEventListener('pointerup', handleResizeEnd);
       if (isDraggingRef.current) {
         isDraggingRef.current = false;
+        hasMovedRef.current = false;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       }
     };
   }, [minHeight]);
 
-  return { dialogRef, dialogHeight, setDialogHeight, handleResizeStart };
+  return { dialogRef, dialogHeight, setDialogHeight, handleResizeStart, resetDialogHeight };
 }

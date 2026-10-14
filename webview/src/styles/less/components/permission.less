@@ -18,11 +18,9 @@
 @keyframes slideFromBottom {
     from {
         transform: translateY(100%);
-        opacity: 0;
     }
     to {
         transform: translateY(0);
-        opacity: 1;
     }
 }
 
@@ -366,10 +364,7 @@
 /* Permission Dialog V3 Styles - 底部固定栏设计 */
 .permission-dialog-v3 {
     position: relative;
-    background: var(--bg-elevated);
-    /* 毛玻璃效果 */
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: var(--bg-primary);
     /* 只有顶部圆角 */
     border-radius: 12px 12px 0 0;
     /* 顶部边框强调分隔 */
@@ -389,11 +384,10 @@
 .permission-dialog-v3-resize-handle {
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
-    height: 6px;
+    left: 40px;
+    right: 120px;
+    height: 8px;
     cursor: ns-resize;
-    border-radius: 12px 12px 0 0;
     z-index: 1;
 }
 

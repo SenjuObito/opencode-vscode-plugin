@@ -40,13 +40,15 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
   timeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
 }) => {
   const {t} = useTranslation();
-  const {dialogRef, dialogHeight, setDialogHeight, handleResizeStart} = useDialogResize({minHeight: 200});
+  const {dialogRef, dialogHeight, setDialogHeight, handleResizeStart, resetDialogHeight} = useDialogResize({minHeight: 200});
 
   const [answers, setAnswers] = useState<Record<string, Set<string>>>({});
   const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(false);
   const customInputRef = useRef<HTMLTextAreaElement>(null);
   const submittedRef = useRef(false);
+  const lastRequestIdRef = useRef<string | null>(null);
 
   const handleTimeout = useCallback(() => {
     if (submittedRef.current) return;
@@ -150,17 +152,23 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
 
   useEffect(() => {
     if (isOpen && request) {
-      submittedRef.current = false;
-      const initialAnswers: Record<string, Set<string>> = {};
-      const initialCustomInputs: Record<string, string> = {};
-      request.questions.forEach((q) => {
-        initialAnswers[q.question] = new Set<string>();
-        initialCustomInputs[q.question] = '';
-      });
-      setAnswers(initialAnswers);
-      setCustomInputs(initialCustomInputs);
-      setDialogHeight(null);
-      setCurrentQuestionIndex(0);
+      if (lastRequestIdRef.current !== request.requestId) {
+        lastRequestIdRef.current = request.requestId;
+        submittedRef.current = false;
+        const initialAnswers: Record<string, Set<string>> = {};
+        const initialCustomInputs: Record<string, string> = {};
+        request.questions.forEach((q) => {
+          initialAnswers[q.question] = new Set<string>();
+          initialCustomInputs[q.question] = '';
+        });
+        setAnswers(initialAnswers);
+        setCustomInputs(initialCustomInputs);
+        setDialogHeight(null);
+        setCurrentQuestionIndex(0);
+        setIsMinimized(false);
+      }
+    } else {
+      lastRequestIdRef.current = null;
     }
   }, [isOpen, request?.requestId, setDialogHeight]);
 
@@ -186,6 +194,54 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
 
   if (!isOpen || !request || normalizedQuestions.length === 0 || !currentQuestion) return null;
 
+  if (isMinimized) {
+    const questionSummary = currentQuestion.header && currentQuestion.header !== 'Other'
+      ? `[${currentQuestion.header}] ${currentQuestion.question}`
+      : (currentQuestion.question || t('askUserQuestion.title', 'OpenCode 有一些问题想问你'));
+
+    return (
+      <div className={`permission-dialog-overlay collapsed-mode ${isTimeWarning ? 'warning-mode' : ''}`}>
+        <div
+          className="ask-user-question-dialog-minimized"
+          onClick={() => setIsMinimized(false)}
+          title={t('chat.expand', '展开')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsMinimized(false);
+            }
+          }}
+        >
+          <div className="minimized-header">
+            <span className="codicon codicon-question minimized-icon" />
+            <span className="minimized-title">{questionSummary}</span>
+            {normalizedQuestions.length > 1 && (
+              <span className="minimized-progress">
+                ({safeQuestionIndex + 1}/{normalizedQuestions.length})
+              </span>
+            )}
+          </div>
+          <div className="minimized-actions" onClick={(e) => e.stopPropagation()}>
+            <span className={`countdown-timer ${isTimeWarning ? 'warning' : ''}`}>
+              <span className="codicon codicon-clock" />
+              <span className="countdown-time">{formatCountdown(remainingSeconds)}</span>
+            </span>
+            <button
+              className="ask-user-question-expand-btn"
+              onClick={() => setIsMinimized(false)}
+              title={t('chat.expand', '展开')}
+              aria-label={t('chat.expand', '展开')}
+            >
+              <span className="codicon codicon-chevron-up" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`permission-dialog-overlay ${isTimeWarning ? 'warning-mode' : ''}`}
@@ -195,16 +251,31 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
         className={`ask-user-question-dialog expanded ${isTimeWarning ? 'time-warning' : ''}`}
         style={dialogHeight ? {height: dialogHeight, maxHeight: '90vh'} : undefined}
       >
-        <div className="ask-user-question-dialog-resize-handle" onPointerDown={handleResizeStart} />
+        <div
+          className="ask-user-question-dialog-resize-handle"
+          onPointerDown={handleResizeStart}
+          onDoubleClick={resetDialogHeight}
+          title={t('chat.doubleClickResetHeight', '双击恢复自适应高度')}
+        />
 
         <div className="ask-user-question-dialog-header">
           <h3 className="ask-user-question-dialog-title">
             {t('askUserQuestion.title', 'OpenCode 有一些问题想问你')}
           </h3>
-          <span className={`countdown-timer ${isTimeWarning ? 'warning' : ''}`}>
-            <span className="codicon codicon-clock" />
-            <span className="countdown-time">{formatCountdown(remainingSeconds)}</span>
-          </span>
+          <div className="ask-user-question-dialog-header-actions">
+            <span className={`countdown-timer ${isTimeWarning ? 'warning' : ''}`}>
+              <span className="codicon codicon-clock" />
+              <span className="countdown-time">{formatCountdown(remainingSeconds)}</span>
+            </span>
+            <button
+              className="ask-user-question-collapse-btn"
+              onClick={() => setIsMinimized(true)}
+              title={t('chat.collapse', '最小化')}
+              aria-label={t('chat.collapse', '最小化')}
+            >
+              <span className="codicon codicon-chevron-down" />
+            </button>
+          </div>
         </div>
 
         <div className="ask-user-question-dialog-progress-row">

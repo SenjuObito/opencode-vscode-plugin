@@ -16,8 +16,5 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 
-# Ship the ai-bridge runtime dependency inside the VSIX.
-# The spawned daemon does `import('@opencode-ai/sdk/v2')` at runtime, so
-# `ai-bridge/node_modules` MUST be packaged. The blanket `**/node_modules/**`
-# above would strip it and crash the daemon after install; re-include it here.
-!ai-bridge/node_modules/**
+# Ship the opencode-buddy-core runtime dependency inside the VSIX.
+!node_modules/opencode-buddy-core/**
