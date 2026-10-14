@@ -244,6 +244,10 @@ function resolveDaemonScript(extensionPath: string): string {
 			return directNodeModules;
 		}
 	}
+	const bundledCore = join(extensionPath, 'dist', 'opencode-buddy-core', 'daemon.js');
+	if (existsSync(bundledCore)) {
+		return bundledCore;
+	}
 	const bundled = join(extensionPath, 'dist', 'ai-bridge.js');
 	if (existsSync(bundled)) {
 		return bundled;

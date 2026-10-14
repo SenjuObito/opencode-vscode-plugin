@@ -65,13 +65,10 @@ jobs:
           pnpm build
           cd ..
 
-      # ai-bridge is an independent npm project; its deps must ship inside the
-      # VSIX (the daemon does `import('@opencode-ai/sdk/v2')` at runtime).
-      - name: Install ai-bridge runtime dependencies
-        run: |
-          cd ai-bridge
-          npm install
-          cd ..
+      # opencode-buddy-core is the daemon kernel; its runtime deps must ship inside
+      # the VSIX (the daemon does `import('@opencode-ai/sdk')` at runtime).
+      - name: Prepare opencode-buddy-core runtime
+        run: node tools/prepare-core.mjs
 
       - name: Build extension host
         run: node esbuild.js --production
@@ -80,7 +77,7 @@ jobs:
         run: node tools/extract-release-notes.mjs "${{ steps.meta.outputs.version }}" release-notes.md
 
       # The extension is pure JavaScript everywhere (no native modules, no
-      # platform binaries — ai-bridge's only runtime dep @opencode-ai/sdk is
+      # platform binaries — daemon's only runtime dep @opencode-ai/sdk is
       # pure JS too), so ONE universal VSIX installs on all platforms/arches.
       - name: Package universal VSIX
         run: |
@@ -89,14 +86,13 @@ jobs:
           echo "Packaging $EXTNAME v$VERSION"
           npx --yes @vscode/vsce@latest package --no-dependencies -o "$EXTNAME-$VERSION.vsix"
 
-      # Guard against the packaging defect where ai-bridge/node_modules gets
-      # stripped: if the daemon SDK is missing, fail loudly instead of shipping
-      # a broken extension.
+      # Guard against packaging defects where opencode-buddy-core gets stripped:
+      # if the daemon SDK is missing, fail loudly instead of shipping a broken extension.
       - name: Verify daemon dependency is packaged
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
           EXTNAME="${{ steps.meta.outputs.extname }}"
-          unzip -l "$EXTNAME-$VERSION.vsix" | grep -q "ai-bridge/node_modules/@opencode-ai/sdk" \
+          unzip -l "$EXTNAME-$VERSION.vsix" | grep -q "extension/dist/opencode-buddy-core/node_modules/@opencode-ai/sdk" \
             && echo "OK: @opencode-ai/sdk shipped in VSIX" \
             || { echo "ERROR: @opencode-ai/sdk missing from VSIX"; exit 1; }
 

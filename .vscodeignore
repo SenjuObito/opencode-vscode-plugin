@@ -17,4 +17,6 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 
 # Ship the opencode-buddy-core runtime dependency inside the VSIX.
-!node_modules/opencode-buddy-core/**
+!dist/opencode-buddy-core/**
+!dist/opencode-buddy-core/**/node_modules/**
+
