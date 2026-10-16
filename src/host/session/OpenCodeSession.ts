@@ -111,18 +111,8 @@ export class OpenCodeSession {
 		return this.adapter;
 	}
 
-	setAttached(attached: boolean): void {
-		this.adapter.setAttached(attached);
-	}
-
-	isAttached(): boolean {
-		return this.adapter.isAttached();
-	}
-
 	private callView(functionName: string, ...args: string[]): void {
-		if (this.isAttached()) {
-			this.context.callJavaScript(functionName, ...args);
-		}
+		this.context.callJavaScript(functionName, ...args);
 	}
 
 
@@ -383,26 +373,13 @@ export class OpenCodeSession {
 	}
 
 	/**
-	 * 新建会话：根据 keepRunning 开关决定是否停止旧会话或脱钩继续执行。
-	 * 重置当前会话状态机，为新对话分配独立上下文。
+	 * 新建 / 重置会话：忙碌的旧会话一律中断（abort），随后重置状态机为新对话分配独立上下文。
 	 */
-	resetSession(options?: { keepRunning?: boolean }): void {
-		const keepRunning = options?.keepRunning !== undefined
-			? options.keepRunning
-			: this.context.getSettingsService().getUiPreferences().keepPreviousSessionRunningOnNew;
-
+	resetSession(): void {
 		const isBusy = this.state.isBusy() || this.activeRequestId != null;
 		if (isBusy) {
-			if (keepRunning) {
-				// 保持旧会话在后台继续运行：将当前活跃请求从 Webview 通道脱钩（Detach）
-				if (this.activeRequestId && this.daemon) {
-					this.daemon.detachRequest(this.activeRequestId);
-					this.activeRequestId = null;
-				}
-			} else {
-				// 停止旧会话：发送 abort 信号，收尾 turn 并释放资源
-				this.interrupt();
-			}
+			// 停止旧会话：发送 abort 信号，收尾 turn 并释放资源
+			this.interrupt();
 		}
 
 		const seq = this.adapter.coalescer.resetStreamState();

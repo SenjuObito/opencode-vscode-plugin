@@ -48,12 +48,6 @@ export const BridgeMessageType = {
 
 export type BridgeMessageType = typeof BridgeMessageType[keyof typeof BridgeMessageType];
 
-/** 新建会话载荷 */
-export interface CreateNewSessionPayload {
-	/** 是否在后台保持旧会话继续执行（不发送 abort，脱钩静默处理） */
-	keepRunning?: boolean;
-}
-
 /** 打开文件载荷 */
 export interface OpenFilePayload {
 	path: string;

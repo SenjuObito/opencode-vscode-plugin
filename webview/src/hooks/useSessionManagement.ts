@@ -3,7 +3,6 @@ import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
 import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
-import { getKeepPreviousSessionRunningOnNew } from '../utils/keepPreviousSessionRunning';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
@@ -201,24 +200,11 @@ export function useSessionManagement({
 
   // Create new session
   const createNewSession = useCallback(() => {
-    const keepRunning = getKeepPreviousSessionRunningOnNew();
-    // [FIX] Prioritize loading check - if AI is responding:
-    // - if keepRunning is enabled, do NOT interrupt; bypass dialog if skipNewSessionConfirm, else show normal new session confirm
-    // - if keepRunning is disabled, must interrupt first, show interrupt confirmation dialog
+    // If AI is responding, the previous session must be interrupted first;
+    // show the interrupt confirmation dialog.
     if (loading) {
-      if (keepRunning) {
-        if (getSkipNewSessionConfirm()) {
-          onResetToPreferredModel?.();
-          beginSessionTransition(null, null);
-          sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
-          return;
-        }
-        pendingActionRef.current = 'newSession';
-        setShowNewSessionConfirm(true);
-      } else {
-        pendingActionRef.current = 'newSession';
-        setShowInterruptConfirm(true);
-      }
+      pendingActionRef.current = 'newSession';
+      setShowInterruptConfirm(true);
     } else if (messages.length > 0) {
       // If the user previously ticked "don't ask again", skip the dialog and
       // proceed directly. Preference is read fresh each call so the setting
@@ -226,11 +212,7 @@ export function useSessionManagement({
       if (getSkipNewSessionConfirm()) {
         onResetToPreferredModel?.();
         beginSessionTransition(null, null);
-        if (keepRunning) {
-          sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
-        } else {
-          sendBridgeEvent('create_new_session');
-        }
+        sendBridgeEvent('create_new_session');
         return;
       }
       // If there are messages but not loading, show new session confirmation
@@ -240,58 +222,39 @@ export function useSessionManagement({
       // If empty and not loading, directly create new session
       onResetToPreferredModel?.();
       beginSessionTransition(null, null);
-      if (keepRunning) {
-        sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
-      } else {
-        sendBridgeEvent('create_new_session');
-      }
+      sendBridgeEvent('create_new_session');
     }
   }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
-    const keepRunning = getKeepPreviousSessionRunningOnNew();
-    if (loading && !keepRunning) {
+    if (loading) {
       sendBridgeEvent('interrupt_session');
     }
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
-    if (keepRunning) {
-      sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
-    } else {
-      sendBridgeEvent('create_new_session');
-    }
+    sendBridgeEvent('create_new_session');
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
-    const keepRunning = getKeepPreviousSessionRunningOnNew();
-    if (loading && !keepRunning) {
+    if (loading) {
       sendBridgeEvent('interrupt_session');
     }
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('set_provider', providerId);
-    if (keepRunning) {
-      sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
-    } else {
-      sendBridgeEvent('create_new_session');
-    }
+    sendBridgeEvent('create_new_session');
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   // Confirm new session
   const handleConfirmNewSession = useCallback(() => {
     setShowNewSessionConfirm(false);
-    const keepRunning = getKeepPreviousSessionRunningOnNew();
-    if (loading && !keepRunning) {
+    if (loading) {
       sendBridgeEvent('interrupt_session');
     }
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
-    if (keepRunning) {
-      sendBridgeEvent('create_new_session', JSON.stringify({ keepRunning: true }));
-    } else {
-      sendBridgeEvent('create_new_session');
-    }
+    sendBridgeEvent('create_new_session');
     pendingActionRef.current = null;
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 

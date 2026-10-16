@@ -312,15 +312,10 @@ export class HistoryHandler extends BaseMessageHandler {
 				return;
 			}
 
-			const { session, isBackground } = sessionManager.switchToSession(sessionId);
+			const session = sessionManager.switchToSession(sessionId);
 			const summary = this.getSessions().find((s) => s.sessionId === sessionId);
 			if (summary) {
 				this.callJavaScript('updateSessionTitle', sessionId, summary.title);
-			}
-
-			if (isBackground) {
-				// 后台会话命中！switchToSession 已在内部把内存中最新消息完整同步给 Webview 并通知 historyLoadComplete
-				return;
 			}
 
 			if (!daemon) {
@@ -352,7 +347,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			return;
 		}
 
-		session.resetSession({ keepRunning: true });
+		session.resetSession();
 		session.state.setSessionId(sessionId);
 		this.callJavaScript('setSessionId', sessionId);
 		const summary = this.getSessions().find((s) => s.sessionId === sessionId);

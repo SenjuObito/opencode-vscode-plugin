@@ -71,7 +71,7 @@ describe('modelSelectUtils', () => {
       expect(readPinnedModelIds('kimi')).toEqual([]);
 
       const afterAdd = togglePinnedModelId('opencode', 'deepseek/deepseek-v4-flash-free');
-      expect(afterAdd).toEqual(['opencode/big-pickle', 'deepseek/deepseek-v4-flash-free']);
+      expect(afterAdd).toEqual(['deepseek/deepseek-v4-flash-free', 'opencode/big-pickle']);
 
       const afterRemove = togglePinnedModelId('opencode', 'opencode/big-pickle');
       expect(afterRemove).toEqual(['deepseek/deepseek-v4-flash-free']);
@@ -92,22 +92,22 @@ describe('modelSelectUtils', () => {
       expect(readPinnedModelIds('opencode')).toEqual(['opencode/custom-1']);
     });
 
-    it('preserves pin order such that earlier pinned models appear at the top', () => {
+    it('places the most recently pinned model at the top', () => {
       togglePinnedModelId('opencode', 'model-1');
       togglePinnedModelId('opencode', 'model-2');
       togglePinnedModelId('opencode', 'model-3');
-      expect(readPinnedModelIds('opencode')).toEqual(['model-1', 'model-2', 'model-3']);
+      expect(readPinnedModelIds('opencode')).toEqual(['model-3', 'model-2', 'model-1']);
     });
 
-    it('renders earlier pinned models above later pinned models in pinned dropdown section', () => {
+    it('renders the most recently pinned model above earlier pinned models in pinned dropdown section', () => {
       togglePinnedModelId('opencode', 'opencode/big-pickle');
       togglePinnedModelId('opencode', 'deepseek/deepseek-v4-flash-free');
       const pinnedIds = readPinnedModelIds('opencode');
       const { sections } = buildModelDropdownSections(models, pinnedIds);
       expect(sections[0].id).toBe(PINNED_GROUP_ID);
       expect(sections[0].models.map((m) => m.id)).toEqual([
-        'opencode/big-pickle',
         'deepseek/deepseek-v4-flash-free',
+        'opencode/big-pickle',
       ]);
     });
   });

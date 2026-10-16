@@ -15,7 +15,6 @@ import { SkillsSettingsSection } from '../skills';
 import SettingsDialogs from './SettingsDialogs';
 import { setNewSessionConfirmEnabled as persistNewSessionConfirmEnabled } from '../../utils/skipNewSessionConfirm';
 import { setCompactConfirmEnabled as persistCompactConfirmEnabled } from '../../utils/skipCompactConfirm';
-import { setKeepPreviousSessionRunningOnNew as persistKeepPreviousSessionRunningOnNew } from '../../utils/keepPreviousSessionRunning';
 
 // Import custom hooks
 import {
@@ -122,8 +121,6 @@ const SettingsView = ({
     setSkipNewSessionConfirm,
     skipCompactConfirm,
     setSkipCompactConfirm,
-    keepPreviousSessionRunningOnNew,
-    setKeepPreviousSessionRunningOnNew,
     handleSaveOpencodeCliPath,
     handleSaveWorkingDirectory,
     handleUiFontSelectionChange,
@@ -309,11 +306,6 @@ const SettingsView = ({
                 // to localStorage and dispatches the sync event for other surfaces.
                 setSkipNewSessionConfirm(!enabled);
                 persistNewSessionConfirmEnabled(enabled);
-              }}
-              keepPreviousSessionRunningOnNew={keepPreviousSessionRunningOnNew}
-              onKeepPreviousSessionRunningOnNewChange={(enabled: boolean) => {
-                setKeepPreviousSessionRunningOnNew(enabled);
-                persistKeepPreviousSessionRunningOnNew(enabled);
               }}
               compactConfirmEnabled={!skipCompactConfirm}
               onCompactConfirmEnabledChange={(enabled) => {

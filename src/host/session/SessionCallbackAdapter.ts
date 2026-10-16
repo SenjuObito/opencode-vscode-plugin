@@ -42,7 +42,6 @@ export class SessionCallbackAdapter implements SessionCallback {
 	private readonly model: () => string | null;
 	private readonly windowBaseIndex: () => number;
 	private active = true;
-	private attached = true;
 	private streamEndSignalSent = false;
 	private streamEndFallbackTimer: NodeJS.Timeout | null = null;
 
@@ -78,14 +77,6 @@ export class SessionCallbackAdapter implements SessionCallback {
 		return this.streamCoalescer;
 	}
 
-	setAttached(attached: boolean): void {
-		this.attached = attached;
-	}
-
-	isAttached(): boolean {
-		return this.attached && this.active;
-	}
-
 	deactivate(): void {
 		this.active = false;
 		this.contentDeltaThrottler.dispose();
@@ -98,7 +89,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 	}
 
 	private isInactive(): boolean {
-		return !this.active || !this.attached;
+		return !this.active;
 	}
 
 	private safeRun(label: string, action: () => void): void {
@@ -211,11 +202,6 @@ export class SessionCallbackAdapter implements SessionCallback {
 		// 触发宿主侧 Turn 结束回调（收敛 busy/loading 状态与会话生命周期）
 		if (this.streamEndCallback) {
 			this.safeRun('streamEndCallback', this.streamEndCallback);
-		}
-
-		// 后台会话（!this.attached）：内部流状态与 onTurnEnded 回调已完成，无需向前端 Webview 派发 UI 帧。
-		if (!this.attached) {
-			return;
 		}
 
 		// ── onStreamEnd 双路径 ──

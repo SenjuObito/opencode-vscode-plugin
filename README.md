@@ -1,165 +1,171 @@
-# OpenCode Buddy
+<a id="readme-top"></a>
 
-A VS Code extension that brings the **opencode** agent into a full chat GUI. The original motivation was that the existing VS Code opencode plugin was too difficult to use, and the cc-gui open source project was found on GitHub. It is a greenfield port of the IntelliJ plugin [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui): the React webview is carried over verbatim, the Java backend is rewritten in TypeScript, and only the **opencode** provider is kept (Claude / Codex / Grok / Kimi / PI branches removed).
+<div align="center">
 
-Unlike the original plugin — which spawned a fresh `opencode run` process for every message — this extension keeps a **persistent `opencode serve` daemon** (via `@opencode-ai/sdk`) alive across all tabs and conversations, managed by a daemon bridge with prewarm, heartbeat, crash-restart, and session reuse.
+<img src="media/icon.png" alt="OpenCode Buddy Logo" width="100" height="100" onerror="this.style.display='none'">
 
-## Philosophy
+# OpenCode Buddy for VS Code
 
-[`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui) aims to provide a unified experience across different AI providers. This project takes a different approach — it **reuses opencode's capabilities without secondary development**, focusing on providing a native GUI experience for opencode.
+<p align="center">
+  <strong>Native, Full-Featured Chat GUI & Workflow Assistant for OpenCode in Visual Studio Code</strong>
+  <br />
+  <span>在 VS Code 中体验丝滑、原生的 OpenCode 全功能可视化交互与智能编码伴侣</span>
+</p>
 
-## Development Tools
+[![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/senjuobito.opencode-buddy?style=flat-square&color=blue&label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=senjuobito.opencode-buddy)
+[![Visual Studio Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/senjuobito.opencode-buddy?style=flat-square&color=brightgreen)](https://marketplace.visualstudio.com/items?itemName=senjuobito.opencode-buddy)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/SenjuObito/opencode-vscode-plugin/pulls)
 
-This project is primarily developed with AI assistance:
+<p align="center">
+  <a href="#-about-the-project">About The Project</a> •
+  <a href="#-key-features">Key Features</a> •
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-usage-guide">Usage Guide</a> •
+  <a href="#-development">Development</a> •
+  <a href="#-contributing">Contributing</a> •
+  <a href="#-license">License</a>
+</p>
 
-- **AI Tools**: OpenCode (primary), Claude Code, WorkBuddy, Gemini
-- **AI Models**: Deepseek-v4-flash (primary), Gemini, Deepseek-v4-pro, MiMo V2.5, Ox Alpha, hy4, hy3
+</div>
 
-A Gemini Pro subscription has been purchased; Deepseek cost 120 CNY. If you find this useful, a tip would help me recover the cost.
+---
 
-## Features
+<details>
+  <summary>Table of Contents / 目录导航</summary>
+  <ol>
+    <li><a href="#-about-the-project">About The Project</a></li>
+    <li><a href="#-key-features">Key Features</a></li>
+    <li>
+      <a href="#-quick-start">Quick Start</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#-usage-guide">Usage Guide</a>
+      <ul>
+        <li><a href="#1-opening-the-chat-panel">1. Opening the Chat Panel</a></li>
+        <li><a href="#2-interaction--commands">2. Interaction & Commands</a></li>
+        <li><a href="#3-settings--customization">3. Settings & Customization</a></li>
+      </ul>
+    </li>
+    <li><a href="#-development">Development</a></li>
+    <li><a href="#-contributing">Contributing</a></li>
+    <li><a href="#-license--acknowledgments">License & Acknowledgments</a></li>
+  </ol>
+</details>
 
-- **Persistent OpenCode Daemon** — No per-message process spawn. Runs a persistent `opencode serve` daemon (default port 4096, configurable via `OPENCODE_PORT`) via `@opencode-ai/sdk`, prewarmed across requests, with automatic heartbeat keep-alive, crash recovery, and context isolation using `AsyncLocalStorage`.
-- **Full Streaming Chat Interface** — Real-time streaming text responses, interactive thinking deltas, structured tool-call cards with expandable diff views.
-- **Multi-Panel & Flexible Layouts** — Native integration with VS Code Activity Bar (left), Secondary Sidebar (right), and Editor Split views; one-click launch from the editor title bar.
-- **Multi-Tab Session Management** — Seamless multi-tab conversation switching and management within the same panel window.
-- **Rich Context & Native Inputs**:
-  - `@` symbol file and symbol reference autocomplete.
-  - Image attachments via drag-and-drop or clipboard paste.
-  - One-click context insertion from editor selection and file paths.
-  - OpenCode native slash commands (`/init`, `/review`, etc.) and `!shell` command executions.
-  - Context compaction support to optimize token usage.
-- **Agent Modes, Models & Reasoning Depth** — Switch between Build and Plan modes, dynamically retrieve and select configured providers/models from OpenCode, and configure reasoning depth / variants (e.g. `low`, `medium`, `high`).
-- **Permission Approvals & Interactive Prompts** — Granular permission approval system (allow once, always allow, reject), interactive questions (`AskUserQuestion` dialog), and plan confirmation approvals directly in chat.
-- **File Changes & One-Click Undo** — Live tracking of AI-generated file edits with diffs; revert changes per-file or roll back all changes in batch.
-- **Session History & Time Travel (Rewind / Fork)** — Local session index with search, favourites, renaming, and deletion; rewind to any previous message turn to fork or regenerate; export conversations to Markdown.
-- **MCP Servers & Marketplace** — Monitor MCP server status, browse, install, configure, and remove MCP servers through a built-in marketplace.
-- **Skills System Management** — Global and workspace-level skill auto-discovery, one-click import, enable/disable toggling, and direct opening of `SKILL.md` files in VS Code.
-- **Token & Usage Tracking** — Live tracking and visualization of token consumption per message and tool call.
-- **Theming & Deep Personalization** — Fully synchronized with VS Code light/dark themes, custom font sizes and families (UI & monospace code fonts), customizable chat backgrounds and bar colors, diff theme options, and multi-language UI.
+---
 
-## Usage
+## 🌟 About The Project
 
-### 1. Open the Chat Panel
+<div align="center">
+  <img src="media/home.png" alt="OpenCode Buddy Chat Main View" width="800">
+</div>
 
-After installing the extension, you can open OpenCode Buddy in several ways:
-- Click the **OpenCode icon** in the VS Code Activity Bar (left).
-- Click the **OpenCode icon** in the editor title bar.
-- Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run:
-  - `Open OpenCode Buddy Panel (Left)`
-  - `New OpenCode Buddy Chat` (opens a standalone tab in an editor split for parallel sessions)
+许多开发者渴望在 VS Code 内部无缝使用 **OpenCode** 强大的自主编码能力，但现有的命令行交互频繁打断编码思路，而部分多模型工具又存在封装过重、进程反复冷启动等问题。
 
-<img src="media/home.png" width="800" alt="Chat main view">
+**OpenCode Buddy** 是专为 OpenCode 打造的高性能可视化插件：
+- **常驻 Daemon 架构**：告别“每发一条消息新启动一次进程”的卡顿。内置持久化 `opencode serve` 守护进程，支持连接复用、自动预热与故障自愈；
+- **原生沉浸交互**：无缝融入 VS Code 侧边栏（活动栏）、右侧副侧边栏及编辑器分屏；
+- **全能力对齐**：完整支持流式思考过程折叠、分步 Diff 审阅一键回滚、动态模型与推理深度选择、MCP 市场与 Skills 扩展。
 
-*Screenshots show the UI in Simplified Chinese.*
+---
 
-UI layout:
+## 🚀 Key Features
 
-- **Top Tabs** — Switch between, open, and close independent conversation sessions.
-- **Top-Right Actions** — New session, search, history drawer, and settings.
-- **Bottom Bar**:
-  - `Task / Subagent / Edit` — Switch input mode.
-  - `Build / Plan` — Switch working mode.
-  - **Model Selector** — Select active model (e.g. `deepseek-v3`, `claude-3-7-sonnet`).
-  - **Reasoning Depth (Variant)** — Control reasoning effort (e.g. `low`, `medium`, `high`).
-- **Input Box** — `@filename` references, drag-and-drop images, `/bash ...` commands, `/opencode ...` commands. Press `Enter` to send (`Shift+Enter` for new line).
+* ⚡ **常驻守护进程（Persistent Daemon）**：通过 `@opencode-ai/sdk` 维持常驻后台服务（默认端口 4096，支持环境变量覆盖），心跳保活与状态隔离，响应零冷启动延迟。
+* 🌊 **全流式会话与思考链**：实时流式打字输出、可交互的思考过程（Thinking Delta）折叠展开、带语法高亮的代码 Diff 视图。
+* 🗂️ **多标签会话与多面板布局**：在侧边栏、副侧边栏或主编辑器分屏任意切换，标签页独立上下文，支持浮动与重命名。
+* 📎 **富上下文引用与快捷输入**：
+  * 支持 `@` 键模糊搜索引入项目文件及符号；
+  * 图片拖拽及剪贴板粘贴直接多模态输入；
+  * 原生支持 OpenCode 斜杠命令（`/init`、`/review`、`/compact`）与 `!shell` 快捷终端命令。
+* 🛡️ **交互式权限审批与问答**：工具调用与文件改动权限精细管控（允许单次、始终允许、拒绝），问卷表单与计划确认原生弹窗交互。
+* ⏪ **历史时光机与一键回退**：本地会话历史秒级检索，支持分支衍生（Fork）、轮次重卷（Rewind）与 Markdown 格式全量导出。
+* 🧩 **MCP 市场与 Skills 治理**：可视化查看 MCP 服务状态，一键从市场安装与配置；工作区与全局 Skills 自动发现与直接编辑。
+* 🎨 **深度个性化定制**：完美适配 VS Code 浅色/深色主题，支持自定义字体、字号、聊天背景色与多语言界面切换。
 
-### 2. Personalise Settings
+---
 
-Click the gear icon in the top-right of the chat panel to open the settings page:
+## ⚡ Quick Start
 
-<img src="media/settings.png" width="350" alt="Settings page">
+### Prerequisites
+1. **OpenCode CLI**：确保系统中已安装 `opencode` 并在环境变量 `PATH` 中可执行。
+2. **Node.js**：>= 18.0.0。
 
-**Basic Config → Appearance** main options:
+### Installation
+* **方法 1（推荐）**：在 VS Code 扩展市场搜索 `OpenCode Buddy` 并点击安装。
+* **方法 2（VSIX 安装）**：在 [Releases](https://github.com/SenjuObito/opencode-vscode-plugin/releases) 下载最新 `.vsix` 文件，在 VS Code 中执行 `Extensions: Install from VSIX...`。
 
-| Item | Description |
-|---|---|
-| UI theme | Follow VS Code / Light / Dark |
-| UI language | Follow VS Code / Simplified Chinese / English |
-| Font size / UI font / Code font | Font families and sizing inside the webview |
-| Diff theme | Light/dark theme for the diff view |
-| Chat background / Title-bar and status-bar colour | Custom chat-area colour scheme (custom hex supported) |
+---
 
-The settings page also includes tabs for `Appearance`, `Behaviour`, `Environment`, `MCP`, and `Skills` to configure agent parameters, MCP integrations, and skill packages.
+## 💡 Usage Guide
 
-## Requirements
+### 1. Opening the Chat Panel
+安装完成后，可通过以下任意方式呼出对话面板：
+* 点击 VS Code 左侧活动栏中的 **OpenCode 图标**；
+* 点击编辑器右上角标题栏的快捷入口；
+* 呼出命令面板（`Ctrl+Shift+P` / `Cmd+Shift+P`），输入并运行：
+  * `Open OpenCode Buddy Panel (Left)`
+  * `New OpenCode Buddy Chat`（在编辑器分屏中打开独立的并行会话）
 
-- **opencode CLI** installed and on `PATH` (Settings → Providers → CLI shows its install status; the plugin never
-  auto-installs binaries).
-- A working Node.js runtime — the extension host spawns the daemon via `process.execPath` (Electron-as-node).
+### 2. Interaction & Commands
+- **模式切换**：底部工具栏可一键切换 `Build`（构建执行）与 `Plan`（计划设计）模式；
+- **模型与推理深度**：实时同步本地 OpenCode 配置的所有 Provider 与模型，可动态调节思考深度（`low` / `medium` / `high`）；
+- **文件与上下文引用**：在输入框输入 `@` 即可唤出工程文件选择器；支持将图片直接拖拽至输入框。
 
-## Development
+### 3. Settings & Customization
+点击面板右上角的 ⚙️ 齿轮图标进入设置中心：
 
-Package manager is **pnpm**. The repo has three parts, each with its own dependencies:
+<div align="center">
+  <img src="media/settings.png" alt="Settings Page" width="400">
+</div>
 
-| Part | Role | Install | Build |
-|---|---|---|---|
-| `src/` | Extension host (TS rewrite of the Java backend) | `pnpm install` (repo root) | `pnpm run compile` |
-| `webview/` | React 19 + Vite + Tailwind + antd UI (cc-gui copy) | `cd webview && pnpm install` | `cd webview && pnpm run build` |
-| `ai-bridge/` | Persistent daemon: `opencode serve` + `@opencode-ai/sdk` | `cd ai-bridge && pnpm install` | ESM run directly, no bundle |
+* **外观与字体**：跟随 IDE 主题或自定义主题，自由设置界面字体与等宽代码字体；
+* **环境与路径**：配置或校验 Node.js 与 `opencode` 可执行文件路径；
+* **MCP 市场与 Skills**：可视化管理 MCP 工具扩展与能力包。
 
-The webview build emits a single-file bundle to `dist/webview/index.html`; the extension host bundle is
-`dist/extension.js` (CJS). Press **F5** in VS Code to launch the Extension Development Host.
+---
 
-### Commands (extension host)
+## 🛠️ Development
 
-| Task | Command |
-|---|---|
-| Type-check | `pnpm run check-types` (`tsc --noEmit`) |
-| Lint | `pnpm run lint` (`eslint src`) |
-| Build (dev) | `pnpm run compile` (check-types → lint → esbuild) |
-| Build (production) | `pnpm run package` (minified) |
-| Watch (dev) | `pnpm run watch` |
-| Run tests | `pnpm test` (vscode-test against a real VS Code instance) |
+本项目采用 **pnpm** 统一管理依赖：
 
-### Commands (webview)
+```bash
+# 1. 克隆仓库
+git clone https://github.com/SenjuObito/opencode-vscode-plugin.git
+cd opencode-vscode-plugin
 
-| Task | Command |
-|---|---|
-| Build | `cd webview && pnpm run build` (tsc → vite build, emits single-file bundle) |
-| Unit tests | `cd webview && pnpm test` (vitest) |
-| E2E tests | `cd webview && pnpm test:e2e` (Playwright) |
+# 2. 安装根目录及子模块依赖
+pnpm install
+cd webview && pnpm install && cd ..
 
-## Architecture
+# 3. 编译扩展宿主与 Webview
+pnpm run compile
+cd webview && pnpm run build && cd ..
 
+# 4. 在 VS Code 中按 F5 启动 Extension Development Host 调试
 ```
-webview/ (React SPA)  ⇄  src/ extension host (TS)  ⇄  ai-bridge/daemon.js (Node ESM)
-                            │                              └─ @opencode-ai/sdk ─ opencode serve (persistent)
-                            ├─ src/host/router/*        — "type:content" wire protocol
-                            ├─ src/host/handlers/*      — one handler per message type (incl. permission)
-                            ├─ src/host/session/*       — OpenCodeSession, marker parser/merger
-                            ├─ src/host/provider/*      — OpenCodeDaemonBridge (NDJSON + heartbeat)
-                            ├─ src/host/tabs/*          — multi-tab panels (TabManager)
-                            ├─ src/host/settings/*      — SettingsService + TabStateService (workspaceState)
-                            ├─ src/host/services/*      — McpConfigService, SkillService, etc.
-                            ├─ src/host/context/*       — EditorContextTracker
-                            ├─ src/host/notifications/* — NotificationService
-                            └─ src/host/fonts/*         — SystemFontEnumerator
-```
 
-- The webview talks to the host with `sendToJava("type:content")`; the host replies via
-  `postMessage({ type: fn, args })` calling `window[fn](...args)`. All webview panels (left sidebar, right
-  sidebar, editor split) share the same `BroadcastChannel`.
-- `ai-bridge/daemon.js` speaks NDJSON over stdio: `{id, method, params}` requests, `{id, line}` streaming output,
-  `{type:'daemon', event}` lifecycle events. The host request is non-blocking. Concurrent requests use
-  `AsyncLocalStorage` for context isolation.
-- The extension host (`src/host/`) mirrors cc-gui's Java module layout: `router/`, `handlers/`, `session/`,
-  `provider/`, `settings/`, `tabs/`, `util/`, `services/`, `context/`, `notifications/`, `fonts/`.
+---
 
-## Support
+## 🤝 Contributing
 
-If you find this useful, consider supporting:
+Contributions are what make the open source community such an amazing place to learn, inspire, and create.
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'feat: Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-| WeChat | Alipay | PayPal |
-|:---:|:---:|:---:|
-| <img src="webview/src/assets/images/wallet.png" width="200" alt="WeChat"> | <img src="webview/src/assets/images/wallet-alipay.png" width="200" alt="Alipay"> | <img src="webview/src/assets/images/wallet-paypal.png" width="200" alt="PayPal"> |
+---
 
-## Acknowledgements
+## 📄 License & Acknowledgments
 
-Thanks to the original project [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui). Please give it a star and consider supporting the original author.
+- **License**：本项目基于 **MIT License** 开源。详情见 [`LICENSE`](./LICENSE)。
+- **Upstream & Inspirations**：感谢 [`jetbrains-cc-gui`](https://github.com/zhukunpenglinyutong/jetbrains-cc-gui) 项目提供的优秀界面架构灵感。
 
-## Sponsor
-
-If this project helps you, consider sponsoring to support ongoing maintenance~
-
-[View sponsors list →](SPONSORS.md)
+<p align="right">(<a href="#readme-top">back to top ↑</a>)</p>

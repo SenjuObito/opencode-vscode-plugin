@@ -39,7 +39,6 @@ export interface UiPreferences {
   historyCompletionEnabled: boolean;
   skipNewSessionConfirm: boolean;
   skipCompactConfirm: boolean;
-  keepPreviousSessionRunningOnNew: boolean;
   detailedOutputEnabled: boolean;
 }
 
@@ -54,7 +53,6 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   historyCompletionEnabled: true,
   skipNewSessionConfirm: false,
   skipCompactConfirm: false,
-  keepPreviousSessionRunningOnNew: false,
   detailedOutputEnabled: false,
 };
 
@@ -132,12 +130,11 @@ function sanitize(patch: unknown): Partial<UiPreferences> {
     out.diffTheme = raw.diffTheme as DiffThemeMode;
   }
   const bools: Array<keyof Pick<UiPreferences,
-    'diffExpandedByDefault' | 'historyCompletionEnabled' | 'skipNewSessionConfirm' | 'skipCompactConfirm' | 'keepPreviousSessionRunningOnNew' | 'detailedOutputEnabled'>> = [
+    'diffExpandedByDefault' | 'historyCompletionEnabled' | 'skipNewSessionConfirm' | 'skipCompactConfirm' | 'detailedOutputEnabled'>> = [
     'diffExpandedByDefault',
     'historyCompletionEnabled',
     'skipNewSessionConfirm',
     'skipCompactConfirm',
-    'keepPreviousSessionRunningOnNew',
     'detailedOutputEnabled',
   ];
   for (const key of bools) {
@@ -172,7 +169,6 @@ function readLocalMirror(): Partial<UiPreferences> {
     'historyCompletionEnabled',
     'skipNewSessionConfirm',
     'skipCompactConfirm',
-    'keepPreviousSessionRunningOnNew',
     'detailedOutputEnabled',
   ] as const) {
     if (readString(key) !== null) partial[key] = readBool(key, false);
@@ -208,7 +204,6 @@ function writeLocalMirror(prefs: UiPreferences): void {
   writeString('historyCompletionEnabled', prefs.historyCompletionEnabled ? 'true' : 'false');
   writeString('skipNewSessionConfirm', prefs.skipNewSessionConfirm ? 'true' : 'false');
   writeString('skipCompactConfirm', prefs.skipCompactConfirm ? 'true' : 'false');
-  writeString('keepPreviousSessionRunningOnNew', prefs.keepPreviousSessionRunningOnNew ? 'true' : 'false');
   writeString('detailedOutputEnabled', prefs.detailedOutputEnabled ? 'true' : 'false');
 }
 

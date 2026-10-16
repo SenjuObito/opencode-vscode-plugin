@@ -45,36 +45,5 @@ suite('Session Duration and Background Completion Tests', () => {
 		assert.strictEqual(parsed.length, 1);
 		assert.strictEqual(parsed[0].durationMs, assistantMsg.durationMs);
 	});
-
-	test('SessionCallbackAdapter runs streamEndCallback even when attached is false', () => {
-		let streamEndCallbackCalled = false;
-		const jsCalls: string[] = [];
-
-		const adapter = new SessionCallbackAdapter({
-			jsTarget: {
-				callJavaScript: (fn) => {
-					jsCalls.push(fn);
-				},
-			},
-			model: () => 'test-model',
-			windowBaseIndex: () => 0,
-			streamEndCallback: () => {
-				streamEndCallbackCalled = true;
-			},
-		});
-
-		// Detach session (running in background)
-		adapter.setAttached(false);
-		assert.strictEqual(adapter.isAttached(), false);
-
-		// Notify stream end
-		adapter.onStreamEnd();
-
-		// streamEndCallback MUST be triggered so onTurnEnded sets busy=false, loading=false
-		assert.strictEqual(streamEndCallbackCalled, true);
-		// But UI JavaScript calls MUST NOT be dispatched to Webview
-		assert.strictEqual(jsCalls.length, 0);
-
-		adapter.dispose();
-	});
 });
+

@@ -15,10 +15,6 @@ import {
   type SkipCompactConfirmChangedDetail,
 } from '../../../utils/skipCompactConfirm';
 import {
-  KEEP_PREVIOUS_SESSION_RUNNING_EVENT,
-  type KeepPreviousSessionRunningChangedDetail,
-} from '../../../utils/keepPreviousSessionRunning';
-import {
   DETAILED_OUTPUT_ENABLED_EVENT,
   setDetailedOutputEnabled,
   type DetailedOutputEnabledChangedDetail,
@@ -82,8 +78,6 @@ export interface UseSettingsBasicActionsReturn {
   skipNewSessionConfirm: boolean;
   /** Whether to skip the "compact session" confirm dialog. */
   skipCompactConfirm: boolean;
-  /** Whether to keep the previous session running after creating a new session. */
-  keepPreviousSessionRunningOnNew: boolean;
   taskCompletionNotificationEnabled: boolean;
   askUserQuestionNotificationEnabled: boolean;
   detailedOutputEnabled: boolean;
@@ -148,7 +142,6 @@ export interface UseSettingsBasicActionsReturn {
   /** @internal */ setHistoryCompletionEnabled: (enabled: boolean) => void;
   /** @internal */ setSkipNewSessionConfirm: (enabled: boolean) => void;
   /** @internal */ setSkipCompactConfirm: (enabled: boolean) => void;
-  /** @internal */ setKeepPreviousSessionRunningOnNew: (enabled: boolean) => void;
   /** @internal */ setTaskCompletionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setAskUserQuestionNotificationEnabled: (enabled: boolean) => void;
   /** @internal */ setSystemNotificationOnlyWhenUnfocused: (enabled: boolean) => void;
@@ -245,20 +238,6 @@ export function useSettingsBasicActions({
     };
     window.addEventListener(SKIP_COMPACT_CONFIRM_EVENT, handler);
     return () => window.removeEventListener(SKIP_COMPACT_CONFIRM_EVENT, handler);
-  }, []);
-
-  const [keepPreviousSessionRunningOnNew, setKeepPreviousSessionRunningOnNew] = useState<boolean>(
-    () => getUiPreferences().keepPreviousSessionRunningOnNew,
-  );
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const custom = event as CustomEvent<KeepPreviousSessionRunningChangedDetail>;
-      if (custom.detail && typeof custom.detail.enabled === 'boolean') {
-        setKeepPreviousSessionRunningOnNew(custom.detail.enabled);
-      }
-    };
-    window.addEventListener(KEEP_PREVIOUS_SESSION_RUNNING_EVENT, handler);
-    return () => window.removeEventListener(KEEP_PREVIOUS_SESSION_RUNNING_EVENT, handler);
   }, []);
 
   // Task completion notification toggle (default: false, opt-in feature)
@@ -604,8 +583,6 @@ export function useSettingsBasicActions({
     setSkipNewSessionConfirm,
     skipCompactConfirm,
     setSkipCompactConfirm,
-    keepPreviousSessionRunningOnNew,
-    setKeepPreviousSessionRunningOnNew,
     handleSaveOpencodeCliPath,
     handleSaveWorkingDirectory,
     handleUiFontSelectionChange,

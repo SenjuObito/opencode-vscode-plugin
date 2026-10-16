@@ -36,7 +36,6 @@ export interface UiPreferences {
 	diffExpandedByDefault: boolean;
 	historyCompletionEnabled: boolean;
 	skipNewSessionConfirm: boolean;
-	keepPreviousSessionRunningOnNew: boolean;
 	detailedOutputEnabled: boolean;
 }
 
@@ -50,7 +49,6 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 	diffExpandedByDefault: false,
 	historyCompletionEnabled: true,
 	skipNewSessionConfirm: false,
-	keepPreviousSessionRunningOnNew: false,
 	detailedOutputEnabled: false,
 };
 
@@ -283,7 +281,6 @@ export class SettingsService {
 			diffExpandedByDefault: bool(raw.diffExpandedByDefault, DEFAULT_UI_PREFERENCES.diffExpandedByDefault),
 			historyCompletionEnabled: bool(raw.historyCompletionEnabled, DEFAULT_UI_PREFERENCES.historyCompletionEnabled),
 			skipNewSessionConfirm: bool(raw.skipNewSessionConfirm, DEFAULT_UI_PREFERENCES.skipNewSessionConfirm),
-			keepPreviousSessionRunningOnNew: bool(raw.keepPreviousSessionRunningOnNew, DEFAULT_UI_PREFERENCES.keepPreviousSessionRunningOnNew),
 			detailedOutputEnabled: bool(raw.detailedOutputEnabled, DEFAULT_UI_PREFERENCES.detailedOutputEnabled),
 		};
 	}
