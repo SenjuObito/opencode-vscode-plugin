@@ -28,6 +28,7 @@ const GROUPS = [
   ['src/components/MarkdownBlock.test.tsx'],
   ['src/components/MessageAnchorRail.test.ts'],
   ['src/components/MessageList'],
+  ['src/components/RetryStatusBar.test.tsx'],
 ];
 
 function runVitest(args) {
