@@ -47,6 +47,13 @@
           ]
         }
       ]
+    },
+    {
+      "code": "opencodeQuotaExceeded",
+      "match": {
+        "regex": "free usage exceeded|usage limit reached|rate limit exceeded|account_rate_limit|subscribe to go|subscribe to opencode go"
+      },
+      "solutions": []
     }
   ]
 }

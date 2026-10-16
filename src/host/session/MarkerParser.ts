@@ -143,6 +143,27 @@ export function processOutputLine(
 		return;
 	}
 
+	if (line.startsWith('[STATUS]')) {
+		// 这个 tag 有两个生产者：session.status:retry 的结构化载荷（message /
+		// attempt / next / action），以及散落的 `preconnect ready ...` console.log。
+		// 只有前者面向用户 —— preconnect 噪音在本分支存在之前就是不可见的，所以
+		// 只放行对象形态，其余一律丢弃。
+		const payload = decodeJsonStringPayload(line.substring('[STATUS]'.length).trim());
+		if (isJsonObjectLiteral(payload)) {
+			callback.onMessage('retry_status', payload);
+		}
+		return;
+	}
+
+	if (line.startsWith('[TURN_ERROR]')) {
+		// 本地 180s 超时之后才到达的回合失败。此前被误投到
+		// [SESSION_COMPACT_RESULT]（宿主只打一行 log），服务端给出的真实原因
+		// 就此丢失。
+		const payload = decodeJsonStringPayload(line.substring('[TURN_ERROR]'.length).trim());
+		callback.onMessage('turn_error', payload);
+		return;
+	}
+
 	if (line.startsWith('[MESSAGE_START]')) {
 		callback.onMessage('message_start', '');
 		return;
@@ -221,4 +242,10 @@ function decodeJsonStringPayload(rawPayload: string): string {
 	} catch {
 		return jsonStr;
 	}
+}
+
+/** 载荷是否为裸 JSON 对象字面量（区别于字符串载荷）。 */
+function isJsonObjectLiteral(raw: string): boolean {
+	const trimmed = raw.trim();
+	return trimmed.startsWith('{') && trimmed.endsWith('}') && trimmed.length > 2;
 }

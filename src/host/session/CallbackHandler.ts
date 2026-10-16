@@ -108,4 +108,9 @@ export class CallbackHandler {
 	notifySessionTitleReceived(sessionId: string, title: string): void {
 		this.callback?.onSessionTitleReceived?.(sessionId, title);
 	}
+
+	/** 服务端限流／额度重试状态（payload 为 JSON 对象字符串）。 */
+	notifyRetryStatus(payload: string): void {
+		this.callback?.onRetryStatus?.(payload);
+	}
 }

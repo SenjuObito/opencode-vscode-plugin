@@ -134,6 +134,15 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.jsTarget.callJavaScript('updateStatus', message);
 	}
 
+	onRetryStatus(payload: string): void {
+		if (this.isInactive() || !payload || payload.trim() === '') {
+			return;
+		}
+		// 独立通道（不走 updateStatus）：重试提示要常驻并带可点击 action 链接，
+		// 而 updateStatus 是转瞬即逝的 toast，渲染不了链接。
+		this.jsTarget.callJavaScript('updateRetryStatus', payload);
+	}
+
 	onSessionIdReceived(sessionId: string): void {
 		if (this.isInactive()) {
 			return;

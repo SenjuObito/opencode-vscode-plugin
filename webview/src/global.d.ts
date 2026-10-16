@@ -69,6 +69,13 @@ interface Window {
   updateStatus?: (text: string) => void;
 
   /**
+   * Report a server-side retry (rate limit / quota) for the running turn.
+   * Payload is a JSON object string:
+   * { sessionID, type, message, attempt, next, action }.
+   */
+  updateRetryStatus?: (payload: string) => void;
+
+  /**
    * Show loading indicator
    */
   showLoading?: (value: string | boolean, turnStartTime?: string | number) => void;

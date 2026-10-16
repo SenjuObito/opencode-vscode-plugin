@@ -168,6 +168,12 @@ export class MessageHandler implements MessageCallback {
 		case 'session_title':
 			this.handleSessionTitle(content);
 			break;
+		case 'retry_status':
+			this.handleRetryStatus(content);
+			break;
+		case 'turn_error':
+			this.handleTurnError(content);
+			break;
 		}
 	}
 
@@ -1023,5 +1029,52 @@ export class MessageHandler implements MessageCallback {
 		} catch (err) {
 			logDiagnostic(`[MessageHandler] handleSessionTitle parse error: ${err}`);
 		}
+	}
+
+	/**
+	 * 服务端限流／额度重试状态。
+	 *
+	 * 这是解释「回合为什么卡了几分钟」的唯一权威信号：opencode 因为在退避重试
+	 * （免费额度／账号配额耗尽），payload 的 action 里带着人话原因和订阅／配额
+	 * 页链接。直接透传给 webview 渲染常驻提示条。
+	 */
+	private handleRetryStatus(payload: string): void {
+		if (!payload || payload.trim() === '') {
+			return;
+		}
+		logDiagnostic(`[MessageHandler] retry_status payload=${payload.substring(0, 300)}`);
+		this.callbackHandler.notifyRetryStatus(payload);
+	}
+
+	/**
+	 * 本地 180s 超时之后才到达的服务端真实失败原因。
+	 *
+	 * daemon 的兜底超时会先删掉 active turn，于是服务端迟到的 session.error
+	 * 已经没有 turn 可结算；此前它被误投到压缩结果通道（只打一行 log 就丢），
+	 * 真实原因被二次掩埋。这里把它作为对泛化超时文案的修正渲染出来：
+	 * 若末尾已有 ERROR 行就改写它，避免同一回合出现两条错误气泡。
+	 */
+	private handleTurnError(content: string): void {
+		if (!content || content.trim() === '') {
+			return;
+		}
+		let message = content;
+		try {
+			const obj = JSON.parse(content) as { message?: unknown };
+			if (typeof obj.message === 'string' && obj.message.trim() !== '') {
+				message = obj.message;
+			}
+		} catch {
+			// 非 JSON 对象：整体当作错误文案。
+		}
+
+		logDiagnostic(`[MessageHandler] turn_error (late): ${message.substring(0, 300)}`);
+		this.state.setError(message);
+		this.state.setBusy(false);
+		this.state.setLoading(false);
+		this.state.replaceLastErrorMessage(message);
+		this.callbackHandler.notifyStreamEnd();
+		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
 	}
 }

@@ -217,6 +217,29 @@ export class SessionState {
 	}
 
 	/**
+	 * 把迟到的回合失败原因落到转录里。
+	 *
+	 * 本地 180s 兜底超时已经报过一次失败，所以这条修正必须**改写**那一行而不是
+	 * 再追加一条 —— 同一个失败回合出现两个错误气泡会被读成两次失败。若末尾没有
+	 * ERROR 行（迟到错误并不总有本地超时在前），则追加一条。
+	 *
+	 * @returns 是否改写了已存在的末尾 ERROR 行
+	 */
+	replaceLastErrorMessage(message: string): boolean {
+		if (!message || message.trim() === '') {
+			return false;
+		}
+		const last = this.messages.length - 1;
+		if (last >= 0 && this.messages[last].type === MessageType.ERROR) {
+			this.messages[last].content = message;
+			this.messages[last].timestamp = Date.now();
+			return true;
+		}
+		this.messages.push(createMessage(MessageType.ERROR, message));
+		return false;
+	}
+
+	/**
 	 * 按 opencode 消息 id 删除消息 —— 服务端权威删除在宿主的落地。
 	 *
 	 * opencode 的 revert 只是写一个「此处往后作废」的指针，真正的删除发生在下一次

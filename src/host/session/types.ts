@@ -73,4 +73,13 @@ export interface SessionCallback {
 	onMessagesRemoved?(messageIds: string[]): void;
 	onTodoUpdated?(payload: string): void;
 	onSessionTitleReceived?(sessionId: string, title: string): void;
+	/**
+	 * 服务端正在重试当前回合（限流／额度），并给出了原因。
+	 *
+	 * opencode 发 `session.status`（type=retry），带人话 message 和可点击的
+	 * action（reason/title/message/label/link）。此前这条信号在宿主侧无人解析，
+	 * 用户只能等到 180s 本地超时看到泛化文案，完全不知道是额度耗尽。
+	 * payload 为 JSON 对象字符串。
+	 */
+	onRetryStatus?(payload: string): void;
 }
