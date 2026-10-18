@@ -1848,23 +1848,6 @@
     "copyCommand": "Copy",
     "copied": "Copied",
     "recommended": "Recommended",
-    "codexThreadResume": {
-      "title": "Session thread is no longer valid",
-      "intro": "Creating a new session will resolve this issue. The thread ID for the current session no longer exists on the Codex server.",
-      "reason": "Codex clears old threads after a period of time, which can trigger this error when resuming a previous session."
-    },
-    "sdkNativeBinaryMissing": {
-      "title": "SDK installation incomplete — native binary missing",
-      "intro": "This is a known issue with the Taobao npm mirror (not a plugin bug). The mirror hasn't fully synchronized the platform-specific files. You can resolve it manually with either of the options below:",
-      "reason": "This issue will disappear automatically once the Taobao mirror finishes syncing — no further action needed.",
-      "solutions": {
-        "switchRegistry": {
-          "title": "Option 1: Temporarily switch to the official registry and reinstall",
-          "step0": "1. Run this in your terminal (switch to the official npm registry):",
-          "step1": "2. Reinstall the SDK:"
-        }
-      }
-    },
     "spawnEbusy": {
       "title": "spawn EBUSY — child process failed to launch",
       "intro": "This error is typically caused by an incompatible Node.js version or an incomplete SDK installation. Try the two options below in order:",
@@ -1878,8 +1861,8 @@
     },
     "opencodeQuotaExceeded": {
       "title": "Model quota exhausted",
-      "intro": "The model rejected the request because your free tier or account quota is used up. The server keeps backing off and retrying, so the turn looks stuck for minutes with no visible progress. Switch to another model, or wait for the quota to reset.",
-      "reason": "opencode retries rate-limit / quota failures up to 5 times with increasing delay. When the quota resets later than the plugin's local 180s timeout, the turn ends on a timeout notice even though the real cause is the exhausted quota."
+      "notice": "Switch to another model, or wait for the quota to reset and try again.",
+      "upgrade": "Upgrade"
     }
   },
   "openCodeModes": {

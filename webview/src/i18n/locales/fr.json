@@ -1627,24 +1627,6 @@
     "copyCommand": "Copier",
     "copied": "Copié",
     "recommended": "Recommandé",
-    "codexThreadResume": {
-      "title": "Le thread de session n'est plus valide",
-      "intro": "La création d'une nouvelle session résoudra ce problème. L'identifiant de thread de la session actuelle n'existe plus sur le serveur Codex.",
-      "reason": "Codex supprime les anciens threads après un certain temps, ce qui peut déclencher cette erreur lors de la reprise d'une session précédente."
-    },
-    "sdkNativeBinaryMissing": {
-      "title": "Installation du SDK incomplète — binaire natif manquant",
-      "intro": "Il s'agit d'un problème connu du miroir npm de Taobao (ce n'est pas un bug du plugin). Le miroir n'a pas entièrement synchronisé les fichiers spécifiques à la plateforme. Vous pouvez le résoudre manuellement avec l'une des options ci-dessous :",
-      "reason": "Ce problème disparaîtra automatiquement une fois la synchronisation du miroir Taobao terminée — aucune action supplémentaire n'est nécessaire.",
-      "solutions": {
-        "switchRegistry": {
-          "title": "Option 1 : Basculer temporairement vers le registre officiel et réinstaller",
-          "step0": "1. Exécutez dans votre terminal (passage au registre npm officiel) :",
-          "step1": "2. Ouvrez les paramètres de gestion des dépendances du plugin et cliquez sur Réinstaller :",
-          "step2": "3. Une fois la réinstallation terminée, revenez au miroir Taobao :"
-        }
-      }
-    },
     "spawnEbusy": {
       "title": "spawn EBUSY — échec du lancement du processus enfant",
       "intro": "Cette erreur est généralement causée par une version de Node.js incompatible ou une installation incomplète du SDK. Essayez les deux options ci-dessous dans l'ordre :",

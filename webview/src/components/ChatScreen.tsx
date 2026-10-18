@@ -7,7 +7,7 @@ import type {
 } from './ChatInputBox/types';
 import { MessageAnchorRail } from './MessageAnchorRail';
 import { MessageList } from './MessageList';
-import { RetryStatusBar } from './RetryStatusBar';
+import { StatusNoticeBar } from './StatusNoticeBar';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import { WelcomeScreen } from './WelcomeScreen';
@@ -288,10 +288,11 @@ export const ChatScreen = ({
 
       <ScrollControl containerRef={messagesContainerRef} inputAreaRef={inputAreaRef} />
 
-      {/* Rate-limit / quota backoff notice for the running turn. Explains a
-          "stuck" spinner that would otherwise only surface as the generic
-          local 180s timeout, with no hint at the real cause. */}
-      <RetryStatusBar />
+      {/* Single notice slot sitting just above the input area:
+          - a retry/backoff bar while a turn is running, and
+          - a persistent, dismissible notice (e.g. quota exhausted) whose
+            error pattern declares `presentation: "bar"`. */}
+      <StatusNoticeBar messages={mergedMessages} getMessageText={getMessageText} />
 
       <StatusPanelErrorBoundary>
         <StatusPanel

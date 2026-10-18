@@ -1655,24 +1655,6 @@
     "copyCommand": "複製",
     "copied": "已複製",
     "recommended": "推薦",
-    "codexThreadResume": {
-      "title": "工作階段執行緒已失效",
-      "intro": "新建工作階段即可解決此問題。目前工作階段的執行緒 ID 在 Codex 伺服器端已不存在。",
-      "reason": "Codex 服務端會在一段時間後清除舊執行緒，繼續上一次工作階段時可能觸發此錯誤。"
-    },
-    "sdkNativeBinaryMissing": {
-      "title": "SDK 安裝不完整 — 缺少 native 二進位檔",
-      "intro": "這是淘寶 npm 鏡像源的已知問題（非外掛 bug）。鏡像源未完整同步 platform 檔案。可手動按以下方案處理：",
-      "reason": "淘寶源同步完成後此問題會自動消失，無需擔心。",
-      "solutions": {
-        "switchRegistry": {
-          "title": "方案一：暫時切換官方源重新安裝",
-          "step0": "1. 在終端機執行（切換到 npm 官方源）：",
-          "step1": "2. 開啟外掛設定中的「相依性管理」，點選重新安裝：",
-          "step2": "3. 重新安裝完成後，切回淘寶源："
-        }
-      }
-    },
     "spawnEbusy": {
       "title": "spawn EBUSY — 子處理程序啟動失敗",
       "intro": "此錯誤通常由 Node.js 版本不相容或 SDK 安裝不完整引起，按以下兩個方向排查通常可解決：",

@@ -13,13 +13,30 @@ export interface DiagnosticSolution {
   steps: DiagnosticStep[];
 }
 
+/**
+ * How a matched diagnostic should be presented in the UI.
+ *
+ * - `card`: inline diagnostic card rendered under the offending message
+ *   (can carry copyable commands / solution steps). This is the default.
+ * - `bar`: no inline card; the notice is instead surfaced by the status bar
+ *   above the composer (`StatusNoticeBar`), which can be dismissed.
+ */
+export type DiagnosticPresentation = 'card' | 'bar';
+
 export interface DiagnosticPattern {
   code: string;
+  /** Normalised at compile time: raw patterns without the field become `card`. */
+  presentation: DiagnosticPresentation;
+  /** Optional fallback URL for the pattern's call-to-action, used when the
+   *  server did not push one at runtime. */
+  actionLink?: string;
   solutions: DiagnosticSolution[];
 }
 
 interface RawPattern {
   code: string;
+  presentation?: DiagnosticPresentation;
+  actionLink?: string;
   match: {
     regex: string;
     keywordsAll?: string[];
@@ -41,7 +58,12 @@ const compiledPatterns: CompiledPattern[] = (patternsData as RawPatternsFile).pa
   .map((raw): CompiledPattern | null => {
     try {
       return {
-        pattern: { code: raw.code, solutions: raw.solutions },
+        pattern: {
+          code: raw.code,
+          presentation: raw.presentation === 'bar' ? 'bar' : 'card',
+          actionLink: raw.actionLink,
+          solutions: raw.solutions,
+        },
         regex: new RegExp(raw.match.regex, 'i'),
         keywords: raw.match.keywordsAll ?? [],
       };

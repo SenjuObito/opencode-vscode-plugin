@@ -1,0 +1,131 @@
+/* StatusNoticeBar — the single notice slot above the status panel + composer.
+   Sits just above the input area, spanning the chat width.
+
+   Two variants, mutually exclusive in time:
+   --warning  retry backoff for the running turn (auto-hides with the turn)
+   --error    terminal, user-dismissed notice (e.g. quota exhausted) */
+
+.status-notice-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 12px 6px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-left-width: 3px;
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.status-notice-bar--warning {
+    border-color: var(--color-warning);
+    background: var(--bg-tertiary);
+}
+
+/* A persistent notice: a full red outline is harsh to keep on screen, so the
+   signal is carried by the thick left edge plus a barely-there red wash. */
+.status-notice-bar--error {
+    border-color: var(--color-notice-error-border);
+    border-left-color: var(--color-error);
+    background: var(--color-notice-error-bg);
+}
+
+.status-notice-icon {
+    flex: 0 0 auto;
+}
+
+.status-notice-bar--warning .status-notice-icon {
+    color: var(--color-warning);
+    animation: status-notice-spin 1.6s linear infinite;
+}
+
+.status-notice-bar--error .status-notice-icon {
+    color: var(--color-error);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .status-notice-bar--warning .status-notice-icon {
+        animation: none;
+    }
+}
+
+@keyframes status-notice-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.status-notice-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.status-notice-bar--warning .status-notice-title {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.status-notice-bar--error .status-notice-title {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.status-notice-message {
+    word-break: break-word;
+}
+
+.status-notice-bar--warning .status-notice-message {
+    color: var(--text-primary);
+}
+
+.status-notice-bar--error .status-notice-message {
+    color: var(--text-secondary);
+}
+
+.status-notice-meta {
+    display: flex;
+    gap: 10px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+}
+
+/* The call to action stays accent-blue even inside the red notice: a red button
+   on a red bar reads as one blur, and this is the one thing the user can click. */
+.status-notice-action {
+    flex: 0 0 auto;
+    padding: 3px 10px;
+    border: 1px solid var(--accent-primary);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--accent-primary);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.status-notice-action:hover {
+    background: var(--accent-primary);
+    color: var(--color-button-text, #ffffff);
+}
+
+.status-notice-dismiss {
+    flex: 0 0 auto;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+}
+
+.status-notice-dismiss:hover {
+    color: var(--text-primary);
+}

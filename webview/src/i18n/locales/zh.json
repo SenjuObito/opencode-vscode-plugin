@@ -1853,24 +1853,6 @@
     "copyCommand": "复制",
     "copied": "已复制",
     "recommended": "推荐",
-    "codexThreadResume": {
-      "title": "会话线程已失效",
-      "intro": "新建会话即可解决此问题。当前会话的线程 ID 在 Codex 服务端已不存在。",
-      "reason": "Codex 服务端会在一段时间后清除旧线程，继续上一次会话时可能触发此错误。"
-    },
-    "sdkNativeBinaryMissing": {
-      "title": "SDK 安装不完整 — 缺少 native 二进制文件",
-      "intro": "这是淘宝 npm 镜像源的已知问题（非插件 bug）。镜像源未完整同步 platform 文件。可手动按以下方案处理：",
-      "reason": "淘宝源同步完成后此问题会自动消失，无需担心。",
-      "solutions": {
-        "switchRegistry": {
-          "title": "方案一：临时切换官方源重装",
-          "step0": "1. 在终端运行（切换到 npm 官方源）：",
-          "step1": "2. 打开插件设置中的「依赖管理」，点击重装：",
-          "step2": "3. 重装完成后，切回淘宝源："
-        }
-      }
-    },
     "spawnEbusy": {
       "title": "spawn EBUSY — 子进程启动失败",
       "intro": "该错误通常由 Node.js 版本不兼容或 SDK 安装不完整引起，按以下两个方向排查通常可解决：",
@@ -1884,8 +1866,8 @@
     },
     "opencodeQuotaExceeded": {
       "title": "模型额度已用尽",
-      "intro": "模型因免费额度或账号配额用尽而拒绝了本次请求。服务端会持续退避重试，插件在这段时间里一直处于等待状态，看起来像是卡住且没有任何进展。请切换到其他模型，或等待额度重置。",
-      "reason": "opencode 遇到限流／额度错误时最多退避重试 5 次，且延迟逐步加大。当额度恢复时间晚于插件 180s 的本地超时，本回合会以超时提示结束，但真实原因是额度已耗尽。"
+      "notice": "请切换到其他模型，或等待额度重置后重试。",
+      "upgrade": "升级订阅"
     }
   },
   "openCodeModes": {

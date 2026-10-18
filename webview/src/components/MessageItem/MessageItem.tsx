@@ -657,7 +657,11 @@ export const MessageItem = memo(function MessageItem({
       return (
         <>
           <MarkdownBlock content={getMessageText(message)} />
-          {errorDiagnosticPattern && (
+          {/* `bar` patterns are surfaced by StatusNoticeBar above the composer
+              instead of an inline card: they carry no solution steps, and a
+              persistent actionable notice belongs next to the input. The raw
+              error text above is kept so the transcript stays self-contained. */}
+          {errorDiagnosticPattern && errorDiagnosticPattern.presentation !== 'bar' && (
             <ErrorDiagnosticCard
               t={t}
               pattern={errorDiagnosticPattern}

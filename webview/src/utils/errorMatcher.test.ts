@@ -6,34 +6,37 @@ describe('matchErrorPattern', () => {
     expect(matchErrorPattern('')).toBeNull();
   });
 
-
   it('matches case-insensitively on the regex portion', () => {
-    const text = 'NATIVE CLI BINARY FOR claude-agent-sdk NOT FOUND';
-    const result = matchErrorPattern(text);
-    expect(result?.code).toBe('sdkNativeBinaryMissing');
-  });
-
-  it('returns null when the regex matches but keywords are missing', () => {
-    // Regex matches, but the required "claude-agent-sdk" keyword is absent
-    const text = 'Native CLI binary for some-other-sdk not found';
-    expect(matchErrorPattern(text)).toBeNull();
+    expect(matchErrorPattern('FREE USAGE EXCEEDED')?.code).toBe('opencodeQuotaExceeded');
+    expect(matchErrorPattern('SPAWN EBUSY')?.code).toBe('spawnEbusy');
   });
 
   it('returns null when no pattern matches the error text', () => {
     expect(matchErrorPattern('Some unrelated error message')).toBeNull();
   });
 
-  it('returns the first pattern whose regex and keywords both match', () => {
-    const text =
-      'Internal error: Native CLI binary for claude-agent-sdk not found while loading';
-    const result = matchErrorPattern(text);
-    expect(result?.code).toBe('sdkNativeBinaryMissing');
+  it('normalises an explicit presentation field', () => {
+    const result = matchErrorPattern('Free usage exceeded, subscribe to Go');
+    expect(result?.code).toBe('opencodeQuotaExceeded');
+    expect(result?.presentation).toBe('bar');
   });
 
+  it('defaults presentation to "card" when the pattern omits it', () => {
+    const result = matchErrorPattern('spawn EBUSY');
+    expect(result?.code).toBe('spawnEbusy');
+    expect(result?.presentation).toBe('card');
+  });
 
+  it('passes through the optional actionLink fallback', () => {
+    const result = matchErrorPattern('Free usage exceeded, subscribe to Go');
+    expect(result?.actionLink).toBe('https://opencode.ai/go');
+  });
 
-  it('matches spawn EBUSY case-insensitively', () => {
-    expect(matchErrorPattern('SPAWN EBUSY')?.code).toBe('spawnEbusy');
+  it('leaves actionLink undefined when the pattern has none', () => {
+    expect(matchErrorPattern('spawn EBUSY')?.actionLink).toBeUndefined();
+  });
+
+  it('matches spawn EBUSY anywhere in the text', () => {
     expect(matchErrorPattern('something failed: spawn ebusy at line 42')?.code).toBe('spawnEbusy');
   });
 });

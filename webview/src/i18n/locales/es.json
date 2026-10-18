@@ -1627,24 +1627,6 @@
     "copyCommand": "Copiar",
     "copied": "Copiado",
     "recommended": "Recomendado",
-    "codexThreadResume": {
-      "title": "El hilo de sesión ya no es válido",
-      "intro": "Crear una nueva sesión resolverá este problema. El ID de hilo de la sesión actual ya no existe en el servidor de Codex.",
-      "reason": "Codex elimina los hilos antiguos después de un tiempo, lo que puede provocar este error al reanudar una sesión anterior."
-    },
-    "sdkNativeBinaryMissing": {
-      "title": "Instalación del SDK incompleta — falta el binario nativo",
-      "intro": "Este es un problema conocido del mirror npm de Taobao (no es un error del plugin). El mirror no ha sincronizado completamente los archivos específicos de la plataforma. Puedes resolverlo manualmente con cualquiera de las siguientes opciones:",
-      "reason": "Este problema desaparecerá automáticamente cuando el mirror de Taobao termine de sincronizarse — no es necesario hacer nada más.",
-      "solutions": {
-        "switchRegistry": {
-          "title": "Opción 1: Cambia temporalmente al registro oficial y reinstala",
-          "step0": "1. Ejecuta en tu terminal (cambiar al registro oficial de npm):",
-          "step1": "2. Abre la configuración de Gestión de dependencias del plugin y haz clic en Reinstalar:",
-          "step2": "3. Una vez completada la reinstalación, vuelve al mirror de Taobao:"
-        }
-      }
-    },
     "spawnEbusy": {
       "title": "spawn EBUSY — error al iniciar el proceso hijo",
       "intro": "Este error suele estar causado por una versión incompatible de Node.js o una instalación incompleta del SDK. Prueba las dos opciones siguientes en orden:",
