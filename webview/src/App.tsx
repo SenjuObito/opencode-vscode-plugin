@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
@@ -19,7 +19,9 @@ import {
   useModelProviderState,
   useChatComputations,
   useCompactConfirm,
+  useSessionTabs,
 } from './hooks';
+import { convertMessagesToMarkdown, downloadMarkdown } from './utils/exportMarkdown';
 import {
   NEW_SESSION_COMMANDS,
   RESUME_COMMANDS,
@@ -36,7 +38,7 @@ import { ToastContainer } from './components/Toast';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
 import type { MessageListRevealHandle } from './components/ConversationSearch/types';
-import { useSubagentContextValues, useSetTaskEvents } from './contexts/SubagentContext';
+import { useSubagentContextValues, useSetTaskEvents, useTaskEvents } from './contexts/SubagentContext';
 import { useMessages } from './contexts/MessagesContext';
 import { useSession } from './contexts/SessionContext';
 import { useUIState } from './contexts/UIStateContext';
@@ -44,6 +46,9 @@ import { useDialogs } from './contexts/DialogContext';
 import { AppDialogs } from './components/AppDialogs';
 import ConfirmDialog from './components/ConfirmDialog';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from './utils/permissionDialogTimeout';
+import { useCliModels } from './hooks/providers/useCliModels';
+import { getFirstPreferredModelId } from './components/ChatInputBox/modelSelectUtils';
+import { resolveProviderModels } from './components/ChatInputBox/resolveProviderModels';
 
 const App = () => {
   const { t } = useTranslation();
@@ -71,19 +76,20 @@ const App = () => {
   const {
     messages, setMessages,
     subagentHistories, setSubagentHistories,
-    setStatus,
-    loading, setLoading, setLoadingStartTime,
-    setIsThinking,
+    status, setStatus,
+    loading, setLoading, loadingStartTime, setLoadingStartTime,
+    isThinking, setIsThinking,
     streamingActive, setStreamingActive,
-    setSessionLoading,
+    sessionLoading, setSessionLoading,
     setSseTodos,
     sseTodos,
     isCompacting, setIsCompacting,
-    setCompactingStartTime,
+    compactingStartTime, setCompactingStartTime,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
   // not re-render every MessagesContext consumer.
+  const taskEvents = useTaskEvents();
   const setTaskEvents = useSetTaskEvents();
 
   // ── Session state (extracted to SessionContext, stage 2 of TASK-P1-01) ──
@@ -100,6 +106,7 @@ const App = () => {
     currentView, setCurrentView,
     settingsInitialTab, setSettingsInitialTab,
     toasts, addToast, dismissToast, clearToasts,
+    contextInfo,
     setContextInfo,
     searchOpen, setSearchOpen,
   } = useUIState();
@@ -124,6 +131,15 @@ const App = () => {
     else { messageNodeMapRef.current.delete(id); }
   }, []);
 
+  const openSessionInTabRef = useRef<(
+    sessionId: string,
+    title?: string,
+    historyModel?: string,
+    historyMode?: string,
+    historyEffort?: string
+  ) => void>(() => {});
+  const appTabsRef = useRef<any[]>([]);
+
   // Imperative handle for the in-page search panel to expand collapsed earlier messages.
   const messageListRef = useRef<MessageListRevealHandle | null>(null);
 
@@ -141,17 +157,45 @@ const App = () => {
   const {
     messagesContainerRef, messagesEndRef, inputAreaRef,
     isUserAtBottomRef, isAutoScrollingRef, userPausedRef, scrollToBottom,
-  } = useScrollBehavior({ currentView, messages, loading, streamingActive });
+  } = useScrollBehavior({ currentView, messages, loading, isCompacting, streamingActive });
 
   // ── Streaming messages ──
   const {
     streamingContentRef, streamingThinkingRef, isStreamingRef, useBackendStreamingRenderRef,
     streamingMessageIndexRef, contentUpdateTimeoutRef, thinkingUpdateTimeoutRef,
     lastContentUpdateRef, lastThinkingUpdateRef, autoExpandedThinkingKeysRef,
+    trailingStructuralTextBoundaryRef,
     streamingTurnIdRef, turnIdCounterRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
   } = useStreamingMessages();
+
+  // Per-session streaming runtime exchange: these single-instance refs are
+  // saved/restored as a unit when the active session changes, so a background
+  // turn cannot leak its accumulator into whichever session is opened next.
+  const streamingRuntimeRefs = useMemo(() => ({
+    isStreamingRef,
+    streamingContentRef,
+    streamingThinkingRef,
+    useBackendStreamingRenderRef,
+    streamingMessageIndexRef,
+    streamingTurnIdRef,
+    lastContentUpdateRef,
+    lastThinkingUpdateRef,
+    autoExpandedThinkingKeysRef,
+    trailingStructuralTextBoundaryRef,
+  }), [
+    isStreamingRef,
+    streamingContentRef,
+    streamingThinkingRef,
+    useBackendStreamingRenderRef,
+    streamingMessageIndexRef,
+    streamingTurnIdRef,
+    lastContentUpdateRef,
+    lastThinkingUpdateRef,
+    autoExpandedThinkingKeysRef,
+    trailingStructuralTextBoundaryRef,
+  ]);
 
   // (Toast helpers moved to UIStateContext)
 
@@ -169,12 +213,11 @@ const App = () => {
     setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    resetToPreferredModel,
     handleModeSelect, handleModelSelect,
     handleReasoningChange, handleToggleThinking,
     handleSendShortcutChange,
     handleAutoOpenFileEnabledChange,
-  } = useModelProviderState({ addToast, t });
+  } = useModelProviderState({ addToast, t, currentSessionId, currentSessionIdRef });
 
   // ── Global drag event interception ──
   useEffect(() => {
@@ -285,12 +328,39 @@ const App = () => {
     });
   }, [messages, setTaskEvents]);
 
+  const { cliModels, cliDefaultModel, cliCatalogHasEntries } = useCliModels(currentProvider);
+
+  const availableModels = useMemo(() => {
+    return resolveProviderModels({
+      provider: currentProvider,
+      cliModels,
+      cliCatalogHasEntries,
+    });
+  }, [currentProvider, cliModels, cliCatalogHasEntries]);
+
+  const resetToPreferredModel = useCallback(() => {
+    const preferredId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel);
+    if (preferredId) {
+      handleModelSelect(preferredId);
+    }
+  }, [currentProvider, availableModels, cliDefaultModel, handleModelSelect]);
+
+  // When models catalog arrives on initial load in a new session, immediately select the preferred model.
+  const hasAutoSelectedOnStartupRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedOnStartupRef.current) return;
+    if (!cliCatalogHasEntries || !cliModels.length) return;
+    if (currentSessionId === null && messages.length === 0) {
+      hasAutoSelectedOnStartupRef.current = true;
+      resetToPreferredModel();
+    }
+  }, [cliCatalogHasEntries, cliModels, currentSessionId, messages.length, resetToPreferredModel]);
+
   // ── Session management ──
   const {
-    showNewSessionConfirm, showInterruptConfirm,
+    showInterruptConfirm,
     suppressNextStatusToastRef,
-    createNewSession, forceCreateNewSession,
-    handleConfirmNewSession, handleCancelNewSession,
+    forceCreateNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
     toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal, convertToCliSession,
@@ -299,15 +369,21 @@ const App = () => {
     setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
     setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setStatus, setLoading, setIsThinking, setStreamingActive, setSessionLoading,
-    setIsCompacting, setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
+    setIsCompacting,
+    setCompactingStartTime,
     onResetToPreferredModel: resetToPreferredModel,
     clearToasts, addToast, t,
   });
 
   useHistoryLoader({ currentView, currentProvider });
+
+  const handleRetryHistory = useCallback(() => {
+    setHistoryData(null);
+    sendBridgeEvent('load_history_data', currentProvider);
+  }, [currentProvider, setHistoryData]);
 
   // ── Share state ──
   const [isShared, setIsShared] = useState(false);
@@ -398,15 +474,16 @@ const App = () => {
    */
   const dispatchRevert = useCallback((message: ClaudeMessage) => {
     const id = getMessageId(message);
+    const sid = currentSessionIdRef.current;
     if (!id) {
       // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
       console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('revert_session', 'latest');
-      applyRevertState(true);
+      sendBridgeEvent('revert_session', JSON.stringify({ sessionId: sid, messageId: 'latest' }));
+      applyRevertState(true, 'latest');
       return;
     }
     console.debug('[App] undo: reverting to message', id);
-    sendBridgeEvent('revert_session', id);
+    sendBridgeEvent('revert_session', JSON.stringify({ sessionId: sid, messageId: id }));
     // Optimistic: boundary is the undone user message; the host's
     // onRevertStateUpdate push carries the authoritative pointer.
     applyRevertState(true, id);
@@ -431,7 +508,8 @@ const App = () => {
       setPendingRevert({ op: 'redo' });
       return;
     }
-    sendBridgeEvent('unrevert_session');
+    const sid = currentSessionIdRef.current;
+    sendBridgeEvent('unrevert_session', JSON.stringify({ sessionId: sid }));
     applyRevertState(false);
   }, [applyRevertState, streamingActive]);
 
@@ -444,12 +522,13 @@ const App = () => {
       return;
     }
     const id = getMessageId(message);
+    const sid = currentSessionIdRef.current;
     if (!id) {
       console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('fork_session', 'latest');
+      sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, messageId: 'latest' }));
       return;
     }
-    sendBridgeEvent('fork_session', id);
+    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, messageId: id }));
   }, [streamingActive, addToast, t, getMessageId]);
 
   /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
@@ -458,7 +537,8 @@ const App = () => {
       addToast(t('chat.forkDisabledTooltip'), 'warning');
       return;
     }
-    sendBridgeEvent('fork_session', 'full');
+    const sid = currentSessionIdRef.current;
+    sendBridgeEvent('fork_session', JSON.stringify({ sessionId: sid, type: 'full' }));
   }, [streamingActive, addToast, t]);
 
   // Latest user message id, used by the builtin /undo slash command.
@@ -476,16 +556,14 @@ const App = () => {
   useEffect(() => {
     window.onForkSuccess = (json: string) => {
       try {
-        const payload = JSON.parse(json) as { sessionId?: string };
+        const payload = JSON.parse(json) as { sessionId?: string; sourceSessionId?: string };
         console.debug('[App] onForkSuccess', payload);
         const newSessionId = payload.sessionId;
         if (!newSessionId) return;
-        // Fork result toast with an explicit switch action; default is to stay
-        // in the current session when the toast times out.
-        addToast(t('chat.forkCreatedToast'), 'info', {
-          label: t('chat.forkSwitchAction'),
-          onClick: () => loadHistorySession(newSessionId),
-        }, { duration: 5000 });
+        const sourceTab = appTabsRef.current?.find((t) => t.sessionId === payload.sourceSessionId);
+        const forkedTitle = sourceTab ? `${sourceTab.title} (Fork)` : `${sessionTitle || 'Session'} (Fork)`;
+        openSessionInTabRef.current(newSessionId, forkedTitle);
+        addToast(t('chat.forkCreatedToast', { defaultValue: '会话已成功 Fork 并打开新标签页' }), 'success');
       } catch {
         // ignore malformed payloads
       }
@@ -495,6 +573,9 @@ const App = () => {
       addToast(`${t('chat.forkFailed')}${detail ? `: ${detail}` : ''}`, 'error');
     };
     window.onShareSuccess = (url: string) => {
+      if (!url) {
+        return;
+      }
       console.debug('[App] onShareSuccess, copying url to clipboard');
       setSharePending(false);
       setIsShared(true);
@@ -530,14 +611,40 @@ const App = () => {
       }
       addToast(reason ? `${t('chat.shareFailed')}: ${reason}` : t('chat.shareFailed'), 'error');
     };
-    window.onRevertError = (json: string) => {
+    window.onUnshareSuccess = () => {
+      console.debug('[App] onUnshareSuccess');
+      setSharePending(false);
+      setIsShared(false);
+      setShareUrl(null);
+      addToast(t('chat.unshareSuccess', { defaultValue: '已取消分享会话' }), 'info');
+    };
+    window.onUnshareError = (detail?: string) => {
+      console.warn('[App] onUnshareError', detail);
+      setSharePending(false);
+      const reason = (detail ?? '').trim();
+      addToast(reason ? `${t('chat.unshareFailed', { defaultValue: '取消分享失败' })}: ${reason}` : t('chat.unshareFailed', { defaultValue: '取消分享失败' }), 'error');
+    };
+    window.onRevertError = (arg: unknown) => {
       let op = 'undo';
+      let errorDetail = '';
       try {
-        op = (JSON.parse(json) as { op?: string }).op ?? 'undo';
+        if (typeof arg === 'object' && arg !== null) {
+          op = (arg as { op?: string }).op ?? 'undo';
+          errorDetail = (arg as { error?: string }).error ?? '';
+        } else if (typeof arg === 'string') {
+          try {
+            const parsed = JSON.parse(arg) as { op?: string; error?: string };
+            op = parsed.op ?? 'undo';
+            errorDetail = parsed.error ?? '';
+          } catch {
+            errorDetail = arg;
+          }
+        }
       } catch {
         // keep default
       }
-      addToast(op === 'undo' ? t('chat.revertFailed') : t('chat.restoreFailed'), 'error');
+      const baseMsg = op === 'undo' ? t('chat.revertFailed') : t('chat.restoreFailed');
+      addToast(errorDetail ? `${baseMsg}: ${errorDetail}` : baseMsg, 'error');
       // 清除乐观撤销边界，避免重载前占位条还在、而底层消息却已恢复的矛盾状态。
       applyRevertState(false);
       // 回滚乐观状态：重载会话让宿主推送真实的 revert 指针与消息列表
@@ -546,10 +653,26 @@ const App = () => {
         loadHistorySession(sessionId);
       }
     };
-    window.onRevertStateUpdate = (json: string) => {
+    window.onRevertStateUpdate = (...args: unknown[]) => {
       try {
-        const payload = JSON.parse(json) as { hasRevert?: boolean; messageId?: string | null };
-        console.debug('[App] onRevertStateUpdate', payload);
+        let jsonStr = '';
+        let targetSessionId: string | null = null;
+        if (args.length >= 2 && typeof args[0] === 'string' && typeof args[1] === 'string') {
+          targetSessionId = args[0];
+          jsonStr = args[1];
+        } else if (args.length === 1) {
+          if (typeof args[0] === 'string') {
+            jsonStr = args[0];
+          } else if (typeof args[0] === 'object' && args[0] !== null) {
+            jsonStr = JSON.stringify(args[0]);
+          }
+        } else if (args.length >= 2 && typeof args[1] === 'object' && args[1] !== null) {
+          targetSessionId = typeof args[0] === 'string' ? args[0] : null;
+          jsonStr = JSON.stringify(args[1]);
+        }
+        if (!jsonStr) return;
+        const payload = JSON.parse(jsonStr) as { hasRevert?: boolean; messageId?: string | null; sessionId?: string };
+        console.debug('[App] onRevertStateUpdate', { targetSessionId, payload });
         const next = !!payload.hasRevert;
         const nextId = payload.messageId ?? null;
         const prevHasRevert = hasRevertStateRef.current;
@@ -557,7 +680,7 @@ const App = () => {
         const changed = next !== prevHasRevert || nextId !== prevId;
         applyRevertState(next, nextId);
 
-        const sessionId = currentSessionIdRef.current;
+        const sessionId = targetSessionId || payload.sessionId || currentSessionIdRef.current;
         const currentKey = `${sessionId}:${next}:${nextId}`;
         if (changed || (next && lastLoadedRevertStateRef.current !== currentKey)) {
           lastLoadedRevertStateRef.current = currentKey;
@@ -565,8 +688,8 @@ const App = () => {
             loadHistorySession(sessionId);
           }
         }
-      } catch {
-        // ignore malformed payloads
+      } catch (err) {
+        console.warn('[App] malformed onRevertStateUpdate payload', err, args);
       }
     };
     // 服务端权威删除：opencode 在下一次 prompt 时把 revert 点之后的消息真正删掉，
@@ -596,6 +719,10 @@ const App = () => {
       requestAnimationFrame(() => {
         scrollToBottom();
       });
+      const activeSessionId = targetSessionId || currentSessionIdRef.current;
+      if (activeSessionId) {
+        void loadHistorySession(activeSessionId);
+      }
     };
     window.onCompactError = (targetSessionId?: string, detail?: string) => {
       if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
@@ -603,13 +730,33 @@ const App = () => {
       }
       setIsCompacting(false);
       setCompactingStartTime(null);
-      setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.type === 'notification') {
+          const raw = last.raw as Record<string, unknown> | undefined;
+          if (raw?.compactStatus === 'failure') {
+            // Already showing a failure notice; if current has no detail but new one does, enrich it
+            if (!raw.compactDetail && detail) {
+              const updated = [...prev];
+              updated[updated.length - 1] = createCompactFailureNotice(t('chat.compactFailed'), detail);
+              return updated;
+            }
+            return prev;
+          }
+        }
+        return [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)];
+      });
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
     };
     return () => {
       delete window.onForkSuccess;
       delete window.onForkError;
       delete window.onShareSuccess;
       delete window.onShareError;
+      delete window.onUnshareSuccess;
+      delete window.onUnshareError;
       delete window.onRevertError;
       delete window.onRevertStateUpdate;
       delete window.onMessagesRemoved;
@@ -680,6 +827,8 @@ const App = () => {
     handleModeSelect,
     openContextUsageDialog,
     closeContextUsageDialog,
+    currentSessionId,
+    currentSessionIdRef,
   });
 
   // ── "Interrupt then undo/redo" confirmation handlers (busy session) ──
@@ -694,7 +843,8 @@ const App = () => {
     if (pending.op === 'undo') {
       dispatchRevert(pending.target);
     } else {
-      sendBridgeEvent('unrevert_session');
+      const sid = currentSessionIdRef.current;
+      sendBridgeEvent('unrevert_session', JSON.stringify({ sessionId: sid }));
       applyRevertState(false);
     }
   }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState]);
@@ -703,13 +853,6 @@ const App = () => {
     setPendingRevert(null);
   }, []);
 
-  // ── Message queue ──
-  const {
-    queue: messageQueue,
-    enqueue: enqueueMessage,
-    dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeMessage });
-
   /**
    * 发送真实消息前消费 revert 边界。与 opencode 服务端语义一致：
    * prompt/command/shell/summarize 都会先执行 revert.cleanup——从边界消息起
@@ -717,8 +860,6 @@ const App = () => {
    * 占位条滞留、以及清除边界后被撤销的旧消息"复活"。
    */
   const consumeRevertBoundary = useCallback(() => {
-    // Use the ref to avoid a stale closure: this callback is invoked from the
-    // submit path where the `revertBoundaryId` state may not have caught up.
     const boundaryId = revertBoundaryIdRef.current;
     if (!hasRevertStateRef.current) return;
     let idx = -1;
@@ -743,12 +884,18 @@ const App = () => {
   // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    sendBridgeEvent('compact_session');
+    sendBridgeEvent('compact_session', JSON.stringify({ sessionId: currentSessionId, model: selectedModel }));
     setIsCompacting(true);
     setCompactingStartTime(Date.now());
-  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime]);
+    userPausedRef.current = false;
+    isUserAtBottomRef.current = true;
+    scrollToBottom();
+    requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  }, [consumeRevertBoundary, currentSessionId, selectedModel, setIsCompacting, setCompactingStartTime, scrollToBottom, userPausedRef, isUserAtBottomRef]);
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
-    useCompactConfirm(doCompact);
+    useCompactConfirm(doCompact, loading || isCompacting);
 
   // "Don't ask again" checkbox state for the compact confirm dialog.
   // Resets to unchecked every time the dialog re-opens.
@@ -796,7 +943,27 @@ const App = () => {
     }
   }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
 
-  // Reset revert / share / compact-confirm state on session switch
+  // Execute from queue handler (dispatches builtin slash commands or sends message)
+  const executeFromQueue = useCallback((content: string, attachments?: Attachment[]) => {
+    const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (text.startsWith('/')) {
+      const command = text.split(/\s+/)[0].toLowerCase();
+      if (BUILTIN_SESSION_COMMANDS.has(command)) {
+        handleBuiltinCommand(command);
+        return;
+      }
+    }
+    executeMessage(content, attachments);
+  }, [handleBuiltinCommand, executeMessage]);
+
+  // ── Message queue ──
+  const {
+    queue: messageQueue,
+    enqueue: enqueueMessage,
+    dequeue: dequeueMessage,
+  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeFromQueue });
+
+  // Reset revert / share / compact-confirm / compacting state on session switch
   useEffect(() => {
     applyRevertState(false);
     resetShareState();
@@ -814,7 +981,8 @@ const App = () => {
     const text = content.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
     if (!text && !hasAttachments) return;
-    // Local commands work even while loading
+
+    // View-switching / session-reset commands bypass busy guard
     if (text.startsWith('/')) {
       const command = text.split(/\s+/)[0].toLowerCase();
       // New session commands
@@ -827,34 +995,39 @@ const App = () => {
         setCurrentView('history');
         return;
       }
+    }
+
+    // If loading or compacting, all other messages / commands enter the FIFO queue
+    if (loading || isCompacting) {
+      enqueueMessage(content, attachments);
+      return;
+    }
+
+    // Local commands when idle
+    if (text.startsWith('/')) {
+      const command = text.split(/\s+/)[0].toLowerCase();
       // /plan - switch to plan mode (opencode has a native plan agent)
       if (PLAN_COMMANDS.has(command)) {
         handleModeSelect('plan');
         addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
         return;
       }
-      // /context - handled locally even while loading
+      // /context - handled locally
       if (CONTEXT_COMMANDS.has(command)) {
         hookHandleSubmit(content, attachments, fileTags);
         return;
       }
       // opencode builtin session commands (compact/undo/redo/fork/share/unshare)
       if (BUILTIN_SESSION_COMMANDS.has(command)) {
-        // /compact 在用户确认后才发送，revert 边界在确认时（doCompact）消费；
-        // 其余（undo/redo/fork/share）是纯客户端操作，不影响服务端 revert 状态。
         handleBuiltinCommand(command);
         return;
       }
     }
+
     // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
     consumeRevertBoundary();
-    // If loading or compacting, add to queue
-    if (loading || isCompacting) {
-      enqueueMessage(content, attachments);
-      return;
-    }
     hookHandleSubmit(content, attachments, fileTags);
-  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
+  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -887,40 +1060,135 @@ const App = () => {
 
   const statusPanelExpanded = !userCollapsedRef.current;
 
+  // Synchronize dynamic sessionTitle to IDE ToolWindow Tab display name
+  useEffect(() => {
+    const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
+    if (isDefaultNewSession) {
+      sendBridgeEvent('update_tab_title', '');
+    } else {
+      sendBridgeEvent('update_tab_title', sessionTitle);
+    }
+  }, [sessionTitle, t]);
+
+
+  // Session tabs management
+  const {
+    tabs,
+    activeTabId,
+    selectTab,
+    createTab,
+    closeTab,
+    renameTab,
+    forkTab,
+    reorderTabs,
+    openSessionInTab,
+    activeTabAutoOpenFileEnabled,
+    setActiveTabAutoOpenFileEnabled,
+  } = useSessionTabs({
+    currentSessionId,
+    currentSessionIdRef,
+    setCurrentSessionId,
+    sessionTitle,
+    setCustomSessionTitle,
+    updateHistoryTitle,
+    messages,
+    setMessages,
+    loading,
+    setLoading,
+    streamingActive,
+    setStreamingActive,
+    isThinking,
+    setIsThinking,
+    status,
+    setStatus,
+    sessionLoading,
+    setSessionLoading,
+    revertBoundaryId,
+    setRevertBoundaryId,
+    isCompacting,
+    setIsCompacting,
+    compactingStartTime,
+    setCompactingStartTime,
+    taskEvents,
+    setTaskEvents,
+    sseTodos,
+    setSseTodos,
+    subagentHistories,
+    setSubagentHistories,
+    filteredFileChanges,
+    permissionMode,
+    setPermissionMode,
+    selectedModel,
+    setSelectedModel: handleModelSelect,
+    reasoningEffort,
+    setReasoningEffort: handleReasoningChange,
+    contextInfo,
+    setContextInfo,
+    loadingStartTime,
+    setLoadingStartTime,
+    usagePercentage,
+    setUsagePercentage,
+    usageUsedTokens,
+    setUsageUsedTokens,
+    usageMaxTokens,
+    setUsageMaxTokens,
+    availableModels,
+    currentProvider,
+    isShared,
+    setCurrentView,
+    chatInputRef,
+    defaultAutoOpenFileEnabled: autoOpenFileEnabled,
+    forceCreateNewSession,
+    loadHistorySession,
+    streamingRuntimeRefs,
+    t,
+  });
+
+  useEffect(() => {
+    openSessionInTabRef.current = openSessionInTab;
+    appTabsRef.current = tabs;
+  }, [openSessionInTab, tabs]);
+
   // ── Render ──
   return (
     <>
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       <ChatHeader
         currentView={currentView}
-        sessionTitle={sessionTitle}
         t={t}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={selectTab}
+        onCloseTab={closeTab}
+        onRenameTab={renameTab}
+        onForkTab={forkTab}
+        onReorderTabs={reorderTabs}
+        onShareTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          void handleShare();
+        }}
+        onCopyShareLinkTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          handleCopyShareLink();
+        }}
+        onUnshareTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          void handleUnshare();
+        }}
         onBack={() => setCurrentView('chat')}
-        onNewSession={createNewSession}
+        onNewSession={createTab}
         onHistory={() => setCurrentView('history')}
         onSettings={() => {
           setSettingsInitialTab(undefined);
           setCurrentView('settings');
         }}
         onOpenSearch={() => setSearchOpen(true)}
-        titleEditable
-        onTitleChange={(newTitle) => {
-          setCustomSessionTitle(newTitle);
-          if (currentSessionId) {
-            updateHistoryTitle(currentSessionId, newTitle);
-          }
-        }}
-        isShared={isShared}
-        sharePending={sharePending}
-        shareHidden={shareHidden}
-        onCopyShareLink={handleCopyShareLink}
-        onShare={handleShare}
-        onUnshare={handleUnshare}
-        onForkAll={handleForkFull}
-        onExport={() => {
-          if (currentSessionId) {
-            exportHistorySession(currentSessionId, sessionTitle);
-          }
+        onExportTab={(tab) => {
+          const tabMessages = tab.id === activeTabId ? messages : (tab.messages || []);
+          const title = tab.title || t('common.newSession', { defaultValue: '新会话' });
+          const md = convertMessagesToMarkdown(tabMessages, title);
+          downloadMarkdown(md, `${title}.md`);
+          addToast(t('history.exportSuccess', { defaultValue: '会话已导出' }), 'success');
         }}
       />
 
@@ -989,7 +1257,7 @@ const App = () => {
               activeProviderConfig={activeProviderConfig}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}
-              autoOpenFileEnabled={autoOpenFileEnabled}
+              autoOpenFileEnabled={activeTabAutoOpenFileEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
@@ -997,7 +1265,7 @@ const App = () => {
               onModelSelect={handleModelSelect}
               onReasoningChange={handleReasoningChange}
               onToggleThinking={handleToggleThinking}
-              onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
+              onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}
               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
             />
@@ -1007,13 +1275,23 @@ const App = () => {
               historyData={historyData}
               currentProvider={currentProvider}
               currentSessionId={currentSessionId}
-              onLoadSession={loadHistorySession}
+              onLoadSession={(sessionId) => {
+                const session = historyData?.sessions?.find(s => s.sessionId === sessionId);
+                openSessionInTab(
+                  sessionId,
+                  session?.title,
+                  session?.model,
+                  session?.agent || (session as any)?.mode,
+                  (session as any)?.reasoningEffort,
+                );
+              }}
               onDeleteSession={deleteHistorySession}
               onDeleteSessions={deleteHistorySessions}
               onExportSession={exportHistorySession}
               onToggleFavorite={toggleFavoriteSession}
               onUpdateTitle={updateHistoryTitle}
               onConvertToCliSession={convertToCliSession}
+              onRetry={handleRetryHistory}
             />
           )}
         </>
@@ -1022,9 +1300,6 @@ const App = () => {
       <div id="image-preview-root" />
 
       <AppDialogs
-        showNewSessionConfirm={showNewSessionConfirm}
-        onConfirmNewSession={handleConfirmNewSession}
-        onCancelNewSession={handleCancelNewSession}
         showInterruptConfirm={showInterruptConfirm}
         onConfirmInterrupt={handleConfirmInterrupt}
         onCancelInterrupt={handleCancelInterrupt}

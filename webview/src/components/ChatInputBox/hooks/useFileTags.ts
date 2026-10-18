@@ -34,6 +34,15 @@ interface UseFileTagsReturn {
   justRenderedTagRef: React.MutableRefObject<boolean>;
   /** Extract all file tags from current input (for sending to backend) */
   extractFileTags: () => FileTagInfo[];
+  /**
+   * Re-apply previously extracted file tags.
+   *
+   * `setValue` restores the raw `@path` text but not the `.file-tag` elements
+   * (which also carry the absolute path mapping). Re-registering the mapping and
+   * re-rendering restores both the visual chips and the later `getFileTags()`
+   * result, so switching tabs no longer downgrades tags to plain text.
+   */
+  restoreFileTags: (tags: FileTagInfo[]) => void;
   /** Set the path to place cursor after on next renderFileTags call */
   setCursorAfterPath: (path: string | null) => void;
 }
@@ -352,7 +361,7 @@ export function useFileTags({
        * To add a new protocol type:
        * 1. Add protocol check here (e.g., const isNewProtocol = pureFilePath.startsWith('newprotocol://'))
        * 2. Add icon selection in the iconSvg logic below
-       * 3. Update backend ClaudeSession.java processReferences() method
+       * 3. Update backend OpencodeSession.java processReferences() method
        * 4. Import the corresponding icon SVG
        *
        * Future protocol candidates:
@@ -504,6 +513,19 @@ export function useFileTags({
   }, [editableRef]);
 
   /**
+   * Re-register saved path mappings and render the tags again.
+   */
+  const restoreFileTags = useCallback((tags: FileTagInfo[]) => {
+    if (!tags || tags.length === 0) return;
+    for (const tag of tags) {
+      if (tag.displayPath) {
+        pathMappingRef.current.set(tag.displayPath, tag.absolutePath || tag.displayPath);
+      }
+    }
+    renderFileTags();
+  }, [renderFileTags]);
+
+  /**
    * Set the path to place cursor after on next renderFileTags call
    */
   const setCursorAfterPath = useCallback((path: string | null) => {
@@ -515,6 +537,7 @@ export function useFileTags({
     pathMappingRef,
     justRenderedTagRef,
     extractFileTags,
+    restoreFileTags,
     setCursorAfterPath,
   };
 }

@@ -120,6 +120,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		daemon: deps.daemon,
 		permissionHandler: (request) => permissionHandler.onPermissionRequested(request),
 		permissionClosedHandler: (kind, content) => permissionHandler.onPromptClosed(kind, content),
+		clearSessionHandler: (sessionId: string) => permissionHandler.clearSession(sessionId),
 		editorSelectionResolver: () => deps.editorContextTracker?.getCurrentSelectionInfo() ?? null,
 		onTurnCompleted: (info: TurnCompletedInfo) => {
 			const active = sessionManager.getActiveSession();

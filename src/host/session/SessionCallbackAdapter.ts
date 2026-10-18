@@ -29,9 +29,11 @@ export interface SessionCallbackAdapterOptions {
 	model: () => string | null;
 	/** 宿主消息窗口基址（全局序号，见 SessionState 窗口化），随快照下发给 webview。 */
 	windowBaseIndex?: () => number;
+	onSessionIdReceived?: (sessionId: string) => void;
 }
 
 export class SessionCallbackAdapter implements SessionCallback {
+	private readonly options: SessionCallbackAdapterOptions;
 	private readonly streamCoalescer: StreamMessageCoalescer;
 	private readonly jsTarget: JsTarget;
 	private readonly permissionHandler?: (request: PermissionRequest) => void;
@@ -44,8 +46,11 @@ export class SessionCallbackAdapter implements SessionCallback {
 	private active = true;
 	private streamEndSignalSent = false;
 	private streamEndFallbackTimer: NodeJS.Timeout | null = null;
+	private sessionId: string | null = null;
+	private unattributedSessionWarned = false;
 
 	constructor(options: SessionCallbackAdapterOptions) {
+		this.options = options;
 		this.jsTarget = options.jsTarget;
 		this.permissionHandler = options.permissionHandler;
 		this.permissionClosedHandler = options.permissionClosedHandler;
@@ -54,7 +59,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.windowBaseIndex = options.windowBaseIndex ?? (() => 0);
 		this.streamCoalescer = new StreamMessageCoalescer({
 			callUpdateMessages: (fn, args) => this.jsTarget.callJavaScript(fn, ...args),
-			callHeartbeat: () => this.jsTarget.callJavaScript('onStreamingHeartbeat'),
+			callHeartbeat: (sessionId) => this.jsTarget.callJavaScript('onStreamingHeartbeat', sessionId ?? this.getTargetSessionId() ?? ''),
 			isDisposed: () => this.isInactive(),
 			pushUsageUpdate: (messages) => this.pushUsageFromMessages(messages),
 			onStreamEnded: () => {
@@ -63,14 +68,50 @@ export class SessionCallbackAdapter implements SessionCallback {
 		});
 		this.contentDeltaThrottler = new StreamDeltaThrottler(DELTA_THROTTLE_MS, (delta) => {
 			if (!this.isInactive()) {
-				this.jsTarget.callJavaScript('onContentDelta', delta);
+				if (!this.hasIdentity()) {
+					this.warnUnattributedOnce('content delta');
+					return;
+				}
+				this.jsTarget.callJavaScript('onContentDelta', this.getTargetSessionId()!, delta);
 			}
 		});
 		this.thinkingDeltaThrottler = new StreamDeltaThrottler(DELTA_THROTTLE_MS, (delta) => {
 			if (!this.isInactive()) {
-				this.jsTarget.callJavaScript('onThinkingDelta', delta);
+				if (!this.hasIdentity()) {
+					this.warnUnattributedOnce('thinking delta');
+					return;
+				}
+				this.jsTarget.callJavaScript('onThinkingDelta', this.getTargetSessionId()!, delta);
 			}
 		});
+	}
+
+	setSessionId(sessionId: string | null): void {
+		this.sessionId = sessionId;
+		this.streamCoalescer.setSessionId(sessionId);
+	}
+
+	getSessionId(): string | null {
+		return this.sessionId;
+	}
+
+	private hasIdentity(): boolean {
+		return typeof this.sessionId === 'string' && this.sessionId.trim() !== '';
+	}
+
+	private warnUnattributedOnce(what: string): void {
+		if (!this.unattributedSessionWarned) {
+			this.unattributedSessionWarned = true;
+			console.warn(`[SessionCallbackAdapter] has no session identity; dropping ${what}`);
+		}
+	}
+
+	private getTargetSessionId(): string | null {
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('session-scoped callback');
+			return null;
+		}
+		return this.sessionId;
 	}
 
 	get coalescer(): StreamMessageCoalescer {
@@ -121,9 +162,13 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (!loading && this.streamCoalescer.isStreamActive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('showLoading', String(loading));
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('loading state');
+			return;
+		}
+		this.jsTarget.callJavaScript('showLoading', this.getTargetSessionId()!, String(loading));
 		if (error) {
-			this.jsTarget.callJavaScript('updateStatus', `Error: ${error}`);
+			this.jsTarget.callJavaScript('updateStatus', this.getTargetSessionId()!, `Error: ${error}`);
 		}
 	}
 
@@ -131,22 +176,45 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive() || !message || message.trim() === '') {
 			return;
 		}
-		this.jsTarget.callJavaScript('updateStatus', message);
+		if (!this.hasIdentity()) {
+			if (!this.isInactive()) {
+				this.warnUnattributedOnce('status message');
+			}
+			return;
+		}
+		this.jsTarget.callJavaScript('updateStatus', this.getTargetSessionId()!, message);
 	}
 
 	onRetryStatus(payload: string): void {
 		if (this.isInactive() || !payload || payload.trim() === '') {
 			return;
 		}
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('retry status');
+			return;
+		}
 		// 独立通道（不走 updateStatus）：重试提示要常驻并带可点击 action 链接，
 		// 而 updateStatus 是转瞬即逝的 toast，渲染不了链接。
-		this.jsTarget.callJavaScript('updateRetryStatus', payload);
+		this.jsTarget.callJavaScript('updateRetryStatus', this.getTargetSessionId()!, payload);
+	}
+
+	onTurnEnd(jsonContent: string): void {
+		if (this.isInactive() || !jsonContent || !jsonContent.trim()) {
+			return;
+		}
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('turn terminal');
+			return;
+		}
+		this.jsTarget.callJavaScript('onTurnEnd', this.getTargetSessionId()!, jsonContent);
 	}
 
 	onSessionIdReceived(sessionId: string): void {
 		if (this.isInactive()) {
 			return;
 		}
+		this.setSessionId(sessionId);
+		this.options.onSessionIdReceived?.(sessionId);
 		this.jsTarget.callJavaScript('setSessionId', sessionId);
 	}
 
@@ -175,14 +243,26 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('showThinkingStatus', String(isThinking));
+		if (!this.hasIdentity()) {
+			if (!this.isInactive()) {
+				this.warnUnattributedOnce('thinking status');
+			}
+			return;
+		}
+		this.jsTarget.callJavaScript('showThinkingStatus', this.getTargetSessionId()!, String(isThinking));
 	}
 
 	onSummaryReceived(summary: string): void {
 		if (this.isInactive() || !summary || summary.trim() === '') {
 			return;
 		}
-		this.jsTarget.callJavaScript('showSummary', summary);
+		if (!this.hasIdentity()) {
+			if (!this.isInactive()) {
+				this.warnUnattributedOnce('summary');
+			}
+			return;
+		}
+		this.jsTarget.callJavaScript('showSummary', this.getTargetSessionId()!, summary);
 	}
 
 	// ===== 流式回调 =====
@@ -195,8 +275,12 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.contentDeltaThrottler.reset();
 		this.thinkingDeltaThrottler.reset();
 		this.streamCoalescer.onStreamStart();
-		this.jsTarget.callJavaScript('showLoading', 'true');
-		this.jsTarget.callJavaScript('onStreamStart');
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('stream start');
+			return;
+		}
+		this.jsTarget.callJavaScript('showLoading', this.getTargetSessionId()!, 'true');
+		this.jsTarget.callJavaScript('onStreamStart', this.getTargetSessionId()!);
 	}
 
 	onStreamEnd(): void {
@@ -242,11 +326,16 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('onStreamEnd');
+			return;
+		}
+		const targetSessionId = this.getTargetSessionId()!;
 		this.safeRun('callJavaScript(onStreamEnd)', () =>
-			this.jsTarget.callJavaScript('onStreamEnd', String(sequence)),
+			this.jsTarget.callJavaScript('onStreamEnd', targetSessionId, String(sequence)),
 		);
 		this.safeRun('callJavaScript(showLoading, false)', () =>
-			this.jsTarget.callJavaScript('showLoading', 'false'),
+			this.jsTarget.callJavaScript('showLoading', targetSessionId, 'false'),
 		);
 	}
 
@@ -277,11 +366,15 @@ export class SessionCallbackAdapter implements SessionCallback {
 		}
 		this.contentDeltaThrottler.reset();
 		this.thinkingDeltaThrottler.reset();
-		this.jsTarget.callJavaScript('onBlockReset');
+		if (!this.hasIdentity()) {
+			this.warnUnattributedOnce('block reset');
+			return;
+		}
+		this.jsTarget.callJavaScript('onBlockReset', this.getTargetSessionId()!);
 	}
 
 	onUsageUpdate(usedTokens: number, maxTokens: number): void {
-		if (this.isInactive()) {
+		if (this.isInactive() || !this.hasIdentity()) {
 			return;
 		}
 		const safeUsed = Math.max(0, usedTokens);
@@ -292,7 +385,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 			usedTokens: safeUsed,
 			maxTokens: safeMax,
 		});
-		this.jsTarget.callJavaScript('onUsageUpdate', json);
+		this.jsTarget.callJavaScript('onUsageUpdate', this.getTargetSessionId()!, json);
 	}
 
 	/**
@@ -302,32 +395,32 @@ export class SessionCallbackAdapter implements SessionCallback {
 	 * 出现 "0 / 0" 这种无意义的分母（对应 cc-gui `clearUsageDisplay`）。
 	 */
 	clearUsage(): void {
-		if (this.isInactive()) {
+		if (this.isInactive() || !this.hasIdentity()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('onUsageUpdate', JSON.stringify({ percentage: 0 }));
+		this.jsTarget.callJavaScript('onUsageUpdate', this.getTargetSessionId()!, JSON.stringify({ percentage: 0 }));
 	}
 
 	onUserMessageUuidPatched(content: string, uuid: string): void {
-		if (this.isInactive()) {
+		if (this.isInactive() || !this.hasIdentity()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('patchMessageUuid', content, uuid);
+		this.jsTarget.callJavaScript('patchMessageUuid', this.getTargetSessionId()!, content, uuid);
 	}
 
 	onTaskEvent(eventJson: string): void {
-		if (this.isInactive() || !eventJson || eventJson.trim() === '') {
+		if (this.isInactive() || !eventJson || eventJson.trim() === '' || !this.hasIdentity()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('onTaskEvent', eventJson);
+		this.jsTarget.callJavaScript('onTaskEvent', this.getTargetSessionId()!, eventJson);
 	}
 
 	onRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {
-		if (this.isInactive()) {
+		if (this.isInactive() || !this.hasIdentity()) {
 			return;
 		}
 		// messageId 供 webview 定位切片边界；缺省为 null，webview 会退回兜底逻辑。
-		this.jsTarget.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert, messageId }));
+		this.jsTarget.callJavaScript('onRevertStateUpdate', this.getTargetSessionId()!, JSON.stringify({ hasRevert, messageId }));
 	}
 
 	/**
@@ -339,31 +432,31 @@ export class SessionCallbackAdapter implements SessionCallback {
 	 * 消息当成暂时性收缩抢救回来。
 	 */
 	onMessagesRemoved(messageIds: string[]): void {
-		if (this.isInactive() || !messageIds || messageIds.length === 0) {
+		if (this.isInactive() || !messageIds || messageIds.length === 0 || !this.hasIdentity()) {
 			return;
 		}
 		const ids = messageIds.filter((id) => typeof id === 'string' && id.length > 0);
 		if (ids.length === 0) {
 			return;
 		}
-		this.jsTarget.callJavaScript('onMessagesRemoved', JSON.stringify(ids));
+		this.jsTarget.callJavaScript('onMessagesRemoved', this.getTargetSessionId()!, JSON.stringify(ids));
 	}
 
 	onTodoUpdated(payload: string): void {
 		console.log('[SessionCallbackAdapter] onTodoUpdated called, active:', this.active, 'payload length:', payload?.length);
-		if (this.isInactive() || !payload) {
-			console.log('[SessionCallbackAdapter] onTodoUpdated BLOCKED: inactive or empty payload');
+		if (this.isInactive() || !payload || !this.hasIdentity()) {
+			console.log('[SessionCallbackAdapter] onTodoUpdated BLOCKED: inactive, empty payload, or no identity');
 			return;
 		}
 		console.log('[SessionCallbackAdapter] onTodoUpdated calling jsTarget.callJavaScript("onTodoUpdated")');
-		this.jsTarget.callJavaScript('onTodoUpdated', payload);
+		this.jsTarget.callJavaScript('onTodoUpdated', this.getTargetSessionId()!, payload);
 	}
 
 	// =========================================================================
 
 	/** 每个 updateMessages 推送后兜底同步用量快照。 */
 	private pushUsageFromMessages(messages: ChatMessage[]): void {
-		if (this.isInactive()) {
+		if (this.isInactive() || !this.hasIdentity()) {
 			return;
 		}
 		const snapshot = buildUsageSnapshot(messages, this.model(), 'opencode');
@@ -371,6 +464,6 @@ export class SessionCallbackAdapter implements SessionCallback {
 			return;
 		}
 		const json = JSON.stringify(snapshot);
-		this.jsTarget.callJavaScript('onUsageUpdate', json);
+		this.jsTarget.callJavaScript('onUsageUpdate', this.getTargetSessionId()!, json);
 	}
 }

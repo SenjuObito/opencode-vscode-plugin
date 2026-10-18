@@ -242,13 +242,13 @@ export function getFirstPreferredModelId(
   availableModels: ModelInfo[],
   cliDefaultModel?: string | null,
 ): string | null {
-  const pinnedIds = readPinnedModelIds(provider);
   if (!availableModels || availableModels.length === 0) {
-    return pinnedIds.length > 0 ? pinnedIds[0] : (cliDefaultModel ?? null);
+    return null;
   }
   const availableSet = new Set(availableModels.map((m) => m.id));
 
   // 1. User's pinned models
+  const pinnedIds = readPinnedModelIds(provider);
   for (const id of pinnedIds) {
     if (availableSet.has(id)) {
       return id;
@@ -262,4 +262,23 @@ export function getFirstPreferredModelId(
 
   // 3. First model in list
   return availableModels[0].id;
+}
+
+/**
+ * Determine the model to use for a session:
+ * 1. If targetModel exists in availableModels, use targetModel directly.
+ * 2. If targetModel is missing or removed, fallback to the first pinned model.
+ * 3. If no pinned models, fallback to the first available model in the list.
+ */
+export function resolveSessionModel(
+  targetModel: string | undefined | null,
+  provider: string,
+  availableModels: ModelInfo[],
+  cliDefaultModel?: string | null,
+): string {
+  if (targetModel && availableModels?.some((m) => m.id === targetModel)) {
+    return targetModel;
+  }
+  const fallback = getFirstPreferredModelId(provider, availableModels, cliDefaultModel);
+  return fallback || targetModel || '';
 }

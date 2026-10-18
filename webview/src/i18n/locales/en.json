@@ -25,13 +25,13 @@
     "gotIt": "Got it",
     "seconds": "s",
     "minutes": "m",
-    "optional": "Optional"
+    "optional": "Optional",
+    "pendingApproval": "Waiting for Action"
   },
   "chat": {
     "exportMarkdown": "Export as Markdown",
     "sendMessage": "Send message to {{provider}}",
     "createNewSession": "Create New Session",
-    "confirmNewSession": "Current session has messages. Are you sure you want to create a new session?",
     "confirmInterrupt": "A conversation is in progress. Creating a new session will interrupt it. Continue?",
     "requestInterrupted": "Request interrupted by user",
     "uploadedFiles": "Uploaded files: {{files}}",
@@ -354,7 +354,7 @@
       "permissionDialogTimeout": {
         "label": "Permission & Question Dialog Timeout",
         "unit": "seconds",
-        "hint": "Set the timeout for opencode question dialogs and permission request dialogs (30~3600 seconds). After timeout, the dialog will close automatically and opencode will continue."
+        "hint": "Set the timeout for opencode question dialogs and permission request dialogs (30~3600 seconds). If timed out without an answer, the dialog will close automatically and the session will be stopped."
       },
       "chatBgColor": {
         "label": "Chat Background",
@@ -406,12 +406,6 @@
         "custom": "Custom",
         "reset": "Reset",
         "hint": "Customize the background color of your messages. Leave empty to follow the theme default."
-      },
-      "newSessionConfirm": {
-        "label": "New Session Confirmation",
-        "enabled": "Enabled",
-        "disabled": "Disabled",
-        "hint": "When disabled, creating a new session in a conversation with existing messages will skip the confirmation dialog."
       },
       "compactConfirm": {
         "label": "Compact Session Confirmation",
@@ -845,6 +839,8 @@
     "unfavorited": "Unfavorited",
     "loading": "Loading history...",
     "loadFailed": "Load failed",
+    "loadTimeout": "Load history timed out",
+    "retry": "Retry",
     "noSessions": "No history sessions",
     "noSessionsDesc": "No OpenCode session records found in current project",
     "totalSessions": "{{count}} sessions · {{total}} messages",
@@ -1260,6 +1256,7 @@
     "contextEngine": "Context Engine",
     "task": "Task",
     "agent": "Agent",
+    "subagent": "Subagent",
     "agentGroupToggle": "Toggle agent group details",
     "readFile": "Read File",
     "editFile": "Edit File",
@@ -1747,6 +1744,10 @@
     "parseError": "Failed to parse result"
   },
   "reasoning": {
+    "default": {
+      "label": "Default",
+      "description": "Use the model default"
+    },
     "cycleHint": "Cycle reasoning effort",
     "title": "Select reasoning depth",
     "low": {
@@ -1755,7 +1756,7 @@
     },
     "medium": {
       "label": "Medium",
-      "description": "Balanced thinking (default)"
+      "description": "Balanced thinking"
     },
     "high": {
       "label": "High",
@@ -1848,6 +1849,23 @@
     "copyCommand": "Copy",
     "copied": "Copied",
     "recommended": "Recommended",
+    "codexThreadResume": {
+      "title": "Session thread is no longer valid",
+      "intro": "Creating a new session will resolve this issue. The thread ID for the current session no longer exists on the Codex server.",
+      "reason": "Codex clears old threads after a period of time, which can trigger this error when resuming a previous session."
+    },
+    "sdkNativeBinaryMissing": {
+      "title": "SDK installation incomplete — native binary missing",
+      "intro": "This is a known issue with the Taobao npm mirror (not a plugin bug). The mirror hasn't fully synchronized the platform-specific files. You can resolve it manually with either of the options below:",
+      "reason": "This issue will disappear automatically once the Taobao mirror finishes syncing — no further action needed.",
+      "solutions": {
+        "switchRegistry": {
+          "title": "Option 1: Temporarily switch to the official registry and reinstall",
+          "step0": "1. Run this in your terminal (switch to the official npm registry):",
+          "step1": "2. Reinstall the SDK:"
+        }
+      }
+    },
     "spawnEbusy": {
       "title": "spawn EBUSY — child process failed to launch",
       "intro": "This error is typically caused by an incompatible Node.js version or an incomplete SDK installation. Try the two options below in order:",
@@ -1861,8 +1879,10 @@
     },
     "opencodeQuotaExceeded": {
       "title": "Model quota exhausted",
-      "notice": "Switch to another model, or wait for the quota to reset and try again.",
-      "upgrade": "Upgrade"
+      "notice": "The model free tier or account quota is exhausted. Please switch to another model or wait for the quota to reset.",
+      "upgrade": "Upgrade subscription",
+      "intro": "The model rejected the request because your free tier or account quota is used up. The server keeps backing off and retrying, so the turn looks stuck for minutes with no visible progress. Switch to another model, or wait for the quota to reset.",
+      "reason": "opencode retries rate-limit / quota failures up to 5 times with increasing delay. When the quota resets later than the plugin's local 180s timeout, the turn ends on a timeout notice even though the real cause is the exhausted quota."
     }
   },
   "openCodeModes": {

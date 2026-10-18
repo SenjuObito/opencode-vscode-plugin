@@ -29,7 +29,6 @@
   "chat": {
     "sendMessage": "Enviar mensagem para {{provider}}",
     "createNewSession": "Criar Nova Sessão",
-    "confirmNewSession": "A sessão atual possui mensagens. Tem certeza que deseja criar uma nova sessão?",
     "confirmInterrupt": "Uma conversa está em andamento. Criar uma nova sessão irá interrompê-la. Continuar?",
     "requestInterrupted": "Requisição interrompida pelo usuário",
     "uploadedFiles": "Arquivos enviados: {{files}}",
@@ -326,7 +325,7 @@
       "permissionDialogTimeout": {
         "label": "Tempo Limite de Diálogos de Permissão e Pergunta",
         "unit": "segundos",
-        "hint": "Defina o tempo limite para os diálogos de perguntas do OpenCode e os diálogos de solicitação de permissão (30~3600 segundos). Após o tempo limite, o diálogo será fechado automaticamente e o OpenCode continuará."
+        "hint": "Defina o tempo limite para os diálogos de perguntas do OpenCode e os diálogos de solicitação de permissão (30~3600 segundos). Se o tempo limite expirar sem resposta, o diálogo será fechado automaticamente e a sessão será interrompida."
       },
       "chatBgColor": {
         "label": "Plano de Fundo do Chat",
@@ -378,12 +377,6 @@
         "custom": "Personalizado",
         "reset": "Redefinir",
         "hint": "Personalize a cor de fundo das suas mensagens. Deixe vazio para seguir o padrão do tema."
-      },
-      "newSessionConfirm": {
-        "label": "Confirmação de Nova Sessão",
-        "enabled": "Ativado",
-        "disabled": "Desativado",
-        "hint": "Quando desativado, criar uma nova sessão em uma conversa com mensagens existentes irá pular a caixa de confirmação."
       },
       "compactConfirm": {
         "label": "Confirmação ao Compactar Sessão",
@@ -1602,6 +1595,10 @@
     "parseError": "Falha ao interpretar resultado"
   },
   "reasoning": {
+    "default": {
+      "label": "Padrão",
+      "description": "Usar o padrão do modelo"
+    },
     "cycleHint": "Alternar nível de raciocínio",
     "title": "Selecionar profundidade de raciocínio",
     "low": {
@@ -1684,6 +1681,24 @@
     "copyCommand": "Copiar",
     "copied": "Copiado",
     "recommended": "Recomendado",
+    "codexThreadResume": {
+      "title": "O thread da sessão não é mais válido",
+      "intro": "Criar uma nova sessão resolverá esse problema. O ID de thread da sessão atual não existe mais no servidor Codex.",
+      "reason": "O Codex limpa threads antigos após um período, o que pode acionar esse erro ao retomar uma sessão anterior."
+    },
+    "sdkNativeBinaryMissing": {
+      "title": "Instalação do SDK incompleta — binário nativo ausente",
+      "intro": "Este é um problema conhecido do mirror npm da Taobao (não é um bug do plugin). O mirror não sincronizou completamente os arquivos específicos da plataforma. Você pode resolver isso manualmente com qualquer uma das opções abaixo:",
+      "reason": "Este problema desaparecerá automaticamente quando o mirror da Taobao concluir a sincronização — nenhuma ação adicional é necessária.",
+      "solutions": {
+        "switchRegistry": {
+          "title": "Opção 1: alterne temporariamente para o registro oficial e reinstale",
+          "step0": "1. Execute em seu terminal (alternar para o registro npm oficial):",
+          "step1": "2. Abra as configurações de Gerenciamento de Dependências do plugin e clique em Reinstalar:",
+          "step2": "3. Após a conclusão da reinstalação, retorne ao mirror da Taobao:"
+        }
+      }
+    },
     "spawnEbusy": {
       "title": "spawn EBUSY — falha ao iniciar o processo filho",
       "intro": "Este erro geralmente é causado por uma versão incompatível do Node.js ou uma instalação incompleta do SDK. Tente as duas opções abaixo na ordem:",
@@ -1694,6 +1709,11 @@
           "step0": "Execute o comando abaixo em um terminal para ver sua versão. Node 22 ou a LTS atual é recomendado — usuários relataram muitos problemas no Node 24, então prefira Node 20 ou 22:"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "Cota do modelo esgotada",
+      "notice": "A cota gratuita ou do plano para este modelo foi esgotada. Mude de modelo ou faça upgrade da assinatura.",
+      "upgrade": "Fazer upgrade da assinatura"
     }
   },
   "openCodeModes": {

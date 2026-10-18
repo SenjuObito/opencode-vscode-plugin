@@ -1,13 +1,18 @@
 import type { TFunction } from 'i18next';
 import type { Attachment, QueuedMessage } from './types.js';
+import type { ClaudeMessage } from '../../types';
 import { AttachmentList } from './AttachmentList.js';
 import { ContextBar } from './ContextBar.js';
 import { MessageQueue } from './MessageQueue.js';
+import { StatusNoticeBar } from '../StatusNoticeBar';
+
 export function ChatInputBoxHeader({
   daemonStatusLoaded,
   daemonAlive,
   onRetryDaemonStatus,
   t,
+  messages,
+  getMessageText,
   attachments,
   onRemoveAttachment,
   activeFile,
@@ -31,6 +36,8 @@ export function ChatInputBoxHeader({
   daemonAlive: boolean;
   onRetryDaemonStatus?: () => void;
   t: TFunction;
+  messages?: ClaudeMessage[];
+  getMessageText?: (message: ClaudeMessage) => string;
   attachments: Attachment[];
   onRemoveAttachment: (id: string) => void;
   activeFile?: string;
@@ -52,6 +59,9 @@ export function ChatInputBoxHeader({
 }) {
   return (
     <>
+      {/* Status notice bar for retry or quota exhaustion banner */}
+      <StatusNoticeBar messages={messages} getMessageText={getMessageText} />
+
       {/* Daemon status warning bar */}
       {(!daemonStatusLoaded || !daemonAlive) && (
         <div className={`sdk-warning-bar ${!daemonStatusLoaded ? 'sdk-loading' : ''}`}>

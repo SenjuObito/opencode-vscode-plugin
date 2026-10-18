@@ -2,6 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
 
 /**
+ * The engine resolution snapshot the daemon reports (see `daemon.js` →
+ * `engine_status`, mirrored into the daemon status payload by
+ * `DaemonStatusHandler#pushStatus`).
+ */
+export interface DaemonEngineStatus {
+  state?: 'v1' | 'v2' | 'unknown' | string;
+  locked?: boolean;
+  blocking?: boolean;
+  cliPath?: string | null;
+  cliSource?: string | null;
+  cliVersion?: string | null;
+  probePath?: string | null;
+  httpStatus?: number | string | null;
+  apiVersion?: number | string | null;
+  reasonKind?: string | null;
+  reasonMessage?: string | null;
+}
+
+/**
  * Usage % / token counters and daemon alive status.
  * `isSdkInstalled(providerId)` now simply checks if the opencode daemon is alive.
  */
@@ -11,6 +30,7 @@ export function useUsageTracking() {
   const [usageMaxTokens, setUsageMaxTokens] = useState<number | undefined>(undefined);
   const [daemonAlive, setDaemonAlive] = useState(false);
   const [daemonStatusLoaded, setDaemonStatusLoaded] = useState(false);
+  const [daemonEngine, setDaemonEngine] = useState<DaemonEngineStatus | null>(null);
 
   useEffect(() => {
     const applyStatus = (raw: unknown) => {
@@ -18,6 +38,17 @@ export function useUsageTracking() {
         const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
         cardDebugLog('[Probe] updateDaemonStatus handler fired:', JSON.stringify(data));
         setDaemonAlive(!!data.alive);
+        if (data.engine && typeof data.engine === 'object') {
+          setDaemonEngine(data.engine as DaemonEngineStatus);
+          if (data.engine.state === 'unknown' || data.engine.blocking) {
+            console.warn(
+              '[Engine] opencode engine not usable:',
+              data.engine.state,
+              data.engine.reasonKind || '',
+              data.engine.reasonMessage || '',
+            );
+          }
+        }
         // 状态栏（"正在检查 opencode serve 状态..."）必须等到 serve 真正就绪
         // （serveReady=true）才消失；serve 进程都没运行（alive=false）则立即进入
         // 「未运行」可重试态；alice 为真但 serve 尚未就绪时保持 loading 转圈。
@@ -78,7 +109,9 @@ export function useUsageTracking() {
     setUsageUsedTokens,
     usageMaxTokens,
     setUsageMaxTokens,
+    daemonAlive,
     daemonStatusLoaded,
+    daemonEngine,
     retryDaemonStatus,
     isSdkInstalled,
     isSdkStatusKnown,

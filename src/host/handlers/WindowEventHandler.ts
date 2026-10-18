@@ -34,6 +34,8 @@ const SUPPORTED_TYPES = [
 	'unrevert_session',
 	'fork_session',
 	'compact_session',
+	'switch_session',
+	'close_session',
 ];
 
 export class WindowEventHandler extends BaseMessageHandler {
@@ -60,7 +62,13 @@ export class WindowEventHandler extends BaseMessageHandler {
 				// 心跳由 daemon 生命周期管理；这里仅确认存活
 				return true;
 			case 'create_new_session':
-				this.handleCreateNewSession();
+				this.handleCreateNewSession(content);
+				return true;
+			case 'switch_session':
+				this.handleSwitchSession(content);
+				return true;
+			case 'close_session':
+				this.handleCloseSession(content);
 				return true;
 			case 'frontend_ready':
 				this.handleFrontendReady();
@@ -115,15 +123,50 @@ export class WindowEventHandler extends BaseMessageHandler {
 		}
 	}
 
-	private handleCreateNewSession(): void {
+	private handleCreateNewSession(content?: string): void {
+		let clientSessionId: string | undefined;
+		if (content) {
+			try {
+				const parsed = JSON.parse(content) as Record<string, unknown>;
+				clientSessionId = (parsed.sessionId || parsed.clientSessionId) as string | undefined;
+			} catch {
+				clientSessionId = content.trim() || undefined;
+			}
+		}
 		const sessionManager = this.context.getSessionManager();
 		if (sessionManager) {
-			sessionManager.createNewSession();
+			sessionManager.createNewSession(clientSessionId);
 		} else {
 			const session = this.context.getSession();
 			session?.resetSession();
-			this.callJavaScript('showLoading', 'false');
+			this.callJavaScript('showLoading', clientSessionId ?? '', 'false');
 			this.callJavaScript('historyLoadComplete');
+		}
+	}
+
+	private handleSwitchSession(content: string): void {
+		let targetSessionId: string | undefined;
+		try {
+			const parsed = JSON.parse(content) as Record<string, unknown>;
+			targetSessionId = (parsed.sessionId || parsed.tabId) as string | undefined;
+		} catch {
+			targetSessionId = content.trim() || undefined;
+		}
+		if (targetSessionId) {
+			this.context.getSessionManager()?.switchToSession(targetSessionId);
+		}
+	}
+
+	private handleCloseSession(content: string): void {
+		let targetSessionId: string | undefined;
+		try {
+			const parsed = JSON.parse(content) as Record<string, unknown>;
+			targetSessionId = (parsed.sessionId || parsed.tabId) as string | undefined;
+		} catch {
+			targetSessionId = content.trim() || undefined;
+		}
+		if (targetSessionId) {
+			this.context.getSessionManager()?.closeSession(targetSessionId);
 		}
 	}
 
@@ -465,9 +508,13 @@ export class WindowEventHandler extends BaseMessageHandler {
 		this.daemonListenerRegistered = true;
 		daemon.addEventListener({
 			onDaemonEvent: (event, data) => {
-			if (event !== 'log' || !this.compactPending) {
-				return;
-			}
+				if (event === 'engine_status') {
+					this.pushDaemonStatus(daemon.isAlive(), daemon.isAlive());
+					return;
+				}
+				if (event !== 'log' || !this.compactPending) {
+					return;
+				}
 			const message = typeof data.message === 'string' ? data.message : '';
 			if (!message.startsWith('[SESSION_COMPACT_RESULT]')) {
 				return;
@@ -750,6 +797,12 @@ export class WindowEventHandler extends BaseMessageHandler {
 	 * 若任一阶段失败（如 CLI 缺失、serve 退出、模型列表为空/报错）：
 	 * 立即推送 { alive: false, serveReady: false } 切到「未运行」可重试态，展示失败与重试按钮。
 	 */
+	private pushDaemonStatus(alive: boolean, serveReady: boolean, extra?: Record<string, unknown>): void {
+		const daemon = this.context.getDaemon();
+		const engine = daemon?.getEngineStatus() ?? null;
+		this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive, serveReady, engine, ...extra }));
+	}
+
 	private async sendDaemonStatus(): Promise<void> {
 		if (this.sendDaemonStatusInFlight) {
 			return;
@@ -759,18 +812,18 @@ export class WindowEventHandler extends BaseMessageHandler {
 		try {
 			const daemon = this.context.getDaemon();
 			if (!daemon) {
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				this.pushDaemonStatus(false, false);
 				return;
 			}
 
 			// 1. 先发 loading 态，让状态栏保持转圈显示「正在检查...」
-			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false }));
+			this.pushDaemonStatus(true, false);
 
 			// 若 daemon 正在启动中或尚未存活，等待启动完成
 			if (daemon.isStarting() || !daemon.isAlive()) {
 				const started = await daemon.start();
 				if (!started || !daemon.isAlive()) {
-					this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+					this.pushDaemonStatus(false, false);
 					return;
 				}
 			}
@@ -791,7 +844,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 			if (!preconnectOk) {
 				// serve 启动失败或异常退出：落到「未运行」可重试态
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				this.pushDaemonStatus(false, false);
 				return;
 			}
 
@@ -799,10 +852,10 @@ export class WindowEventHandler extends BaseMessageHandler {
 			const modelsOk = await this.fetchAndPushModels(daemon, 'opencode');
 			if (modelsOk) {
 				// serve 真正就绪 且 模型列表成功获取分发：发最终信号让状态栏消失
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: true }));
+				this.pushDaemonStatus(true, true);
 			} else {
 				// 模型列表获取失败：落到「未运行」可重试态
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				this.pushDaemonStatus(false, false);
 			}
 		} finally {
 			this.sendDaemonStatusInFlight = false;

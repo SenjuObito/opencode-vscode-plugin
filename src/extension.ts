@@ -55,12 +55,17 @@ export function activate(context: vscode.ExtensionContext) {
 	const daemonScriptPath = resolveDaemonScript(context.extensionPath);
 	const daemon = new OpenCodeDaemonBridge({
 		daemonScriptPath,
-		// 用户自定义的 opencode TUI 路径（设置页）→ 注入 OPENCODE_BIN，
-		// ai-bridge 的 cli-path / serve-manager 解析器会优先使用它。
+		// 用户自定义的 opencode TUI 路径（设置页）→ 注入 OPENCODEBUDDY_CLI_PATH（L0）与 OPENCODE_BIN（L1 兼容），
+		// 并注入宿主 Node 可执行文件路径 OPENCODEBUDDY_NODE_BIN。
 		additionalEnv: () => {
 			const value = store.getGlobal('opencode.tuiPath');
+			const trimmed = typeof value === 'string' ? value.trim() : '';
 			return {
-				...(typeof value === 'string' && value.trim() !== '' ? { OPENCODE_BIN: value.trim() } : {}),
+				...(trimmed !== '' ? {
+					OPENCODEBUDDY_CLI_PATH: trimmed,
+					OPENCODE_BIN: trimmed,
+				} : {}),
+				OPENCODEBUDDY_NODE_BIN: process.execPath,
 				// 生产包只保留 error 级：daemon 据此丢弃 [DEBUG] stderr 噪音
 				//（否则每条 stderr 都会被宿主桥接转发）。
 				...(process.env.NODE_ENV === 'production' ? { AI_BRIDGE_LOG_LEVEL: 'error' } : {}),

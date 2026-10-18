@@ -109,6 +109,18 @@ export function processOutputLine(
 		return;
 	}
 
+	if (line.startsWith('[TURN_END]')) {
+		callback.onMessage('turn_end', line.substring('[TURN_END]'.length).trim());
+		return;
+	}
+
+	if (line.startsWith('[SESSION_COMPACT_RESULT]')) {
+		const payload = line.substring('[SESSION_COMPACT_RESULT]'.length).trim();
+		const decoded = decodeJsonStringPayload(payload);
+		callback.onMessage('session_compact_result', isJsonObjectLiteral(decoded) ? decoded : payload);
+		return;
+	}
+
 	if (line.startsWith('[SESSION_ID]')) {
 		callback.onMessage('session_id', line.substring('[SESSION_ID]'.length).trim());
 		return;

@@ -2,6 +2,8 @@
  * Input box component type definitions
  * Feature: 004-refactor-input-box
  */
+import type { ClaudeMessage } from '../../types';
+
 
 // ============================================================
 // Core Entity Types
@@ -197,7 +199,7 @@ export interface ModelInfo {
   variants?: string[];
   /**
    * 模型总上下文额度（models.dev `limit.context`，token 数）。
-   * host 侧另有权威副本用于用量环，这里保留原始值以免前端二次丢字段。
+   * Java 侧另有权威副本用于用量环，这里保留原始值以免前端二次丢字段。
    */
   contextWindow?: number;
 }
@@ -232,9 +234,16 @@ export const AVAILABLE_PROVIDERS: ProviderInfo[] = [
 
 /**
  * Reasoning Effort (thinking depth)
- * Controls the depth of reasoning for AI models
+ * Controls the depth of reasoning for AI models.
+ *
+ * `default` means "don't send a variant at all" — opencode then falls back to the
+ * model's own catalog settings. It is a real state (a session with no explicit
+ * variant reports back `variant: "default"`) but it is deliberately absent from
+ * `/api/model`'s `variants` arrays, which only enumerate non-default levels.
+ * Because it is not in the catalog, it is injected by the UI rather than derived
+ * from it. See `getAvailableReasoningLevels`.
  */
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * Reasoning level information
@@ -266,7 +275,7 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
     id: 'high',
     label: 'High',
     icon: 'codicon-circle-large-filled',
-    description: 'Deep reasoning for complex tasks (default)',
+    description: 'Deep reasoning for complex tasks',
   },
   {
     id: 'xhigh',
@@ -283,21 +292,77 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
 ];
 
 /**
+ * "Use whatever the model defaults to" — no variant is sent at all.
+ *
+ * Kept out of `REASONING_LEVELS` on purpose: that array mirrors the model
+ * catalog, and no opencode model lists `default` among its variants. The UI
+ * injects this entry instead, because the state itself is real and reachable.
+ */
+export const DEFAULT_REASONING_LEVEL: ReasoningInfo = {
+  id: 'default',
+  label: 'default',
+  icon: 'codicon-circle-outline',
+  description: 'Use the model default',
+};
+
+/**
  * Compute the visible reasoning levels for a model.
  * opencode reasoning effort = model variants (per-model, see docs/models#variants).
+ *
+ * `DEFAULT_REASONING_LEVEL` is prepended whenever the selector is visible, so
+ * the user can always get back to "no variant sent". It is not part of any
+ * catalog; opencode only reports `variant: "default"` once the field is absent.
+ *
+ * Three states are distinguished on purpose:
+ *   - `undefined` → support unknown (opencode v1 ships no variant catalog) →
+ *     keep the legacy list, plus Default
+ *   - `[]`        → this model has no variants → return empty so the selector
+ *     hides. Falling back to the full list here is what let users pick `high`
+ *     on models that do not offer it. Default is not injected either: a
+ *     dropdown with a single "Default" option says nothing useful, and hiding
+ *     it tells the truth — this model cannot be tuned.
+ *   - `[...]`     → render exactly what the model offers, plus Default
  */
+/**
+ * Check if a model is known to not support reasoning effort variants (e.g. MiMo).
+ */
+export function isKnownNonReasoningModel(modelId?: string): boolean {
+  if (!modelId) return false;
+  const lower = modelId.toLowerCase();
+  return lower.includes('mimo');
+}
+
 export function getAvailableReasoningLevels(
   _provider?: string,
-  _selectedModel?: string,
+  selectedModel?: string,
   modelVariants?: string[],
 ): ReasoningInfo[] {
-  if (modelVariants && modelVariants.length > 0) {
-    const known = REASONING_LEVELS.filter((level) => modelVariants.includes(level.id));
-    if (known.length > 0) {
-      return known;
+  if (modelVariants === undefined) {
+    if (isKnownNonReasoningModel(selectedModel)) {
+      return [];
     }
+    return [DEFAULT_REASONING_LEVEL, ...REASONING_LEVELS];
   }
-  return REASONING_LEVELS;
+  if (modelVariants.length === 0) {
+    return [];
+  }
+
+  const known = new Map(REASONING_LEVELS.map((level) => [level.id, level]));
+  const levels: ReasoningInfo[] = [];
+  for (const id of modelVariants) {
+    // A catalog can legitimately contain `default`; don't duplicate it.
+    if (id === DEFAULT_REASONING_LEVEL.id) continue;
+    // Catalog variants go beyond low/medium/high (`none`, `minimal`, `xhigh`,
+    // `max` all appear in the wild), so unknown ids get a generated entry
+    // instead of being silently dropped.
+    levels.push(known.get(id as ReasoningEffort) ?? {
+      id: id as ReasoningEffort,
+      label: id,
+      icon: 'codicon-circle-filled',
+      description: id,
+    });
+  }
+  return [DEFAULT_REASONING_LEVEL, ...levels];
 }
 
 // ============================================================
@@ -337,6 +402,27 @@ export interface ChatInputBoxHandle {
   hasContent: () => boolean;
   /** Get file tags from input (for Codex context injection) */
   getFileTags: () => FileTagInfo[];
+  /**
+   * Snapshot the attachments currently held by the input box.
+   *
+   * Attachments live inside this component (uncontrolled mode), so the tab
+   * switcher has no way to read them. Without this getter, switching tabs drops
+   * every pending upload.
+   */
+  getAttachments: () => Attachment[];
+  /** Replace the attachment list when a different tab becomes active. */
+  setAttachments: (attachments: Attachment[]) => void;
+  /**
+   * Re-apply file tags after `setValue` restored the raw text.
+   *
+   * `setValue` writes plain text, which loses the `.file-tag` elements. Passing
+   * the saved tags back re-registers their path mappings and re-renders them.
+   */
+  restoreFileTags: (tags: FileTagInfo[]) => void;
+  /** Get quotes map referenced by current input */
+  getQuotes?: () => Record<string, { text: string }>;
+  /** Re-register quotes into registry and convert tokens to quote chips */
+  restoreQuoteTags?: (quotes?: Record<string, { text: string }>) => void;
 }
 
 // ============================================================
@@ -443,6 +529,10 @@ export interface ChatInputBoxProps {
   onLongContextChange?: (enabled: boolean) => void;
   /** Callback to trigger compact command */
   onCompactClick?: () => void;
+  /** Messages array for retry / quota notice bar */
+  messages?: ClaudeMessage[];
+  /** Resolver for message text */
+  getMessageText?: (message: ClaudeMessage) => string;
 }
 
 /**

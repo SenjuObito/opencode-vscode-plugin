@@ -97,7 +97,7 @@ export const appendOptimisticMessageIfMissing = (
 
   const matchFn = (m: ClaudeMessage) => {
     if (m.type !== 'user') return false;
-    if (getUserMessageComparableContent(m) !== optimisticText) return false;
+    if (!isUserMessageContentMatch(getUserMessageComparableContent(m), optimisticText)) return false;
     const candidateTime = getMessageTimestampMs(m) ?? Number.NaN;
     if (!Number.isFinite(candidateTime) || !Number.isFinite(optimisticTime)) return false;
     return Math.abs(candidateTime - optimisticTime) < OPTIMISTIC_MESSAGE_TIME_WINDOW;
@@ -108,7 +108,7 @@ export const appendOptimisticMessageIfMissing = (
     for (let i = nextList.length - 1; i >= 0; i -= 1) {
       const candidate = nextList[i];
       if (candidate?.type !== 'user') continue;
-      if (getUserMessageComparableContent(candidate) !== optimisticText) continue;
+      if (!isUserMessageContentMatch(getUserMessageComparableContent(candidate), optimisticText)) continue;
       const candidateTime = getMessageTimestampMs(candidate) ?? Number.NaN;
       // Allow match when candidate is within time window (even if older than optimistic).
       // This handles cases where Java's timestamp (number format) may differ from
@@ -123,7 +123,15 @@ export const appendOptimisticMessageIfMissing = (
       break;
     }
   }
-  if (matchedIndex < 0) {
+  if (matchedIndex >= 0) {
+    if (optimisticMsg.content && nextList[matchedIndex].type === 'user') {
+      const matched = nextList[matchedIndex];
+      if (matched.content !== optimisticMsg.content && isUserMessageContentMatch(matched.content || '', optimisticMsg.content)) {
+        nextList = [...nextList];
+        nextList[matchedIndex] = { ...matched, content: optimisticMsg.content };
+      }
+    }
+  } else {
     // No timestamp-window match. Distinguish two cases by CONTENT, not by time:
     //
     // 1. The snapshot already contains a user message with identical text — that
@@ -144,11 +152,25 @@ export const appendOptimisticMessageIfMissing = (
     // heuristic could not tell these apart and dropped case 2 as well — that was
     // the "my message disappears but the agent answers it" bug.
     if (optimisticText) {
-      const backendCopyExists = nextList.some(
-        (m) => m.type === 'user' && getUserMessageComparableContent(m) === optimisticText,
+      const backendIndex = nextList.findIndex(
+        (m) => m.type === 'user' && isUserMessageContentMatch(getUserMessageComparableContent(m), optimisticText),
       );
-      if (backendCopyExists) {
+      if (backendIndex >= 0) {
+        if (optimisticMsg.content && nextList[backendIndex].content !== optimisticMsg.content) {
+          const copy = [...nextList];
+          copy[backendIndex] = { ...copy[backendIndex], content: optimisticMsg.content };
+          return copy;
+        }
         return nextList;
+      }
+    }
+    const lastIdx = nextList.length - 1;
+    if (lastIdx >= 0 && nextList[lastIdx].type === 'assistant') {
+      const lastMsg = nextList[lastIdx];
+      if (lastMsg.isStreaming || (typeof lastMsg.__turnId === 'number' && lastMsg.__turnId > 0)) {
+        const copy = [...nextList];
+        copy.splice(lastIdx, 0, optimisticMsg);
+        return copy;
       }
     }
     return [...nextList, optimisticMsg];
@@ -171,9 +193,6 @@ export const appendOptimisticMessageIfMissing = (
         : Array.isArray(backendRaw?.content)
           ? backendRaw.content
           : [];
-      // Backend messages (history/restore via SdkMessageConverter) already carry
-      // attachment blocks parsed from `<attachment filename="...">`; only prepend
-      // ones the backend is missing, otherwise the chip renders twice.
       const existingAttachmentNames = new Set(
         backendContent
           .filter((b: any) => b && typeof b === 'object' && b.type === 'attachment')
@@ -197,6 +216,30 @@ export const appendOptimisticMessageIfMissing = (
   }
 
   return nextList;
+};
+
+/**
+ * Normalize shell prompt for comparison (e.g. "!bash pwd" and "!pwd").
+ */
+export const normalizeUserShellPrompt = (text: string): string => {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('!')) {
+    let cmd = trimmed.slice(1).trim();
+    if (cmd.startsWith('bash ') && cmd.length > 5) {
+      cmd = cmd.slice(5).trim();
+    }
+    return `!${cmd}`;
+  }
+  return trimmed;
+};
+
+/**
+ * Check if two user message contents match, accounting for shell command prefixes.
+ */
+export const isUserMessageContentMatch = (textA: string, textB: string): boolean => {
+  if (textA === textB) return true;
+  if (!textA || !textB) return false;
+  return normalizeUserShellPrompt(textA) === normalizeUserShellPrompt(textB);
 };
 
 /**
@@ -598,7 +641,17 @@ export const preserveLatestMessagesOnShrink = (
 ): ClaudeMessage[] => {
   // Always check for shrink regardless of provider
   if (nextList.length >= prevList.length) return nextList;
-  if (prevList.length === 0 || nextList.length === 0) return nextList;
+  if (prevList.length === 0) return nextList;
+  if (nextList.length === 0) {
+    if (typeof window !== 'undefined' && (window as any).__hasActiveRevert) {
+      return nextList;
+    }
+    const hasStreamingTail = prevList.some((msg) => msg.type === 'assistant' && (msg.isStreaming || !!msg.__turnId));
+    if (hasStreamingTail) {
+      return prevList;
+    }
+    return nextList;
+  }
 
   // FIX: If there is an active revert/undo operation, shrinking the message list is
   // an expected outcome of undoing turns. Do not artificially restore the reverted tail!

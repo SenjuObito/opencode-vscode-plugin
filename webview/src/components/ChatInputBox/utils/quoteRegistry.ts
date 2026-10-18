@@ -35,10 +35,42 @@ export function removeQuote(id: string): void {
  * (deleted chip, cleared input, message sent). Keeps the module-level map
  * from growing unbounded over a long session.
  */
-export function pruneQuoteRegistry(activeIds: ReadonlySet<string>): void {
+export function pruneQuoteRegistry(activeIds: ReadonlySet<string>, preservedIds?: ReadonlySet<string>): void {
   for (const id of registry.keys()) {
-    if (!activeIds.has(id)) {
+    if (!activeIds.has(id) && (!preservedIds || !preservedIds.has(id))) {
       registry.delete(id);
+    }
+  }
+}
+
+/** Export quotes referenced in the given text (or all if text omitted) */
+export function exportQuotes(text?: string): Record<string, QuoteEntry> {
+  const result: Record<string, QuoteEntry> = {};
+  if (text !== undefined) {
+    if (!hasQuoteToken(text)) return result;
+    const regex = quoteTokenRegex();
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      const id = m[1];
+      const entry = registry.get(id);
+      if (entry) {
+        result[id] = { text: entry.text };
+      }
+    }
+    return result;
+  }
+  for (const [id, entry] of registry.entries()) {
+    result[id] = { text: entry.text };
+  }
+  return result;
+}
+
+/** Restore quotes into registry (e.g. from tab draft snapshot) */
+export function restoreQuotes(quotes?: Record<string, QuoteEntry> | null): void {
+  if (!quotes) return;
+  for (const [id, entry] of Object.entries(quotes)) {
+    if (id && entry && typeof entry.text === 'string') {
+      registry.set(id, { text: entry.text });
     }
   }
 }

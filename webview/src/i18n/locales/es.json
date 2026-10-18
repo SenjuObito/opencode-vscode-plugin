@@ -29,7 +29,6 @@
   "chat": {
     "sendMessage": "Enviar mensaje a {{provider}}",
     "createNewSession": "Crear nueva sesión",
-    "confirmNewSession": "La sesión actual tiene mensajes, ¿estás seguro de que quieres crear una nueva sesión?",
     "confirmInterrupt": "Hay una conversación en curso, crear una nueva sesión la interrumpirá, ¿continuar?",
     "requestInterrupted": "Solicitud interrumpida por el usuario",
     "uploadedFiles": "Archivos subidos: {{files}}",
@@ -348,7 +347,7 @@
       "permissionDialogTimeout": {
         "label": "Tiempo de espera de diálogos de permisos y preguntas",
         "unit": "segundos",
-        "hint": "Establece el tiempo de espera para los diálogos de preguntas de OpenCode y los diálogos de solicitud de permisos (30~3600 segundos). Después del tiempo de espera, el diálogo se cerrará automáticamente y OpenCode continuará."
+        "hint": "Establece el tiempo de espera para los diálogos de preguntas de OpenCode y los diálogos de solicitud de permisos (30~3600 segundos). Si se agota el tiempo sin respuesta, el diálogo se cerrará automáticamente y la sesión se detendrá."
       },
       "chatBgColor": {
         "label": "Color de fondo del chat",
@@ -367,12 +366,6 @@
         "custom": "Personalizado",
         "reset": "Restablecer",
         "hint": "Personalizar el color de fondo de sus mensajes. Dejar vacío para seguir el tema predeterminado."
-      },
-      "newSessionConfirm": {
-        "label": "Confirmación de nueva sesión",
-        "enabled": "Habilitado",
-        "disabled": "Deshabilitado",
-        "hint": "Cuando está deshabilitado, crear una nueva sesión en una conversación con mensajes existentes omitirá el cuadro de confirmación."
       },
       "compactConfirm": {
         "label": "Confirmación al compactar sesión",
@@ -1545,6 +1538,10 @@
     "parseError": "Error al analizar el resultado"
   },
   "reasoning": {
+    "default": {
+      "label": "Predeterminado",
+      "description": "Usar el valor predeterminado del modelo"
+    },
     "cycleHint": "Cambiar el nivel de razonamiento",
     "title": "Seleccionar profundidad de razonamiento",
     "low": {
@@ -1627,6 +1624,24 @@
     "copyCommand": "Copiar",
     "copied": "Copiado",
     "recommended": "Recomendado",
+    "codexThreadResume": {
+      "title": "El hilo de sesión ya no es válido",
+      "intro": "Crear una nueva sesión resolverá este problema. El ID de hilo de la sesión actual ya no existe en el servidor de Codex.",
+      "reason": "Codex elimina los hilos antiguos después de un tiempo, lo que puede provocar este error al reanudar una sesión anterior."
+    },
+    "sdkNativeBinaryMissing": {
+      "title": "Instalación del SDK incompleta — falta el binario nativo",
+      "intro": "Este es un problema conocido del mirror npm de Taobao (no es un error del plugin). El mirror no ha sincronizado completamente los archivos específicos de la plataforma. Puedes resolverlo manualmente con cualquiera de las siguientes opciones:",
+      "reason": "Este problema desaparecerá automáticamente cuando el mirror de Taobao termine de sincronizarse — no es necesario hacer nada más.",
+      "solutions": {
+        "switchRegistry": {
+          "title": "Opción 1: Cambia temporalmente al registro oficial y reinstala",
+          "step0": "1. Ejecuta en tu terminal (cambiar al registro oficial de npm):",
+          "step1": "2. Abre la configuración de Gestión de dependencias del plugin y haz clic en Reinstalar:",
+          "step2": "3. Una vez completada la reinstalación, vuelve al mirror de Taobao:"
+        }
+      }
+    },
     "spawnEbusy": {
       "title": "spawn EBUSY — error al iniciar el proceso hijo",
       "intro": "Este error suele estar causado por una versión incompatible de Node.js o una instalación incompleta del SDK. Prueba las dos opciones siguientes en orden:",
@@ -1637,6 +1652,11 @@
           "step0": "Ejecuta el comando siguiente en una terminal para ver tu versión. Se recomienda Node 22 o la LTS actual — los usuarios han reportado muchos problemas con Node 24, prefiere Node 20 o 22:"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "Cuota de modelo agotada",
+      "notice": "La cuota gratuita o del plan para este modelo se ha agotado. Cambie de modelo o mejore su suscripción.",
+      "upgrade": "Mejorar suscripción"
     }
   },
   "openCodeModes": {

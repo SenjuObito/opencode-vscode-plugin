@@ -9,7 +9,7 @@ import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
 import { releaseSessionTransition } from '../sessionTransition';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
 const CUSTOM_TITLE_MAX_LENGTH = 50;
@@ -28,20 +28,49 @@ export function registerSessionCallbacks(
     setCustomSessionTitle,
   } = options;
 
-  window.setSessionId = (sessionId: string) => {
+  window.setSessionId = (sessionId: string, tabId?: string) => {
     const oldId = currentSessionIdRef.current;
+    cardDebugLog('[setSessionId] called, sessionId:', sessionId, 'tabId:', tabId, 'oldId:', oldId, 'transitioning:', window.__sessionTransitioning);
     releaseSessionTransition();
-    currentSessionIdRef.current = sessionId;
-    setCurrentSessionId(sessionId);
 
-    // B-011 + B-014: Persist custom title under the real SDK session ID.
-    const title = customSessionTitleRef.current;
-    if (title && oldId !== sessionId) {
-      if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
-        updateHistoryTitle(sessionId, title);
+    const tabsStore = window.__sessionTabsStore;
+    const tabs = tabsStore?.getTabs?.() || [];
+    const activeTabId = tabsStore?.getActiveTabId?.();
+
+    let targetTab = tabId ? tabs.find((t) => t.id === tabId || t.sessionId === tabId) : null;
+    if (!targetTab) {
+      const active = tabs.find((t) => t.id === activeTabId);
+      if (active && (!active.sessionId || active.sessionId === sessionId)) {
+        targetTab = active;
       } else {
-        applyHistoryTitleLocal(sessionId, title);
+        targetTab = tabs.find((t) => !t.sessionId);
       }
+    }
+
+    const syncTitle = () => {
+      const title = customSessionTitleRef.current;
+      if (title && oldId !== sessionId) {
+        if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
+          updateHistoryTitle(sessionId, title);
+        } else {
+          applyHistoryTitleLocal(sessionId, title);
+        }
+      }
+    };
+
+    if (targetTab) {
+      const resolvedTabId = targetTab.id;
+      tabsStore?.updateTabSessionId?.(resolvedTabId, sessionId);
+
+      if (resolvedTabId === activeTabId) {
+        currentSessionIdRef.current = sessionId;
+        setCurrentSessionId(sessionId);
+        syncTitle();
+      }
+    } else {
+      currentSessionIdRef.current = sessionId;
+      setCurrentSessionId(sessionId);
+      syncTitle();
     }
   };
 
@@ -77,10 +106,12 @@ export function registerSessionCallbacks(
 
   window.updateSessionTitle = (sessionId: string, title: string) => {
     if (!title || !title.trim() || !sessionId) return;
-    if (currentSessionIdRef.current === sessionId) {
-      setCustomSessionTitle(title.trim());
+    const cleanTitle = title.trim();
+    if (currentSessionIdRef.current === sessionId || !currentSessionIdRef.current) {
+      setCustomSessionTitle(cleanTitle);
     }
-    applyHistoryTitleLocal(sessionId, title.trim());
+    window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle);
+    applyHistoryTitleLocal(sessionId, cleanTitle);
   };
 
   // =========================================================================
@@ -93,7 +124,7 @@ export function registerSessionCallbacks(
       if (provider) {
         sendBridgeEvent('deep_search_history', provider);
       } else {
-        console.warn('[Frontend] Provider unavailable for conversion state reload');
+        cardDebugLog('[Frontend] Provider unavailable for conversion state reload');
       }
     };
 

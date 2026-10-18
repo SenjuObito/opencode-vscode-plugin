@@ -18,10 +18,10 @@ const LONG_CONVERSATION_THRESHOLD = 300;
 const LONG_CONVERSATION_TAIL_SIZE = 180;
 
 export interface CoalescerTarget {
-	/** 推 `updateMessages(json, seq)` 或 `updateMessageTail(json, baseIndex, seq)`。 */
+	/** 推 `updateMessages(sessionId, json, seq, baseIndex)` 或 `updateMessageTail(sessionId, json, baseIndex, seq)`。 */
 	callUpdateMessages(fn: 'updateMessages' | 'updateMessageTail', args: string[]): void;
-	/** 推 `onStreamingHeartbeat`。 */
-	callHeartbeat(): void;
+	/** 推 `onStreamingHeartbeat(sessionId)`。 */
+	callHeartbeat(sessionId?: string): void;
 	isDisposed(): boolean;
 	/** 消息快照推送后，把用量兜底推给前端。 */
 	pushUsageUpdate(messages: ChatMessage[]): void;
@@ -37,6 +37,7 @@ interface MessageTransport {
 
 export class StreamMessageCoalescer {
 	private readonly target: CoalescerTarget;
+	private sessionId: string | null = null;
 	private streamActive = false;
 	private updateScheduled = false;
 	private lastUpdateAtMs = 0;
@@ -55,6 +56,18 @@ export class StreamMessageCoalescer {
 
 	constructor(target: CoalescerTarget) {
 		this.target = target;
+	}
+
+	setSessionId(sessionId: string | null): void {
+		this.sessionId = sessionId;
+	}
+
+	getSessionId(): string | null {
+		return this.sessionId;
+	}
+
+	private hasIdentity(): boolean {
+		return typeof this.sessionId === 'string' && this.sessionId.trim() !== '';
 	}
 
 	enqueue(messages: ChatMessage[], baseIndex = 0): void {
@@ -225,6 +238,11 @@ export class StreamMessageCoalescer {
 			return;
 		}
 
+		if (!this.hasIdentity()) {
+			afterSendOnEdt?.(sequence);
+			return;
+		}
+
 		// 丢弃真正乱序的帧：大载荷延迟送达的旧帧不得把列表回滚。
 		if (sequence < this.lastPushedSequence) {
 			console.log('[StreamMessageCoalescer] sendToWebView DROPPED: seq', sequence, '< lastPushed', this.lastPushedSequence);
@@ -235,13 +253,14 @@ export class StreamMessageCoalescer {
 		console.log('[StreamMessageCoalescer] sendToWebView SENDING: seq', sequence, 'tailUpdate:', tailUpdate);
 
 		try {
+			const targetSessionId = this.sessionId!;
 			if (tailUpdate) {
-				this.target.callUpdateMessages('updateMessageTail', [json, String(tailBaseIndex), String(sequence)]);
+				this.target.callUpdateMessages('updateMessageTail', [targetSessionId, json, String(tailBaseIndex), String(sequence)]);
 			} else {
-				// 全量快照现在承载的是宿主「窗口」而非完整历史，第三个参数
+				// 全量快照现在承载的是宿主「窗口」而非完整历史，参数
 				// 把窗口基址（全局序号）告知 webview，webview 侧据此做窗口
 				// 精确替换/合并（缺省视为 0，兼容旧语义）。
-				this.target.callUpdateMessages('updateMessages', [json, String(sequence), String(baseIndex)]);
+				this.target.callUpdateMessages('updateMessages', [targetSessionId, json, String(sequence), String(baseIndex)]);
 			}
 			this.lastDeliveredSnapshot = messages;
 			this.target.pushUsageUpdate(messages);
@@ -262,7 +281,9 @@ export class StreamMessageCoalescer {
 				return;
 			}
 			try {
-				this.target.callHeartbeat();
+				if (this.hasIdentity()) {
+					this.target.callHeartbeat(this.sessionId!);
+				}
 			} catch {
 				// 忽略心跳失败
 			}

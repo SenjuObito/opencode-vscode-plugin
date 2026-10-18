@@ -18,6 +18,20 @@
 /** daemon / serve 状态阶段。 */
 export type DaemonStatusPhase = 'starting' | 'ready' | 'failed';
 
+export interface DaemonEngineStatus {
+	state?: 'v1' | 'v2' | 'unknown' | string;
+	locked?: boolean;
+	blocking?: boolean;
+	cliPath?: string | null;
+	cliSource?: string | null;
+	cliVersion?: string | null;
+	probePath?: string | null;
+	httpStatus?: number | string | null;
+	apiVersion?: number | string | null;
+	reasonKind?: string | null;
+	reasonMessage?: string | null;
+}
+
 export interface DaemonStatusPayload {
 	alive: boolean;
 	serveReady: boolean;
@@ -29,6 +43,8 @@ export interface DaemonStatusPayload {
 	detail?: string;
 	/** opencode 未安装时的安装命令，webview 提供一键复制。 */
 	installCmd?: string;
+	/** 引擎模式解析与锁定快照（v1/v2/unknown 及阻塞原因）。 */
+	engine?: DaemonEngineStatus | null;
 }
 
 /** 面向用户的失败分类码（webview 用 `chat.daemonIssue.<code>` 取文案）。 */

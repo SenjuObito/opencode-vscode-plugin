@@ -113,4 +113,9 @@ export class CallbackHandler {
 	notifyRetryStatus(payload: string): void {
 		this.callback?.onRetryStatus?.(payload);
 	}
+
+	/** 权威回合终态（[TURN_END]）。 */
+	notifyTurnEnd(jsonContent: string): void {
+		this.callback?.onTurnEnd?.(jsonContent);
+	}
 }

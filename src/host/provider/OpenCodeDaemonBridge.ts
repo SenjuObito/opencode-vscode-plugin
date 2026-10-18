@@ -21,6 +21,7 @@ import * as path from 'path';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logError } from '../util/DiagnosticLogger';
 import { PluginFileLogger } from '../util/PluginFileLogger';
+import { DaemonEngineStatus } from './DaemonStatus';
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -35,6 +36,38 @@ const STDERR_RING_CAPACITY = 40;
 const DAEMON_HEAP_WARN_BYTES = 1_500_000_000;
 /** 告警解除线（滞回，避免阈值附近反复告警）。 */
 const DAEMON_HEAP_RESET_BYTES = DAEMON_HEAP_WARN_BYTES * 0.8;
+
+const MAX_ORPHAN_LINES_PER_SESSION = 128;
+const MAX_ORPHAN_SESSIONS = 32;
+const ORPHAN_LINE_TTL_MS = 60_000;
+
+export interface SessionLineSink {
+	onLine(line: string): void;
+	onStderr?(text: string): void;
+}
+
+class OrphanSessionLines {
+	private readonly lines: string[] = [];
+	private lastAt = Date.now();
+
+	add(line: string): void {
+		this.lines.push(line);
+		this.lastAt = Date.now();
+		while (this.lines.length > MAX_ORPHAN_LINES_PER_SESSION) {
+			this.lines.shift();
+		}
+	}
+
+	drain(): string[] {
+		const out = [...this.lines];
+		this.lines.length = 0;
+		return out;
+	}
+
+	isExpired(now: number): boolean {
+		return now - this.lastAt > ORPHAN_LINE_TTL_MS;
+	}
+}
 
 export interface DaemonOutputCallback {
 	/** 请求成功注册并发送后立即触发，提供该请求在 bridge 分配的 requestId。 */
@@ -315,6 +348,104 @@ export class OpenCodeDaemonBridge {
 	private desiredRunning = false;
 	private stopEpoch = 0;
 	private restartInProgress = false;
+
+	private readonly sessionSinks = new Map<string, SessionLineSink>();
+	private readonly sessionOrphans = new Map<string, OrphanSessionLines>();
+	private orphanLineCount = 0;
+	private unattributedLineCount = 0;
+	private engineStatus: DaemonEngineStatus | null = null;
+
+	getEngineStatus(): DaemonEngineStatus | null {
+		return this.engineStatus;
+	}
+
+	getOrphanLineCount(): number {
+		return this.orphanLineCount;
+	}
+
+	getUnattributedLineCount(): number {
+		return this.unattributedLineCount;
+	}
+
+	registerSessionSink(sessionId: string, sink: SessionLineSink): void {
+		if (!sessionId || !sink) {
+			return;
+		}
+		this.sessionSinks.set(sessionId, sink);
+		const orphan = this.sessionOrphans.get(sessionId);
+		if (orphan) {
+			this.sessionOrphans.delete(sessionId);
+			const lines = orphan.drain();
+			if (lines.length > 0) {
+				this.log(`[daemon] Delivering ${lines.length} buffered orphan line(s) to session ${sessionId}`);
+				for (const line of lines) {
+					try {
+						sink.onLine(line);
+					} catch (err) {
+						this.log(`Session sink failed to handle buffered line: ${(err as Error).message}`);
+					}
+				}
+			}
+		}
+	}
+
+	unregisterSessionSink(sessionId: string): void {
+		if (!sessionId) {
+			return;
+		}
+		this.sessionSinks.delete(sessionId);
+		this.sessionOrphans.delete(sessionId);
+	}
+
+	private deliverDataLine(
+		session: string | null,
+		id: string | null,
+		line: string,
+		context: DaemonGeneration,
+	): void {
+		if (session) {
+			const sink = this.sessionSinks.get(session);
+			if (sink) {
+				try {
+					sink.onLine(line);
+				} catch (err) {
+					this.log(`Session sink failed to handle line: ${(err as Error).message}`);
+				}
+				return;
+			}
+		}
+		if (id) {
+			const pending = context.pendingRequests.get(id);
+			if (pending) {
+				pending.callback.onLine(line);
+				return;
+			}
+		}
+		this.bufferOrphanLine(session, line);
+	}
+
+	private bufferOrphanLine(session: string | null, line: string): void {
+		this.orphanLineCount++;
+		if (!session) {
+			this.unattributedLineCount++;
+			this.log(`[daemon:warn] Unattributed data line dropped: ${line.substring(0, 100)}`);
+			return;
+		}
+		let orphan = this.sessionOrphans.get(session);
+		if (!orphan) {
+			orphan = new OrphanSessionLines();
+			this.sessionOrphans.set(session, orphan);
+		}
+		orphan.add(line);
+		if (this.sessionOrphans.size > MAX_ORPHAN_SESSIONS) {
+			const now = Date.now();
+			for (const [key, val] of this.sessionOrphans.entries()) {
+				if (val.isExpired(now)) {
+					this.sessionOrphans.delete(key);
+				}
+			}
+		}
+	}
 	private daemonHeapWarned = false;
 	private lastErrorMessage = '';
 	private startPromise: Promise<boolean> | null = null;
@@ -495,6 +626,7 @@ export class OpenCodeDaemonBridge {
 		this.log('Stopping daemon...');
 		this.desiredRunning = false;
 		this.stopEpoch++;
+		this.engineStatus = null;
 		const context = this.daemonContext;
 		if (!context) {
 			return;
@@ -811,34 +943,52 @@ export class OpenCodeDaemonBridge {
 			return;
 		}
 
-		const id = obj.id as string | undefined;
-		if (!id || id.startsWith('hb-')) {
+		const session = typeof obj.session === 'string' && obj.session.trim() !== '' ? obj.session.trim() : null;
+		const id = typeof obj.id === 'string' && obj.id.trim() !== '' ? obj.id.trim() : null;
+		if (id && id.startsWith('hb-')) {
 			return;
 		}
 
-		const pending = context.pendingRequests.get(id);
-		if (!pending) {
-			return;
-		}
-
+		// --- HTTP lifecycle: the request id owns completion ---
 		if (obj.done !== undefined) {
-			const success = obj.success === true;
-			if (!success && typeof obj.error === 'string') {
-				pending.callback.onError(obj.error);
+			if (id) {
+				const pending = context.pendingRequests.get(id);
+				if (pending) {
+					const success = obj.success === true;
+					if (!success && typeof obj.error === 'string') {
+						pending.callback.onError(obj.error);
+					}
+					pending.callback.onComplete(success);
+					context.removeRequest(id);
+					return;
+				}
 			}
-			pending.callback.onComplete(success);
-			context.removeRequest(id);
-			return;
 		}
 
+		// --- Data plane: the session owns the content ---
 		if (typeof obj.line === 'string') {
-			pending.callback.onLine(obj.line);
+			this.deliverDataLine(session, id, obj.line, context);
 			return;
 		}
 
+		// Stderr diagnostics keep both tags (neither is authoritative here).
 		if (typeof obj.stderr === 'string') {
-			this.log(`[daemon:stderr] ${obj.stderr}`);
-			pending.callback.onStderr?.(obj.stderr);
+			const errText = obj.stderr;
+			this.log(`[daemon:stderr id=${id ?? '-'} session=${session ?? '-'}] ${errText}`);
+			if (session) {
+				const sink = this.sessionSinks.get(session);
+				if (sink?.onStderr) {
+					sink.onStderr(errText);
+					return;
+				}
+			}
+			if (id) {
+				const pending = context.pendingRequests.get(id);
+				if (pending) {
+					pending.callback.onStderr?.(errText);
+					return;
+				}
+			}
 		}
 	}
 
@@ -855,8 +1005,30 @@ export class OpenCodeDaemonBridge {
 		}
 		switch (event) {
 			case 'ready': {
+				this.logEngineHeader(obj);
 				if (context.signalReady()) {
 					this.lifecycleListener?.onDaemonReady();
+				}
+				break;
+			}
+			case 'engine_status': {
+				this.engineStatus = { ...(obj as unknown as DaemonEngineStatus) };
+				const state = typeof obj.state === 'string' ? obj.state : 'unknown';
+				const reasonKind = typeof obj.reasonKind === 'string' ? obj.reasonKind : 'none';
+				const reasonMessage = typeof obj.reasonMessage === 'string' ? obj.reasonMessage : '';
+				const line = `[daemon] Engine status: state=${state}, locked=${!!obj.locked}, cli=${String(obj.cliPath ?? '(none)')} (source=${String(obj.cliSource ?? 'n/a')}, version=${String(obj.cliVersion ?? 'unknown')})`;
+				const blocking = !!obj.blocking;
+				if (blocking || state === 'unknown') {
+					this.log(`${line}, reason=${reasonKind} (${reasonMessage})`);
+				} else {
+					this.log(line);
+				}
+				for (const listener of this.eventListeners) {
+					try {
+						listener.onDaemonEvent(event, obj);
+					} catch (err) {
+						this.log(`Listener threw while handling ${event}: ${(err as Error).message}`);
+					}
 				}
 				break;
 			}
@@ -877,6 +1049,23 @@ export class OpenCodeDaemonBridge {
 		}
 	}
 
+	private logEngineHeader(obj: Record<string, unknown>): void {
+		const engineMode = typeof obj.engineMode === 'string' ? obj.engineMode : null;
+		const cliVersion = typeof obj.cliVersion === 'string' ? obj.cliVersion : null;
+		if (!engineMode && !cliVersion) {
+			return;
+		}
+		this.log(`[daemon] Daemon ready header: engineMode=${engineMode}, cliVersion=${cliVersion}`);
+		if (this.engineStatus === null) {
+			this.engineStatus = {
+				state: engineMode ?? 'unknown',
+				locked: false,
+				blocking: false,
+				cliVersion: cliVersion ?? undefined,
+			};
+		}
+	}
+
 	// =========================================================================
 	// daemon 死亡 & 自动重启
 	// =========================================================================
@@ -892,6 +1081,7 @@ export class OpenCodeDaemonBridge {
 		const failedHandlers = context.drainRequests();
 
 		this.log(`Daemon process died, generation=${context.generation}`);
+		this.engineStatus = null;
 		this.destroyProcess(context.process);
 
 		for (const handler of failedHandlers) {

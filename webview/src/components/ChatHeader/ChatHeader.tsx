@@ -1,136 +1,50 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React from 'react';
 import type { TFunction } from 'i18next';
-
 import { BackIcon } from '../Icons';
+import type { SessionTabData } from './types';
+import { SessionTabBar } from './SessionTabBar';
 
 export interface ChatHeaderProps {
   currentView: 'chat' | 'history' | 'settings';
-  sessionTitle: string;
   t: TFunction;
+  tabs: SessionTabData[];
+  activeTabId: string;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  onRenameTab: (tabId: string, newTitle: string) => void;
+  onForkTab: (tab: SessionTabData) => void;
+  onExportTab?: (tab: SessionTabData) => void;
+  onShareTab: (tab: SessionTabData) => void;
+  onCopyShareLinkTab: (tab: SessionTabData) => void;
+  onUnshareTab: (tab: SessionTabData) => void;
+  onReorderTabs?: (sourceIndex: number, targetIndex: number) => void;
   onBack: () => void;
   onNewSession: () => void;
   onHistory: () => void;
   onSettings: () => void;
-  /**
-   * Opens the in-conversation search panel. Only rendered when provided.
-   * Wired up by App.tsx via UIStateContext.setSearchOpen.
-   */
   onOpenSearch?: () => void;
-  onTitleChange?: (newTitle: string) => void;
-  titleEditable?: boolean;
-  /** Whether the session is currently shared */
-  isShared?: boolean;
-  /** Whether a share request is in flight (spinner state) */
-  sharePending?: boolean;
-  /** Hide the share controls entirely (e.g. "share": "disabled" in opencode.json) */
-  shareHidden?: boolean;
-  /** Copy the existing share link to the clipboard */
-  onCopyShareLink?: () => void;
-  /** Callback to share the session */
-  onShare?: () => void;
-  /** Callback to unshare the session */
-  onUnshare?: () => void;
-  /** Fork the entire conversation into a new session */
-  onForkAll?: () => void;
-  /** Export current session as Markdown */
-  onExport?: () => void;
 }
 
 export function ChatHeader({
   currentView,
-  sessionTitle,
   t,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onRenameTab,
+  onForkTab,
+  onExportTab,
+  onShareTab,
+  onCopyShareLinkTab,
+  onUnshareTab,
+  onReorderTabs,
   onBack,
   onNewSession,
   onHistory,
   onSettings,
   onOpenSearch,
-  onTitleChange,
-  titleEditable = false,
-  isShared = false,
-  sharePending = false,
-  shareHidden = false,
-  onCopyShareLink,
-  onShare,
-  onUnshare,
-  onForkAll,
-  onExport,
 }: ChatHeaderProps): React.ReactElement | null {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState('');
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!titleEditable) {
-      setEditing(false);
-    }
-  }, [titleEditable]);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-    const handleMouseDown = (e: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setMoreMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMoreMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [moreMenuOpen]);
-
-  const startEditing = useCallback(() => {
-    if (!titleEditable || !onTitleChange) return;
-    setEditValue(sessionTitle);
-    setEditing(true);
-  }, [titleEditable, onTitleChange, sessionTitle]);
-
-  const commitEdit = useCallback(() => {
-    setEditing(false);
-    const trimmed = editValue.trim().slice(0, 50);
-    if (trimmed && trimmed !== sessionTitle && onTitleChange) {
-      onTitleChange(trimmed);
-    }
-  }, [editValue, sessionTitle, onTitleChange]);
-
-  const cancelEdit = useCallback(() => {
-    setEditing(false);
-  }, []);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitEdit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelEdit();
-    }
-  }, [commitEdit, cancelEdit]);
-
-  const handleBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
-    // If focus moves to save/cancel button inside edit container, let that button handle it
-    const editContainer = e.currentTarget.closest('.session-title-edit-mode');
-    if (editContainer && editContainer.contains(e.relatedTarget as Node)) {
-      return;
-    }
-    commitEdit();
-  }, [commitEdit]);
 
   if (currentView === 'settings') {
     return null;
@@ -143,96 +57,36 @@ export function ChatHeader({
           <button className="back-button" onClick={onBack} data-tooltip={t('common.back')}>
             <BackIcon /> {t('common.back')}
           </button>
-        ) : editing ? (
-          <div className="session-title-edit-mode" onClick={(e) => e.stopPropagation()}>
-            <input
-              ref={inputRef}
-              type="text"
-              className="session-title-input"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              maxLength={50}
-              spellCheck={false}
-              aria-label="Session title"
-            />
-            <button className="session-title-save-btn" onClick={commitEdit} aria-label="Save title">
-              <span className="codicon codicon-check" />
-            </button>
-            <button className="session-title-cancel-btn" onClick={cancelEdit} aria-label="Cancel editing">
-              <span className="codicon codicon-close" />
-            </button>
-          </div>
         ) : (
-          <div className="session-title-wrapper">
-            <div className="session-title">
-              {sessionTitle}
-            </div>
-            {titleEditable && (
-              <button className="session-title-edit-btn" onClick={startEditing} aria-label="Edit session title">
-                <span className="codicon codicon-edit" />
-              </button>
-            )}
-            {currentView === 'chat' && onForkAll && (
-              <button
-                className="session-title-share-btn"
-                onClick={onForkAll}
-                title={t('chat.forkAllTooltip')}
-                aria-label={t('chat.forkAllTooltip')}
-              >
-                <span className="codicon codicon-git-branch" />
-              </button>
-            )}
-            {currentView === 'chat' && onShare && onUnshare && !shareHidden && (
-              sharePending ? (
-                <button
-                  className="session-title-share-btn pending"
-                  disabled
-                  title={t('chat.sharePendingTooltip')}
-                  aria-label={t('chat.sharePendingTooltip')}
-                >
-                  <span className="codicon codicon-loading codicon-modifier-spin" />
-                </button>
-              ) : isShared ? (
-                <>
-                  <button
-                    className="session-title-share-btn shared"
-                    onClick={onCopyShareLink}
-                    title={t('chat.copyShareLinkTooltip')}
-                    aria-label={t('chat.copyShareLinkTooltip')}
-                  >
-                    <span className="codicon codicon-copy" />
-                  </button>
-                  <button
-                    className="session-title-share-btn shared"
-                    onClick={onUnshare}
-                    title={t('chat.unshareTooltip')}
-                    aria-label={t('chat.unshareTooltip')}
-                  >
-                    <span className="codicon codicon-close" />
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="session-title-share-btn"
-                  onClick={onShare}
-                  title={t('chat.shareTooltip')}
-                  aria-label={t('chat.shareTooltip')}
-                >
-                  <span className="codicon codicon-share" />
-                </button>
-              )
-            )}
-          </div>
+          <SessionTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onRenameTab={onRenameTab}
+            onForkTab={onForkTab}
+            onExportTab={onExportTab ?? (() => {})}
+            onShareTab={onShareTab}
+            onCopyShareLinkTab={onCopyShareLinkTab}
+            onUnshareTab={onUnshareTab}
+            onReorderTabs={onReorderTabs}
+            t={t}
+          />
         )}
       </div>
+
       <div className="header-right">
         {currentView === 'chat' && (
           <>
-            <button className="icon-button" onClick={onNewSession} data-tooltip={t('common.newSession')}>
+            <button
+              className="icon-button"
+              onClick={onNewSession}
+              data-tooltip={t('common.newSession', { defaultValue: 'New Chat' })}
+              aria-label={t('common.newSession', { defaultValue: 'New Chat' })}
+            >
               <span className="codicon codicon-plus" />
             </button>
+
             {onOpenSearch && (
               <button
                 className="icon-button"
@@ -243,52 +97,24 @@ export function ChatHeader({
                 <span className="codicon codicon-search" />
               </button>
             )}
+
             <button
               className="icon-button"
               onClick={onHistory}
-              data-tooltip={t('common.history')}
+              data-tooltip={t('common.history', { defaultValue: 'History' })}
+              aria-label={t('common.history', { defaultValue: 'History' })}
             >
               <span className="codicon codicon-history" />
             </button>
-            <div className="header-more-menu-wrapper" ref={moreMenuRef}>
-              <button
-                className={`icon-button ${moreMenuOpen ? 'active' : ''}`}
-                onClick={() => setMoreMenuOpen((v) => !v)}
-                data-tooltip={moreMenuOpen ? undefined : t('common.more', { defaultValue: 'More' })}
-                aria-label={t('common.more', { defaultValue: 'More' })}
-                aria-expanded={moreMenuOpen}
-              >
-                <span className="codicon codicon-ellipsis" />
-              </button>
-              {moreMenuOpen && (
-                <div className="header-dropdown-menu" role="menu">
-                  {onExport && (
-                    <button
-                      className="header-dropdown-item"
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenuOpen(false);
-                        onExport();
-                      }}
-                    >
-                      <span className="codicon codicon-arrow-down" />
-                      <span>{t('chat.exportMarkdown', { defaultValue: 'Export as Markdown' })}</span>
-                    </button>
-                  )}
-                  <button
-                    className="header-dropdown-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      onSettings();
-                    }}
-                  >
-                    <span className="codicon codicon-settings-gear" />
-                    <span>{t('common.settings', { defaultValue: 'Settings' })}</span>
-                  </button>
-                </div>
-              )}
-            </div>
+
+            <button
+              className="icon-button"
+              onClick={onSettings}
+              data-tooltip={t('common.settings', { defaultValue: 'Settings' })}
+              aria-label={t('common.settings', { defaultValue: 'Settings' })}
+            >
+              <span className="codicon codicon-settings-gear" />
+            </button>
           </>
         )}
       </div>

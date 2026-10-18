@@ -40,7 +40,7 @@ export class SessionHandler extends BaseMessageHandler {
 				this.handleSendMessageWithAttachments(content);
 				return true;
 			case 'interrupt_session':
-				this.handleInterruptSession();
+				this.handleInterruptSession(content);
 				return true;
 			case 'restart_session':
 				this.handleRestartSession();
@@ -90,6 +90,12 @@ export class SessionHandler extends BaseMessageHandler {
 			const parsed = JSON.parse(content) as Record<string, unknown>;
 			const text = typeof parsed?.text === 'string' ? parsed.text : content;
 			const payload: SendMessagePayload = { text };
+			if (typeof parsed?.sessionId === 'string') {
+				payload.sessionId = parsed.sessionId;
+			}
+			if (typeof parsed?.tabId === 'string') {
+				payload.tabId = parsed.tabId;
+			}
 			if (Array.isArray(parsed?.attachments)) {
 				payload.attachments = (parsed.attachments as Array<Record<string, unknown>>).map((a) => ({
 					fileName: typeof a?.fileName === 'string' ? a.fileName : undefined,
@@ -118,9 +124,10 @@ export class SessionHandler extends BaseMessageHandler {
 	}
 
 	private sendWithPayload(payload: SendMessagePayload): void {
-		const session = this.context.getSession();
+		const targetSessionId = payload.sessionId || payload.tabId;
+		const session = (targetSessionId ? this.context.getSession(targetSessionId) : null) ?? this.context.getSession();
 		if (!session) {
-			this.callJavaScript('addErrorMessage', escapeJs('会话尚未初始化，请重新打开面板。'));
+			this.callJavaScript('addErrorMessage', targetSessionId ?? '', escapeJs('会话尚未初始化，请重新打开面板。'));
 			return;
 		}
 
@@ -138,28 +145,37 @@ export class SessionHandler extends BaseMessageHandler {
 			const command = text.slice(1).trim();
 			session.sendShell(command, currentCwd).catch((ex: unknown) => {
 				const message = ex instanceof Error ? ex.message : String(ex);
-				this.callJavaScript('addErrorMessage', escapeJs(`Shell 执行失败: ${message}`));
+				this.callJavaScript('addErrorMessage', targetSessionId ?? '', escapeJs(`Shell 执行失败: ${message}`));
 			});
 			return;
 		}
 
 		session.send(payload).catch((ex: unknown) => {
 			const message = ex instanceof Error ? ex.message : String(ex);
-			this.callJavaScript('addErrorMessage', escapeJs(`发送失败: ${message}`));
+			this.callJavaScript('addErrorMessage', targetSessionId ?? '', escapeJs(`发送失败: ${message}`));
 		});
 	}
 
-	private handleInterruptSession(): void {
+	private handleInterruptSession(content?: string): void {
+		let targetSessionId: string | undefined;
+		if (content) {
+			try {
+				const parsed = JSON.parse(content) as Record<string, unknown>;
+				targetSessionId = (parsed.sessionId || parsed.tabId) as string | undefined;
+			} catch {
+				targetSessionId = content.trim() || undefined;
+			}
+		}
 		const sessionManager = this.context.getSessionManager();
 		if (sessionManager) {
-			sessionManager.interruptActiveSession();
+			sessionManager.interruptSession(targetSessionId);
 		} else {
-			const session = this.context.getSession();
+			const session = (targetSessionId ? this.context.getSession(targetSessionId) : null) ?? this.context.getSession();
 			session?.interrupt();
 		}
-		// 中断后同步前端流结束状态
-		this.callJavaScript('onStreamEnd', '-1');
-		this.callJavaScript('showLoading', 'false');
+		const resolvedId = targetSessionId ?? '';
+		this.callJavaScript('onStreamEnd', resolvedId);
+		this.callJavaScript('showLoading', resolvedId, 'false');
 	}
 
 	private handleRestartSession(): void {

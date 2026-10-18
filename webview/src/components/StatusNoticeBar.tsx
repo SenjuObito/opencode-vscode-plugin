@@ -9,10 +9,9 @@
  *    `session.status` with `type=retry`, carrying a human-readable `message`
  *    plus an optional `action` ({ reason, title, message, label, link }). The
  *    daemon forwards that as a `[STATUS]` marker and the host calls
- *    `window.updateRetryStatus(json)` (single-arg: this build is single-window).
- *    Before this existed the signal
+ *    `window.updateRetryStatus(sessionId, json)`. Before this existed the signal
  *    never reached the UI at all, so the only thing a user could see was the
- *    generic local 180s timeout minutes later — which never named the actual
+ *    generic local timeout minutes later — which never named the actual
  *    cause (exhausted free tier / quota). Visible only while the turn is live.
  *
  * 2. **Terminal notice** (`--error`, static icon) — a persistent, dismissible
@@ -34,6 +33,29 @@ import { matchErrorPattern, type DiagnosticPattern } from '../utils/errorMatcher
 import type { ClaudeMessage } from '../types';
 import { sendToJava } from '../utils/bridge';
 import './StatusNoticeBar.less';
+
+const useMessagesSafe = () => {
+  try {
+    return useMessages();
+  } catch {
+    return {
+      messages: [],
+      loading: false,
+      streamingActive: false,
+      sessionLoading: false,
+    } as unknown as ReturnType<typeof useMessages>;
+  }
+};
+
+const useSessionSafe = () => {
+  try {
+    return useSession();
+  } catch {
+    return {
+      currentSessionId: null,
+    } as unknown as ReturnType<typeof useSession>;
+  }
+};
 
 /** Server-provided call to action (e.g. subscribe to opencode Go). */
 export interface RetryAction {
@@ -62,6 +84,7 @@ interface NoticeAction {
   /** i18n-independent label from the server, used as a tooltip only. */
   serverLabel?: string | null;
   serverTitle?: string | null;
+  serverMessage?: string | null;
 }
 
 /**
@@ -122,15 +145,18 @@ export const setRetryStatus = (payload: RetryStatusPayload | null): void => {
   latestRetryStatus = payload;
 
   // Capture the call to action before the turn settles, so the terminal notice
-  // raised by this turn can offer the server-provided link.
-  const link = payload?.action?.link?.trim();
-  if (link) {
-    pendingRetryAction = {
-      link,
-      sessionID: payload?.sessionID,
-      serverLabel: payload?.action?.label ?? null,
-      serverTitle: payload?.action?.title ?? null,
-    };
+  // raised by this turn can offer the server-provided link and message.
+  if (payload) {
+    const link = payload.action?.link?.trim();
+    if (link || payload.action?.title || payload.action?.message || payload.message) {
+      pendingRetryAction = {
+        link: link || '',
+        sessionID: payload.sessionID,
+        serverLabel: payload.action?.label ?? null,
+        serverTitle: payload.action?.title ?? null,
+        serverMessage: payload.action?.message ?? payload.message ?? null,
+      };
+    }
   }
 
   retryStatusListeners.forEach((listener) => listener(payload));
@@ -171,12 +197,24 @@ const formatSeconds = (ms: number): number => Math.max(0, Math.ceil(ms / 1000));
 interface TerminalNotice {
   key: string;
   pattern: DiagnosticPattern;
+  serverText: string;
 }
 
 export interface StatusNoticeBarProps {
-  messages: ClaudeMessage[];
-  getMessageText: (message: ClaudeMessage) => string;
+  messages?: ClaudeMessage[];
+  getMessageText?: (message: ClaudeMessage) => string;
 }
+
+const defaultGetMessageText = (message: ClaudeMessage): string => {
+  if (typeof message.content === 'string') return message.content;
+  const raw = message.content as unknown;
+  if (Array.isArray(raw)) {
+    return raw
+      .map((c: unknown) => (typeof c === 'string' ? c : (c as { text?: string })?.text ?? ''))
+      .join('');
+  }
+  return '';
+};
 
 interface NoticeBarProps {
   variant: 'warning' | 'error';
@@ -232,10 +270,21 @@ const NoticeBar = ({
   </div>
 );
 
-export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarProps) => {
+export const StatusNoticeBar = ({
+  messages: propMessages,
+  getMessageText: propGetMessageText,
+}: StatusNoticeBarProps = {}) => {
   const { t } = useTranslation();
-  const { loading, streamingActive, sessionLoading } = useMessages();
-  const { currentSessionId } = useSession();
+  const messagesCtx = useMessagesSafe();
+  const sessionCtx = useSessionSafe();
+
+  const messages = propMessages ?? messagesCtx?.messages ?? [];
+  const getMessageText = propGetMessageText ?? defaultGetMessageText;
+  const loading = messagesCtx?.loading ?? false;
+  const streamingActive = messagesCtx?.streamingActive ?? false;
+  const sessionLoading = messagesCtx?.sessionLoading ?? false;
+  const currentSessionId = sessionCtx?.currentSessionId ?? null;
+
   const [payload, setPayload] = useState<RetryStatusPayload | null>(getRetryStatus);
   const [now, setNow] = useState(() => Date.now());
   // The dismissed set lives module-side and is not reactive; bumping this
@@ -264,7 +313,7 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
       // is gone — older ones must not resurface in its place.
       if (dismissedNoticeKeys.has(key)) return null;
 
-      return { key, pattern };
+      return { key, pattern, serverText: text };
     }
 
     return null;
@@ -288,25 +337,17 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
     }
   }, [turnActive]);
 
-  // A new turn means the user already reacted to whatever the previous turn
-  // reported: the terminal notice is stale ("quota exhausted" hanging around
-  // after a successful retry on another model), and the captured action must
-  // not be carried into this turn. Safe because error messages are only created
-  // when a turn *ends*, so this edge always precedes the next error.
+  // A new turn clears the unpinned candidate action so it is not carried
+  // into this turn. The terminal notice itself stays visible until the user
+  // explicitly dismisses it with the close button.
   const previousTurnActiveRef = useRef(turnActive);
-  const terminalNoticeKey = terminalNotice?.key ?? null;
   useEffect(() => {
     const wasActive = previousTurnActiveRef.current;
     previousTurnActiveRef.current = turnActive;
     if (wasActive || !turnActive) return;
 
     pendingRetryAction = null;
-    if (terminalNoticeKey) {
-      dismissedNoticeKeys.add(terminalNoticeKey);
-      noticeActionLinks.delete(terminalNoticeKey);
-      setDismissVersion((version) => version + 1);
-    }
-  }, [turnActive, terminalNoticeKey]);
+  }, [turnActive]);
 
   const retryAt = payload?.next ?? null;
   const hasCountdown = retryAt !== null && retryAt > 0;
@@ -328,6 +369,7 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
 
   const handleDismissRetry = useCallback(() => setRetryStatus(null), []);
 
+  const terminalNoticeKey = terminalNotice?.key ?? null;
   const handleDismissTerminal = useCallback(() => {
     if (!terminalNoticeKey) return;
     dismissedNoticeKeys.add(terminalNoticeKey);
@@ -336,7 +378,7 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
   }, [terminalNoticeKey]);
 
   // Resolve (and pin) the call to action for the terminal notice.
-  // Order: server-pushed link > pattern fallback > no button at all.
+  // Order: server-pushed action > pattern fallback > no button at all.
   const terminalAction = ((): NoticeAction | null => {
     if (!terminalNotice) return null;
 
@@ -344,11 +386,13 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
     if (pinned) return pinned;
 
     const candidate = pendingRetryAction;
-    if (candidate?.link && candidate.sessionID === currentSessionId) {
+    if (candidate && (!candidate.sessionID || candidate.sessionID === currentSessionId)) {
+      const fallbackLink = terminalNotice.pattern.actionLink?.trim() || '';
       const resolved: NoticeAction = {
-        link: candidate.link,
+        link: candidate.link || fallbackLink,
         serverLabel: candidate.serverLabel,
         serverTitle: candidate.serverTitle,
+        serverMessage: candidate.serverMessage,
       };
       noticeActionLinks.set(terminalNotice.key, resolved);
       return resolved;
@@ -369,11 +413,12 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
   const retryVisible =
     turnActive &&
     payload !== null &&
-    !(payload.sessionID && currentSessionId && payload.sessionID !== currentSessionId);
+    (payload.sessionID ? payload.sessionID === currentSessionId : true);
 
   if (retryVisible && payload) {
-    const message = payload.message?.trim();
     const action = payload.action ?? null;
+    const message = action?.message?.trim() || payload.message?.trim();
+    const title = action?.title?.trim() || t('retryStatus.title');
     const link = action?.link?.trim();
     const attempt = typeof payload.attempt === 'number' ? payload.attempt : null;
     const hasMeta = attempt !== null || hasCountdown;
@@ -382,7 +427,7 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
       <NoticeBar
         variant="warning"
         icon="codicon-sync"
-        title={action?.title?.trim() || t('retryStatus.title')}
+        title={title}
         message={message}
         meta={
           hasMeta ? (
@@ -412,14 +457,23 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
     return null;
   }
 
+  const terminalTitle =
+    terminalAction?.serverTitle?.trim() ||
+    t(`errorDiagnostic.${terminalNotice.pattern.code}.title`);
+
+  const terminalMessage =
+    terminalAction?.serverMessage?.trim() ||
+    terminalNotice.serverText?.trim() ||
+    t(`errorDiagnostic.${terminalNotice.pattern.code}.notice`);
+
   return (
     <NoticeBar
       variant="error"
       icon="codicon-warning"
-      title={t(`errorDiagnostic.${terminalNotice.pattern.code}.title`)}
-      message={t(`errorDiagnostic.${terminalNotice.pattern.code}.notice`)}
+      title={terminalTitle}
+      message={terminalMessage}
       action={
-        terminalAction
+        terminalAction && terminalAction.link
           ? {
               label: t(`errorDiagnostic.${terminalNotice.pattern.code}.upgrade`),
               tooltip: terminalAction.serverTitle || terminalAction.serverLabel || undefined,

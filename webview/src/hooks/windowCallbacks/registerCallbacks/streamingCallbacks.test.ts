@@ -227,7 +227,7 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
 
     // No onStreamStart happened; streaming refs are at their idle defaults.
-    window.onStreamEnd!();
+    window.onStreamEnd!('ses_test');
 
     expect(window.__deniedToolIds).toBeDefined();
     expect(window.__deniedToolIds!.has('tool-1')).toBe(true);
@@ -250,10 +250,56 @@ describe('onStreamEnd finalizes dangling tool_use when the turn never streamed',
     );
     const before = getMessages();
 
-    window.onStreamEnd!();
+    window.onStreamEnd!('ses_test');
 
     // Nothing dangling → no id denied, and the list reference is unchanged.
     expect(window.__deniedToolIds?.has('tool-2') ?? false).toBe(false);
     expect(getMessages()).toBe(before);
+  });
+
+  it('correctly extracts raw blocks on stream end when assistant content is empty', () => {
+    const { refs, getMessages } = createHarness(
+      [
+        { type: 'user', content: '!ls' },
+        { type: 'assistant', content: '', isStreaming: true, __turnId: 5 },
+      ],
+      5,
+    );
+
+    refs.isStreamingRef.current = true;
+    refs.streamingMessageIndexRef.current = 1;
+    refs.streamingTurnIdRef.current = 5;
+
+    window.__pendingUpdateJson = JSON.stringify([
+      { type: 'user', content: '!ls' },
+      {
+        type: 'assistant',
+        content: '',
+        raw: {
+          message: {
+            content: [{ type: 'tool_use', id: 'shell-call-99', name: 'bash', input: { command: 'ls' } }],
+          },
+        },
+      },
+      {
+        type: 'user',
+        content: '[tool_result]',
+        raw: {
+          message: {
+            content: [{ type: 'tool_result', tool_use_id: 'shell-call-99', is_error: false, content: 'a.txt\nb.txt' }],
+          },
+        },
+      },
+    ]);
+
+    window.onStreamEnd!('ses_test', '99');
+
+    const messages = getMessages();
+    expect(messages).toHaveLength(3);
+    expect(messages[1].raw).toBeDefined();
+    expect(messages[2].content).toBe('[tool_result]');
+    expect(window.__deniedToolIds?.has('shell-call-99') ?? false).toBe(false);
+
+    delete window.__pendingUpdateJson;
   });
 });

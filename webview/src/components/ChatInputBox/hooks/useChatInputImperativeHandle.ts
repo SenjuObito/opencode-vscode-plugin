@@ -1,6 +1,7 @@
 import { useImperativeHandle } from 'react';
 import type { ForwardedRef, MutableRefObject } from 'react';
-import type { ChatInputBoxHandle, FileTagInfo } from '../types.js';
+import type { Attachment, ChatInputBoxHandle, FileTagInfo } from '../types.js';
+import { hasQuoteToken } from '../utils/quoteRegistry.js';
 
 export interface UseChatInputImperativeHandleOptions {
   ref: ForwardedRef<ChatInputBoxHandle>;
@@ -14,6 +15,18 @@ export interface UseChatInputImperativeHandleOptions {
   clearInput: () => void;
   hasContent: boolean;
   extractFileTags: () => FileTagInfo[];
+  /** Current attachment list (uncontrolled mode keeps it inside this component). */
+  attachments: Attachment[];
+  /** Replace the attachment list when a tab switch restores its draft. */
+  setAttachments: (attachments: Attachment[]) => void;
+  /** Re-apply file tags after the raw text was restored. */
+  restoreFileTags: (tags: FileTagInfo[]) => void;
+  /** Extract quotes map currently present in input */
+  getQuotes?: () => Record<string, { text: string }>;
+  /** Re-register quotes into registry and convert tokens to quote chips */
+  restoreQuoteTags?: (quotes?: Record<string, { text: string }>) => void;
+  /** Convert quote tokens in DOM to chip elements */
+  renderQuoteTags?: () => void;
 }
 
 /**
@@ -33,6 +46,12 @@ export function useChatInputImperativeHandle({
   clearInput,
   hasContent,
   extractFileTags,
+  attachments,
+  setAttachments,
+  restoreFileTags,
+  getQuotes,
+  restoreQuoteTags,
+  renderQuoteTags,
 }: UseChatInputImperativeHandleOptions): void {
   useImperativeHandle(
     ref,
@@ -45,6 +64,9 @@ export function useChatInputImperativeHandle({
         if (!editableRef.current) return;
         isExternalUpdateRef.current = true;
         editableRef.current.innerText = newValue;
+        if (hasQuoteToken(newValue)) {
+          renderQuoteTags?.();
+        }
         setHasContent(!!newValue.trim());
         adjustHeight();
         invalidateCache();
@@ -64,6 +86,11 @@ export function useChatInputImperativeHandle({
       clear: clearInput,
       hasContent: () => hasContent,
       getFileTags: extractFileTags,
+      getAttachments: () => attachments,
+      setAttachments,
+      restoreFileTags,
+      getQuotes: () => getQuotes?.() ?? {},
+      restoreQuoteTags: (quotes?: Record<string, { text: string }>) => restoreQuoteTags?.(quotes),
     }),
     [
       getTextContent,
@@ -76,6 +103,12 @@ export function useChatInputImperativeHandle({
       clearInput,
       hasContent,
       extractFileTags,
+      attachments,
+      setAttachments,
+      restoreFileTags,
+      getQuotes,
+      restoreQuoteTags,
+      renderQuoteTags,
     ]
   );
 }

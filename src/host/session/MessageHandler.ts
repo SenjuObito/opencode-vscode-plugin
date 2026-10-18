@@ -174,6 +174,9 @@ export class MessageHandler implements MessageCallback {
 		case 'turn_error':
 			this.handleTurnError(content);
 			break;
+		case 'turn_end':
+			this.handleTurnEnd(content);
+			break;
 		}
 	}
 
@@ -912,6 +915,39 @@ export class MessageHandler implements MessageCallback {
 			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 		} catch {
 			// 解析失败忽略
+		}
+	}
+
+	/**
+	 * daemon 权威的回合终态（[TURN_END]）。
+	 * Payload: {"sessionId":"ses_…","turnId":1042,"reason":"idle"|"aborted"|…}。
+	 */
+	private handleTurnEnd(jsonContent: string): void {
+		if (!jsonContent || !jsonContent.trim()) {
+			return;
+		}
+		try {
+			const payload = JSON.parse(jsonContent.trim()) as Record<string, unknown>;
+			const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : null;
+			const reason = typeof payload.reason === 'string' ? payload.reason : 'unknown';
+			const ownSessionId = this.state.getSessionId();
+			if (sessionId && ownSessionId && sessionId !== ownSessionId) {
+				logDiagnostic(`[MessageHandler] Ignoring turn_end for another session: ${sessionId}`);
+				return;
+			}
+			logDiagnostic(`[MessageHandler] turn ended: session=${sessionId ?? '(own)'} reason=${reason} turnId=${String(payload.turnId ?? '-')}`);
+
+			this.isStreaming = false;
+			this.streamEndedThisTurn = true;
+			this.state.setBusy(false);
+			this.state.setLoading(false);
+			this.state.updateLastModifiedTime();
+			this.resetTurnState();
+
+			this.callbackHandler.notifyTurnEnd(jsonContent);
+			this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
+		} catch (e) {
+			logDiagnostic(`[MessageHandler] Failed to parse turn_end payload: ${jsonContent} ${(e as Error).message}`);
 		}
 	}
 

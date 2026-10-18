@@ -112,6 +112,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       autoOpenFileEnabled,
       onAutoOpenFileEnabledChange,
       onCompactClick,
+      messages,
+      getMessageText,
     }: ChatInputBoxProps,
     ref: React.ForwardedRef<ChatInputBoxHandle>
   ) => {
@@ -170,14 +172,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     }, []);
 
     // File tags hook
-    const { renderFileTags, pathMappingRef, justRenderedTagRef, extractFileTags, setCursorAfterPath } = useFileTags({
+    const { renderFileTags, pathMappingRef, justRenderedTagRef, extractFileTags, restoreFileTags, setCursorAfterPath } = useFileTags({
       editableRef,
       getTextContent,
       onCloseCompletions: closeAllCompletions,
     });
 
     // Quote tags hook (inline quote chips)
-    const { renderQuoteTags } = useQuoteTags({ editableRef });
+    const { renderQuoteTags, restoreQuoteTags, extractQuotes } = useQuoteTags({ editableRef });
 
     // Combined tag rendering: file tags first, then quote chips.
     const renderTags = useCallback(() => {
@@ -460,6 +462,12 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       clearInput,
       hasContent,
       extractFileTags,
+      attachments,
+      setAttachments: setInternalAttachments,
+      restoreFileTags,
+      getQuotes: extractQuotes,
+      restoreQuoteTags,
+      renderQuoteTags,
       inlineCompletion,
       handleInput,
       ctxMenu,
@@ -606,6 +614,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           daemonAlive={sdkInstalled}
           onRetryDaemonStatus={onRetryDaemonStatus}
           t={t}
+          messages={messages}
+          getMessageText={getMessageText}
           attachments={attachments}
           onRemoveAttachment={handleRemoveAttachment}
           activeFile={activeFile}

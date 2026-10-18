@@ -29,7 +29,6 @@
   "chat": {
     "sendMessage": "Envoyer un message à {{provider}}",
     "createNewSession": "Créer une nouvelle session",
-    "confirmNewSession": "La session actuelle contient des messages, êtes-vous sûr de vouloir créer une nouvelle session ?",
     "confirmInterrupt": "Une conversation est en cours, créer une nouvelle session l'interrompra, continuer ?",
     "requestInterrupted": "Demande interrompue par l'utilisateur",
     "uploadedFiles": "Fichiers téléchargés : {{files}}",
@@ -348,7 +347,7 @@
       "permissionDialogTimeout": {
         "label": "Délai d'expiration des dialogues de permission et de question",
         "unit": "secondes",
-        "hint": "Définissez le délai d'expiration pour les dialogues de questions de OpenCode et les dialogues de demande de permission (30~3600 secondes). Après expiration, le dialogue se fermera automatiquement et OpenCode continuera."
+        "hint": "Définissez le délai d'expiration pour les dialogues de questions de OpenCode et les dialogues de demande de permission (30~3600 secondes). Après expiration sans réponse, le dialogue se fermera automatiquement et la session sera arrêtée."
       },
       "chatBgColor": {
         "label": "Couleur de fond du chat",
@@ -367,12 +366,6 @@
         "custom": "Personnalisé",
         "reset": "Réinitialiser",
         "hint": "Personnaliser la couleur de fond de vos messages. Laisser vide pour suivre le thème par défaut."
-      },
-      "newSessionConfirm": {
-        "label": "Confirmation de nouvelle session",
-        "enabled": "Activé",
-        "disabled": "Désactivé",
-        "hint": "Lorsqu'elle est désactivée, créer une nouvelle session dans une conversation contenant des messages se fera directement, sans afficher la boîte de dialogue de confirmation."
       },
       "compactConfirm": {
         "label": "Confirmation de compactage de session",
@@ -1545,6 +1538,10 @@
     "parseError": "Échec de l'analyse du résultat"
   },
   "reasoning": {
+    "default": {
+      "label": "Par défaut",
+      "description": "Utiliser la valeur par défaut du modèle"
+    },
     "cycleHint": "Changer le niveau de raisonnement",
     "title": "Sélectionner la profondeur de raisonnement",
     "low": {
@@ -1627,6 +1624,24 @@
     "copyCommand": "Copier",
     "copied": "Copié",
     "recommended": "Recommandé",
+    "codexThreadResume": {
+      "title": "Le thread de session n'est plus valide",
+      "intro": "La création d'une nouvelle session résoudra ce problème. L'identifiant de thread de la session actuelle n'existe plus sur le serveur Codex.",
+      "reason": "Codex supprime les anciens threads après un certain temps, ce qui peut déclencher cette erreur lors de la reprise d'une session précédente."
+    },
+    "sdkNativeBinaryMissing": {
+      "title": "Installation du SDK incomplète — binaire natif manquant",
+      "intro": "Il s'agit d'un problème connu du miroir npm de Taobao (ce n'est pas un bug du plugin). Le miroir n'a pas entièrement synchronisé les fichiers spécifiques à la plateforme. Vous pouvez le résoudre manuellement avec l'une des options ci-dessous :",
+      "reason": "Ce problème disparaîtra automatiquement une fois la synchronisation du miroir Taobao terminée — aucune action supplémentaire n'est nécessaire.",
+      "solutions": {
+        "switchRegistry": {
+          "title": "Option 1 : Basculer temporairement vers le registre officiel et réinstaller",
+          "step0": "1. Exécutez dans votre terminal (passage au registre npm officiel) :",
+          "step1": "2. Ouvrez les paramètres de gestion des dépendances du plugin et cliquez sur Réinstaller :",
+          "step2": "3. Une fois la réinstallation terminée, revenez au miroir Taobao :"
+        }
+      }
+    },
     "spawnEbusy": {
       "title": "spawn EBUSY — échec du lancement du processus enfant",
       "intro": "Cette erreur est généralement causée par une version de Node.js incompatible ou une installation incomplète du SDK. Essayez les deux options ci-dessous dans l'ordre :",
@@ -1637,6 +1652,11 @@
           "step0": "Exécutez la commande ci-dessous dans un terminal pour voir votre version. Node 22 ou la LTS actuelle est recommandée — les utilisateurs ont signalé de nombreux problèmes sur Node 24, préférez donc Node 20 ou 22 :"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "Quota de modèle épuisé",
+      "notice": "Le quota gratuit ou du forfait pour ce modèle est épuisé. Veuillez changer de modèle ou mettre à niveau votre abonnement.",
+      "upgrade": "Mettre à niveau l'abonnement"
     }
   },
   "openCodeModes": {

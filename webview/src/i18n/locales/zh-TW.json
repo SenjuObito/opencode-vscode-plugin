@@ -24,12 +24,12 @@
     "info": "資訊",
     "seconds": "秒",
     "minutes": "分",
-    "optional": "Optional"
+    "optional": "Optional",
+    "pendingApproval": "等待使用者操作"
   },
   "chat": {
     "sendMessage": "給 {{provider}} 發送訊息",
     "createNewSession": "建立新會話",
-    "confirmNewSession": "目前會話已有訊息，確定要建立新會話嗎？",
     "confirmInterrupt": "目前正在對話中，建立新會話將中斷目前對話，是否繼續？",
     "requestInterrupted": "請求已被使用者中斷",
     "uploadedFiles": "已上傳附件: {{files}}",
@@ -348,7 +348,7 @@
       "permissionDialogTimeout": {
         "label": "權限與提問對話框超時時間",
         "unit": "秒",
-        "hint": "設定 OpenCode 提問對話框和權限請求對話框的超時時間（30~3600 秒）。超時後對話框將自動關閉，OpenCode 會繼續執行。"
+        "hint": "設定 OpenCode 提問對話框和權限請求對話框的超時時間（30~3600 秒）。超時未回答將自動關閉對話框並停止會話。"
       },
       "chatBgColor": {
         "label": "聊天背景色",
@@ -367,12 +367,6 @@
         "custom": "自訂",
         "reset": "恢復預設",
         "hint": "自訂您的訊息背景顏色，留空則跟隨主題預設顏色"
-      },
-      "newSessionConfirm": {
-        "label": "建立新會話時二次確認",
-        "enabled": "已開啟",
-        "disabled": "已關閉",
-        "hint": "關閉後，在已有訊息的會话中點選新建將直接建立，不再彈出確認視窗"
       },
       "compactConfirm": {
         "label": "壓縮會話時二次確認",
@@ -1558,6 +1552,10 @@
     "parseError": "解析結果失敗"
   },
   "reasoning": {
+    "default": {
+      "label": "default",
+      "description": "使用模型預設設定"
+    },
     "cycleHint": "切換推理力度",
     "title": "選擇思考深度",
     "low": {
@@ -1655,6 +1653,24 @@
     "copyCommand": "複製",
     "copied": "已複製",
     "recommended": "推薦",
+    "codexThreadResume": {
+      "title": "工作階段執行緒已失效",
+      "intro": "新建工作階段即可解決此問題。目前工作階段的執行緒 ID 在 Codex 伺服器端已不存在。",
+      "reason": "Codex 服務端會在一段時間後清除舊執行緒，繼續上一次工作階段時可能觸發此錯誤。"
+    },
+    "sdkNativeBinaryMissing": {
+      "title": "SDK 安裝不完整 — 缺少 native 二進位檔",
+      "intro": "這是淘寶 npm 鏡像源的已知問題（非外掛 bug）。鏡像源未完整同步 platform 檔案。可手動按以下方案處理：",
+      "reason": "淘寶源同步完成後此問題會自動消失，無需擔心。",
+      "solutions": {
+        "switchRegistry": {
+          "title": "方案一：暫時切換官方源重新安裝",
+          "step0": "1. 在終端機執行（切換到 npm 官方源）：",
+          "step1": "2. 開啟外掛設定中的「相依性管理」，點選重新安裝：",
+          "step2": "3. 重新安裝完成後，切回淘寶源："
+        }
+      }
+    },
     "spawnEbusy": {
       "title": "spawn EBUSY — 子處理程序啟動失敗",
       "intro": "此錯誤通常由 Node.js 版本不相容或 SDK 安裝不完整引起，按以下兩個方向排查通常可解決：",
@@ -1665,6 +1681,11 @@
           "step0": "在終端機執行以下指令查看版本號。建議使用 Node 22 或目前最新 LTS 版本 — 使用者反饋 Node 24 報錯較多，請優先使用 20 或 22："
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "模型額度已用盡",
+      "notice": "目前模型免費額度或帳號配額已耗盡，請切換模型或升級配額。",
+      "upgrade": "升級訂閱"
     }
   },
   "openCodeModes": {

@@ -9,16 +9,17 @@ import { getSkipCompactConfirm, setSkipCompactConfirm } from '../utils/skipCompa
  * `requestCompact` opens the dialog if confirmation is enabled; otherwise it
  * runs `doCompact` immediately.
  */
-export function useCompactConfirm(doCompact: () => void) {
+export function useCompactConfirm(doCompact: () => void, isBusy: boolean = false) {
   const [showCompactConfirm, setShowCompactConfirm] = useState(false);
 
   const requestCompact = useCallback(() => {
+    if (isBusy) return;
     if (getSkipCompactConfirm()) {
       doCompact();
       return;
     }
     setShowCompactConfirm(true);
-  }, [doCompact]);
+  }, [doCompact, isBusy]);
 
   const handleCompactConfirmed = useCallback((skipAgain?: boolean) => {
     if (skipAgain) {

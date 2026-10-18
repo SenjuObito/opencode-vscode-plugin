@@ -58,6 +58,9 @@ export interface UseMessageSenderOptions {
   handleModeSelect?: (mode: PermissionMode) => void;
   openContextUsageDialog: (requestId?: string | null, loading?: boolean) => void;
   closeContextUsageDialog: (requestId?: string | null) => boolean;
+  currentSessionId?: string | null;
+  currentSessionIdRef?: RefObject<string | null>;
+  autoOpenFileEnabled?: boolean;
 }
 
 /**
@@ -91,6 +94,9 @@ export function useMessageSender({
   handleModeSelect,
   openContextUsageDialog,
   closeContextUsageDialog,
+  currentSessionId,
+  currentSessionIdRef,
+  autoOpenFileEnabled,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -120,8 +126,8 @@ export function useMessageSender({
       return true;
     }
 
-    // /plan - switch to plan mode
-    if (PLAN_COMMANDS.has(command)) {
+    // /plan - switch to plan mode (Claude only; Codex sends as normal text)
+    if (PLAN_COMMANDS.has(command) && currentProvider === 'claude') {
       if (handleModeSelect) {
         handleModeSelect('plan');
         addToast(t('chat.planModeEnabled', { defaultValue: 'Plan mode enabled' }), 'info');
@@ -130,16 +136,25 @@ export function useMessageSender({
     }
 
     return false;
-  }, [setCurrentView, handleModeSelect, addToast, t]);
+  }, [setCurrentView, handleModeSelect, currentProvider, addToast, t]);
 
   /**
    * Check for context usage command (/context)
-   * Opens a dialog to display context window usage.
+   * Only available for Claude provider. Opens a dialog to display context window usage.
    */
   const checkContextCommand = useCallback((text: string): boolean => {
     if (!text.startsWith('/')) return false;
     const command = text.split(WHITESPACE_REGEX)[0].toLowerCase();
     if (CONTEXT_COMMANDS.has(command)) {
+      if (currentProvider !== 'claude') {
+        addToast(t('chat.commandProviderOnly', {
+          command,
+          provider: 'Claude',
+          defaultValue: `${command} is only available for Claude provider`,
+        }), 'warning');
+        return true;
+      }
+
       const requestId = createContextUsageRequestId();
 
       // Open dialog with loading state immediately
@@ -160,7 +175,7 @@ export function useMessageSender({
       return true;
     }
     return false;
-  }, [selectedModel, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
+  }, [currentProvider, selectedModel, addToast, t, openContextUsageDialog, closeContextUsageDialog]);
 
   /**
    * Check for unimplemented slash commands
@@ -247,9 +262,17 @@ export function useMessageSender({
 
     const reasoningEffortPayload = { reasoningEffort };
 
+    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.() ?? null;
+    const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+    const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
+      ? autoOpenFileEnabled
+      : (window.__sessionTabsStore?.getActiveTabAutoOpenFileEnabled?.() ?? false);
+
     if (hasAttachments) {
       try {
         const payload = JSON.stringify({
+          tabId: activeTabId,
+          sessionId: targetSessionId,
           text,
           attachments: (attachments || []).map(a => ({
             fileName: a.fileName,
@@ -258,29 +281,36 @@ export function useMessageSender({
           })),
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
+          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...reasoningEffortPayload,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
       } catch (error) {
         console.error('[Frontend] Failed to serialize attachments payload', error);
         const fallbackPayload = JSON.stringify({
+          tabId: activeTabId,
+          sessionId: targetSessionId,
           text,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
+          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...reasoningEffortPayload,
         });
         sendBridgeEvent('send_message', fallbackPayload);
       }
     } else {
       const payload = JSON.stringify({
+        tabId: activeTabId,
+        sessionId: targetSessionId,
         text,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
+        autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
         ...reasoningEffortPayload,
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [currentProvider, selectedModel, reasoningEffort]);
+  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, autoOpenFileEnabled]);
 
   /**
    * Execute message sending (from queue or directly)
@@ -442,13 +472,16 @@ export function useMessageSender({
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
 
-    sendBridgeEvent('interrupt_session');
+    const targetSessionId = currentSessionIdRef?.current ?? currentSessionId ?? undefined;
+    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: targetSessionId }));
   }, [
     isStreamingRef,
     streamingContentRef,
     streamingThinkingRef,
     contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef,
+    currentSessionId,
+    currentSessionIdRef,
   ]);
 
   return {

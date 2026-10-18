@@ -75,7 +75,8 @@ export class PermissionHandler extends BaseMessageHandler {
 			this.onQuestionRequested(request);
 			return;
 		}
-		const sessionId = request.sessionId ?? this.context.getSession()?.state.getSessionId() ?? null;
+		// 身份必须取自 request 自身，绝不借用当前活跃会话（避免会话 B 弹在会话 A 或后台请求无法弹窗）
+		const sessionId = request.sessionId ?? null;
 		// channelId 是前端卡片/对话框的关联键（优先 toolUseId，与卡片 placeCard 一致）；
 		// permissionId 是 opencode SDK replyPermission 需要的 per_xxx，必须优先取 requestId，
 		// 否则会把 call_xxx 当 permissionId 回传导致 replyPermission failed。
@@ -113,15 +114,17 @@ export class PermissionHandler extends BaseMessageHandler {
 			?? this.context.resolveEffectiveWorkingDirectory()
 			?? this.context.getFallbackWorkingDirectory()
 			?? null;
-		this.debugLog(`onQuestionRequested requestId=${requestId} sessionId=${request.sessionId} toolName="${request.toolName}" toolNameType=${typeof request.toolName} questions=${request.questions?.length ?? 0} directory=${directory}`);
+		const sessionId = request.sessionId ?? null;
+		this.debugLog(`onQuestionRequested requestId=${requestId} sessionId=${sessionId} toolName="${request.toolName}" toolNameType=${typeof request.toolName} questions=${request.questions?.length ?? 0} directory=${directory}`);
 		this.pendingQuestions.set(requestId, {
-			sessionId: request.sessionId ?? null,
+			sessionId,
 			questions: request.questions ?? [],
 			toolName: request.tool ?? request.toolName ?? '',
 			directory,
 		});
 		const payload = JSON.stringify({
 			requestId,
+			sessionId,
 			// normalizeQuestionRequest 返回字段名为 tool，直接回传即可；
 			// toolName 留空会让前端只能走模糊 name 匹配，导致问题卡片错位。
 			toolName: request.tool ?? request.toolName,
@@ -135,6 +138,23 @@ export class PermissionHandler extends BaseMessageHandler {
 		// 触发提问提醒：系统通知 + 提示音（受对应开关与"仅未聚焦时"门控）。
 		// 此前漏接，导致"提问系统通知""提问提示音"两个设置形同虚设。
 		this.notifications.onQuestionRequested();
+	}
+
+	/** 清理指定会话的所有待决权限与提问请求（关闭标签时调用）。 */
+	clearSession(sessionId: string): void {
+		if (!sessionId) {
+			return;
+		}
+		for (const [key, val] of this.pendingPermissions.entries()) {
+			if (val.sessionId === sessionId) {
+				this.pendingPermissions.delete(key);
+			}
+		}
+		for (const [key, val] of this.pendingQuestions.entries()) {
+			if (val.sessionId === sessionId) {
+				this.pendingQuestions.delete(key);
+			}
+		}
 	}
 
 	/**

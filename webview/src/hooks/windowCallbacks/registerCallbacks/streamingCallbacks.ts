@@ -8,11 +8,18 @@
 import { startTransition } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendBridgeEvent, cardDebugLog } from '../../../utils/bridge';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
-import { parseSequence } from '../parseSequence';
+import { parseSequence, advanceMinAcceptedSequence } from '../sequenceBarrier';
 import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
+import { resolveSessionId } from '../../../utils/sessionIdentity';
+
+/**
+ * Per-session turn start timestamp registry to prevent cross-session timer pollution
+ * when users switch tabs during streaming.
+ */
+const sessionTurnStartTimes = new Map<string, number>();
 
 /**
  * Pour every tool_use_id carried by tool_result blocks inside one message's raw
@@ -119,7 +126,17 @@ export function collectUnresolvedToolUseIds(
 
       for (const tu of toolUses) {
         if (!existingResultIds.has(tu.id) && !window.__deniedToolIds?.has(tu.id)) {
-          idsToAdd.push(tu.id);
+          let resolvedElsewhere = false;
+          for (const m of messages) {
+            harvestToolResultIdsInto(m, existingResultIds);
+            if (existingResultIds.has(tu.id)) {
+              resolvedElsewhere = true;
+              break;
+            }
+          }
+          if (!resolvedElsewhere) {
+            idsToAdd.push(tu.id);
+          }
         }
       }
       break;
@@ -135,6 +152,32 @@ export function collectUnresolvedToolUseIds(
  * arrives for this duration while isStreamingRef is still true, the frontend
 
 /**
+ * Safely extracts raw content blocks from raw (handles object or JSON string).
+ */
+const getRawContentBlocks = (raw: unknown): unknown[] => {
+  if (!raw) return [];
+  let parsedRaw: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsedRaw = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!parsedRaw || typeof parsedRaw !== 'object') return [];
+  const content = (parsedRaw as { message?: { content?: unknown }; content?: unknown }).message?.content
+    ?? (parsedRaw as { content?: unknown }).content;
+  return Array.isArray(content) ? content : [];
+};
+
+/**
+ * Whether the raw field contains any content blocks (text, tool_use, thinking, etc.).
+ */
+function rawHasContent(raw: unknown): boolean {
+  return getRawContentBlocks(raw).length > 0;
+}
+
+/**
  * Whether a streaming assistant bubble has any renderable content yet.
  * An empty bubble (no text, no raw blocks) is an unfilled placeholder that can
  * be safely reused for a new turn instead of being left behind as a ghost.
@@ -143,38 +186,16 @@ function streamingBubbleHasContent(message: ClaudeMessage): boolean {
   if (typeof message.content === 'string' && message.content.trim().length > 0) {
     return true;
   }
-  const raw = message.raw;
-  if (raw && typeof raw === 'object') {
-    const content = (raw as { message?: { content?: unknown }; content?: unknown }).message?.content
-      ?? (raw as { content?: unknown }).content;
-    if (Array.isArray(content) && content.length > 0) return true;
-  }
-  return false;
+  return rawHasContent(message.raw);
 }
 
 // Helper to measure total text length from raw blocks (for comparing completeness).
 // Handles both object and JSON string formats of raw.
 type TextBlock = { type: 'text'; text: string };
-const hasTextBlocks = (value: unknown): value is { message: { content: TextBlock[] } } => {
-  if (!value || typeof value !== 'object') return false;
-  const msg = (value as { message?: unknown }).message;
-  if (!msg || typeof msg !== 'object') return false;
-  const content = (msg as { content?: unknown }).content;
-  return Array.isArray(content);
-};
 const getTextLenFromRaw = (raw: unknown): number => {
-  let parsedRaw: unknown = raw;
-  if (typeof raw === 'string') {
-    try {
-      parsedRaw = JSON.parse(raw);
-    } catch (error) {
-      console.warn('[Frontend] Failed to parse raw JSON for length comparison:', error);
-      return 0;
-    }
-  }
-  if (!hasTextBlocks(parsedRaw)) return 0;
-  return parsedRaw.message.content
-    .filter((b): b is TextBlock => b?.type === 'text' && typeof b.text === 'string')
+  const blocks = getRawContentBlocks(raw);
+  return blocks
+    .filter((b): b is TextBlock => (b as TextBlock)?.type === 'text' && typeof (b as TextBlock).text === 'string')
     .reduce((sum, b) => sum + b.text.length, 0);
 };
 
@@ -231,7 +252,37 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     window.__lastStreamActivityAt = Date.now();
   };
 
-  window.onStreamStart = (mode?: string | boolean) => {
+  window.onStreamStart = (arg0?: string | boolean, arg1?: string | boolean) => {
+    let targetSessionId: string | null = null;
+    let mode: string | boolean | undefined;
+
+    if (typeof arg1 !== 'undefined') {
+      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
+      mode = arg1;
+    } else if (typeof arg0 === 'boolean' || arg0 === 'replay') {
+      mode = arg0;
+    } else if (typeof arg0 === 'string') {
+      targetSessionId = arg0;
+    }
+
+    if (targetSessionId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      const now = Date.now();
+      sessionTurnStartTimes.set(targetSessionId, now);
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = true;
+          t.loading = true;
+          t.turnStartedAt = now;
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
     const isReplayStart = mode === 'replay' || mode === true;
     // Clear any stale pending updateMessages from previous turn.
@@ -248,7 +299,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Clear idempotency guard for the new turn
     window.__streamEndProcessedTurnId = undefined;
     // Record turn start time for duration calculation in onStreamEnd
-    window.__turnStartedAt = Date.now();
+    const turnNow = Date.now();
+    window.__turnStartedAt = turnNow;
+    const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    if (activeSessionId) {
+      sessionTurnStartTimes.set(activeSessionId, turnNow);
+    }
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     isStreamingRef.current = true;
@@ -405,7 +461,58 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     startStallWatchdog();
   };
 
-  window.onContentDelta = (delta: string) => {
+  window.onContentDelta = (arg0: string, arg1?: string) => {
+    const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
+    // An empty id is NOT "the active session". Routing a delta there is exactly
+    // how two concurrently-streaming sessions swapped text.
+    const targetSessionId = resolveSessionId(
+      typeof arg1 !== 'undefined' ? arg0 : null,
+      'onContentDelta',
+    );
+    if (targetSessionId === null) return;
+
+    if (window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = true;
+          t.loading = true;
+          // Copy-on-write: `updateBackgroundTab` clones the tab object but shares
+          // the messages array with whatever the active view may already hold.
+          // Mutating in place would let React skip a re-render after the user
+          // switches to this tab (the array reference never changed), silently
+          // dropping the deltas that arrived in between.
+          const messages = t.messages;
+          const lastIndex = messages && messages.length > 0 ? messages.length - 1 : -1;
+          const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
+          if (last && last.type === 'assistant') {
+            const next = messages.slice();
+            next[lastIndex] = { ...last, content: (last.content || '') + delta };
+            t.messages = next;
+          } else if (messages) {
+            t.messages = [...messages, {
+              type: 'assistant',
+              content: delta,
+              isStreaming: true,
+              timestamp: new Date().toISOString(),
+            }];
+          } else {
+            t.messages = [{
+              type: 'assistant',
+              content: delta,
+              isStreaming: true,
+              timestamp: new Date().toISOString(),
+            }];
+          }
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
@@ -413,7 +520,30 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     scheduleContentRaf();
   };
 
-  window.onThinkingDelta = (delta: string) => {
+  window.onThinkingDelta = (arg0: string, arg1?: string) => {
+    const delta = typeof arg1 !== 'undefined' ? arg1 : arg0;
+    const targetSessionId = resolveSessionId(
+      typeof arg1 !== 'undefined' ? arg0 : null,
+      'onThinkingDelta',
+    );
+    if (targetSessionId === null) return;
+
+    if (window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = true;
+          t.loading = true;
+          t.isThinking = true;
+        }
+      );
+      return;
+    }
+
     if (window.__sessionTransitioning) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
@@ -445,8 +575,94 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     });
   };
 
-  window.onStreamEnd = (sequence?: string | number) => {
-    if (window.__sessionTransitioning) return;
+  /**
+   * Re-dispatch a terminal that arrived while the UI was mid session-switch.
+   *
+   * The old code did `if (window.__sessionTransitioning) return;` — a terminal
+   * arriving during a switch was swallowed outright, which is one way a tab kept
+   * showing a spinner long after its turn had ended. A terminal is never safe to
+   * drop, so it is retried until the transition completes (bounded, so a stuck
+   * transition flag cannot spin forever).
+   */
+  const TRANSITION_DEFER_MAX_MS = 5000;
+  const deferUntilTransitionComplete = (retry: () => void): void => {
+    const startedAt = Date.now();
+    const tick = (): void => {
+      if (!window.__sessionTransitioning || Date.now() - startedAt > TRANSITION_DEFER_MAX_MS) {
+        retry();
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    setTimeout(tick, 50);
+  };
+
+  window.onStreamEnd = (arg0?: string | number, arg1?: string | number) => {
+    let targetSessionId: string | null = null;
+    let sequence: string | number | undefined;
+
+    if (typeof arg1 !== 'undefined') {
+      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
+      sequence = arg1;
+    } else if (typeof arg0 === 'number' || (typeof arg0 === 'string' && /^\d+$/.test(arg0))) {
+      sequence = arg0;
+    } else if (typeof arg0 === 'string') {
+      targetSessionId = arg0;
+    }
+
+    // A terminal with no identity is dropped rather than applied to the active
+    // tab: applying it there is how stopping session B cleared session A's
+    // spinner while leaving B's own tab spinning.
+    targetSessionId = resolveSessionId(targetSessionId, 'onStreamEnd');
+    if (targetSessionId === null) return;
+
+    if (window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+
+    if (window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      const turnStartedAt = sessionTurnStartTimes.get(targetSessionId);
+      sessionTurnStartTimes.delete(targetSessionId);
+      const streamEndedAt = Date.now();
+      const calculatedDurationMs = turnStartedAt ? streamEndedAt - turnStartedAt : undefined;
+
+      window.__sessionTabsStore.updateBackgroundTab(
+        (t) => t.sessionId === targetSessionId,
+        (t) => {
+          t.streamingActive = false;
+          t.loading = false;
+          const durMs = calculatedDurationMs ?? (t.turnStartedAt ? streamEndedAt - t.turnStartedAt : undefined);
+          t.turnStartedAt = null;
+
+          if (t.messages && t.messages.length > 0) {
+            for (let i = t.messages.length - 1; i >= 0; i--) {
+              const msg = t.messages[i];
+              if (msg && msg.type === 'assistant') {
+                msg.isStreaming = false;
+                if (durMs != null && msg.durationMs == null) {
+                  msg.durationMs = durMs;
+                }
+                break;
+              }
+            }
+            // Reconstruct turn metadata for background tab so turnUsage and duration are solidified
+            t.messages = reconstructTurnMetadata(t.messages);
+          }
+        }
+      );
+      // The turn is over: drop the archived streaming runtime. Keeping it would
+      // make the tab restore `isStreaming=true` the next time it is activated,
+      // leaving its spinner stuck forever.
+      window.__sessionTabsStore?.clearStreamingRuntimeFor?.(targetSessionId);
+      return;
+    }
+
+    if (window.__sessionTransitioning) {
+      deferUntilTransitionComplete(() => {
+        window.onStreamEnd?.(arg0 as string | number | undefined, arg1 as string | number | undefined);
+      });
+      return;
+    }
 
     // Idempotency guard: dual-path delivery (primary via flush callback +
     // fallback via Alarm) may send onStreamEnd twice for the same turn.
@@ -483,7 +699,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // The fallback path sends sequence=-1 which means "no sequence info" —
     // it should not participate in sequence tracking.
     if (parsedSequence != null && parsedSequence >= 0) {
-      window.__minAcceptedUpdateSequence = Math.max(window.__minAcceptedUpdateSequence ?? 0, parsedSequence);
+      advanceMinAcceptedSequence(targetSessionId, parsedSequence);
     }
     // Notify backend about stream completion for tab status indicator
     sendBridgeEvent('tab_status_changed', JSON.stringify({ status: 'completed' }));
@@ -516,15 +732,21 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       try {
         const parsed = JSON.parse(window.__pendingUpdateJson) as Array<Record<string, unknown>>;
         for (let i = parsed.length - 1; i >= 0; i--) {
-          if (parsed[i]?.type === 'assistant') {
-            const rawContent = parsed[i].content;
+          const msg = parsed[i];
+          // Stop scanning backwards if we cross a user prompt (which started this turn).
+          // Any assistant messages before a user prompt belong to previous turns!
+          if (msg?.type === 'user' && (!msg.content || (typeof msg.content === 'string' && msg.content.trim() !== '[tool_result]'))) {
+            break;
+          }
+          if (msg?.type === 'assistant') {
+            const rawContent = msg.content;
             const content = typeof rawContent === 'string' ? rawContent : '';
             if (content) {
               backendSnapshotContent = content;
-              const rawVal = parsed[i].raw;
-              if (rawVal != null && (typeof rawVal === 'object' || typeof rawVal === 'string')) {
-                backendSnapshotRaw = rawVal as ClaudeRawMessage | string;
-              }
+            }
+            const rawVal = msg.raw;
+            if (rawVal != null && (typeof rawVal === 'object' || typeof rawVal === 'string')) {
+              backendSnapshotRaw = rawVal as ClaudeRawMessage | string;
             }
             break;
           }
@@ -543,7 +765,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       } catch (error) {
         // __pendingUpdateJson is produced internally by the bridge; a parse failure
         // indicates an upstream contract violation worth surfacing for diagnosis.
-        console.warn('[Frontend] Failed to parse __pendingUpdateJson on stream end:', error);
+        cardDebugLog('[Frontend] Failed to parse __pendingUpdateJson on stream end:', error);
       }
     }
 
@@ -565,8 +787,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     const keysToCollapse = new Set(autoExpandedThinkingKeysRef.current);
 
     // Snapshot turn start time BEFORE entering the updater
-    const turnStartedAt = window.__turnStartedAt;
+    const currentActiveSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || options.currentSessionIdRef?.current;
+    const turnStartedAt = window.__turnStartedAt ?? (currentActiveSessionId ? sessionTurnStartTimes.get(currentActiveSessionId) : undefined);
     window.__turnStartedAt = undefined;
+    if (currentActiveSessionId) {
+      sessionTurnStartTimes.delete(currentActiveSessionId);
+    }
     // Snapshot stream-end time and derived values BEFORE the updater to keep it pure.
     // Date.now() / new Date() inside an updater are impure: React StrictMode double-invokes
     // updaters and would produce two different timestamps for the same stream end.
@@ -618,6 +844,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     streamingThinkingRef.current = '';
     autoExpandedThinkingKeysRef.current.clear();
 
+    // Drop the archived runtime for this session too. The refs above only cover
+    // the *live* copy; if this tab was activated after being archived, a stale
+    // snapshot would reinstate `isStreaming=true` on the next switch.
+    window.__sessionTabsStore?.clearStreamingRuntimeFor?.(targetSessionId);
+
     // Mark that streaming just ended - used by mergeConsecutiveAssistantMessages to
     // distinguish recently-ended streaming messages from true history messages.
     window.__lastStreamEndedTurnId = endedStreamingTurnId;
@@ -667,10 +898,15 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         // raw (updated by subsequent deltas) could actually be more up-to-date.
         let finalRaw = newMessages[idx].raw;
         if (endedBackendRaw != null) {
+          const backendTextLen = getTextLenFromRaw(endedBackendRaw);
+          const existingTextLen = getTextLenFromRaw(finalRaw);
+          const backendBlocks = getRawContentBlocks(endedBackendRaw);
+          const existingBlocks = getRawContentBlocks(finalRaw);
+          const preferBackendContent = backendTextLen > existingTextLen || (backendTextLen === existingTextLen && backendBlocks.length >= existingBlocks.length);
+
           if (typeof endedBackendRaw === 'object' && endedBackendRaw !== null) {
             const backendObj = endedBackendRaw as Record<string, unknown>;
             const currentObj = (finalRaw && typeof finalRaw === 'object' ? finalRaw : {}) as Record<string, unknown>;
-            const preferBackendContent = getTextLenFromRaw(endedBackendRaw) >= getTextLenFromRaw(finalRaw);
             finalRaw = {
               ...(preferBackendContent ? backendObj : currentObj),
               ...(backendObj.turnUsage ? { turnUsage: backendObj.turnUsage } : {}),
@@ -678,22 +914,26 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
               ...(backendObj.tokens ? { tokens: backendObj.tokens } : {}),
               ...(backendObj.durationMs !== undefined ? { durationMs: backendObj.durationMs } : {}),
             };
-          } else if (getTextLenFromRaw(endedBackendRaw) >= getTextLenFromRaw(finalRaw)) {
+          } else if (preferBackendContent) {
             finalRaw = endedBackendRaw;
           }
         }
-        const backendDuration = (endedBackendRaw && typeof (endedBackendRaw as Record<string, unknown>).durationMs === 'number')
-          ? ((endedBackendRaw as Record<string, unknown>).durationMs as number)
-          : undefined;
-        const effectiveDuration = backendDuration ?? durationMs;
-        newMessages[idx] = {
-          ...newMessages[idx],
-          content: finalContent,
-          raw: finalRaw,
-          isStreaming: false,
-          __turnId: endedStreamingTurnId, // Keep __turnId for merge guard
-          ...(effectiveDuration != null ? { durationMs: effectiveDuration } : {}),
-        };
+        const hasAnyContent = Boolean(
+          (typeof finalContent === 'string' && finalContent.trim().length > 0) ||
+          rawHasContent(finalRaw)
+        );
+        if (!hasAnyContent) {
+          newMessages.splice(idx, 1);
+        } else {
+          newMessages[idx] = {
+            ...newMessages[idx],
+            content: finalContent,
+            raw: finalRaw,
+            isStreaming: false,
+            __turnId: endedStreamingTurnId, // Keep __turnId for merge guard
+            ...(durationMs != null ? { durationMs } : {}),
+          };
+        }
       }
 
       // FIX: Merge tool_result user messages that were in the pending snapshot
@@ -819,7 +1059,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   // Permission denied callback — kept as a no-op for backward compatibility.
   //
-  // The backend (ClaudeChatWindow.interruptDueToPermissionDenial) always calls
+  // The backend (OpencodeBuddyChatWindow.interruptDueToPermissionDenial) always calls
   // onStreamEnd() immediately after this in the same EDT invokeLater block.
   // The merged onStreamEnd updater performs the interrupted-tool scan against
   // the authoritative finalized state, which supersedes anything this handler
@@ -832,7 +1072,13 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   // message starts within an ongoing stream (e.g., after tool_use loop iteration).
   // This prevents cross-turn content merging where new thinking/text deltas
   // would append to previous turn's buffered content.
-  window.onBlockReset = () => {
+  window.onBlockReset = (targetSessionId?: string) => {
+    if (targetSessionId && window.__sessionTabsStore) {
+      window.__sessionTabsStore.claimUnboundTab?.(targetSessionId);
+    }
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      return;
+    }
     if (!isStreamingRef.current) {
       // Stream not active, ignore (could be stale signal after stream ended)
       return;
@@ -863,5 +1109,71 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     lastThinkingUpdateRef.current = 0;
     // Clear auto-expanded thinking keys for the new turn
     autoExpandedThinkingKeysRef.current.clear();
+  };
+
+  window.onStreamingHeartbeat = (targetSessionId?: string) => {
+    if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+      return;
+    }
+    window.__lastStreamActivityAt = Date.now();
+  };
+
+  // ── [TURN_END]: the daemon's authoritative, per-session turn terminal ──────
+  //
+  // `onStreamEnd` is tied to one adapter's flush pipeline and is therefore
+  // suppressible: it can be swallowed by a session transition, lost when the
+  // serve process dies mid-turn, or never emitted for a turn that errored before
+  // it streamed. All three left a tab showing a spinner that nobody would ever
+  // clear — the third symptom.
+  //
+  // The daemon now emits [TURN_END] whenever a turn settles, for every session,
+  // carrying the session id and a turnId taken from the server's own
+  // `durable.seq` (monotonic per session, so no client-side counter to skew).
+  // Keyed on (sessionId, turnId) this is idempotent, so it is safe for it to
+  // arrive alongside — or instead of — onStreamEnd.
+  const processedTurnEndKeys = new Set<string>();
+
+  window.onTurnEnd = (targetSessionId: string, json?: string) => {
+    const sessionId = resolveSessionId(targetSessionId, 'onTurnEnd');
+    if (sessionId === null) return;
+
+    let turnId: string | number | undefined;
+    if (typeof json === 'string' && json.length > 0) {
+      try {
+        const parsed = JSON.parse(json) as { turnId?: string | number };
+        turnId = parsed.turnId;
+      } catch {
+        // Payload is metadata only; identity is what matters here.
+      }
+    }
+
+    const key = `${sessionId}#${turnId ?? 'none'}`;
+    if (processedTurnEndKeys.has(key)) return;
+    processedTurnEndKeys.add(key);
+    // Bounded: a long-lived window must not accumulate these forever.
+    if (processedTurnEndKeys.size > 256) {
+      processedTurnEndKeys.clear();
+    }
+
+    const tabsStore = window.__sessionTabsStore;
+    if (tabsStore && !tabsStore.isActiveSession(sessionId)) {
+      tabsStore.updateBackgroundTab(
+        (t) => t.sessionId === sessionId,
+        (t) => {
+          t.streamingActive = false;
+          t.loading = false;
+          t.isThinking = false;
+        }
+      );
+      return;
+    }
+
+    clearStallWatchdog();
+    setStreamingActive(false);
+    setLoading(false);
+    setLoadingStartTime(null);
+    setIsThinking(false);
+    // A turn that ended without its tool_result never gets one now.
+    finalizeUnresolvedToolUses();
   };
 }

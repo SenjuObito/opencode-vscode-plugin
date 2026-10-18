@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { ForwardedRef, MutableRefObject, RefObject } from 'react';
 import { cutSelection } from '../../../hooks/useContextMenu.js';
-import type { ChatInputBoxHandle, FileTagInfo } from '../types.js';
+import type { Attachment, ChatInputBoxHandle, FileTagInfo } from '../types.js';
 import { useChatInputImperativeHandle } from './useChatInputImperativeHandle.js';
 
 interface InlineCompletionController {
@@ -25,6 +25,13 @@ interface UseChatInputSelectionControllerOptions {
   clearInput: () => void;
   hasContent: boolean;
   extractFileTags: () => FileTagInfo[];
+  /** Attachments currently held by the input box (see ChatInputBoxHandle). */
+  attachments: Attachment[];
+  setAttachments: (attachments: Attachment[]) => void;
+  restoreFileTags: (tags: FileTagInfo[]) => void;
+  getQuotes?: () => Record<string, { text: string }>;
+  restoreQuoteTags?: (quotes?: Record<string, { text: string }>) => void;
+  renderQuoteTags?: () => void;
   inlineCompletion: InlineCompletionController;
   handleInput: () => void;
   ctxMenu: ContextMenuSelectionState;
@@ -43,6 +50,12 @@ export function useChatInputSelectionController({
   clearInput,
   hasContent,
   extractFileTags,
+  attachments,
+  setAttachments,
+  restoreFileTags,
+  getQuotes,
+  restoreQuoteTags,
+  renderQuoteTags,
   inlineCompletion,
   handleInput,
   ctxMenu,
@@ -104,6 +117,12 @@ export function useChatInputSelectionController({
     clearInput,
     hasContent,
     extractFileTags,
+    attachments,
+    setAttachments,
+    restoreFileTags,
+    getQuotes,
+    restoreQuoteTags,
+    renderQuoteTags,
   });
 
   return {

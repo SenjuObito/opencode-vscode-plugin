@@ -7,6 +7,8 @@
  * webview can render the summary card without ID matching.
  */
 
+import { cardDebugLog } from '../utils/bridge';
+
 export interface QuestionAnswerEntry {
   callId: string;
   requestId: string;
@@ -45,13 +47,34 @@ function notify(): void {
 // ── 公共 API ─────────────────────────────────────────────────────────────
 
 export function setQuestionAnswer(entry: QuestionAnswerEntry): void {
-  console.log(`[QuestionAnswerStore] setQuestionAnswer callId="${entry.callId}" requestId="${entry.requestId}" questions=${entry.questions.length} answers=`, entry.answers);
+  cardDebugLog(`[QuestionAnswerStore] setQuestionAnswer callId="${entry.callId}" requestId="${entry.requestId}" questions=${entry.questions.length} answers=`, entry.answers);
   store.set(entry.callId, entry);
   notify();
 }
 
 export function getQuestionAnswer(callId: string): QuestionAnswerEntry | undefined {
   const entry = store.get(callId);
-  console.log(`[QuestionAnswerStore] getQuestionAnswer callId="${callId}" found=${!!entry}`);
+  cardDebugLog(`[QuestionAnswerStore] getQuestionAnswer callId="${callId}" found=${!!entry}`);
   return entry;
+}
+
+export function removeQuestionAnswerByRequestId(requestId: string): void {
+  cardDebugLog(`[QuestionAnswerStore] removeQuestionAnswerByRequestId requestId="${requestId}"`);
+  let changed = false;
+  for (const [key, val] of store.entries()) {
+    if (val.requestId === requestId) {
+      store.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) {
+    notify();
+  }
+}
+
+export function clearQuestionAnswers(): void {
+  if (store.size > 0) {
+    store.clear();
+    notify();
+  }
 }

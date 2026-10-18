@@ -20,6 +20,7 @@ export interface AskUserQuestionRequest {
     multiSelect?: boolean;
   }[];
   provider?: 'opencode' | 'codex';
+  sessionId?: string;
 }
 
 interface AskUserQuestionDialogProps {
@@ -27,6 +28,7 @@ interface AskUserQuestionDialogProps {
   request: AskUserQuestionRequest | null;
   onSubmit: (requestId: string, answers: Record<string, string | string[]>) => void;
   onCancel: (requestId: string) => void;
+  onTimeout?: (requestId: string) => void;
   onUpdateHeight?: (height: number | null) => void;
   timeoutSeconds?: number;
 }
@@ -36,6 +38,7 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
   request,
   onSubmit,
   onCancel,
+  onTimeout,
   onUpdateHeight,
   timeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
 }) => {
@@ -53,8 +56,14 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
   const handleTimeout = useCallback(() => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    if (request) onCancel(request.requestId);
-  }, [request, onCancel]);
+    if (request) {
+      if (onTimeout) {
+        onTimeout(request.requestId);
+      } else {
+        onCancel(request.requestId);
+      }
+    }
+  }, [request, onTimeout, onCancel]);
 
   const {remainingSeconds, isTimeWarning, markSubmitted} = useDialogCountdownTimeout({
     isOpen,

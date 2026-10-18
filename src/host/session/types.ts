@@ -82,4 +82,9 @@ export interface SessionCallback {
 	 * payload 为 JSON 对象字符串。
 	 */
 	onRetryStatus?(payload: string): void;
+	/**
+	 * daemon 权威的回合终态（[TURN_END]）。
+	 * payload 为 JSON 对象字符串：{"sessionId":"ses_…","turnId":1042,"reason":"idle"|"aborted"|…}。
+	 */
+	onTurnEnd?(jsonContent: string): void;
 }

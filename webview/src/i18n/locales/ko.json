@@ -29,7 +29,6 @@
   "chat": {
     "sendMessage": "{{provider}}에게 메시지 보내기",
     "createNewSession": "새 세션 만들기",
-    "confirmNewSession": "현재 세션에 메시지가 있습니다. 새 세션을 만드시겠습니까?",
     "confirmInterrupt": "대화가 진행 중입니다. 새 세션을 만들면 중단됩니다. 계속하시겠습니까?",
     "requestInterrupted": "사용자가 요청을 중단했습니다",
     "uploadedFiles": "업로드된 파일: {{files}}",
@@ -326,7 +325,7 @@
       "permissionDialogTimeout": {
         "label": "권한 및 질문 대화 상자 제한 시간",
         "unit": "초",
-        "hint": "OpenCode 질문 대화 상자와 권한 요청 대화 상자의 제한 시간을 설정합니다(30~3600초). 제한 시간이 지나면 대화 상자가 자동으로 닫히고 OpenCode가 계속 진행합니다."
+        "hint": "OpenCode 질문 대화 상자와 권한 요청 대화 상자의 제한 시간을 설정합니다(30~3600초). 응답 없이 시간 초과되면 대화 상자가 자동으로 닫히고 세션이 중지됩니다."
       },
       "chatBgColor": {
         "label": "채팅 배경",
@@ -367,12 +366,6 @@
         "custom": "사용자 지정",
         "reset": "초기화",
         "hint": "내 메시지의 배경색을 사용자 지정합니다. 비워두면 테마 기본값을 따릅니다."
-      },
-      "newSessionConfirm": {
-        "label": "새 세션 생성 확인",
-        "enabled": "활성화",
-        "disabled": "비활성화",
-        "hint": "비활성화하면 메시지가 있는 세션에서 새로 만들기를 선택할 때 확인 대화 상자 없이 바로 새 세션을 만듭니다."
       },
       "compactConfirm": {
         "label": "세션 압축 시 확인",
@@ -1586,6 +1579,10 @@
     "parseError": "결과 분석 실패"
   },
   "reasoning": {
+    "default": {
+      "label": "기본값",
+      "description": "모델 기본값 사용"
+    },
     "cycleHint": "추론 강도 전환",
     "title": "추론 깊이 선택",
     "low": {
@@ -1668,6 +1665,24 @@
     "copyCommand": "복사",
     "copied": "복사됨",
     "recommended": "권장",
+    "codexThreadResume": {
+      "title": "세션 스레드가 더 이상 유효하지 않습니다",
+      "intro": "새 세션을 만들면 이 문제가 해결됩니다. 현재 세션의 스레드 ID가 Codex 서버에 더 이상 존재하지 않습니다.",
+      "reason": "Codex는 일정 시간이 지나면 오래된 스레드를 삭제하며, 이전 세션을 재개하려 할 때 이 오류가 발생할 수 있습니다."
+    },
+    "sdkNativeBinaryMissing": {
+      "title": "SDK 설치 불완전 — 네이티브 바이너리 누락",
+      "intro": "이것은 Taobao npm 미러의 알려진 문제입니다(플러그인 버그가 아님). 미러가 플랫폼별 파일을 완전히 동기화하지 않았습니다. 아래 방법 중 하나로 수동 해결할 수 있습니다:",
+      "reason": "Taobao 미러가 동기화를 완료하면 이 문제가 자동으로 사라집니다. 걱정하지 마세요.",
+      "solutions": {
+        "switchRegistry": {
+          "title": "방법 1: 임시로 공식 레지스트리로 전환 후 재설치",
+          "step0": "1. 터미널에서 실행 (npm 공식 레지스트리로 전환):",
+          "step1": "2. 플러그인 설정의 '종속성 관리'를 열고 재설치 클릭:",
+          "step2": "3. 재설치 완료 후 Taobao 미러로 복원:"
+        }
+      }
+    },
     "spawnEbusy": {
       "title": "spawn EBUSY — 자식 프로세스 시작 실패",
       "intro": "이 오류는 일반적으로 Node.js 버전 비호환성 또는 불완전한 SDK 설치로 인해 발생합니다. 아래 두 가지 방법을 순서대로 시도해 보세요:",
@@ -1678,6 +1693,11 @@
           "step0": "터미널에서 아래 명령어를 실행하여 버전을 확인하세요. Node 22 또는 현재 LTS를 권장합니다 — Node 24에서 많은 오류가 보고되었으므로 Node 20 또는 22를 우선 사용하세요:"
         }
       }
+    },
+    "opencodeQuotaExceeded": {
+      "title": "모델 사용 한도 초과",
+      "notice": "무료 사용량 또는 계정 할당량이 소진되었습니다. 모델을 전환하거나 구독을 업그레이드하세요.",
+      "upgrade": "구독 업그레이드"
     }
   },
   "openCodeModes": {

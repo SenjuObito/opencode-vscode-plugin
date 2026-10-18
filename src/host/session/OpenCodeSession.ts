@@ -10,6 +10,7 @@ import { SessionState, createMessage, normalizePermissionMode } from './SessionS
 import { CallbackHandler } from './CallbackHandler';
 import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
+import { SessionStreamRouter } from './SessionStreamRouter';
 import { SessionCallbackAdapter } from './SessionCallbackAdapter';
 import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
@@ -21,6 +22,8 @@ import type { ChatMessage, PermissionRequest } from './types';
 /** webview send_message / send_message_with_attachments 的 payload。 */
 export interface SendMessagePayload {
 	text: string;
+	sessionId?: string;
+	tabId?: string;
 	attachments?: Array<{ fileName?: string; mediaType?: string; data?: string }>;
 	fileTags?: Array<{ displayPath?: string; absolutePath?: string }> | null;
 	permissionMode?: string;
@@ -30,8 +33,11 @@ export interface SendMessagePayload {
 export interface OpenCodeSessionOptions {
 	context: HandlerContext;
 	daemon: OpenCodeDaemonBridge;
+	initialSessionId?: string | null;
 	/** 会话结束时（如新会话 / 销毁）额外清理钩子。 */
 	onSessionEnded?: () => void;
+	/** 真实会话 ID 变更时通知（由临时 ID 换成服务端真实 ID）。 */
+	onSessionIdChanged?: (oldSessionId: string | null, newSessionId: string) => void;
 	/** 权限/提问请求处理（Phase 4 接 webview 弹层）。 */
 	permissionHandler?: (request: PermissionRequest) => void;
 	/** 服务端已答复/取消未决 prompt（同步关闭 webview 卡片）。 */
@@ -57,6 +63,7 @@ export class OpenCodeSession {
 	private readonly context: HandlerContext;
 	private readonly daemon: OpenCodeDaemonBridge;
 	private readonly callbackHandler: CallbackHandler;
+	private readonly streamRouter: SessionStreamRouter;
 	private readonly messageHandler: MessageHandler;
 	private readonly adapter: SessionCallbackAdapter;
 	private readonly onSessionEnded?: () => void;
@@ -65,13 +72,10 @@ export class OpenCodeSession {
 	private readonly onTurnCompleted?: (info: TurnCompletedInfo) => void;
 	private readonly editorSelectionResolver?: () => string | null;
 
-	// 单轮流式状态（由 MarkerParser 维护）
-	private streamCtx: MarkerStreamContext = {
-		assistantContent: '',
-		hadSendError: false,
-		lastNodeError: null,
-		wasAborted: false,
-	};
+	// 单轮流式状态（由 SessionStreamRouter 维护）
+	private get streamCtx(): MarkerStreamContext {
+		return this.streamRouter.getStreamContext();
+	}
 	/** 当前正在进行的请求 ID，用于精准 abort */
 	private activeRequestId: string | null = null;
 
@@ -85,7 +89,8 @@ export class OpenCodeSession {
 		this.editorSelectionResolver = options.editorSelectionResolver;
 
 		this.callbackHandler = new CallbackHandler();
-		this.messageHandler = new MessageHandler(this.state, this.callbackHandler);
+		this.streamRouter = new SessionStreamRouter(this.state, this.callbackHandler);
+		this.messageHandler = this.streamRouter.getMessageHandler();
 		this.adapter = new SessionCallbackAdapter({
 			jsTarget: {
 				callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
@@ -95,8 +100,37 @@ export class OpenCodeSession {
 			streamEndCallback: () => this.onTurnEnded(),
 			permissionHandler: (request) => this.permissionHandler?.(request),
 			permissionClosedHandler: (kind, content) => this.permissionClosedHandler?.(kind, content),
+			onSessionIdReceived: (newId) => {
+				const oldId = this.state.getSessionId();
+				this.state.setSessionId(newId);
+				if (oldId !== newId) {
+					if (oldId && typeof this.daemon.unregisterSessionSink === 'function') {
+						this.daemon.unregisterSessionSink(oldId);
+					}
+					this.bindSessionSink(newId);
+					options.onSessionIdChanged?.(oldId, newId);
+				}
+			},
 		});
 		this.callbackHandler.setCallback(this.adapter);
+
+		if (options.initialSessionId) {
+			this.state.setSessionId(options.initialSessionId);
+			this.adapter.setSessionId(options.initialSessionId);
+			this.bindSessionSink(options.initialSessionId);
+		}
+	}
+
+	bindSessionSink(sessionId: string | null): void {
+		if (sessionId && sessionId.trim() !== '') {
+			if (typeof this.daemon.registerSessionSink === 'function') {
+				this.daemon.registerSessionSink(sessionId, this.streamRouter);
+			}
+		}
+	}
+
+	getStreamRouter(): SessionStreamRouter {
+		return this.streamRouter;
 	}
 
 	hasActiveRequest(): boolean {
@@ -172,12 +206,11 @@ export class OpenCodeSession {
 			this.adapter.onSummaryReceived(summary);
 		}
 
-		this.streamCtx = {
-			assistantContent: '',
-			hadSendError: false,
-			lastNodeError: null,
-			wasAborted: false,
-		};
+		const ctx = this.streamRouter.getStreamContext();
+		ctx.assistantContent = '';
+		ctx.hadSendError = false;
+		ctx.lastNodeError = null;
+		ctx.wasAborted = false;
 
 		const params: Record<string, unknown> = {
 			sessionId: this.state.getSessionId() ?? undefined,
@@ -218,7 +251,7 @@ export class OpenCodeSession {
 			},
 			onAbort: () => {
 				this.activeRequestId = null;
-				this.streamCtx.wasAborted = true;
+				this.streamRouter.getStreamContext().wasAborted = true;
 				this.messageHandler.onComplete({ messages: this.state.getMessages(), success: false });
 			},
 		});
@@ -251,12 +284,11 @@ export class OpenCodeSession {
 		this.adapter.onMessageUpdate(this.state.getMessages());
 		this.adapter.onStateChange(true, true, null);
 
-		this.streamCtx = {
-			assistantContent: '',
-			hadSendError: false,
-			lastNodeError: null,
-			wasAborted: false,
-		};
+		const shellCtx = this.streamRouter.getStreamContext();
+		shellCtx.assistantContent = '';
+		shellCtx.hadSendError = false;
+		shellCtx.lastNodeError = null;
+		shellCtx.wasAborted = false;
 
 		const params: Record<string, unknown> = {
 			sessionId: this.state.getSessionId() ?? undefined,
@@ -291,14 +323,14 @@ export class OpenCodeSession {
 			},
 			onAbort: () => {
 				this.activeRequestId = null;
-				this.streamCtx.wasAborted = true;
+				this.streamRouter.getStreamContext().wasAborted = true;
 				this.messageHandler.onComplete({ messages: this.state.getMessages(), success: false });
 			},
 		});
 	}
 
 	private processLine(line: string): void {
-		processOutputLine(line, this.messageHandler, this.streamCtx);
+		this.streamRouter.onLine(line);
 	}
 
 	/** 流式 turn 结束时的宿主侧回调（可在会话层面做延迟工作）。 */
@@ -454,6 +486,10 @@ export class OpenCodeSession {
 	}
 
 	dispose(): void {
+		const sessionId = this.state.getSessionId();
+		if (sessionId && typeof this.daemon.unregisterSessionSink === 'function') {
+			this.daemon.unregisterSessionSink(sessionId);
+		}
 		this.adapter.dispose();
 	}
 }

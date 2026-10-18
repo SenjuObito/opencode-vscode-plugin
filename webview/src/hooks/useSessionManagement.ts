@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
-import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
@@ -32,15 +31,15 @@ interface UseSessionManagementOptions {
   setIsThinking: (thinking: boolean) => void;
   setStreamingActive: (active: boolean) => void;
   setSessionLoading: (loading: boolean) => void;
-  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
-  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
   /** Clears async subagent task events so stale completions cannot leak across sessions. */
   setTaskEvents?: React.Dispatch<React.SetStateAction<TaskEventMap>>;
   /** Clears SSE todos so stale todo lists cannot leak across sessions. */
   setSseTodos?: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
   /** Clears polled sidechain histories so stale transcripts cannot leak across sessions. */
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
-  /** Resets selected model to first preferred (pinned) model for new session. */
+  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
+  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
+  /** Resets model selection to preferred first model on new session. */
   onResetToPreferredModel?: () => void;
   clearToasts: () => void;
   addToast: (message: string, type?: ToastType) => void;
@@ -48,14 +47,11 @@ interface UseSessionManagementOptions {
 }
 
 interface UseSessionManagementReturn {
-  showNewSessionConfirm: boolean;
   showInterruptConfirm: boolean;
   suppressNextStatusToastRef: React.MutableRefObject<boolean>;
   createNewSession: () => void;
   forceCreateNewSession: () => void;
   forceCreateNewSessionWithProvider: (providerId: string) => void;
-  handleConfirmNewSession: () => void;
-  handleCancelNewSession: () => void;
   handleConfirmInterrupt: () => void;
   handleCancelInterrupt: () => void;
   loadHistorySession: (sessionId: string) => void;
@@ -72,7 +68,7 @@ interface UseSessionManagementReturn {
  * Hook for managing session operations (create, load, delete, export, etc.)
  */
 export function useSessionManagement({
-  messages,
+  messages: _messages,
   loading,
   historyData,
   currentSessionId,
@@ -91,17 +87,16 @@ export function useSessionManagement({
   setIsThinking,
   setStreamingActive,
   setSessionLoading,
-  setIsCompacting,
-  setCompactingStartTime,
   setTaskEvents,
   setSseTodos,
   setSubagentHistories,
+  setIsCompacting,
+  setCompactingStartTime,
   onResetToPreferredModel,
   clearToasts,
   addToast,
   t,
 }: UseSessionManagementOptions): UseSessionManagementReturn {
-  const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showInterruptConfirm, setShowInterruptConfirm] = useState(false);
   const pendingActionRef = useRef<'newSession' | null>(null);
   const suppressNextStatusToastRef = useRef(false);
@@ -121,6 +116,7 @@ export function useSessionManagement({
   const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null) => {
     window.__sessionTransitioning = true;
     window.__sessionTransitionToken = createSessionTransitionToken();
+    window.__sessionTransitionTargetSessionId = nextSessionId;
     // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
     if (softReloadTimeoutRef.current !== null) {
       clearTimeout(softReloadTimeoutRef.current);
@@ -143,9 +139,6 @@ export function useSessionManagement({
       setIsCompacting?.(false);
       setCompactingStartTime?.(null);
     }
-    // Also explicitly reset compacting in all paths during session transition
-    setIsCompacting?.(false);
-    setCompactingStartTime?.(null);
     setMessages([]);
     if (nextSessionId !== null) {
       setSessionLoading(true);
@@ -176,6 +169,9 @@ export function useSessionManagement({
     setUsageUsedTokens(undefined);
     setUsageMaxTokens(undefined);
 
+    if (nextSessionId === null) {
+      onResetToPreferredModel?.();
+    }
 
     // FIX: Safety timeout to auto-release the session transition guard.
     // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
@@ -193,86 +189,53 @@ export function useSessionManagement({
         cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
         window.__sessionTransitioning = false;
         window.__sessionTransitionToken = null;
+        window.__sessionTransitionTargetSessionId = null;
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
-  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSubagentHistories]);
+  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
 
   // Create new session
   const createNewSession = useCallback(() => {
-    // If AI is responding, the previous session must be interrupted first;
-    // show the interrupt confirmation dialog.
+    // [FIX] Prioritize loading check - if AI is responding, must interrupt first
+    // This prevents creating new session without stopping the current conversation
     if (loading) {
+      // If loading (AI is responding), show interrupt confirmation.
       pendingActionRef.current = 'newSession';
       setShowInterruptConfirm(true);
-    } else if (messages.length > 0) {
-      // If the user previously ticked "don't ask again", skip the dialog and
-      // proceed directly. Preference is read fresh each call so the setting
-      // page toggle takes effect immediately.
-      if (getSkipNewSessionConfirm()) {
-        onResetToPreferredModel?.();
-        beginSessionTransition(null, null);
-        sendBridgeEvent('create_new_session');
-        return;
-      }
-      // If there are messages but not loading, show new session confirmation
-      pendingActionRef.current = 'newSession';
-      setShowNewSessionConfirm(true);
     } else {
-      // If empty and not loading, directly create new session
-      onResetToPreferredModel?.();
       beginSessionTransition(null, null);
       sendBridgeEvent('create_new_session');
     }
-  }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
+  }, [beginSessionTransition, loading]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
-    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('create_new_session');
-  }, [beginSessionTransition, loading, onResetToPreferredModel]);
+  }, [beginSessionTransition, loading]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
     if (loading) {
       sendBridgeEvent('interrupt_session');
     }
-    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('set_provider', providerId);
     sendBridgeEvent('create_new_session');
-  }, [beginSessionTransition, loading, onResetToPreferredModel]);
-
-  // Confirm new session
-  const handleConfirmNewSession = useCallback(() => {
-    setShowNewSessionConfirm(false);
-    if (loading) {
-      sendBridgeEvent('interrupt_session');
-    }
-    onResetToPreferredModel?.();
-    beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
-    pendingActionRef.current = null;
-  }, [beginSessionTransition, loading, onResetToPreferredModel]);
-
-  // Cancel new session
-  const handleCancelNewSession = useCallback(() => {
-    setShowNewSessionConfirm(false);
-    pendingActionRef.current = null;
-  }, []);
+  }, [beginSessionTransition, loading]);
 
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
+    // Send interrupt signal and create new session
     sendBridgeEvent('interrupt_session');
-    onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('create_new_session');
     pendingActionRef.current = null;
-  }, [beginSessionTransition, onResetToPreferredModel]);
+  }, [beginSessionTransition]);
 
   // Cancel interrupt
   const handleCancelInterrupt = useCallback(() => {
@@ -310,6 +273,7 @@ export function useSessionManagement({
       // the empty-state flash that occurs when __sessionTransitioning is false.
       window.__sessionTransitioning = true;
       window.__sessionTransitionToken = createSessionTransitionToken();
+      window.__sessionTransitionTargetSessionId = sessionId;
       window.__softSessionReloadInFlight = sessionId;
       cardDebugLog('[SessionManagement] AFTER: __sessionTransitioning=', window.__sessionTransitioning, 'token set');
       if (softReloadTimeoutRef.current !== null) {
@@ -325,6 +289,7 @@ export function useSessionManagement({
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
           window.__sessionTransitioning = false;
           window.__sessionTransitionToken = null;
+          window.__sessionTransitionTargetSessionId = null;
         }
       }, 5_000);
       sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
@@ -332,9 +297,22 @@ export function useSessionManagement({
       return;
     }
 
-    // Switching to a different session: let host SessionManager handle
-    // background preservation or lifecycle transition. Never interrupt blindly.
+    // Switching to a different session: in multi-session architecture,
+    // do not interrupt the in-flight background turn.
     cardDebugLog('[SessionManagement] different session, calling beginSessionTransition');
+    // Rebind the active tab to the incoming session BEFORE the transition.
+    //
+    // The outgoing session may still be streaming. `isActiveSession` resolves
+    // against `currentSessionIdRef`, but `updateBackgroundTab` matches on
+    // `tab.sessionId` — leaving the old binding in place would make the
+    // outgoing session's deltas land in the tab that now displays the new one,
+    // interleaving two conversations. Rebinding releases the old session, whose
+    // late deltas then fall through to the logged orphan path instead of
+    // corrupting the visible transcript.
+    const activeTabId = window.__sessionTabsStore?.getActiveTabId?.();
+    if (activeTabId) {
+      window.__sessionTabsStore?.updateTabSessionId?.(activeTabId, sessionId);
+    }
     beginSessionTransition(sessionId, session?.title ?? null);
     sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
     setCurrentView('chat');
@@ -365,23 +343,31 @@ export function useSessionManagement({
         };
       });
 
+      // Close open tab associated with deleted session
+      if (window.__sessionTabsStore) {
+        window.__sessionTabsStore.closeTabBySessionId?.(sessionId);
+      }
+
       // If deleted session is current session, clear messages and reset state
       if (sessionId === currentSessionId) {
         // [FIX] Send interrupt signal if AI is responding
         if (loading) {
           sendBridgeEvent('interrupt_session');
         }
-        onResetToPreferredModel?.();
-        beginSessionTransition(null, null);
-        startedSessionTransition = true;
-        // Set flag to suppress next updateStatus toast
-        suppressNextStatusToastRef.current = true;
-        sendBridgeEvent('create_new_session');
+        if (!window.__sessionTabsStore) {
+          beginSessionTransition(null, null);
+          startedSessionTransition = true;
+          // Set flag to suppress next updateStatus toast
+          suppressNextStatusToastRef.current = true;
+          sendBridgeEvent('create_new_session');
+        } else {
+          startedSessionTransition = true;
+        }
       }
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, onResetToPreferredModel]);
+  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast]);
 
   // Batch delete history sessions
   const deleteHistorySessions = useCallback((sessionIds: string[]) => {
@@ -413,20 +399,30 @@ export function useSessionManagement({
         };
       });
 
+      // Close open tab(s) associated with deleted session(s)
+      if (window.__sessionTabsStore) {
+        for (const sid of uniqueSessionIds) {
+          window.__sessionTabsStore.closeTabBySessionId?.(sid);
+        }
+      }
+
       if (currentSessionId && deletedSessionIds.has(currentSessionId)) {
         if (loading) {
           sendBridgeEvent('interrupt_session');
         }
-        onResetToPreferredModel?.();
-        beginSessionTransition(null, null);
-        startedSessionTransition = true;
-        suppressNextStatusToastRef.current = true;
-        sendBridgeEvent('create_new_session');
+        if (!window.__sessionTabsStore) {
+          beginSessionTransition(null, null);
+          startedSessionTransition = true;
+          suppressNextStatusToastRef.current = true;
+          sendBridgeEvent('create_new_session');
+        } else {
+          startedSessionTransition = true;
+        }
       }
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast, onResetToPreferredModel]);
+  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast]);
 
   // Export history session
   const exportHistorySession = useCallback((sessionId: string, title: string) => {
@@ -539,14 +535,11 @@ export function useSessionManagement({
   }, [setHistoryData]);
 
   return {
-    showNewSessionConfirm,
     showInterruptConfirm,
     suppressNextStatusToastRef,
     createNewSession,
     forceCreateNewSession,
     forceCreateNewSessionWithProvider,
-    handleConfirmNewSession,
-    handleCancelNewSession,
     handleConfirmInterrupt,
     handleCancelInterrupt,
     loadHistorySession,

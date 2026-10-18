@@ -69,6 +69,7 @@ interface HistoryViewProps {
   onToggleFavorite: (sessionId: string) => void; // Toggle favorite callback
   onUpdateTitle: (sessionId: string, newTitle: string) => void; // Update title callback
   onConvertToCliSession: (sessionId: string) => void; // Convert sidechain session to CLI session callback
+  onRetry?: () => void; // Reload/retry loading history data
 }
 
 const getComparableTimestamp = (timestamp: string | undefined) => {
@@ -116,8 +117,9 @@ const deduplicateHistorySessions = (sessions: HistorySessionSummary[]) => {
 
 const PAGE_SIZE = 20;
 
-const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSession, onDeleteSession, onDeleteSessions, onExportSession, onToggleFavorite, onUpdateTitle, onConvertToCliSession }: HistoryViewProps) => {
+const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSession, onDeleteSession, onDeleteSessions, onExportSession, onToggleFavorite, onUpdateTitle, onConvertToCliSession, onRetry }: HistoryViewProps) => {
   const { t } = useTranslation();
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight || 600);
   const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null); // Session ID pending deletion
@@ -134,6 +136,17 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(() => new Set());
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+
+  useEffect(() => {
+    if (historyData) {
+      setLoadTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLoadTimedOut(true);
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, [historyData]);
 
   // Clean up all timeout timers on unmount
   useEffect(() => {
@@ -431,6 +444,29 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
   }, []);
 
   if (!historyData) {
+    if (loadTimedOut) {
+      return (
+        <div className="messages-container" style={CENTER_BLOCK_STYLE}>
+          <div style={EMPTY_TEXT_STYLE}>
+            <div style={EMPTY_ICON_STYLE}>⏱️</div>
+            <div style={{ marginBottom: '12px' }}>{t('history.loadTimeout', '加载历史记录超时')}</div>
+            {onRetry && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setLoadTimedOut(false);
+                  onRetry();
+                }}
+              >
+                {t('history.retry', '重试')}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="messages-container" style={CENTER_BLOCK_STYLE}>
         <div style={EMPTY_TEXT_STYLE}>
@@ -446,7 +482,19 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       <div className="messages-container" style={CENTER_BLOCK_STYLE}>
         <div style={EMPTY_TEXT_STYLE}>
           <div style={EMPTY_ICON_STYLE}>⚠️</div>
-          <div>{historyData.error ?? t('history.loadFailed')}</div>
+          <div style={{ marginBottom: '12px' }}>{historyData.error ?? t('history.loadFailed')}</div>
+          {onRetry && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setLoadTimedOut(false);
+                onRetry();
+              }}
+            >
+              {t('history.retry', '重试')}
+            </button>
+          )}
         </div>
       </div>
     );

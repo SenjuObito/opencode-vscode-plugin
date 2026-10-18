@@ -5,7 +5,7 @@ import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
 import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
-import { useSession } from '../contexts/SessionContext';
+import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 
 interface UseDialogManagementOptions {
   t: TFunction;
@@ -20,6 +20,7 @@ interface UseDialogManagementReturn {
   handlePermissionApprove: (channelId: string) => void;
   handlePermissionApproveAlways: (channelId: string) => void;
   handlePermissionSkip: (channelId: string) => void;
+  handlePermissionTimeout: (channelId: string) => void;
   forceClosePermissionDialog: (requestId?: string | null) => void;
 
   // AskUserQuestion modal (top-level overlay; queue of pending requests)
@@ -29,6 +30,7 @@ interface UseDialogManagementReturn {
   openAskUserQuestionDialog: (request: AskUserQuestionRequest) => void;
   handleAskUserQuestionSubmit: (requestId: string, answers: Record<string, string | string[]>) => void;
   handleAskUserQuestionSkip: (requestId: string) => void;
+  handleAskUserQuestionTimeout: (requestId: string) => void;
   forceCloseAskUserQuestionDialog: (requestId?: string | null) => void;
 
   // PlanApproval dialog
@@ -78,19 +80,70 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   const currentAskUserQuestionRequestRef = useRef<AskUserQuestionRequest | null>(null);
   const pendingAskUserQuestionRequestsRef = useRef<AskUserQuestionRequest[]>([]);
 
-  // Dialogs are session-scoped: a session switch invalidates every pending request.
-  const { currentSessionId } = useSession();
-  const lastSessionIdRef = useRef(currentSessionId);
+  // Mount window.__dialogStore for tab-level permission/question persistence
   useEffect(() => {
-    if (currentSessionId === lastSessionIdRef.current) return;
-    lastSessionIdRef.current = currentSessionId;
-    setPendingPermissionRequests([]);
-    setCurrentPermissionRequest(null);
-    setPermissionDialogOpen(false);
-    setPendingAskUserQuestionRequests([]);
-    setCurrentAskUserQuestionRequest(null);
-    setAskUserQuestionDialogOpen(false);
-  }, [currentSessionId]);
+    window.__dialogStore = {
+      getSnapshot: () => ({
+        permissions: currentPermissionRequestRef.current
+          ? [currentPermissionRequestRef.current, ...pendingPermissionRequestsRef.current]
+          : [...pendingPermissionRequestsRef.current],
+        questions: currentAskUserQuestionRequestRef.current
+          ? [currentAskUserQuestionRequestRef.current, ...pendingAskUserQuestionRequestsRef.current]
+          : [...pendingAskUserQuestionRequestsRef.current],
+      }),
+      restore: (permissions: PermissionRequest[], questions: AskUserQuestionRequest[]) => {
+        if (permissions && permissions.length > 0) {
+          currentPermissionRequestRef.current = permissions[0];
+          setCurrentPermissionRequest(permissions[0]);
+          pendingPermissionRequestsRef.current = permissions.slice(1);
+          setPendingPermissionRequests(permissions.slice(1));
+          permissionDialogOpenRef.current = true;
+          setPermissionDialogOpen(true);
+        } else {
+          currentPermissionRequestRef.current = null;
+          setCurrentPermissionRequest(null);
+          pendingPermissionRequestsRef.current = [];
+          setPendingPermissionRequests([]);
+          permissionDialogOpenRef.current = false;
+          setPermissionDialogOpen(false);
+        }
+
+        if (questions && questions.length > 0) {
+          currentAskUserQuestionRequestRef.current = questions[0];
+          setCurrentAskUserQuestionRequest(questions[0]);
+          pendingAskUserQuestionRequestsRef.current = questions.slice(1);
+          setPendingAskUserQuestionRequests(questions.slice(1));
+          askUserQuestionDialogOpenRef.current = true;
+          setAskUserQuestionDialogOpen(true);
+        } else {
+          currentAskUserQuestionRequestRef.current = null;
+          setCurrentAskUserQuestionRequest(null);
+          pendingAskUserQuestionRequestsRef.current = [];
+          setPendingAskUserQuestionRequests([]);
+          askUserQuestionDialogOpenRef.current = false;
+          setAskUserQuestionDialogOpen(false);
+        }
+      },
+      clearActive: () => {
+        currentPermissionRequestRef.current = null;
+        setCurrentPermissionRequest(null);
+        pendingPermissionRequestsRef.current = [];
+        setPendingPermissionRequests([]);
+        permissionDialogOpenRef.current = false;
+        setPermissionDialogOpen(false);
+
+        currentAskUserQuestionRequestRef.current = null;
+        setCurrentAskUserQuestionRequest(null);
+        pendingAskUserQuestionRequestsRef.current = [];
+        setPendingAskUserQuestionRequests([]);
+        askUserQuestionDialogOpenRef.current = false;
+        setAskUserQuestionDialogOpen(false);
+      },
+    };
+    return () => {
+      delete window.__dialogStore;
+    };
+  }, []);
 
   // PlanApproval dialog state
   const [planApprovalDialogOpen, setPlanApprovalDialogOpen] = useState(false);
@@ -282,6 +335,24 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     closePermissionCurrent();
   }, [closePermissionCurrent, t, forceClosePermissionDialog]);
 
+  const handlePermissionTimeout = useCallback((channelId: string) => {
+    cardDebugLog(`[PCard][webview] timeout channelId=${channelId}`);
+    const activeReq = currentPermissionRequestRef.current;
+    if (activeReq?.channelId !== channelId) {
+      forceClosePermissionDialog(channelId);
+      return;
+    }
+    const sessionId = activeReq.sessionId;
+    sendBridgeEvent('permission_decision', JSON.stringify({
+      channelId,
+      allow: false,
+      remember: false,
+      rejectMessage: t('permission.timedOut', { defaultValue: '请求超时，已停止会话' }),
+    }));
+    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId }));
+    closePermissionCurrent();
+  }, [closePermissionCurrent, t, forceClosePermissionDialog]);
+
   // AskUserQuestion handlers — send the response (protocol unchanged) and close the dialog.
   // When the id is not the active dialog it is dropped from the pending queue instead.
   const handleAskUserQuestionSubmit = useCallback((requestId: string, answers: Record<string, string | string[]>) => {
@@ -304,6 +375,19 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
+  const handleAskUserQuestionTimeout = useCallback((requestId: string) => {
+    cardDebugLog(`[QCard][webview] timeout requestId=${requestId}`);
+    const activeReq = currentAskUserQuestionRequestRef.current;
+    if (activeReq?.requestId !== requestId) {
+      forceCloseAskUserQuestionDialog(requestId);
+      return;
+    }
+    const sessionId = activeReq.sessionId;
+    sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId }));
+    sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId }));
+    closeQuestionCurrent();
+  }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
+
   // (force-close helpers are defined above the handlers)
 
   // Host-side reply failure (e.g. "Permission request not found" / "Question request
@@ -311,6 +395,9 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   // down the same way forceClose does.
   const invalidateQuestionCard = useCallback((requestId: string) => {
     cardDebugLog(`[QCard][webview] invalidateQuestionCard requestId=${requestId}`);
+    if (requestId) {
+      removeQuestionAnswerByRequestId(requestId);
+    }
     forceCloseAskUserQuestionDialog(requestId ?? '');
   }, [forceCloseAskUserQuestionDialog]);
 
@@ -430,6 +517,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     handlePermissionApprove,
     handlePermissionApproveAlways,
     handlePermissionSkip,
+    handlePermissionTimeout,
     forceClosePermissionDialog,
 
     // AskUserQuestion modal
@@ -439,6 +527,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     openAskUserQuestionDialog,
     handleAskUserQuestionSubmit,
     handleAskUserQuestionSkip,
+    handleAskUserQuestionTimeout,
     forceCloseAskUserQuestionDialog,
 
     // PlanApproval dialog

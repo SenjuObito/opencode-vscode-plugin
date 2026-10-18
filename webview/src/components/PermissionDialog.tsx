@@ -13,6 +13,7 @@ export interface PermissionRequest {
   toolName: string;
   inputs: Record<string, unknown>;
   suggestions?: string[];
+  sessionId?: string;
 }
 
 interface PermissionDialogProps {
@@ -20,6 +21,7 @@ interface PermissionDialogProps {
   request: PermissionRequest | null;
   onApprove: (channelId: string) => void;
   onSkip: (channelId: string) => void;
+  onTimeout?: (channelId: string) => void;
   onApproveAlways?: (channelId: string) => void;
   timeoutSeconds?: number;
 }
@@ -67,6 +69,7 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
   request,
   onApprove,
   onSkip,
+  onTimeout,
   onApproveAlways,
   timeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
 }) => {
@@ -81,8 +84,14 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
   const handleTimeout = useCallback(() => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    if (request) onSkip(request.channelId);
-  }, [request, onSkip]);
+    if (request) {
+      if (onTimeout) {
+        onTimeout(request.channelId);
+      } else {
+        onSkip(request.channelId);
+      }
+    }
+  }, [request, onTimeout, onSkip]);
 
   const {remainingSeconds, isTimeWarning, markSubmitted} = useDialogCountdownTimeout({
     isOpen,

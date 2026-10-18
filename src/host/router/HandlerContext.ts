@@ -137,7 +137,26 @@ export class HandlerContext {
 		return this.fallbackWorkingDir ? this.fallbackWorkingDir() : null;
 	}
 
-	getSession(): OpenCodeSession | null {
+	private readonly sessions = new Map<string, OpenCodeSession>();
+
+	registerSession(id: string, session: OpenCodeSession): void {
+		if (id && session) {
+			this.sessions.set(id, session);
+		}
+	}
+
+	getSessionById(id: string): OpenCodeSession | null {
+		return this.sessions.get(id) ?? null;
+	}
+
+	removeSession(id: string): void {
+		this.sessions.delete(id);
+	}
+
+	getSession(id?: string): OpenCodeSession | null {
+		if (id) {
+			return this.sessions.get(id) ?? (this.sessionManager?.getSession(id) ?? null);
+		}
 		if (this.sessionManager) {
 			return this.sessionManager.getActiveSession();
 		}

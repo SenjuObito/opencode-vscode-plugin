@@ -74,4 +74,75 @@ describe('useUsageTracking', () => {
     // 兜底：解析失败也视为状态已知，避免永久卡在 loading。
     expect(result.current.daemonStatusLoaded).toBe(true);
   });
+
+  it('records daemonEngine status when payload carries it', () => {
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({
+            alive: true,
+            serveReady: true,
+            engine: {
+              state: 'v2',
+              locked: true,
+              blocking: false,
+              cliPath: 'C:\\tools\\opencode.cmd',
+              cliSource: 'settings',
+              cliVersion: 'opencode v2.0.27',
+              probePath: '/api/info',
+              httpStatus: 200,
+              apiVersion: 2,
+            },
+          }),
+        })
+      );
+    });
+
+    expect(result.current.daemonEngine?.state).toBe('v2');
+    expect(result.current.daemonEngine?.locked).toBe(true);
+    expect(result.current.daemonEngine?.cliVersion).toBe('opencode v2.0.27');
+  });
+
+  it('keeps unknown as a distinct state and warns about it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({
+            alive: true,
+            serveReady: false,
+            engine: {
+              state: 'unknown',
+              locked: false,
+              blocking: true,
+              reasonKind: 'cli-not-found',
+              reasonMessage: 'no opencode binary on any candidate path',
+            },
+          }),
+        })
+      );
+    });
+
+    expect(result.current.daemonEngine?.state).toBe('unknown');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('tolerates a payload without an engine field', () => {
+    const { result } = renderHook(() => useUsageTracking());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({ alive: true, serveReady: true }),
+        })
+      );
+    });
+
+    expect(result.current.daemonEngine).toBeNull();
+  });
 });

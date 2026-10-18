@@ -11,6 +11,7 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { PermissionMode, ReasoningEffort } from '../../../components/ChatInputBox/types';
 import { drainPendingSettings, startInitialSettingsRequest } from '../settingsBootstrap';
 import { clampPermissionDialogTimeoutSeconds } from '../../../utils/permissionDialogTimeout';
+import { cardDebugLog } from '../../../utils/bridge';
 
 export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -28,9 +29,20 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
     currentProviderRef,
   } = options;
 
-  window.onUsageUpdate = (json) => {
+  window.onUsageUpdate = (arg0: string, arg1?: string) => {
+    let targetSessionId: string | null = null;
+    let jsonStr: string = '';
+
+    if (typeof arg1 !== 'undefined') {
+      targetSessionId = typeof arg0 === 'string' ? arg0 : null;
+      jsonStr = typeof arg1 === 'string' ? arg1 : JSON.stringify(arg1);
+    } else {
+      targetSessionId = null;
+      jsonStr = typeof arg0 === 'string' ? arg0 : JSON.stringify(arg0);
+    }
+
     try {
-      const data = JSON.parse(json);
+      const data = JSON.parse(jsonStr);
       if (typeof data.percentage === 'number') {
         const used =
           typeof data.usedTokens === 'number'
@@ -46,25 +58,67 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
               : undefined;
 
         if (used !== undefined && max !== undefined && used > max * 2) {
-          console.warn(
+          cardDebugLog(
             '[Frontend] Usage data may be incorrect: used=' + used + ', max=' + max,
           );
         }
 
         const safePercentage = Math.max(0, Math.min(100, data.percentage));
+
+        // 兜底：Java 端未传 sessionId 时，沿用当前前端 active session，避免跨 tab 污染
+        if (!targetSessionId && window.__sessionTabsStore) {
+          targetSessionId = window.__sessionTabsStore.getActiveSessionId();
+        }
+
+        // If targetSessionId belongs to a background tab, update the background tab's data directly
+        if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+          window.__sessionTabsStore.updateBackgroundTab(
+            (t) => t.sessionId === targetSessionId,
+            (tab) => {
+              tab.usagePercentage = safePercentage;
+              tab.usageUsedTokens = used;
+              tab.usageMaxTokens = max;
+            }
+          );
+          return;
+        }
+
+        // Active tab (or no sessionId): update global UI state AND persist into the
+        // current active tab so tab-switching restores the correct per-tab
+        // model / maxTokens / usedTokens.
         setUsagePercentage(safePercentage);
         setUsageUsedTokens(used);
         setUsageMaxTokens(max);
+
+        if (window.__sessionTabsStore) {
+          const activeTabId = window.__sessionTabsStore.getActiveTabId();
+          const activeSessionId = window.__sessionTabsStore.getActiveSessionId();
+          const effectiveSessionId = targetSessionId || activeSessionId;
+          if (effectiveSessionId) {
+            window.__sessionTabsStore.updateBackgroundTab(
+              (t) => t.sessionId === effectiveSessionId || t.id === activeTabId,
+              (tab) => {
+                tab.usagePercentage = safePercentage;
+                tab.usageUsedTokens = used;
+                tab.usageMaxTokens = max;
+              }
+            );
+          }
+        }
       }
     } catch (error) {
       console.error('[Frontend] Failed to parse usage update:', error);
     }
   };
 
-  if (typeof window.__pendingUsageUpdate === 'string') {
-    const pending = window.__pendingUsageUpdate;
+  if (window.__pendingUsageUpdate) {
+    const pending = window.__pendingUsageUpdate as { arg0: string; arg1?: string } | string;
     delete window.__pendingUsageUpdate;
-    window.onUsageUpdate(pending);
+    if (typeof pending === 'object' && pending !== null && 'arg0' in pending) {
+      window.onUsageUpdate(pending.arg0, pending.arg1);
+    } else if (typeof pending === 'string') {
+      window.onUsageUpdate(pending);
+    }
   }
 
   const updateMode = (mode?: PermissionMode) => {
@@ -118,13 +172,20 @@ export function registerUsageModeCallbacks(options: UseWindowCallbacksOptions): 
   window.applyBackendTabState = (json: string) => {
     try {
       const state = JSON.parse(json) as Record<string, unknown>;
-      const provider = 'opencode';
+      // Normalize legacy 'codex' provider to 'opencode' for backward compatibility
+      const rawProvider = typeof state.provider === 'string' && state.provider.length > 0
+        ? state.provider
+        : 'opencode';
+      const provider = rawProvider === 'codex' ? 'opencode' : rawProvider;
 
       currentProviderRef.current = provider;
       setCurrentProvider(provider);
 
       if (typeof state.model === 'string' && state.model.length > 0) {
-        setSelectedOpenCodeModel(state.model);
+        const model = state.model;
+        // opencode-only：长上下文开关未接入，[1m] 只是恢复模型时的展示后缀。
+        const baseModel = model.endsWith('[1m]') ? model.slice(0, -4) : model;
+        setSelectedOpenCodeModel(baseModel);
       }
 
       updateMode(state.permissionMode as PermissionMode | undefined);

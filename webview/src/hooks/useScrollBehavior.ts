@@ -11,6 +11,7 @@ export interface UseScrollBehaviorOptions {
   messages: ClaudeMessage[];
   expandedThinking?: Record<string, boolean>;
   loading: boolean;
+  isCompacting?: boolean;
   streamingActive: boolean;
 }
 
@@ -37,6 +38,7 @@ export function useScrollBehavior({
   messages,
   expandedThinking,
   loading,
+  isCompacting,
   streamingActive,
 }: UseScrollBehaviorOptions): UseScrollBehaviorReturn {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -261,7 +263,7 @@ export function useScrollBehavior({
     } else {
       scrollToBottom();
     }
-  }, [currentView, messages, expandedThinking, loading, streamingActive, scrollToBottom, syncScrollAnchoring]);
+  }, [currentView, messages, expandedThinking, loading, isCompacting, streamingActive, scrollToBottom, syncScrollAnchoring]);
 
   // Cleanup scroll debounce on unmount
   useEffect(() => {

@@ -22,17 +22,20 @@ interface Window {
    */
   /**
    * Update messages from backend.
-   * The optional third argument is the host window base index (global message
-   * ordinal of snapshot[0], see SessionState windowing). When it changes
-   * between snapshots the webview performs a windowed splice instead of the
-   * legacy index-aligned merge. Absent = legacy semantics (base 0).
+   * Can be called with (json, sequence, baseIndex) or (sessionId, json, sequence, baseIndex).
    */
-  updateMessages?: (json: string, sequence?: string | number, baseIndex?: string | number) => void;
+  updateMessages?: (
+    arg0: string,
+    arg1?: string | number,
+    arg2?: string | number,
+    arg3?: string | number
+  ) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
-    json: string,
-    baseIndex: string | number,
-    sequence?: string | number,
+    arg0: string,
+    arg1: string | number,
+    arg2?: string | number,
+    arg3?: string | number
   ) => void;
   /**
    * Prepend an earlier history page (opencode restore paging / live window
@@ -61,34 +64,33 @@ interface Window {
   /**
    * Patch a single message UUID without re-sending the full message list.
    */
-  patchMessageUuid?: (content: string, uuid: string) => void;
+  patchMessageUuid?: (arg0: string, arg1: string, arg2?: string) => void;
 
   /**
    * Update status message
    */
-  updateStatus?: (text: string) => void;
+  updateStatus?: (arg0: string, arg1?: string) => void;
 
   /**
    * Report a server-side retry (rate limit / quota) for the running turn.
-   * Payload is a JSON object string:
-   * { sessionID, type, message, attempt, next, action }.
+   * Payload is a JSON object: { sessionID, type, message, attempt, next, action }.
    */
-  updateRetryStatus?: (payload: string) => void;
+  updateRetryStatus?: (arg0?: string, arg1?: string) => void;
 
   /**
    * Show loading indicator
    */
-  showLoading?: (value: string | boolean, turnStartTime?: string | number) => void;
+  showLoading?: (arg0: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Show thinking status
    */
-  showThinkingStatus?: (value: string | boolean) => void;
+  showThinkingStatus?: (arg0: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Show conversation summary/compaction notice
    */
-  showSummary?: (summary: string) => void;
+  showSummary?: (arg0: string, arg1?: string) => void;
 
   /**
    * Set history data
@@ -101,11 +103,9 @@ interface Window {
   onExportSessionData?: (json: string) => void;
 
   /**
-   * Clear all messages. The optional barrier sequence (the backend coalescer's
-   * post-reset updateSequence) advances __minAcceptedUpdateSequence so stale
-   * in-flight updateMessages from the previous session are rejected.
+   * Clear all messages.
    */
-  clearMessages?: (barrierSequence?: string | number) => void;
+  clearMessages?: (arg0?: string | number, arg1?: string | number) => void;
 
   /**
    * Add error message
@@ -132,7 +132,7 @@ interface Window {
    * History load complete callback - invoked when history messages finish loading.
    * Triggers Markdown re-rendering to fix incorrect rendering on first history load.
    */
-  historyLoadComplete?: (expectedMessageCount?: string | number) => void;
+  historyLoadComplete?: (arg0?: string | number, arg1?: string | number) => void;
   /** Legacy Codex callback — kept as no-op. Does NOT release session transition guard. */
   codexHistoryPageRenderComplete?: () => void;
   /** Begin a Codex history page transfer (paginated history loading). */
@@ -143,6 +143,8 @@ interface Window {
   completeCodexHistoryPage?: (json: string) => void;
   /** Early history completion buffered before React installs the real callback. */
   __pendingHistoryLoadComplete?: { expectedMessageCount?: string | number };
+  /** Early history list data buffered before React installs the real setHistoryData callback. */
+  __pendingHistoryData?: any;
   /** Number of messages in the latest full backend snapshot accepted by this page. */
   __lastAcceptedMessageCount?: number;
   /** Restored-history snapshot size that still needs a React commit acknowledgment. */
@@ -157,18 +159,13 @@ interface Window {
 
   /**
    * task_* SDK system event callback (async subagent lifecycle).
-   * Payload: { subtype: 'task_started'|'task_progress'|'task_notification',
-   *   task_id, tool_use_id, status?, summary?, usage?, output_file? }.
-   * task_notification carries the terminal status and result summary that the
-   * StatusPanel uses to mark a background (run_in_background) Agent subagent as completed.
    */
-  onTaskEvent?: (eventJson: string) => void;
+  onTaskEvent?: (arg0: string, arg1?: string) => void;
 
   /**
    * opencode todo.updated SSE event callback.
-   * Payload: { sessionID: string, todos: Array<{content, status, priority}> }.
    */
-  onTodoUpdated?: (payload: string) => void;
+  onTodoUpdated?: (arg0: string, arg1?: string) => void;
 
   /**
    * SDK-to-CLI session conversion result callback.
@@ -188,7 +185,7 @@ interface Window {
   /**
    * Set current session ID (for rewind feature)
    */
-  setSessionId?: (sessionId: string) => void;
+  setSessionId?: (sessionId: string, tabId?: string) => void;
 
   /**
    * Add toast notification (called from backend)
@@ -205,12 +202,12 @@ interface Window {
   };
 
   /**
-   * Usage statistics update callback
+   * Usage statistics update callback (supports (json) or (sessionId, json))
    */
-  onUsageUpdate?: (json: string) => void;
+  onUsageUpdate?: (arg0: string, arg1?: string) => void;
 
   /** Buffers the latest usage update received before React callbacks mount. */
-  __pendingUsageUpdate?: string;
+  __pendingUsageUpdate?: unknown;
 
   /**
    * Mode changed callback
@@ -247,6 +244,10 @@ interface Window {
    */
   onSoundFileSelected?: (json: string) => void;
 
+  /**
+   * Node.js path configuration callback
+   */
+  updateNodePath?: (path: string) => void;
 
   /**
    * Opencode commands / prompts callbacks
@@ -291,7 +292,7 @@ interface Window {
    * Revert state update callback - JSON `{ hasRevert: boolean, messageId?: string }`
    * where messageId is the opencode revert boundary (the undone user message).
    */
-  onRevertStateUpdate?: (json: string) => void;
+  onRevertStateUpdate?: (...args: any[]) => void;
 
   /**
    * Authoritative server-side deletion — JSON array of opencode message ids.
@@ -504,6 +505,39 @@ interface Window {
    * Update linkify/navigation capabilities used by Markdown rendering.
    */
   updateLinkifyCapabilities?: (json: string) => void;
+
+  /**
+   * Legacy windowed-JCEF repaint requested after its IntelliJ content tab is
+   * activated. Not used on OSR platforms, where Java drives the surface damage
+   * fence below instead.
+   */
+  onTabActivated?: () => void;
+
+  /**
+   * Strict two-frame OSR damage pulse, owned by a Java SurfaceFrameFence attempt
+   * token. Each function returns whether the mutation was applied for that exact
+   * token; Java only advances its paint gate after receiving the matching
+   * `surface_damage_applied` ack — never on executeJavaScript() returning.
+   */
+  __ccguiSurfaceDamagePhaseA?: (token: string) => boolean;
+  __ccguiSurfaceDamagePhaseB?: (token: string) => boolean;
+  __ccguiSurfaceDamageReplace?: (previousToken: string, nextToken: string) => boolean;
+  __ccguiSurfaceDamageFinish?: (token: string) => boolean;
+  __ccguiSurfaceDamageCancel?: (token: string, predecessorToken?: string) => boolean;
+
+  /**
+   * Request one more OSR surface publication of the current DOM (tab switch).
+   * Bumps the history render commit epoch, which is the only revision source the
+   * Java frame fence accepts.
+   */
+  __requestSurfaceRepublish?: () => void;
+
+  /**
+   * Rebuild the tab strip after a webview reload. Payload is
+   * `{"sessions":[{"sessionId":"..."}],"activeSessionId":"..."}` — the sessions
+   * Java still hosts in memory. Transcripts load on demand.
+   */
+  restoreSessionTabs?: (json: string) => void;
 
   /**
    * File path resolved callback - receives the resolved absolute path for a file link tooltip.
@@ -745,7 +779,7 @@ interface Window {
   /**
    * Revert/unrevert failure callback - receives JSON `{ op: 'undo' | 'redo', error? }`
    */
-  onRevertError?: (json: string) => void;
+  onRevertError?: (arg: any) => void;
 
   /**
    * Compact (summarize) session success callback
@@ -789,37 +823,43 @@ interface Window {
   /**
    * Stream start callback - called when streaming begins
    */
-  onStreamStart?: (mode?: string | boolean) => void;
+  onStreamStart?: (arg0?: string | boolean, arg1?: string | boolean) => void;
 
   /**
    * Content delta callback - called when a content delta is received
-   * @param delta The content delta string
    */
-  onContentDelta?: (delta: string) => void;
+  onContentDelta?: (arg0: string, arg1?: string) => void;
 
   /**
    * Thinking delta callback - called when a thinking delta is received
-   * @param delta The thinking delta string
    */
-  onThinkingDelta?: (delta: string) => void;
+  onThinkingDelta?: (arg0: string, arg1?: string) => void;
 
   /**
    * Block reset callback - called when a new assistant message starts within
-   * an ongoing stream (e.g., after a tool_use loop iteration). Frontend should
-   * clear streaming content refs to prevent cross-turn content merging.
+   * an ongoing stream.
    */
-  onBlockReset?: () => void;
+  onBlockReset?: (arg0?: string) => void;
 
   /**
    * Stream end callback - called when streaming ends
    */
-  onStreamEnd?: (sequence?: string | number) => void;
+  onStreamEnd?: (arg0?: string | number, arg1?: string | number) => void;
+  /**
+   * Daemon's authoritative per-session turn terminal.
+   *
+   * Carries the session id plus a JSON payload with `{ turnId, reason }`.
+   * Idempotent on `(sessionId, turnId)`: the daemon emits it once per settled
+   * turn regardless of whether the turn was streamed, errored, aborted or the
+   * serve process exited — the cases where `onStreamEnd` never arrived and a tab
+   * kept spinning.
+   */
+  onTurnEnd?: (targetSessionId: string, json?: string) => void;
 
   /**
-   * Streaming heartbeat callback - lightweight signal from backend during
-   * tool execution phases to prevent the stall watchdog from falsely triggering.
+   * Streaming heartbeat callback
    */
-  onStreamingHeartbeat?: () => void;
+  onStreamingHeartbeat?: (arg0?: string) => void;
 
   /**
    * Permission denied callback - called when permission is denied.
@@ -838,6 +878,7 @@ interface Window {
    * Set to true during new session creation to prevent stale callbacks from writing old messages via updateMessages.
    */
   __sessionTransitioning?: boolean;
+  __sessionTransitionTargetSessionId?: string | null;
 
   /**
    * Session transition token (debug/logging only).
@@ -913,7 +954,10 @@ interface Window {
   __pendingUpdateRaf?: number | null;
   __pendingUpdateJson?: string | null;
   __pendingUpdateSequence?: number | null;
+  /** Global fallback minimum accepted update sequence. Kept for backward compatibility. */
   __minAcceptedUpdateSequence?: number;
+  /** Per-session minimum accepted update sequence map, isolating sequence counters between sessions. */
+  __sessionMinAcceptedUpdateSequence?: Map<string, number> | Record<string, number>;
   /** Number of paged history messages prepended ahead of the backend session snapshot. */
   __prependedHistoryMessageCount?: number;
   /** Backend index represented by the first non-prepended message; zero means its full prefix is present. */
@@ -1143,6 +1187,46 @@ interface Window {
         }
   ) => void;
   __pendingCliModels?: unknown;
+
+  /**
+   * Multi-session tab store for routing background session events
+   */
+  __sessionTabsStore?: {
+    getActiveTabId: () => string;
+    getActiveSessionId: () => string | null;
+    getActiveTabAutoOpenFileEnabled?: () => boolean;
+    getTabs: () => any[];
+    isActiveSession: (sessionId: string | null | undefined) => boolean;
+    /**
+     * @returns true when a tab matched `predicate`. Callers must check this: a
+     *     false return means the write had nowhere to go.
+     */
+    updateBackgroundTab: (
+      predicate: (tab: any) => boolean,
+      updater: (tab: any) => void
+    ) => boolean;
+    updateTabSessionId: (tabId: string, sessionId: string) => void;
+    updateTabTitle: (sessionId: string, newTitle: string) => void;
+    closeTabBySessionId?: (sessionId: string) => void;
+    claimUnboundTab?: (targetSessionId: string) => boolean;
+    /**
+     * Archive the active tab's live streaming runtime before a session
+     * transition wipes it. The outgoing turn may still be running in the
+     * background and needs its accumulator when the user returns.
+     */
+    archiveActiveStreamingRuntime?: () => void;
+    /** Drop the archived runtime belonging to this session (called on stream end). */
+    clearStreamingRuntimeFor?: (sessionId: string) => void;
+  };
+
+  /**
+   * Dialog store for switching and preserving pending permissions/questions across session tabs
+   */
+  __dialogStore?: {
+    getSnapshot: () => { permissions: any[]; questions: any[] };
+    restore: (permissions: any[], questions: any[]) => void;
+    clearActive: () => void;
+  };
 }
 
 declare module 'mermaid' {

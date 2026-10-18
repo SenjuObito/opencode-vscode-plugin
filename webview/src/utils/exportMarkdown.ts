@@ -387,9 +387,6 @@ export function downloadJSON(content: string, filename: string): void {
   }
 }
 
-/**
- * Fallback: direct browser download
- */
 function fallbackBrowserDownload(content: string, filename: string): void {
   const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -401,3 +398,47 @@ function fallbackBrowserDownload(content: string, filename: string): void {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+export function convertMessagesToMarkdown(messages: ClaudeMessage[], sessionTitle: string): string {
+  const lines: string[] = [];
+  lines.push(`# ${sessionTitle || 'Chat Session'}\n`);
+  lines.push(`*Exported at: ${new Date().toLocaleString()}*\n`);
+  lines.push('---\n');
+
+  for (const msg of messages) {
+    if (msg.type === 'user') {
+      lines.push(`### 👤 User`);
+      lines.push(msg.content || '');
+      lines.push('\n---\n');
+    } else if (msg.type === 'assistant') {
+      lines.push(`### 🤖 Assistant`);
+      lines.push(msg.content || '');
+      lines.push('\n---\n');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function downloadMarkdown(content: string, filename: string): void {
+  const safeFilename = (filename.endsWith('.md') ? filename : `${filename}.md`).replace(/[/\\?%*:|"<>]/g, '_');
+  const payload = JSON.stringify({
+    content,
+    filename: safeFilename,
+  });
+
+  if (window.sendToJava) {
+    window.sendToJava(`save_json:${payload}`);
+  } else {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = safeFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+}
+

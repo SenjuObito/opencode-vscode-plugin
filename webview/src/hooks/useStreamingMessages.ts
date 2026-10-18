@@ -30,6 +30,13 @@ interface UseStreamingMessagesReturn {
   // Auto-expanded thinking keys
   autoExpandedThinkingKeysRef: React.MutableRefObject<Set<string>>;
 
+  // Boundary marking where trailing structural blocks (tool_use / tool_result)
+  // first appeared. Exposed so per-session runtime snapshots can exchange it.
+  trailingStructuralTextBoundaryRef: React.MutableRefObject<{
+    signature: string;
+    textLength: number;
+  } | null>;
+
   // Turn tracking
   streamingTurnIdRef: React.MutableRefObject<number>;
   turnIdCounterRef: React.MutableRefObject<number>;
@@ -386,6 +393,9 @@ export function useStreamingMessages(): UseStreamingMessagesReturn {
 
     // Auto-expanded thinking keys
     autoExpandedThinkingKeysRef,
+
+    // Trailing structural text boundary (exchanged on session switch)
+    trailingStructuralTextBoundaryRef,
 
     // Turn tracking
     streamingTurnIdRef,
