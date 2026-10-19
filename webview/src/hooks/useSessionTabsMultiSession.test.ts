@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useSessionTabs } from './useSessionTabs';
@@ -568,51 +569,75 @@ describe('useSessionTabs - history session loading', () => {
     expect(result.current.activeTabId).toBe(tab1Id);
   });
 
-  it('updates the unbound tab title when updateTabTitle arrives before sessionId is bound, and keeps it after binding', () => {
+  it('never routes a title to an unbound tab when no session matches', () => {
     const setCustomTitle = vi.fn();
-    const { result } = renderHook(() =>
-      useSessionTabs({
-        currentSessionId: null,
-        sessionTitle: '',
-        setCustomSessionTitle: setCustomTitle,
-        updateHistoryTitle: vi.fn(),
-        messages: emptyMessages,
-        setMessages: vi.fn(),
-        loading: false,
-        streamingActive: false,
-        isShared: false,
-        forceCreateNewSession: vi.fn(),
-        loadHistorySession: vi.fn(),
-        t: ((k: string, opts?: any) => opts?.defaultValue || k) as any,
-      } as any),
-    );
+    const { result } = renderTabs({ setCustomSessionTitle: setCustomTitle });
 
     // Initial draft tab has sessionId === null
     expect(result.current.tabs[0].sessionId).toBeNull();
     expect(result.current.tabs[0].title).toBe('新会话');
 
-    // OpenCode generates title before sessionId is bound to the tab
+    // A title for a session this tab is not bound to must be ignored.
     act(() => {
       window.__sessionTabsStore!.updateTabTitle('ses_new_123', 'AI生成的标题');
     });
 
-    // The unbound tab title must be updated!
-    expect(result.current.tabs[0].title).toBe('AI生成的标题');
-    expect(setCustomTitle).toHaveBeenCalledWith('AI生成的标题');
+    expect(result.current.tabs[0].title).toBe('新会话');
+    expect(setCustomTitle).not.toHaveBeenCalled();
 
-    // Later, setSessionId arrives and binds ses_new_123 to this tab
+    // Once the tab is bound, titles for that session apply normally.
     act(() => {
       window.__sessionTabsStore!.updateTabSessionId('tab-1', 'ses_new_123');
     });
-
-    expect(result.current.tabs[0].sessionId).toBe('ses_new_123');
-    expect(result.current.tabs[0].title).toBe('AI生成的标题');
-
-    // Subsequent title update for ses_new_123 matches normally
     act(() => {
       window.__sessionTabsStore!.updateTabTitle('ses_new_123', '更新后的标题');
     });
     expect(result.current.tabs[0].title).toBe('更新后的标题');
+  });
+
+  it('does not leak a background session title into a newly created unbound tab', () => {
+    const setCustomTitle = vi.fn();
+    const { result } = renderHook(() => {
+      const [sessionId, setSessionId] = useState<string | null>(null);
+      return useSessionTabs({
+        currentSessionId: sessionId,
+        setCurrentSessionId: setSessionId,
+        sessionTitle: '',
+        setCustomSessionTitle: setCustomTitle,
+        updateHistoryTitle: dummyFn,
+        messages: emptyMessages,
+        setMessages: dummyFn,
+        loading: false,
+        streamingActive: false,
+        isShared: false,
+        forceCreateNewSession: dummyFn,
+        loadHistorySession: dummyFn,
+        t: mockT,
+      } as any);
+    });
+
+    // Bind the first tab to session A, then create a second (unbound) draft tab.
+    act(() => {
+      store().updateTabSessionId('tab-1', 'ses_a');
+    });
+    act(() => {
+      result.current.createTab();
+    });
+    setCustomTitle.mockClear();
+
+    expect(result.current.tabs).toHaveLength(2);
+    expect(result.current.tabs[0].sessionId).toBe('ses_a');
+    expect(result.current.tabs[1].sessionId).toBeNull();
+
+    // The AI finishes titling session A while session B's draft is on screen.
+    act(() => {
+      store().updateTabTitle('ses_a', '会话 A 的标题');
+    });
+
+    // Only session A's tab changes; the draft tab must keep its placeholder.
+    expect(result.current.tabs[0].title).toBe('会话 A 的标题');
+    expect(result.current.tabs[1].title).toBe('新会话');
+    expect(setCustomTitle).not.toHaveBeenCalled();
   });
 });
 

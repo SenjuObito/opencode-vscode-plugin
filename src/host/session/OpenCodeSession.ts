@@ -6,7 +6,7 @@
  */
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { HandlerContext } from '../router/HandlerContext';
-import { SessionState, createMessage, normalizePermissionMode } from './SessionState';
+import { SessionState, createMessage, normalizePermissionMode, normalizeRequestedReasoningEffort } from './SessionState';
 import { CallbackHandler } from './CallbackHandler';
 import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
@@ -20,6 +20,9 @@ import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUs
 import { getModelContextLimit } from '../util/ModelContextLimits';
 import { logDiagnostic } from '../util/DiagnosticLogger';
 import type { ChatMessage, PermissionRequest } from './types';
+
+/** 回合结束后补拉标题的延迟：给 serve 生成 AI 标题留一点时间。 */
+const SESSION_TITLE_SYNC_DELAY_MS = 1500;
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
 export interface SendMessagePayload {
@@ -226,7 +229,7 @@ export class OpenCodeSession {
 				: { message: messageToSend }),
 			model: this.state.getModel() ?? undefined,
 			mode: normalizePermissionMode(this.state.getPermissionMode()) ?? undefined,
-			reasoningEffort: this.state.getReasoningEffort() ?? undefined,
+			reasoningEffort: normalizeRequestedReasoningEffort(this.state.getReasoningEffort()) ?? undefined,
 			cwd: cwd ?? undefined,
 			attachments: attachments.length > 0 ? attachments : undefined,
 		};
@@ -255,6 +258,12 @@ export class OpenCodeSession {
 					success,
 					error: this.streamCtx.lastNodeError,
 				});
+				// serve 的 AI 标题常常在这一轮结束之后才生成，而 [SESSION_TITLE]
+				// 只走 SSE 事件流——那批事件落在 sink 之外时前端永远收不到，
+				// tab 就一直停在「新会话」。这里主动问一次 serve 兜底。
+				if (success) {
+					this.syncSessionTitleAfterTurn();
+				}
 			},
 			onAbort: () => {
 				this.activeRequestId = null;
@@ -262,6 +271,79 @@ export class OpenCodeSession {
 				this.messageHandler.onComplete({ messages: this.state.getMessages(), success: false });
 			},
 		});
+	}
+
+	/**
+	 * 每个会话只补拉一次标题：避免每轮结束都多一次 daemon 往返。
+	 */
+	private readonly titleSyncedSessions = new Set<string>();
+
+	/**
+	 * 回合结束后补拉一次服务端标题。
+	 *
+	 * serve 生成 AI 标题的时机通常在回合之后，而 `[SESSION_TITLE]` 只由 SSE
+	 * 事件流驱动；那批事件一旦落在 session sink 之外（请求流已收尾），前端就
+	 * 永远收不到，tab 会一直停在「新会话」。这里主动问一次 serve 兜底。
+	 */
+	private syncSessionTitleAfterTurn(): void {
+		const sessionId = this.state.getSessionId();
+		if (!sessionId || this.titleSyncedSessions.has(sessionId)) {
+			return;
+		}
+		this.titleSyncedSessions.add(sessionId);
+		const timer = setTimeout(() => {
+			void this.fetchServerTitle(sessionId);
+		}, SESSION_TITLE_SYNC_DELAY_MS);
+		timer.unref?.();
+	}
+
+	private async fetchServerTitle(sessionId: string): Promise<void> {
+		const chunks: string[] = [];
+		try {
+			await new Promise<void>((resolve) => {
+				const ok = this.daemon.request(
+					'opencode.getSessionInfo',
+					{
+						sessionId,
+						directory: this.context.resolveEffectiveWorkingDirectory() ?? undefined,
+					},
+					{
+						onLine: (line) => chunks.push(line),
+						onError: () => resolve(),
+						onComplete: () => resolve(),
+					},
+				);
+				if (!ok) {
+					resolve();
+				}
+			});
+			const title = this.extractSessionTitle(chunks.join('\n'));
+			if (title) {
+				this.adapter.onSessionTitleReceived?.(sessionId, title);
+			}
+		} catch (err) {
+			logDiagnostic(`[SessionTitle] fallback fetch failed: ${String(err)}`);
+		}
+	}
+
+	/** 从 daemon `getSessionInfo` 的输出里取 `session.title`。 */
+	private extractSessionTitle(raw: string): string | null {
+		for (const line of raw.split(/\r?\n/).reverse()) {
+			const trimmed = line.trim();
+			if (!trimmed.startsWith('{')) {
+				continue;
+			}
+			try {
+				const obj = JSON.parse(trimmed) as { session?: { title?: unknown } };
+				const title = obj?.session?.title;
+				if (typeof title === 'string' && title.trim() !== '') {
+					return title.trim();
+				}
+			} catch {
+				// 跳过非 JSON 诊断行
+			}
+		}
+		return null;
 	}
 
 	/**

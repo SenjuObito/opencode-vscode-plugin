@@ -39,11 +39,21 @@ export const ButtonArea = ({
   }, [currentProvider, cliModels, cliCatalogHasEntries]);
 
   // 所选模型的 opencode variants（推理力度档位）。
-  const selectedModelInfo = availableModels.find((m) => m.id === selectedModel);
+  // Match loosely: the catalog may qualify the id (`xiaomi/mimo-v2.5`) while the
+  // persisted selection is bare (`mimo-v2.5`), or the other way round.
+  const selectedModelInfo = availableModels.find(
+    (m) => m.id === selectedModel
+      || m.id.endsWith('/' + selectedModel)
+      || selectedModel.endsWith('/' + m.id),
+  );
+  // Straight from the catalog: undefined stays undefined (serve has not told us),
+  // [] stays [] (serve says this model has no variants). No per-model guessing.
+  const modelVariants = selectedModelInfo?.variants;
+
   const availableReasoningLevels = getAvailableReasoningLevels(
     currentProvider,
     selectedModel,
-    selectedModelInfo?.variants,
+    modelVariants,
   );
 
   // Ctrl+T 循环切换推理力度（对齐 opencode TUI `variant_cycle` 原生键位）。
@@ -186,7 +196,7 @@ export const ButtonArea = ({
           onChange={handleReasoningChange}
           selectedModel={selectedModel}
           currentProvider={currentProvider}
-          modelVariants={selectedModelInfo?.variants}
+          modelVariants={modelVariants}
         />
       </div>
 

@@ -107,7 +107,10 @@ export function registerSessionCallbacks(
   window.updateSessionTitle = (sessionId: string, title: string) => {
     if (!title || !title.trim() || !sessionId) return;
     const cleanTitle = title.trim();
-    if (currentSessionIdRef.current === sessionId || !currentSessionIdRef.current) {
+    // Only the session that is actually on screen may drive the header title.
+    // An empty currentSessionId means the visible tab is still unbound (a new
+    // draft tab) and must not inherit a title generated for another session.
+    if (currentSessionIdRef.current === sessionId) {
       setCustomSessionTitle(cleanTitle);
     }
     window.__sessionTabsStore?.updateTabTitle?.(sessionId, cleanTitle);

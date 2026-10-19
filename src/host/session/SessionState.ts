@@ -26,10 +26,36 @@ export function normalizePermissionMode(mode: string | null | undefined): string
 	return trimmed === 'default' ? 'build' : trimmed;
 }
 
-const VALID_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+/**
+ * Canonical whitelist of recognized reasoning effort levels.
+ *
+ * `default` is not a real effort level: it means "send no variant at all", so
+ * opencode applies the model's own catalog settings (a session without an
+ * explicit variant reports back `variant: "default"`). It must be accepted
+ * here — otherwise it is dropped silently, leaving the previous level stored
+ * while the UI shows Default, and the next send would transmit that stale
+ * level. `normalizeRequestedReasoningEffort` turns it into null on the wire.
+ */
+const VALID_REASONING_EFFORTS = new Set(['default', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 export function isValidReasoningEffort(effort: string | null | undefined): boolean {
 	return effort != null && VALID_REASONING_EFFORTS.has(effort.trim());
+}
+
+/**
+ * Normalize a reasoning effort for an outbound request.
+ * Returns null for anything opencode should not receive: empty, unknown, or
+ * `default` (which means "omit the field and let the model decide").
+ */
+export function normalizeRequestedReasoningEffort(effort: string | null | undefined): string | null {
+	if (effort == null) {
+		return null;
+	}
+	const trimmed = effort.trim();
+	if (trimmed === '' || !isValidReasoningEffort(trimmed)) {
+		return null;
+	}
+	return trimmed === 'default' ? null : trimmed;
 }
 
 export class SessionState {

@@ -42,9 +42,18 @@ export class AgentHandler extends BaseMessageHandler {
 	}
 
 	private handleGetAgents(): void {
+		// Cache-first, same as the model list: serve 是唯一数据源，但 daemon
+		// 冷启动期间先渲染上一次成功拉取的列表，不要用 [] 抹掉前端已有缓存。
+		const cached = this.readCachedAgents();
+		if (cached.length > 0) {
+			this.pushAgents(cached);
+		}
+
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
-			this.pushAgents([]);
+			if (cached.length === 0) {
+				this.pushAgents([]);
+			}
 			return;
 		}
 
@@ -52,10 +61,16 @@ export class AgentHandler extends BaseMessageHandler {
 		const chunks: string[] = [];
 		void daemon.request('opencode.listAgents', { directory }, {
 			onLine: (line) => chunks.push(line),
-			onError: () => this.pushAgents([]),
+			onError: () => {
+				if (cached.length === 0) {
+					this.pushAgents([]);
+				}
+			},
 			onComplete: (success) => {
 				if (!success) {
-					this.pushAgents([]);
+					if (cached.length === 0) {
+						this.pushAgents([]);
+					}
 					return;
 				}
 				const payload = this.extractJsonObject(chunks.join('\n'));
@@ -78,9 +93,26 @@ export class AgentHandler extends BaseMessageHandler {
 					} as AgentItem;
 					})
 					.filter((a): a is AgentItem => a !== null);
+				if (agents.length > 0) {
+					this.context.getSettingsService().setAgentsCache(JSON.stringify(agents));
+				}
 				this.pushAgents(agents);
 			},
 		});
+	}
+
+	/** Read the last successful agent list from the workspace cache. */
+	private readCachedAgents(): AgentItem[] {
+		try {
+			const raw = this.context.getSettingsService().getAgentsCache();
+			if (!raw) {
+				return [];
+			}
+			const parsed = JSON.parse(raw) as unknown;
+			return Array.isArray(parsed) ? (parsed as AgentItem[]) : [];
+		} catch {
+			return [];
+		}
 	}
 
 	private pushAgents(agents: AgentItem[]): void {

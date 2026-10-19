@@ -497,30 +497,17 @@ export function useSessionTabs({
     (sessionId: string, newTitle: string) => {
       const trimmed = newTitle?.trim();
       if (!trimmed || !sessionId) return;
-      setTabs((prev) => {
-        const hasMatch = prev.some((tab) => tab.sessionId === sessionId || tab.id === sessionId);
-        return prev.map((tab) => {
-          if (hasMatch) {
-            if (tab.sessionId === sessionId || tab.id === sessionId) {
-              return { ...tab, title: trimmed };
-            }
-            return tab;
-          }
-          // 兜底：如果未找到对应 sessionId 的 tab，更新那个唯一的 sessionId 为 null 的新对话 tab
-          if (!tab.sessionId) {
-            return { ...tab, title: trimmed };
-          }
-          return tab;
-        });
-      });
-      const tabs = tabsRef.current;
-      const target = tabs.find((t) => t.sessionId === sessionId || t.id === sessionId)
-        || tabs.find((t) => !t.sessionId);
-      if (target) {
-        target.title = trimmed;
-        if (target.id === activeTabIdRef.current) {
-          setCustomSessionTitle(trimmed);
-        }
+      // Strict match: a title belongs only to the tab bound to that session.
+      // Never route a background session's title to an unbound draft tab — that
+      // made a newly created session inherit the previous session's AI title.
+      const target = tabsRef.current.find((t) => t.sessionId === sessionId);
+      if (!target) return;
+      setTabs((prev) =>
+        prev.map((tab) => (tab.sessionId === sessionId ? { ...tab, title: trimmed } : tab)),
+      );
+      target.title = trimmed;
+      if (target.id === activeTabIdRef.current) {
+        setCustomSessionTitle(trimmed);
       }
     },
     [setCustomSessionTitle]
@@ -914,12 +901,15 @@ export function useSessionTabs({
       // Restore input box draft. Order matters: text first, then attachments,
       // then file tags — `restoreFileTags` re-renders chips out of the restored
       // text, so it has to run last.
-      if (chatInputRef?.current?.setValue) {
-        chatInputRef.current.setValue(targetTab.draft?.text ?? '');
-        chatInputRef.current.setAttachments?.(targetTab.draft?.attachments ?? []);
-        chatInputRef.current.restoreFileTags?.(targetTab.draft?.fileTags ?? []);
-        chatInputRef.current.restoreQuoteTags?.(targetTab.draft?.quotes ?? {});
-      }
+      // The attachment restore is deliberately NOT gated behind `setValue`:
+      // attachments are the one piece of state that must never survive a tab
+      // switch, and gating it on any single handle made a missing ref silently
+      // leave the outgoing tab's uploads behind.
+      const inputHandle = chatInputRef?.current;
+      inputHandle?.setValue?.(targetTab.draft?.text ?? '');
+      inputHandle?.setAttachments?.(targetTab.draft?.attachments ?? []);
+      inputHandle?.restoreFileTags?.(targetTab.draft?.fileTags ?? []);
+      inputHandle?.restoreQuoteTags?.(targetTab.draft?.quotes ?? {});
 
       // Switching tabs must NEVER show "loading history session" in status bar
       setSessionLoading?.(false);
@@ -1119,6 +1109,11 @@ export function useSessionTabs({
       setUsageMaxTokens?.(undefined);
 
       chatInputRef?.current?.setValue?.('');
+      // Same as a brand-new tab: the restored session has no draft, so the
+      // outgoing tab's pending attachments must not ride along.
+      chatInputRef?.current?.setAttachments?.([]);
+      chatInputRef?.current?.restoreFileTags?.([]);
+      chatInputRef?.current?.restoreQuoteTags?.({});
       setCurrentView?.('chat');
 
       // Only opening explicitly from history drawer triggers the loading bar
@@ -1266,6 +1261,12 @@ export function useSessionTabs({
     setUsageMaxTokens?.(undefined);
 
     chatInputRef?.current?.setValue?.('');
+    // Attachments / file tags / quotes live inside the input box (uncontrolled
+    // mode): clearing only the text left the previous tab's pending uploads
+    // attached to the brand-new tab. Mirrors the draft restore in `selectTab`.
+    chatInputRef?.current?.setAttachments?.([]);
+    chatInputRef?.current?.restoreFileTags?.([]);
+    chatInputRef?.current?.restoreQuoteTags?.({});
     setSessionLoading?.(false);
     setCurrentView?.('chat');
 
@@ -1385,6 +1386,13 @@ export function useSessionTabs({
           setUsageUsedTokens?.(undefined);
           setUsageMaxTokens?.(undefined);
           setSessionLoading?.(false);
+          // Fresh tab after closing the last one: it has no draft, so the
+          // closed tab's text / pending attachments must not ride along.
+          const freshInput = chatInputRef?.current;
+          freshInput?.setValue?.('');
+          freshInput?.setAttachments?.([]);
+          freshInput?.restoreFileTags?.([]);
+          freshInput?.restoreQuoteTags?.({});
           // Last tab closed: the fresh tab must not inherit the dead session's
           // accumulator / turnId / message index.
           if (streamingRuntimeRefsRef.current) {
@@ -1457,6 +1465,15 @@ export function useSessionTabs({
             setUsagePercentage?.(nextActive.usagePercentage ?? 0);
             setUsageUsedTokens?.(nextActive.usageUsedTokens);
             setUsageMaxTokens?.(nextActive.usageMaxTokens);
+
+            // Closing the active tab moves the view to a sibling without going
+            // through `selectTab`, so the draft has to be restored here too —
+            // otherwise the closed tab's text and pending attachments stay put.
+            const siblingInput = chatInputRef?.current;
+            siblingInput?.setValue?.(nextActive.draft?.text ?? '');
+            siblingInput?.setAttachments?.(nextActive.draft?.attachments ?? []);
+            siblingInput?.restoreFileTags?.(nextActive.draft?.fileTags ?? []);
+            siblingInput?.restoreQuoteTags?.(nextActive.draft?.quotes ?? {});
 
             setSessionLoading?.(false);
 

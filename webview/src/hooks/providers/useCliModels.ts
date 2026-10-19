@@ -69,6 +69,12 @@ function fallbackModels(providerId: string): ModelInfo[] {
 
 function normalizeModels(raw: unknown): ModelInfo[] {
   if (!Array.isArray(raw)) return [];
+  // Detect whether the incoming catalog provides variant metadata (OpenCode v2 capability).
+  // In OpenCode v1 no model declares `variants`; in v2 every model declares them (possibly empty).
+  const catalogHasVariantsSupport = raw.some(
+    (item) => item && typeof item === 'object' && Array.isArray((item as Record<string, unknown>).variants),
+  );
+
   const out: ModelInfo[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
@@ -81,9 +87,26 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       ? row.label.trim()
       : id;
     const description = typeof row.description === 'string' ? row.description : undefined;
-    const variants = Array.isArray(row.variants)
-      ? row.variants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    // Three-state variants, kept distinct all the way down to ReasoningSelect:
+    //   []        → the model provably has no reasoning levels → hide the selector
+    //   undefined → the catalog cannot tell us (pure v1) → keep the legacy list
+    // Empty arrays must survive here: dropping them would erase the "this model
+    // cannot be tuned" fact and make the selector fall back to every level.
+    // The model id is never inspected — the serve catalog is the only source.
+    const rawVariants = Array.isArray(row.variants) ? row.variants : undefined;
+    const parsedVariants = rawVariants
+      ? rawVariants.filter((v: unknown): v is string => typeof v === 'string' && v.trim() !== '')
       : undefined;
+
+    let variants: string[] | undefined;
+    if (rawVariants !== undefined) {
+      variants = parsedVariants;
+    } else if (catalogHasVariantsSupport) {
+      variants = [];
+    } else {
+      variants = undefined;
+    }
+
     const rawContextWindow = Number(row.contextWindow);
     const contextWindow = Number.isInteger(rawContextWindow) && rawContextWindow > 0
       ? rawContextWindow
@@ -92,7 +115,7 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       id,
       label,
       description,
-      ...(variants && variants.length > 0 ? { variants } : {}),
+      ...(variants !== undefined ? { variants } : {}),
       ...(contextWindow ? { contextWindow } : {}),
     });
   }

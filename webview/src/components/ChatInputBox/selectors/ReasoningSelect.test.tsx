@@ -82,4 +82,64 @@ describe('ReasoningSelect', () => {
     const button = screen.getByRole('button');
     expect(button).toHaveProperty('disabled', true);
   });
+
+  it('hides the selector when modelVariants is empty', () => {
+    const { container } = render(
+      <ReasoningSelect
+        value="default"
+        onChange={vi.fn()}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={[]}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('hides the selector and resets effort to default when switching to a model without variants', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ReasoningSelect
+        value="high"
+        onChange={onChange}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={[]}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(onChange).toHaveBeenCalledWith('default');
+  });
+
+  it('keeps the selector hidden after the catalog lands with an empty variants list', () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(
+      <ReasoningSelect
+        value="high"
+        onChange={onChange}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={undefined}
+      />,
+    );
+
+    // Unknown support → legacy list, selector visible.
+    expect(screen.getByRole('button')).toBeTruthy();
+
+    rerender(
+      <ReasoningSelect
+        value="default"
+        onChange={onChange}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={[]}
+      />,
+    );
+
+    // Catalog says "no levels" → hide, and never dereference an empty currentLevel.
+    expect(container.firstChild).toBeNull();
+  });
 });

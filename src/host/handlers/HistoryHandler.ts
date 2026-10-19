@@ -14,6 +14,7 @@ import { truncateRawForTransport } from '../util/MessageJsonConverter';
 import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { logError, logWarn } from '../util/DiagnosticLogger';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
+import { isValidReasoningEffort } from '../session/SessionState';
 import {
 	getFavorites,
 	getSessions,
@@ -35,9 +36,6 @@ const SUPPORTED_TYPES = [
 	'load_earlier_messages',
 	'set_earlier_cursor',
 ];
-
-/** 与 webview ReasoningEffort 取值一致（variant → 推理力度为恒等映射）。 */
-const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /** 子代理轮询的 tail 窗口（消息条数）：运行中的 task tool_result 落在 transcript 尾部。 */
 const SUBAGENT_POLL_TAIL_MESSAGES = 200;
@@ -560,7 +558,9 @@ export class HistoryHandler extends BaseMessageHandler {
 							session.state.setPermissionMode(mode);
 							restored.permissionMode = mode;
 						}
-						if (variant && REASONING_EFFORTS.includes(variant)) {
+						// `default` 也是合法状态：serve 对未设 variant 的会话就这么回，
+						// 丢了会让 UI 显示 Default 而下次发送仍带旧档位。
+						if (variant && isValidReasoningEffort(variant)) {
 							session.state.setReasoningEffort(variant);
 							restored.reasoningEffort = variant;
 						}

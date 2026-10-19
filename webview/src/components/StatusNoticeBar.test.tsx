@@ -42,7 +42,7 @@ const retryPayload = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const QUOTA_TEXT = 'OpenCode 请求等待超时 (180s)。服务端返回：Free usage exceeded, subscribe to Go';
+const QUOTA_TEXT = 'Free usage exceeded, subscribe to Go';
 
 const quotaMessage = (overrides: Partial<ClaudeMessage> = {}): ClaudeMessage => ({
   type: 'error',
@@ -171,9 +171,25 @@ describe('StatusNoticeBar — terminal quota notice', () => {
 
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
     expect(screen.getByText('errorDiagnostic.opencodeQuotaExceeded.title')).toBeTruthy();
-    expect(screen.getByText('errorDiagnostic.opencodeQuotaExceeded.notice')).toBeTruthy();
+    expect(screen.getByText('Free usage exceeded, subscribe to Go')).toBeTruthy();
     // No inline diagnostic card, no retry chrome.
     expect(container.querySelector('.status-notice-bar--warning')).toBeNull();
+  });
+
+  it('prioritizes dynamic title and message from opencode server action', () => {
+    setRetryStatus(retryPayload({
+      action: {
+        title: 'Server Custom Quota Title',
+        message: 'Server custom explanation for quota exhaustion.',
+        link: 'https://opencode.ai/upgrade',
+      },
+    }));
+
+    const { container } = renderBar([quotaMessage()]);
+
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+    expect(screen.getByText('Server Custom Quota Title')).toBeTruthy();
+    expect(screen.getByText('Server custom explanation for quota exhaustion.')).toBeTruthy();
   });
 
   it('stays put across repeated full-snapshot rebuilds', () => {
@@ -219,7 +235,7 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     expect(next.querySelector('.status-notice-bar--error')).toBeTruthy();
   });
 
-  it('retires the notice when a new turn starts', () => {
+  it('keeps the notice visible across new turns unless manually dismissed by user', () => {
     // One stable snapshot: the notice key is derived from the message, so the
     // rerenders must hand over the *same* message (as a snapshot replay does).
     const message = quotaMessage();
@@ -228,11 +244,15 @@ describe('StatusNoticeBar — terminal quota notice', () => {
 
     messagesState.loading = true;
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
-    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
 
-    // ...and it must not come back once that turn settles.
+    // Turn settles: notice still stays visible because the user did not dismiss it
     messagesState.loading = false;
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+
+    // Explicitly dismissed by the close button: now it hides
+    fireEvent.click(container.querySelector('.status-notice-dismiss') as HTMLElement);
     expect(container.querySelector('.status-notice-bar--error')).toBeNull();
   });
 
@@ -272,6 +292,37 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
 
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+  });
+
+  it('isolates notice to the specific tab and does not show when switching to another tab without errors', () => {
+    const tabAMessage = quotaMessage({ content: QUOTA_TEXT, timestamp: '1000' });
+    const tabBMessage: ClaudeMessage = { type: 'user', content: 'hello in tab b', timestamp: '2000' };
+
+    // Tab A has quota error: notice is visible
+    sessionState.currentSessionId = 'ses_a';
+    const { container, rerender } = renderBar([tabAMessage]);
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+
+    // Switch to Tab B: no quota error in Tab B, notice is NOT visible
+    sessionState.currentSessionId = 'ses_b';
+    rerender(<StatusNoticeBar messages={[tabBMessage]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+
+    // Switch back to Tab A: notice reappears because it was not dismissed
+    sessionState.currentSessionId = 'ses_a';
+    rerender(<StatusNoticeBar messages={[tabAMessage]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+
+    // Close in Tab A: notice dismissed
+    fireEvent.click(container.querySelector('.status-notice-dismiss') as HTMLElement);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+
+    // Switching back and forth still keeps it dismissed for Tab A
+    sessionState.currentSessionId = 'ses_b';
+    rerender(<StatusNoticeBar messages={[tabBMessage]} getMessageText={getMessageText} />);
+    sessionState.currentSessionId = 'ses_a';
+    rerender(<StatusNoticeBar messages={[tabAMessage]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
   });
 
   it('stays hidden while a session is being restored', () => {

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  DEFAULT_REASONING_LEVEL,
   REASONING_LEVELS,
   getAvailableReasoningLevels,
   type ReasoningEffort,
@@ -74,19 +75,36 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     preferredAlignment: 'right',
   });
 
-  // Determine visibility: opencode：variants 已知时按档位有无判断（空列表视为不支持，隐藏选择器）。
-  const isVisible = modelVariants && modelVariants.length > 0
-    ? getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants).length > 0
-    : true;
+  // 唯一事实来源：先算档位，可见性直接由档位列表派生。
+  // 之前这里单独用 `modelVariants && modelVariants.length > 0` 判可见，与
+  // getAvailableReasoningLevels 的空列表语义不一致（variants 为 [] 时会得到
+  // 「可见但空列表」），导致 currentLevel 为 undefined 后崩溃。
+  const availableLevels = useMemo(
+    () => getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants),
+    [currentProvider, selectedModel, modelVariants],
+  );
 
-  // Build the list of available levels for the current model.
-  // opencode：按所选模型的 variants 动态取档；其他 provider 回退静态规则。
-  const availableLevels = getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants);
+  // opencode：variants 明确为空（serve 说这个模型没有档位）时隐藏选择器。
+  const isVisible = availableLevels.length > 0;
 
-  const currentLevel = availableLevels.find(l => l.id === value) || availableLevels[availableLevels.length - 2] || availableLevels[0];
+  // 模型切换后旧档位可能不存在；优先回退到 Default（不发送 variant，对所有模型合法），
+  // 而不是按位置取倒数第二档。
+  const currentLevel = useMemo(
+    () => availableLevels.find(l => l.id === value)
+      ?? availableLevels.find(l => l.id === DEFAULT_REASONING_LEVEL.id)
+      ?? availableLevels[0],
+    [availableLevels, value],
+  );
 
   useEffect(() => {
-    if (!isVisible || availableLevels.some(level => level.id === value)) {
+    if (!isVisible) {
+      // 隐藏时把残留档位落回 default，避免持久化一个当前模型不支持的 variant。
+      if (value !== 'default') {
+        onChange('default');
+      }
+      return;
+    }
+    if (availableLevels.some(level => level.id === value)) {
       return;
     }
     if (currentLevel) {
@@ -157,7 +175,8 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     }
   }, [isOpen, recalculate]);
 
-  if (!isVisible) return null;
+  // currentLevel 理论上与 availableLevels 同构，显式守卫一次，防止以后有人再拆开两处判定。
+  if (!isVisible || !currentLevel) return null;
 
   return (
     <div style={RELATIVE_INLINE_BLOCK_STYLE}>

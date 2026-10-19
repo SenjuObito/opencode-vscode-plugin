@@ -213,9 +213,12 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
+		// 第二参是本会话原来的临时键（tabId / 客户端 UUID）：webview 据此把
+		// 原 tab 精确改绑到真实 id，不能让它去猜「当前未绑定的 tab」。
+		const oldSessionId = this.sessionId;
 		this.setSessionId(sessionId);
 		this.options.onSessionIdReceived?.(sessionId);
-		this.jsTarget.callJavaScript('setSessionId', sessionId);
+		this.jsTarget.callJavaScript('setSessionId', sessionId, oldSessionId ?? '');
 	}
 
 	onSessionTitleReceived(sessionId: string, title: string): void {

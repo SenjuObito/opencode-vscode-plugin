@@ -167,9 +167,11 @@ export function activate(context: vscode.ExtensionContext) {
 	instance.context.setSessionFocuser((sessionId) => tabManager.revealSession(sessionId));
 
 	// 聊天标签是全局状态：落盘 + 跨视图广播。
-	instance.dispatcher.registerHandler(
-		new ChatTabHandler(instance.context, new ChatTabStore(context.workspaceState)),
-	);
+	// 开屏一律新会话：清掉上次的标签/会话绑定（对应 idea resetPersistedTabState），
+	// 否则首个视图挂载时会把上次的 sessionId 合并回 tab-1。旧会话仍可从历史列表打开。
+	const chatTabStore = new ChatTabStore(context.workspaceState);
+	chatTabStore.clear();
+	instance.dispatcher.registerHandler(new ChatTabHandler(instance.context, chatTabStore));
 
 	// 窗口重载后由 VS Code 归还已打开的对话窗口；它只是又一个视图，
 	// 内容由实例广播补齐，不再按 panel 绑会话。

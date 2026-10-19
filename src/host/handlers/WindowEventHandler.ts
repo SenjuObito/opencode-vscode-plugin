@@ -1068,7 +1068,10 @@ export class WindowEventHandler extends BaseMessageHandler {
 					} catch (e) {
 						// ignore catalog update error
 					}
-					this.callJavaScript('setCliModels', JSON.stringify(payload));
+					const json = JSON.stringify(payload);
+					// 落盘供下次冷启动 cache-first 渲染（serve 仍是唯一数据源）。
+					this.context.getSettingsService().setCliModelsCache(provider, json);
+					this.callJavaScript('setCliModels', json);
 					const models = Array.isArray(payload.models) ? payload.models : [];
 					resolve(models.length > 0);
 				},

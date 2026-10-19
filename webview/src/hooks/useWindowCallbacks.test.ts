@@ -343,6 +343,22 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setCustomSessionTitle).not.toHaveBeenCalled();
   });
 
+  it('updateSessionTitle does not title an unbound draft tab while currentSessionId is null', () => {
+    const opts = createOptions({
+      currentSessionIdRef: { current: null },
+    });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.updateSessionTitle!('sess-running', 'Title from the previous session');
+    });
+
+    // A newly created tab has no session yet; a title generated for the
+    // background session must not become the visible tab's title.
+    expect(opts.setCustomSessionTitle).not.toHaveBeenCalled();
+    expect(opts.applyHistoryTitleLocal).toHaveBeenCalledWith('sess-running', 'Title from the previous session');
+  });
+
   it('updateSessionTitle skips empty / whitespace-only titles', () => {
     const opts = createOptions({
       currentSessionIdRef: { current: 'sess-123' },

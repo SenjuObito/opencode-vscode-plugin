@@ -180,6 +180,33 @@ export class SettingsService {
 		this.store.setGlobal('lastReasoningEffort', effort ?? '');
 	}
 
+	// ── 模型清单缓存（workspace 级）────────────────────────────────────────
+	// serve 是唯一数据源；这里只保存上一次成功拉取的原始 payload（含 variants
+	// 三态与 contextWindow），供 daemon/serve 尚未就绪时先渲染，随后异步刷新覆盖。
+	// 与 idea 插件的 PropertiesComponent `opencode.cliModelsCache.<provider>` 同义。
+
+	getCliModelsCache(provider: string): string | null {
+		const value = this.store.getWorkspace(`cliModelsCache:${provider}`);
+		return typeof value === 'string' && value !== '' ? value : null;
+	}
+
+	setCliModelsCache(provider: string, payload: string | null): void {
+		this.store.setWorkspace(`cliModelsCache:${provider}`, payload ?? '');
+	}
+
+	// ── agent 列表缓存（workspace 级）───────────────────────────────────────
+	// 同样是 serve 数据的上一次成功快照：daemon 拉不到时保留已解析的列表，
+	// 不清空前端缓存（否则自定义 primary agent 会在重启后短暂消失）。
+
+	getAgentsCache(): string | null {
+		const value = this.store.getWorkspace('agentsCache');
+		return typeof value === 'string' && value !== '' ? value : null;
+	}
+
+	setAgentsCache(payload: string | null): void {
+		this.store.setWorkspace('agentsCache', payload ?? '');
+	}
+
 	// ── 声音通知（全局）───────────────────────────────────────────────────
 
 	getSoundNotificationEnabled(): boolean {

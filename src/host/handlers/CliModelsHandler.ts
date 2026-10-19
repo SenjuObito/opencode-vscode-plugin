@@ -35,9 +35,20 @@ export class CliModelsHandler extends BaseMessageHandler {
 	}
 
 	private async listModels(provider: string): Promise<void> {
+		// Cache-first: serve 是唯一数据源，但 daemon/serve 冷启动要往返一次，
+		// 这期间先渲染上一次成功拉取的清单（idea 插件的同款行为），避免
+		// "模型列表为空 → 推理档位未知"的窗口。
+		const cached = this.readCachedPayload(provider);
+		if (cached) {
+			this.primeCatalog(cached);
+			this.callJavaScript('setCliModels', JSON.stringify(cached));
+		}
+
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
-			this.pushError(provider, 'Daemon not ready');
+			if (!cached) {
+				this.pushError(provider, 'Daemon not ready');
+			}
 			return;
 		}
 
@@ -45,15 +56,23 @@ export class CliModelsHandler extends BaseMessageHandler {
 		const ok = await daemon.request('opencode.getModels', {}, {
 			onLine: (line) => chunks.push(line),
 			onError: (error) => {
-				this.pushError(provider, error);
+				// 已有缓存时保持静默：前端已经有可用清单，不必显示错误态。
+				if (!cached) {
+					this.pushError(provider, error);
+				}
 			},
 			onComplete: (success) => {
 				if (!success) {
+					if (!cached) {
+						this.pushError(provider, 'Failed to list models');
+					}
 					return;
 				}
 				const payload = this.extractJsonObject(chunks.join('\n'));
 				if (!payload) {
-					this.pushError(provider, 'No model list JSON in opencode.getModels output');
+					if (!cached) {
+						this.pushError(provider, 'No model list JSON in opencode.getModels output');
+					}
 					return;
 				}
 				if (typeof payload.provider !== 'string' || payload.provider === '') {
@@ -62,11 +81,40 @@ export class CliModelsHandler extends BaseMessageHandler {
 				// Teach the context-window catalog before the webview sees the list,
 				// so the very next usage push resolves the real model limit.
 				this.primeCatalog(payload);
-				this.callJavaScript('setCliModels', JSON.stringify(payload));
+				const json = JSON.stringify(payload);
+				this.context.getSettingsService().setCliModelsCache(provider, json);
+				this.callJavaScript('setCliModels', json);
 			},
 		});
-		if (!ok) {
+		if (!ok && !cached) {
 			this.pushError(provider, 'Daemon unavailable for model list');
+		}
+	}
+
+	/**
+	 * Read the last successful payload from the workspace cache.
+	 * Returns a parsed object only when it still looks usable — a stale entry
+	 * must never resurrect an empty list or an error payload.
+	 */
+	private readCachedPayload(provider: string): Record<string, unknown> | null {
+		try {
+			const raw = this.context.getSettingsService().getCliModelsCache(provider);
+			if (!raw) {
+				return null;
+			}
+			const payload = JSON.parse(raw) as Record<string, unknown>;
+			if (!payload || payload.success === false) {
+				return null;
+			}
+			if (!Array.isArray(payload.models) || payload.models.length === 0) {
+				return null;
+			}
+			if (typeof payload.provider !== 'string' || payload.provider === '') {
+				payload.provider = provider;
+			}
+			return payload;
+		} catch {
+			return null;
 		}
 	}
 

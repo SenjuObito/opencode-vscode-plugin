@@ -10,7 +10,9 @@ import type {
 import { readPinnedModelIds } from '../../components/ChatInputBox/modelSelectUtils';
 
 const STORAGE_KEY = 'model-selection-state';
-const REASONING_VALUES = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+// 'default' is a real persisted state ("send no variant"), not a level: without
+// it a restored session would silently fall back to some other effort.
+const REASONING_VALUES = ['default', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && (REASONING_VALUES as readonly string[]).includes(value);

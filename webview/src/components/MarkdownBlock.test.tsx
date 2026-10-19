@@ -1,3 +1,9 @@
+// Must run under jsdom, not the default happy-dom. DOMPurify drops a leading
+// <pre> element when it sanitizes against happy-dom (<pre><code>x</code></pre>
+// sanitizes to <code>x</code>), which makes every code-fence and display-math
+// assertion fail. jsdom preserves it, matching the real browser the webview
+// runs in.
+// @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MarkdownBlock from './MarkdownBlock';

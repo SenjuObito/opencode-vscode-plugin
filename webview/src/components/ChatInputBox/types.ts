@@ -313,34 +313,21 @@ export const DEFAULT_REASONING_LEVEL: ReasoningInfo = {
  * the user can always get back to "no variant sent". It is not part of any
  * catalog; opencode only reports `variant: "default"` once the field is absent.
  *
- * Three states are distinguished on purpose:
+ * The catalog is the only source of truth for what a model supports — the UI
+ * never guesses from the model id:
  *   - `undefined` → support unknown (opencode v1 ships no variant catalog) →
  *     keep the legacy list, plus Default
  *   - `[]`        → this model has no variants → return empty so the selector
  *     hides. Falling back to the full list here is what let users pick `high`
- *     on models that do not offer it. Default is not injected either: a
- *     dropdown with a single "Default" option says nothing useful, and hiding
- *     it tells the truth — this model cannot be tuned.
+ *     on models that do not offer it.
  *   - `[...]`     → render exactly what the model offers, plus Default
  */
-/**
- * Check if a model is known to not support reasoning effort variants (e.g. MiMo).
- */
-export function isKnownNonReasoningModel(modelId?: string): boolean {
-  if (!modelId) return false;
-  const lower = modelId.toLowerCase();
-  return lower.includes('mimo');
-}
-
 export function getAvailableReasoningLevels(
   _provider?: string,
-  selectedModel?: string,
+  _selectedModel?: string,
   modelVariants?: string[],
 ): ReasoningInfo[] {
   if (modelVariants === undefined) {
-    if (isKnownNonReasoningModel(selectedModel)) {
-      return [];
-    }
     return [DEFAULT_REASONING_LEVEL, ...REASONING_LEVELS];
   }
   if (modelVariants.length === 0) {

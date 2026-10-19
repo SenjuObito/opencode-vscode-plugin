@@ -22,6 +22,8 @@ const DIR_SCAN_MAX_DEPTH = 3;
 const DIR_SCAN_MAX_ENTRIES = 3000;
 const RESULT_LIMIT = 50;
 const FIND_FILES_LIMIT_PER_ROOT = 2000;
+/** serve 的 fs.find 只作兜底：给它一个上限，宁可回空也不要把 @ 列表卡死。 */
+const DAEMON_FIND_TIMEOUT_MS = 2500;
 const EXCLUDED_DIR_NAMES = new Set([
 	'node_modules', '.git', '.idea', '.vscode', '.vs', 'dist', 'out',
 	'build', 'target', '.next', '.nuxt', 'coverage', '__pycache__',
@@ -119,18 +121,55 @@ export class FileHandler extends BaseMessageHandler {
 		}
 
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		void this.findViaDaemon(query, directory)
+		// Local-first, and ALWAYS reply (idea `FileHandler` semantics):
+		// a serve round-trip per keystroke is not bounded — when the daemon hangs
+		// the old "daemon first" path never answered at all, the frontend hit its
+		// 5s timeout and the @ dropdown flashed and stayed empty.
+		this.collectEntries(query)
 			.catch((err: unknown) => {
-				console.warn(
-					`[FileHandler] findFiles via daemon failed (${String(err)}); falling back to local scan`,
-				);
-				return this.collectEntries(query);
+				console.warn(`[FileHandler] local scan failed (${String(err)})`);
+				return [] as FileEntry[];
 			})
-			.then((files) => {
-				console.log(`[FileHandler] list_files query="${query}" -> ${files.length} entries`);
-				this.replyFileList(files, requestId);
+			.then(async (local) => {
+				if (local.length > 0) {
+					console.log(`[FileHandler] list_files query="${query}" -> ${local.length} local entries`);
+					this.replyFileList(local, requestId);
+					return;
+				}
+				// No local candidate (empty workspace or nothing matches): ask
+				// serve, but never wait forever.
+				const fromDaemon = await this.findViaDaemonWithTimeout(query, directory);
+				console.log(`[FileHandler] list_files query="${query}" -> ${fromDaemon.length} daemon entries`);
+				this.replyFileList(fromDaemon, requestId);
 			})
 			.catch(() => this.replyFileList([], requestId));
+	}
+
+	/** `opencode.findFiles` with a hard deadline — used only as a fallback source. */
+	private async findViaDaemonWithTimeout(
+		query: string,
+		directory?: string,
+	): Promise<FileEntry[]> {
+		let timer: NodeJS.Timeout | undefined;
+		try {
+			return await Promise.race([
+				this.findViaDaemon(query, directory),
+				new Promise<never>((_resolve, reject) => {
+					timer = setTimeout(
+						() => reject(new Error(`opencode.findFiles timed out after ${DAEMON_FIND_TIMEOUT_MS}ms`)),
+						DAEMON_FIND_TIMEOUT_MS,
+					);
+					timer?.unref?.();
+				}),
+			]);
+		} catch (err: unknown) {
+			console.warn(`[FileHandler] findFiles via daemon unavailable (${String(err)})`);
+			return [];
+		} finally {
+			if (timer) {
+				clearTimeout(timer);
+			}
+		}
 	}
 
 	/**

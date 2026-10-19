@@ -240,5 +240,43 @@ describe('useCliModels', () => {
     // State remains unaffected
     expect(result.current.cliModelsLoading).toBe(true);
   });
+
+  it('keeps an explicit empty variants array instead of collapsing it to undefined', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'opencode/plain', label: 'Plain', variants: [] },
+        { id: 'opencode/tunable', label: 'Tunable', variants: ['low', 'high'] },
+      ],
+    });
+
+    // `[]` means "this model cannot be tuned" and must survive normalization;
+    // turning it into undefined would make the UI offer every legacy level.
+    expect(result.current.cliModels).toEqual([
+      { id: 'opencode/plain', label: 'Plain', variants: [] },
+      { id: 'opencode/tunable', label: 'Tunable', variants: ['low', 'high'] },
+    ]);
+  });
+
+  it('treats every model as variants-known once the catalog declares variants support', () => {
+    const { result } = renderHook(() => useCliModels('opencode'));
+    emitCliModels({
+      success: true,
+      provider: 'opencode',
+      models: [
+        { id: 'opencode/plain', label: 'Plain' },
+        { id: 'opencode/tunable', label: 'Tunable', variants: ['low'] },
+      ],
+    });
+
+    // The v2 catalog enumerated variants for at least one model, so a model
+    // without the field provably has none.
+    expect(result.current.cliModels).toEqual([
+      { id: 'opencode/plain', label: 'Plain', variants: [] },
+      { id: 'opencode/tunable', label: 'Tunable', variants: ['low'] },
+    ]);
+  });
 });
 
