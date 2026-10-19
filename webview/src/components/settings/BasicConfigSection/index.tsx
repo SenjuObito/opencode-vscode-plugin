@@ -63,9 +63,6 @@ interface BasicConfigSectionProps {
   // Diff expanded by default configuration
   diffExpandedByDefault?: boolean;
   onDiffExpandedByDefaultChange?: (enabled: boolean) => void;
-  // New-session confirm dialog (positive semantics: true = shown)
-  newSessionConfirmEnabled?: boolean;
-  onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
   // Compact confirm dialog (positive semantics: true = shown)
   compactConfirmEnabled?: boolean;
   onCompactConfirmEnabledChange?: (enabled: boolean) => void;
@@ -158,8 +155,6 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onAutoOpenFileEnabledChange={props.onAutoOpenFileEnabledChange}
           diffExpandedByDefault={props.diffExpandedByDefault}
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
-          newSessionConfirmEnabled={props.newSessionConfirmEnabled}
-          onNewSessionConfirmEnabledChange={props.onNewSessionConfirmEnabledChange}
           compactConfirmEnabled={props.compactConfirmEnabled}
           onCompactConfirmEnabledChange={props.onCompactConfirmEnabledChange}
           soundNotificationEnabled={props.soundNotificationEnabled}

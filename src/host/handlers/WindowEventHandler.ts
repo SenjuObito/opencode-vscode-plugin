@@ -11,6 +11,49 @@ import { pushHistoryData, upsertSessionSummary } from '../session/SessionHistory
 import { pushUserLanguageConfig, pushUiPreferences, pushPinnedModels } from './SettingsHandler';
 import { updateModelContextWindows } from '../util/ModelContextWindowCatalog';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
+import type { OpenCodeSession } from '../session/OpenCodeSession';
+import { resyncSessionFromServerIfNeeded } from '../session/SessionResync';
+
+/**
+ * webview → 宿主的消息 envelope。
+ *
+ * 多会话后前端统一发 `{"sessionId":..., "messageId":...}`，但历史上也发过
+ * 裸 messageId / 裸 `full`。两者都要认，否则连字符串会被当成消息 ID 直接
+ * 发给 daemon（对应 idea `WindowEventHandler.handleRevertSession` 的解析分支）。
+ */
+interface MessageEnvelope {
+	sessionId?: string;
+	messageId?: string;
+	isFull?: boolean;
+}
+
+function parseMessageEnvelope(content: string | undefined): MessageEnvelope {
+	const raw = (content ?? '').trim();
+	if (raw === '') {
+		return {};
+	}
+	if (!raw.startsWith('{')) {
+		return raw === 'full' ? { isFull: true } : { messageId: raw };
+	}
+	try {
+		const obj = JSON.parse(raw) as Record<string, unknown>;
+		const sessionId = typeof obj.sessionId === 'string' && obj.sessionId.trim() !== ''
+			? obj.sessionId.trim()
+			: undefined;
+		const messageId = typeof obj.messageId === 'string'
+			? obj.messageId
+			: (typeof obj.messageID === 'string' ? obj.messageID : undefined);
+		return {
+			sessionId,
+			messageId: messageId?.trim() ? messageId : undefined,
+			isFull: obj.type === 'full',
+		};
+	} catch {
+		// 非法 JSON：按旧版裸 messageId 处理
+		return { messageId: raw };
+	}
+}
+
 
 
 const SUPPORTED_TYPES = [
@@ -36,6 +79,7 @@ const SUPPORTED_TYPES = [
 	'compact_session',
 	'switch_session',
 	'close_session',
+	'refresh_editor_context',
 ];
 
 export class WindowEventHandler extends BaseMessageHandler {
@@ -103,13 +147,16 @@ export class WindowEventHandler extends BaseMessageHandler {
 				this.handleRevertSession(content);
 				return true;
 			case 'unrevert_session':
-				this.handleUnrevertSession();
+				this.handleUnrevertSession(content);
 				return true;
 			case 'fork_session':
 				this.handleForkSession(content);
 				return true;
 			case 'compact_session':
-				this.handleCompactSession();
+				this.handleCompactSession(content);
+				return true;
+			case 'refresh_editor_context':
+				this.handleRefreshEditorContext(content);
 				return true;
 		case 'history_dom_committed':
 		case 'history_render_complete':
@@ -152,8 +199,38 @@ export class WindowEventHandler extends BaseMessageHandler {
 		} catch {
 			targetSessionId = content.trim() || undefined;
 		}
-		if (targetSessionId) {
-			this.context.getSessionManager()?.switchToSession(targetSessionId);
+		const sessionManager = this.context.getSessionManager();
+		if (!targetSessionId || !sessionManager) {
+			return;
+		}
+		const session = sessionManager.switchToSession(targetSessionId);
+		void this.hydrateTabSession(session, targetSessionId);
+	}
+
+	/**
+	 * 视图内切 tab 时的宿主 → 视图同步（idea `selectionChanged` 分支的等价物）。
+	 *
+	 * 顺序照 idea：先水化（视图立刻拿到权威快照，不再信任自己残留的数组），
+	 * 空闲时再与服务端对账，有变化则二次水化。
+	 *
+	 * 注意 `switchToSession` 已经异步推过 `setSessionId`，这里的水化包同样带
+	 * sessionId，前端会按 sessionId 判断前台/后台，不会把 A 的消息写进 B 的列表。
+	 */
+	private async hydrateTabSession(session: OpenCodeSession, targetSessionId: string): Promise<void> {
+		if (session.state.getSessionId() !== targetSessionId) {
+			// switchToSession 期间的并发切换：这次水化已经过期。
+			return;
+		}
+		// 流式中的会话不水化：宿主 state 与视图的增量累加器可能还差一拍，整份
+		// 替换会把已渲染的半截文本吞掉。视图自己保存的快照 + 归档运行时足够续上。
+		if (session.state.isBusy()) {
+			return;
+		}
+		session.hydrateSessionToWebview();
+		const updated = await session.reconcileWithServer();
+		// 对账是异步的，期间用户可能又切走了。
+		if (updated && session.state.getSessionId() === targetSessionId) {
+			session.hydrateSessionToWebview();
 		}
 	}
 
@@ -170,21 +247,26 @@ export class WindowEventHandler extends BaseMessageHandler {
 		}
 	}
 
-	/** frontend_ready：回放会话状态 / provider / mode / 依赖 / slash 命令 / linkify。 */
+	/** 只回给发起 `frontend_ready` 的那个视图（实例与视图是 1:N）。 */
+	private reply(functionName: string, ...args: string[]): void {
+		this.context.callJavaScriptToOrigin(functionName, ...args);
+	}
+
+	/** frontend_ready：把权威状态回放给刚就绪的视图。 */
 	private handleFrontendReady(): void {
 		const session = this.context.getSession();
 		if (!session) {
 			return;
 		}
+		// 从这里开始 callJavaScript 才有着落（webview 已挂好监听）。
+		this.context.setFrontendReady(true);
+		// 按视图记录就绪：新建标签这类「只该发生一次」的动作要挑一个已挂载的
+		// 视图投递，不能广播（否则每个窗口都会各建一个空标签）。
+		this.context.markViewReady(this.context.getDispatchOrigin());
 
-		// ── 方案 B：视图就绪时先对齐宿主内存与这个刚出现的空视图 ──
-		// 每个 webview 只在启动时发一次 frontend_ready，收到它就意味着「来了一个
-		// 空视图」。若宿主持有的是上一会话的残留，就会表现为「打开是空对话、
-		// 一发消息旧对话诈尸」。必须在回放状态之前清理，否则下面的 sessionId
-		// 回放会把旧会话 id 塞给空视图，后续 send 再次命中旧会话。
-		const startedFresh = session.reconcileWithFreshView();
-
-		this.callJavaScript(
+		// 单实例之后，视图就绪不再是「来了一个空对话」——它是同一个实例的
+		// 又一个窗口。因此这里**绝不能**重置共享会话，只补一份权威快照。
+		this.reply(
 			'applyBackendTabState',
 			JSON.stringify({
 				provider: 'opencode',
@@ -196,14 +278,24 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 		this.pushActiveProvider();
 
-		this.callJavaScript('onModeReceived', session.state.getPermissionMode());
+		this.reply('onModeReceived', session.state.getPermissionMode());
 
-		// sessionId 只在宿主**仍持有该会话**时回放（多视图共享同一会话的情形）。
-		// 单视图时 reconcileWithFreshView 已把状态清成新会话，此时若仍把旧 id 推给
-		// 空视图，用户下一次发送就会带着旧 id 打到旧会话上，旧消息被整份带回。
 		const sessionId = session.state.getSessionId();
-		if (!startedFresh && sessionId) {
-			this.callJavaScript('setSessionId', sessionId);
+		if (sessionId) {
+			this.reply('setSessionId', sessionId);
+			// 视图是空的（首次挂载 / 重载）：把宿主权威快照整包补上，含
+			// isStreaming 与 revert 边界。
+			session.hydrateSessionToWebview({ origin: true });
+			// 宿主内存也没有内容（冷启动、serve 未就绪）：从服务端补齐。
+			if (session.state.getMessages().length === 0) {
+				void resyncSessionFromServerIfNeeded(session, {
+					frontendReady: true,
+				}).then((outcome) => {
+					if (outcome !== 'skipped') {
+						logDiagnostic(`[frontend_ready] session resync: ${outcome}`);
+					}
+				});
+			}
 		}
 
 		this.handleRefreshSlashCommands();
@@ -212,20 +304,40 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 		// 语言回放：手动设置过 → source 'user'；否则跟随 IDE 界面语言。
 		// webview 的 applyIdeaLanguageConfig 会 changeLanguage 并写 localStorage。
-		pushUserLanguageConfig((fn, ...args) => this.callJavaScript(fn, ...args), this.context.getSettingsService());
+		pushUserLanguageConfig((fn, ...args) => this.reply(fn, ...args), this.context.getSettingsService());
 
 		// UI 偏好回放（主题 / 字号 / 配色 / diff / 行为开关）：webview 的
 		// localStorage 在 VS Code 重建 webview 后会丢，宿主才是权威源。
-		pushUiPreferences((fn, ...args) => this.callJavaScript(fn, ...args), this.context.getSettingsService());
+		pushUiPreferences((fn, ...args) => this.reply(fn, ...args), this.context.getSettingsService());
 
 		// 置顶模型回放（跨会话持久化）
-		pushPinnedModels((fn, ...args) => this.callJavaScript(fn, ...args), this.context.getSettingsService());
+		pushPinnedModels((fn, ...args) => this.reply(fn, ...args), this.context.getSettingsService());
 
 		// 字体配置回放（编辑器字体、已保存的 UI 字体与代码字体）
 		this.context.pushFontConfig();
 
 		// 推送当前编辑器上下文（需在 webview JS 就绪后调用）。
 		this.context.pushEditorContext();
+	}
+
+	/**
+	 * webview 切换 tab / 在 tab 内打开或关闭文件上下文时，把当前编辑器上下文
+	 * 只同步到该视图：enabled=true 补推当前文件，false 清空 chip。
+	 * 与全局设置无关，设置值只用于新 tab 的初始状态。
+	 */
+	private handleRefreshEditorContext(content: string): void {
+		let enabled = true;
+		if (content) {
+			try {
+				const payload = JSON.parse(content) as { enabled?: unknown };
+				if (typeof payload?.enabled === 'boolean') {
+					enabled = payload.enabled;
+				}
+			} catch {
+				// 兼容裸布尔 / 空内容：默认按开启处理
+			}
+		}
+		this.context.refreshEditorContext(enabled);
 	}
 
 	/** bootstrap 的 get_active_provider：回推 opencode provider 配置。 */
@@ -421,9 +533,10 @@ export class WindowEventHandler extends BaseMessageHandler {
 		});
 	}
 
-	private handleCompactSession(): void {
+	private handleCompactSession(content?: string): void {
 		const daemon = this.context.getDaemon();
-		const session = this.context.getSession();
+		const envelope = parseMessageEnvelope(content);
+		const session = this.resolveSession(envelope.sessionId);
 		if (!daemon || !session) {
 			return;
 		}
@@ -431,6 +544,19 @@ export class WindowEventHandler extends BaseMessageHandler {
 		const sessionId = session.state.getSessionId();
 		if (!sessionId) {
 			return;
+		}
+
+		// 前端可能显式指定压缩用的模型（{sessionId, model}）；否则用会话当前的模型。
+		let requestedModel: string | undefined;
+		if (content && content.trim().startsWith('{')) {
+			try {
+				const parsed = JSON.parse(content) as { model?: unknown };
+				if (typeof parsed?.model === 'string' && parsed.model.trim() !== '') {
+					requestedModel = parsed.model.trim();
+				}
+			} catch {
+				// 忽略非法 JSON
+			}
 		}
 
 		this.compactPending = true;
@@ -449,9 +575,9 @@ export class WindowEventHandler extends BaseMessageHandler {
 		void daemon.request('opencode.summarize', {
 			sessionId,
 			directory,
-			// summarize 端点要求 body { providerID, modelID }；null（使用 opencode
-			// 默认模型）时不传，由 daemon 回退到会话运行时记录的模型。
-			model: session.state.getModel() ?? undefined,
+			// summarize 端点要求 body { providerID, modelID }，具体由 daemon 组装；
+			// undefined 表示由 daemon 回退到会话运行时记录的模型。
+			model: requestedModel ?? session.state.getModel() ?? undefined,
 		}, {
 			onLine: () => {},
 			onError: (error) => {
@@ -541,21 +667,26 @@ export class WindowEventHandler extends BaseMessageHandler {
 		});
 	}
 
-	private handleRevertSession(messageId: string): void {
+	private handleRevertSession(content: string): void {
 		const daemon = this.context.getDaemon();
-		const session = this.context.getSession();
-		logDiagnostic(`[revert] request messageId="${messageId}" daemon=${!!daemon} session=${!!session}`);
+		const envelope = parseMessageEnvelope(content);
+		const session = this.resolveSession(envelope.sessionId);
+		logDiagnostic(`[revert] request messageId="${envelope.messageId ?? ''}" session=${envelope.sessionId ?? '(active)'} daemon=${!!daemon}`);
 		if (!daemon || !session) {
+			if (!session && envelope.sessionId) {
+				this.callJavaScript('onRevertError', JSON.stringify({ op: 'undo', error: 'unknown session' }));
+			}
 			return;
 		}
 
 		const sessionId = session.state.getSessionId();
 		if (!sessionId) {
 			logDiagnostic('[revert] skipped: no active sessionId');
+			this.callJavaScript('onRevertError', JSON.stringify({ op: 'undo', error: 'no active session' }));
 			return;
 		}
 
-		this.withMessageId(daemon, sessionId, messageId, '[revert]', (resolvedId) => {
+		this.withMessageId(daemon, sessionId, envelope.messageId ?? '', '[revert]', (resolvedId) => {
 			const chunks: string[] = [];
 			void daemon.request('opencode.revert', {
 				sessionId,
@@ -574,15 +705,16 @@ export class WindowEventHandler extends BaseMessageHandler {
 						this.callJavaScript('onRevertError', JSON.stringify({ op: 'undo' }));
 						return;
 					}
-					this.pushRevertStateFromResponse(chunks.join('\n'));
+					this.pushRevertStateFromResponse(sessionId, chunks.join('\n'), resolvedId);
 				},
 			});
 		});
 	}
 
-	private handleUnrevertSession(): void {
+	private handleUnrevertSession(content?: string): void {
 		const daemon = this.context.getDaemon();
-		const session = this.context.getSession();
+		const envelope = parseMessageEnvelope(content);
+		const session = this.resolveSession(envelope.sessionId);
 		if (!daemon || !session) {
 			return;
 		}
@@ -595,41 +727,74 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 		logDiagnostic(`[unrevert] request sessionId=${sessionId}`);
 		const chunks: string[] = [];
-		void daemon.request('opencode.unrevert', {
-				sessionId,
-			}, {
-				onLine: (line) => chunks.push(line),
-				onError: (error) => {
-					console.error('[WindowEventHandler] Failed to unrevert session:', error);
-					logDiagnostic(`[unrevert] FAILED error=${error}`);
-					this.callJavaScript('onRevertError', JSON.stringify({ op: 'redo', error }));
-				},
-				onComplete: (success) => {
-					logDiagnosticBlock('[unrevert] daemon raw output', chunks.join('\n'));
-					if (!success) {
-						console.error('[WindowEventHandler] Unrevert session failed');
-						this.callJavaScript('onRevertError', JSON.stringify({ op: 'redo' }));
-						return;
-					}
-					this.pushRevertStateFromResponse(chunks.join('\n'));
-				},
-			});
+		void daemon.request('opencode.unrevert', { sessionId }, {
+			onLine: (line) => chunks.push(line),
+			onError: (error) => {
+				console.error('[WindowEventHandler] Failed to unrevert session:', error);
+				logDiagnostic(`[unrevert] FAILED error=${error}`);
+				this.callJavaScript('onRevertError', JSON.stringify({ op: 'redo', error }));
+			},
+			onComplete: (success) => {
+				logDiagnosticBlock('[unrevert] daemon raw output', chunks.join('\n'));
+				if (!success) {
+					console.error('[WindowEventHandler] Unrevert session failed');
+					this.callJavaScript('onRevertError', JSON.stringify({ op: 'redo' }));
+					return;
+				}
+				this.pushRevertStateFromResponse(sessionId, chunks.join('\n'), null);
+			},
+		});
 	}
 
-	/** Parse a `{ success, session }` daemon response and push the session's revert state to the frontend. */
-	private pushRevertStateFromResponse(raw: string): void {
+	/**
+	 * 把 daemon 返回的 revert 状态落到**目标会话**并推给前端。
+	 *
+	 * 首参带 sessionId：前端 `onRevertStateUpdate` 支持 `(sessionId, json)` 形式，
+	 * 只有带上它才能把状态归到正确的 tab（对应 idea `pushRevertStateFromResponse`）。
+	 */
+	private pushRevertStateFromResponse(
+		sessionId: string,
+		raw: string,
+		fallbackMessageId: string | null,
+	): void {
 		const payload = this.extractJsonObject(raw);
 		const sessionObj = payload?.session as Record<string, unknown> | undefined;
-		const revert = (sessionObj?.revert ?? null) as { messageID?: string } | null;
-		logDiagnostic(`[revert-state] hasRevert=${!!revert} revert=${JSON.stringify(revert)}`);
-		// 记录到会话状态：切换/恢复会话后可重新推送给前端
-		this.context.getSession()?.state.setRevertState(
-			revert && typeof revert.messageID === 'string' ? { messageID: revert.messageID } : null,
+		const revert = (sessionObj?.revert ?? payload?.revert ?? null) as { messageID?: string } | null;
+		const revertMessageId = revert && typeof revert.messageID === 'string' && revert.messageID !== ''
+			? revert.messageID
+			: null;
+		const messageId = revertMessageId ?? fallbackMessageId;
+		const hasRevert = revertMessageId !== null || fallbackMessageId !== null;
+		logDiagnostic(`[revert-state] session=${sessionId} hasRevert=${hasRevert} messageId=${messageId ?? 'null'}`);
+		// 记录到目标会话：切换/恢复会话后可重新推送给前端
+		// 用精确 id 查询（不回退），否则并发关闭会话时会把状态写到别人身上。
+		this.context.getSession(sessionId)?.state.setRevertState(
+			hasRevert && messageId ? { messageID: messageId } : null,
 		);
-		this.callJavaScript('onRevertStateUpdate', JSON.stringify({
-			hasRevert: !!revert,
-			messageId: revert && typeof revert.messageID === 'string' ? revert.messageID : null,
+		this.callJavaScript('onRevertStateUpdate', sessionId, JSON.stringify({
+			hasRevert,
+			messageId,
 		}));
+	}
+
+
+	/**
+	 * 按 envelope 的 sessionId 取会话。
+	 *
+	 * 没带 sessionId（旧版前端）→ 回退到窗口当前会话，行为不变。
+	 * 带了却查不到 → 返回 null：宁可让这次操作失败，也不能把撤销/fork 落到
+	 * 另一个对话上（那会直接改坏别的 tab 的消息）。
+	 */
+	private resolveSession(sessionId: string | undefined): OpenCodeSession | null {
+		const id = sessionId?.trim();
+		if (!id) {
+			return this.context.getSession();
+		}
+		const scoped = this.context.getSession(id);
+		if (!scoped) {
+			logDiagnostic(`[session] unknown sessionId="${id}" — aborting instead of falling back`);
+		}
+		return scoped;
 	}
 
 	/**
@@ -677,17 +842,25 @@ export class WindowEventHandler extends BaseMessageHandler {
 		});
 	}
 
-	private handleForkSession(messageId: string): void {
+	private handleForkSession(content: string): void {
 		const daemon = this.context.getDaemon();
-		const session = this.context.getSession();
-		logDiagnostic(`[fork] request messageId="${messageId}" daemon=${!!daemon} session=${!!session}`);
+		const envelope = parseMessageEnvelope(content);
+		const session = this.resolveSession(envelope.sessionId);
+		logDiagnostic(
+			`[fork] request messageId="${envelope.messageId ?? ''}" isFull=${!!envelope.isFull} `
+			+ `session=${envelope.sessionId ?? '(active)'} daemon=${!!daemon}`,
+		);
 		if (!daemon || !session) {
+			if (!session && envelope.sessionId) {
+				this.callJavaScript('onForkError', 'unknown session');
+			}
 			return;
 		}
 
 		const sessionId = session.state.getSessionId();
 		if (!sessionId) {
 			logDiagnostic('[fork] skipped: no active sessionId');
+			this.callJavaScript('onForkError', 'no active session');
 			return;
 		}
 
@@ -699,15 +872,15 @@ export class WindowEventHandler extends BaseMessageHandler {
 			return;
 		}
 
-		// 双语义：'full' = 全量复制（不带 messageID）；其余 = 从指定消息处
-		// 分叉（服务端 exclusive 语义，不含该条）。空/'latest' 交由
+		// 双语义：'full' / {type:'full'} = 全量复制（不带 messageID）；其余 = 从指定
+		// 消息处分叉（服务端 exclusive 语义，不含该条）。空/'latest' 交由
 		// withMessageId 解析为最后一条用户消息。
-		if (messageId === 'full') {
+		if (envelope.isFull) {
 			this.requestFork(daemon, sessionId, undefined);
 			return;
 		}
 
-		this.withMessageId(daemon, sessionId, messageId, '[fork]', (resolvedId) => {
+		this.withMessageId(daemon, sessionId, envelope.messageId ?? '', '[fork]', (resolvedId) => {
 			this.requestFork(daemon, sessionId, resolvedId);
 		});
 	}

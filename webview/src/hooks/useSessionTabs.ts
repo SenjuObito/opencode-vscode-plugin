@@ -17,8 +17,80 @@ import {
   type StreamingRuntimeSnapshot,
 } from '../utils/streamingRuntime';
 
-interface UseSessionTabsOptions {
-  currentSessionId: string | null;
+/** 标签中需要跨视图保持一致的结构字段；消息与运行时留在各视图本地。 */
+interface SyncedTabRecord {
+  id: string;
+  sessionId: string | null;
+  title: string;
+  isCustomTitle?: boolean;
+  isShared?: boolean;
+  autoOpenFileEnabled?: boolean;
+}
+
+function toSyncedTabRecord(tab: SessionTabData): SyncedTabRecord {
+  return {
+    id: tab.id,
+    sessionId: tab.sessionId,
+    title: tab.title,
+    isCustomTitle: tab.isCustomTitle,
+    isShared: tab.isShared,
+    autoOpenFileEnabled: tab.autoOpenFileEnabled,
+  };
+}
+
+/** 宿主下发的是 JSON，逐字段校验，任何一条脏数据都只丢掉自己。 */
+function toSyncedTabRecordFromUnknown(raw: unknown): SyncedTabRecord | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : '';
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    sessionId: typeof record.sessionId === 'string' && record.sessionId.trim() !== ''
+      ? record.sessionId
+      : null,
+    title: typeof record.title === 'string' ? record.title : '',
+    isCustomTitle: record.isCustomTitle === true,
+    isShared: record.isShared === true,
+    autoOpenFileEnabled: typeof record.autoOpenFileEnabled === 'boolean'
+      ? record.autoOpenFileEnabled
+      : undefined,
+  };
+}
+
+/** 别的窗口建好、本视图第一次见到的标签：运行时从空开始，内容随后由宿主补齐。 */
+function makeTabFromRecord(
+  record: SyncedTabRecord,
+  t: TFunction,
+  defaultAutoOpenFileEnabled: boolean,
+): SessionTabData {
+  return {
+    id: record.id,
+    sessionId: record.sessionId,
+    title: record.title || t('common.newSession', { defaultValue: '新会话' }),
+    messages: [],
+    messageBaseIndex: 0,
+    opencodeListStart: 0,
+    prependedHistoryMessageCount: 0,
+    isShared: record.isShared ?? false,
+    isCustomTitle: record.isCustomTitle,
+    loading: false,
+    streamingActive: false,
+    pendingPermissions: [],
+    pendingQuestions: [],
+    autoOpenFileEnabled: record.autoOpenFileEnabled ?? defaultAutoOpenFileEnabled,
+    permissionMode: 'default',
+    reasoningEffort: 'default',
+    filteredFileChanges: [],
+    contextInfo: null,
+  };
+}
+
+interface UseSessionTabsOptions {  currentSessionId: string | null;
   setCurrentSessionId?: (sessionId: string | null) => void;
   sessionTitle: string;
   setCustomSessionTitle: (title: string | null) => void;
@@ -56,7 +128,7 @@ interface UseSessionTabsOptions {
    * `silent` marks a value restored by a tab switch rather than chosen by the
    * user, so the host can skip the "model changed" side effects (usage reset).
    */
-  setSelectedModel?: (model: string, options?: { silent?: boolean }) => void;
+  setSelectedModel?: (model: string, options?: { silent?: boolean; sessionId?: string | null }) => void;
   reasoningEffort?: ReasoningEffort;
   setReasoningEffort?: (effort: ReasoningEffort) => void;
   contextInfo?: ContextInfo | null;
@@ -155,7 +227,9 @@ export function useSessionTabs({
       title: t('common.newSession', { defaultValue: '新会话' }),
       messages: [],
       isShared: false,
-      autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+      // 不显式赋值：首个 tab 在设置回填完成前就创建了，留空表示跟随
+      // 「发送打开的文件路径」设置（activeTabAutoOpenFileEnabled 负责兜底）。
+      autoOpenFileEnabled: undefined,
       permissionMode: permissionMode || 'default',
       selectedModel: selectedModel,
       reasoningEffort: reasoningEffort || 'default',
@@ -454,6 +528,9 @@ export function useSessionTabs({
 
   // Forward declaration ref for closeTab
   const closeTabRef = useRef<(tabId: string) => void>(() => {});
+  // Forward declaration ref for selectTab (used by focus_session from the host).
+  // `remote` 标记来自其他视图的切换：本地换页，但不重复下发宿主副作用。
+  const selectTabRef = useRef<(tabId: string, options?: { remote?: boolean }) => void>(() => {});
 
   const closeTabBySessionId = useCallback((sessionId: string) => {
     if (!sessionId) return;
@@ -507,6 +584,19 @@ export function useSessionTabs({
       updateTabTitle,
       closeTabBySessionId,
       claimUnboundTab,
+      /**
+       * 通知点击「查看」：把持有该会话的视图内标签切到前台。
+       * 宿主的 `TabManager.revealSession` 负责先 reveal 原生 panel。
+       */
+      focusSession: (sessionId: string) => {
+        if (!sessionId) return false;
+        const target = tabsRef.current.find((t) => t.sessionId === sessionId);
+        if (!target) return false;
+        if (target.id !== activeTabIdRef.current) {
+          selectTabRef.current(target.id);
+        }
+        return true;
+      },
       archiveActiveStreamingRuntime,
       clearStreamingRuntimeFor,
     };
@@ -571,12 +661,9 @@ export function useSessionTabs({
    * Point the host at a tab's session. Must run BEFORE any per-session bridge
    * call that follows it.
    *
-   * `set_mode` / `set_model` / `set_reasoning_effort` carry no session identity
-   * on the legacy wire format, so the host applies them to "the window's current
-   * session" (`PermissionModeHandler.handleSetMode` falls back to
-   * `context.getSession()`; `ModelProviderHandler` never parses a sessionId at
-   * all). Sending them before the switch rewrites the **outgoing** tab's
-   * build/plan mode and model, and two tabs then silently swap configurations.
+   * `set_mode` / `set_model` / `set_reasoning_effort` 现在都带 `sessionId`，
+   * 宿主会按 id 路由；但旧版宿主只看「窗口当前会话」，所以这里仍然先切换，
+   * 保证两条路径都指向同一个会话（旧宿主不会写到别的 tab 上）。
    */
   const syncHostSessionTo = useCallback((sessionId: string | null | undefined) => {
     if (!sessionId) return;
@@ -715,7 +802,7 @@ export function useSessionTabs({
 
   // Select tab (pure view switch: preserves background generation, never interrupts)
   const selectTab = useCallback(
-    (targetTabId: string) => {
+    (targetTabId: string, options?: { remote?: boolean }) => {
       if (targetTabId === activeTabIdRef.current) return;
 
       saveCurrentTabSnapshot();
@@ -747,7 +834,13 @@ export function useSessionTabs({
       // Switch the host's session first: every per-session bridge call below
       // (mode / model / reasoning effort) is applied to whatever session the
       // window currently points at.
-      syncHostSessionTo(targetTab.sessionId);
+      //
+      // 远端同步（另一个窗口发起的切换）跳过这一步：宿主就是切换的发起方，
+      // 它的当前会话已经指向目标；再发一次 switch_session 会触发重复水化，
+      // 把正在流式的视图整份替换掉。
+      if (!options?.remote) {
+        syncHostSessionTo(targetTab.sessionId);
+      }
 
       // Restore target tab's snapshot into active view
       if (currentSessionIdRef) {
@@ -782,9 +875,14 @@ export function useSessionTabs({
       // Restore session model & mode & reasoning effort.
       // `setSelectedModel` / `setReasoningEffort` are the App-level handlers and
       // already push their value to the host — do not send a second time here.
+      // 尚未绑定会话的 tab 以 tabId 作为宿主键（首个 set_* 会按它补建会话），
+      // 不能用裸值下发：裸值会落到「窗口当前会话」，也就是上一个 tab。
+      const tabSessionKey = targetTab.sessionId ?? targetTab.id;
       const targetMode = targetTab.permissionMode || 'default';
       setPermissionMode?.(targetMode);
-      syncPermissionModeTo(targetTab.sessionId, targetMode);
+      if (!options?.remote) {
+        syncPermissionModeTo(tabSessionKey, targetMode);
+      }
 
       const targetEffort = targetTab.reasoningEffort || 'default';
       setReasoningEffort?.(targetEffort);
@@ -794,16 +892,15 @@ export function useSessionTabs({
         currentProvider || 'opencode',
         availableModels || [],
       );
-      if (resolvedModel) {
-        setSelectedModel?.(resolvedModel, { silent: true });
+      if (resolvedModel && !options?.remote) {
+        setSelectedModel?.(resolvedModel, { silent: true, sessionId: tabSessionKey });
       }
 
-      // Restore contextInfo if target tab has a specific snapshot
+      // 文件上下文跟随 tab：先清掉上一个 tab 的 chip，再让宿主按本 tab 的开关
+      // 补推当前编辑器上下文（关闭时宿主会回 clearSelectionInfo）。
       const isAutoOpen = targetTab.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
+      setContextInfo?.(targetTab.contextInfo ?? null);
       sendBridgeEvent('refresh_editor_context', JSON.stringify({ tabId: targetTab.id, enabled: isAutoOpen }));
-      if (targetTab.contextInfo) {
-        setContextInfo?.(targetTab.contextInfo);
-      }
 
       // Restore turnStartedAt & usage tracking to prevent cross-session pollution
       const targetTurnStartedAt = targetTab.turnStartedAt ?? null;
@@ -911,6 +1008,11 @@ export function useSessionTabs({
         (!currentActive.messages || currentActive.messages.length === 0);
 
       const resolvedTitle = title || t('common.historySession', { defaultValue: '历史会话' });
+      // 加载历史会话时按当前设置初始化该 tab 的文件上下文开关
+      const loadedAutoOpenFileEnabled = defaultAutoOpenFileEnabled ?? false;
+      const targetTabId = isCurrentEmptyDraft && currentActive
+        ? currentActive.id
+        : `tab-${Date.now()}`;
 
       if (isCurrentEmptyDraft && currentActive) {
         // Reuse current blank draft tab
@@ -942,7 +1044,7 @@ export function useSessionTabs({
         // Create new tab for this history session
         saveCurrentTabSnapshot();
 
-        const newId = `tab-${Date.now()}`;
+        const newId = targetTabId;
         const newTab: SessionTabData = {
           id: newId,
           sessionId,
@@ -953,7 +1055,7 @@ export function useSessionTabs({
           streamingActive: false,
           pendingPermissions: [],
           pendingQuestions: [],
-          autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
+          autoOpenFileEnabled: loadedAutoOpenFileEnabled,
           selectedModel: resolvedModel,
           permissionMode: resolvedMode,
           reasoningEffort: resolvedEffort,
@@ -975,6 +1077,13 @@ export function useSessionTabs({
 
       // Point the host at this session before the mode/model calls below.
       syncHostSessionTo(sessionId);
+
+      // 历史会话按设置初始化文件上下文后，让宿主同步当前编辑器上下文到本视图
+      setContextInfo?.(null);
+      sendBridgeEvent(
+        'refresh_editor_context',
+        JSON.stringify({ tabId: targetTabId, enabled: loadedAutoOpenFileEnabled }),
+      );
 
       // 同步 Tab 标题到 IDE ToolWindow，切换历史会话 Tab 时跟随标签页标题
       sendBridgeEvent('update_tab_title', resolvedTitle);
@@ -1134,15 +1243,20 @@ export function useSessionTabs({
     setSubagentHistories?.({});
     setFilteredFileChanges?.([]);
 
-    // Set model, mode, effort for brand new tab
+    // Set model, mode, effort for brand new tab.
+    // 必须带上本 tab 的 id：裸值会被宿主当成「窗口当前会话」，也就是上一个
+    // tab 的会话——新建 tab 会把上一个对话的模型/模式静默改掉。
     if (defaultModel) {
-      setSelectedModel?.(defaultModel);
-      sendBridgeEvent('set_model', defaultModel);
+      // setSelectedModel 内部已经下发 set_model，这里不能再补一次裸值。
+      setSelectedModel?.(defaultModel, { sessionId: newId });
     }
     setPermissionMode?.('default');
-    sendBridgeEvent('set_mode', 'default');
+    sendBridgeEvent('set_mode', JSON.stringify({ sessionId: newId, mode: 'default' }));
     setReasoningEffort?.('default');
-    sendBridgeEvent('set_reasoning_effort', 'default');
+    sendBridgeEvent(
+      'set_reasoning_effort',
+      JSON.stringify({ sessionId: newId, reasoningEffort: 'default' }),
+    );
 
     // Reset turn timer & usage metrics for new tab
     setLoadingStartTime?.(null);
@@ -1157,6 +1271,14 @@ export function useSessionTabs({
 
     // Brand new tab has no pending dialogs
     window.__dialogStore?.clearActive?.();
+
+    // 文件上下文：新 tab 的状态按当前设置初始化，并让宿主把当前编辑器
+    // 上下文同步到本视图（关闭时宿主回 clearSelectionInfo）。
+    setContextInfo?.(null);
+    sendBridgeEvent(
+      'refresh_editor_context',
+      JSON.stringify({ tabId: newId, enabled: newTab.autoOpenFileEnabled ?? false }),
+    );
 
     // 同步新 Tab 标题到 IDE ToolWindow
     sendBridgeEvent('update_tab_title', newTab.title);
@@ -1201,9 +1323,12 @@ export function useSessionTabs({
         // Only interrupt this specific session if it was actively generating
         sendBridgeEvent('interrupt_session', JSON.stringify({ sessionId: closingTab.sessionId }));
       }
-      if (closingTab?.sessionId) {
-        sendBridgeEvent('close_session', JSON.stringify({ sessionId: closingTab.sessionId }));
-        clearSessionSequenceBarrier(closingTab.sessionId);
+      // 新 tab 还没绑定会话时，宿主持有的是以 tabId 为键的会话（首个
+      // set_model 触发补建），关闭时按同一个键释放，避免留下孤儿会话。
+      const closeKey = closingTab?.sessionId ?? closingTab?.id;
+      if (closeKey) {
+        sendBridgeEvent('close_session', JSON.stringify({ sessionId: closeKey }));
+        clearSessionSequenceBarrier(closeKey);
       }
       // Drop the archived runtime with the tab; a recycled tab id must never
       // inherit a dead session's accumulator.
@@ -1215,8 +1340,9 @@ export function useSessionTabs({
             currentProvider || 'opencode',
             availableModels || [],
           ) || '';
+          const freshTabId = `tab-${Date.now()}`;
           const freshTab: SessionTabData = {
-            id: `tab-${Date.now()}`,
+            id: freshTabId,
             sessionId: null,
             title: t('common.newSession', { defaultValue: '新会话' }),
             messages: [],
@@ -1244,13 +1370,15 @@ export function useSessionTabs({
           setSubagentHistories?.({});
           setFilteredFileChanges?.([]);
           if (defaultModel) {
-            setSelectedModel?.(defaultModel);
-            sendBridgeEvent('set_model', defaultModel);
+            setSelectedModel?.(defaultModel, { sessionId: freshTabId });
           }
           setPermissionMode?.('default');
-          sendBridgeEvent('set_mode', 'default');
+          sendBridgeEvent('set_mode', JSON.stringify({ sessionId: freshTabId, mode: 'default' }));
           setReasoningEffort?.('default');
-          sendBridgeEvent('set_reasoning_effort', 'default');
+          sendBridgeEvent(
+            'set_reasoning_effort',
+            JSON.stringify({ sessionId: freshTabId, reasoningEffort: 'default' }),
+          );
           setLoadingStartTime?.(null);
           window.__turnStartedAt = undefined;
           setUsagePercentage?.(0);
@@ -1294,9 +1422,10 @@ export function useSessionTabs({
             setSubagentHistories?.(nextActive.subagentHistories || {});
             setFilteredFileChanges?.(nextActive.filteredFileChanges || []);
 
+            const nextSessionKey = nextActive.sessionId ?? nextActive.id;
             const nextMode = nextActive.permissionMode || 'default';
             setPermissionMode?.(nextMode);
-            syncPermissionModeTo(nextActive.sessionId, nextMode);
+            syncPermissionModeTo(nextSessionKey, nextMode);
 
             const nextEffort = nextActive.reasoningEffort || 'default';
             setReasoningEffort?.(nextEffort);
@@ -1307,12 +1436,18 @@ export function useSessionTabs({
               availableModels || [],
             );
             if (resolvedModel) {
-              setSelectedModel?.(resolvedModel, { silent: true });
+              setSelectedModel?.(resolvedModel, { silent: true, sessionId: nextSessionKey });
             }
 
-            if (nextActive.contextInfo) {
-              setContextInfo?.(nextActive.contextInfo);
-            }
+            // 文件上下文跟随被激活的 tab：清掉旧 chip 后由宿主补推当前文件
+            setContextInfo?.(nextActive.contextInfo ?? null);
+            sendBridgeEvent(
+              'refresh_editor_context',
+              JSON.stringify({
+                tabId: nextActive.id,
+                enabled: nextActive.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false),
+              }),
+            );
 
             // Restore turnStartedAt & usage tracking for the switched active tab
             const nextTurnStartedAt = nextActive.turnStartedAt ?? null;
@@ -1372,6 +1507,11 @@ export function useSessionTabs({
     closeTabRef.current = closeTab;
   }, [closeTab]);
 
+  // Keep selectTabRef updated
+  useEffect(() => {
+    selectTabRef.current = selectTab;
+  }, [selectTab]);
+
   // Rename tab
   const renameTab = useCallback(
     (tabId: string, newTitle: string) => {
@@ -1403,13 +1543,142 @@ export function useSessionTabs({
     []
   );
 
-  // Expose window.createSessionTab for IDEA title bar action (+)
+  // Expose window.createSessionTab for the host's "new tab" entry point (+)
   useEffect(() => {
     (window as any).createSessionTab = createTab;
     return () => {
       delete (window as any).createSessionTab;
     };
   }, [createTab]);
+
+  /**
+   * 标签栏跨视图同步。
+   *
+   * 单实例之后标签是**全局状态**：任何一个窗口的新建 / 关闭 / 改名 / 激活切换
+   * 都必须让其余窗口看到同一份列表，否则各窗口会各自停在不同的会话上，而
+   * 宿主只有一个「当前会话」——消息会流进其中一个窗口，另一个停在旧内容。
+   *
+   * 上行只带结构性字段：消息与流式运行时仍由各视图本地持有，靠会话广播
+   * （updateMessages / onContentDelta）自然收敛；把整包消息反复广播给 N 个
+   * 视图会带来 N 份快照与 N 次重渲染。
+   */
+  const tabsSyncedRef = useRef(false);
+  const lastSentTabsSignatureRef = useRef<string | null>(null);
+
+  const tabsSignature = useCallback(
+    (list: SessionTabData[], activeId: string) => JSON.stringify({
+      activeTabId: activeId,
+      tabs: list.map(toSyncedTabRecord),
+    }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!tabsSyncedRef.current) {
+      return;
+    }
+    const signature = tabsSignature(tabs, activeTabId);
+    if (signature === lastSentTabsSignatureRef.current) {
+      return;
+    }
+    lastSentTabsSignatureRef.current = signature;
+    sendBridgeEvent('sync_tabs', JSON.stringify({
+      activeTabId,
+      tabs: tabs.map(toSyncedTabRecord),
+    }));
+  }, [tabs, activeTabId, tabsSignature]);
+
+  // 最近一次渲染的文案 / 默认值 / 绑定回调，供挂载期注册的 apply_tabs 使用。
+  // 用 ref 而不是依赖：apply_tabs 只在挂载时注册一次，重复注册会重复握手。
+  const tRef = useRef(t);
+  tRef.current = t;
+  const defaultAutoOpenFileRef = useRef(defaultAutoOpenFileEnabled);
+  defaultAutoOpenFileRef.current = defaultAutoOpenFileEnabled;
+  const setCurrentSessionIdRef = useRef(setCurrentSessionId);
+  setCurrentSessionIdRef.current = setCurrentSessionId;
+  const sessionIdRefSlot = useRef(currentSessionIdRef);
+  sessionIdRefSlot.current = currentSessionIdRef;
+
+  useEffect(() => {
+    const applyTabs = (json: string) => {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(json) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      const records: SyncedTabRecord[] = Array.isArray(parsed.tabs)
+        ? parsed.tabs.map(toSyncedTabRecordFromUnknown).filter((r): r is SyncedTabRecord => r !== null)
+        : [];
+
+      // 宿主没有存档（首次启动 / 刚清空）：把本视图的本地标签作为种子上行。
+      if (records.length === 0) {
+        tabsSyncedRef.current = true;
+        lastSentTabsSignatureRef.current = null;
+        return;
+      }
+
+      const merged: SessionTabData[] = records.map((record) => {
+        const local = tabsRef.current.find((tab) => tab.id === record.id);
+        if (local) {
+          // 只覆盖结构字段：消息、流式状态、输入草稿属于本视图的运行时。
+          return {
+            ...local,
+            sessionId: record.sessionId,
+            title: record.title || local.title,
+            isCustomTitle: record.isCustomTitle,
+            isShared: record.isShared,
+            autoOpenFileEnabled: record.autoOpenFileEnabled ?? local.autoOpenFileEnabled,
+          };
+        }
+        return makeTabFromRecord(record, tRef.current, defaultAutoOpenFileRef.current ?? false);
+      });
+
+      const requestedActive = typeof parsed.activeTabId === 'string' ? parsed.activeTabId : null;
+      const nextActiveId = merged.some((tab) => tab.id === requestedActive)
+        ? requestedActive as string
+        : merged[0].id;
+
+      tabsRef.current = merged;
+      setTabs(merged);
+      tabsSyncedRef.current = true;
+      // 先对齐签名，避免这次远端应用又触发一轮上行回声。
+      lastSentTabsSignatureRef.current = tabsSignature(merged, nextActiveId);
+
+      if (nextActiveId !== activeTabIdRef.current) {
+        // 远端发起的切换：宿主已经是目标会话，不再重复下发 switch_session。
+        selectTabRef.current(nextActiveId, { remote: true });
+        const target = merged.find((tab) => tab.id === nextActiveId);
+        if (target?.sessionId && !target.streamingActive && (target.messages?.length ?? 0) === 0) {
+          // 这个标签是别的窗口刚建的，本视图还没有它的转录。
+          sendBridgeEvent('request_session_snapshot', '');
+        }
+      } else {
+        // 同一个标签，但绑定变了：另一个窗口给这个草稿发出了第一条消息。
+        // 不跟随的话，本视图仍以为自己在「未绑定」状态，后续发送会另起会话。
+        const activeRecord = merged.find((tab) => tab.id === nextActiveId);
+        const localSessionId = sessionIdRefSlot.current?.current ?? null;
+        if (activeRecord && activeRecord.sessionId !== localSessionId) {
+          if (sessionIdRefSlot.current) {
+            sessionIdRefSlot.current.current = activeRecord.sessionId;
+          }
+          setCurrentSessionIdRef.current?.(activeRecord.sessionId);
+        }
+      }
+    };
+
+    window.apply_tabs = applyTabs;
+    // 视图挂载前另一个窗口可能已经同步过标签，宿主广播的那一包落在占位里。
+    if (window.__pendingTabs) {
+      const pending = window.__pendingTabs;
+      window.__pendingTabs = undefined;
+      applyTabs(pending);
+    }
+    sendBridgeEvent('get_tabs', '');
+    return () => {
+      delete window.apply_tabs;
+    };
+  }, [tabsSignature]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeTabAutoOpenFileEnabled = activeTab?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);

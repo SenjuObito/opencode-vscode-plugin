@@ -1222,6 +1222,102 @@ export function registerMessageCallbacks(
   // Unlike historyLoadComplete, this must NOT release the session transition guard.
   window.codexHistoryPageRenderComplete = () => {};
 
+  /**
+   * 宿主权威快照水化（idea `onSessionHydrated` 的逐段移植）。
+   *
+   * 触发时机：切换视图内 tab、原生 panel 重新可见、`frontend_ready` 恢复已绑定
+   * 会话。语义是「视图是宿主状态的投影」：这里收到的是**完整**消息数组，因此
+   * 前台直接替换而不是合并 —— 合并会把上一次渲染残留的消息留在列表里。
+   *
+   * 后台会话的包同样要落到自己的 tab 快照上：宿主在后台 turn 结束时不会水化
+   * （视图不在前台），快照只能靠这里保持与宿主一致。
+   */
+  window.onSessionHydrated = (packetJson: string) => {
+    try {
+      const packet = JSON.parse(packetJson) as {
+        sessionId?: string;
+        messages?: unknown;
+        isStreaming?: boolean;
+        status?: string;
+        loading?: boolean;
+        revertBoundaryId?: string | null;
+      };
+      const targetSessionId = packet?.sessionId;
+      const authoritativeMessages = packet?.messages;
+      if (!targetSessionId || !Array.isArray(authoritativeMessages)) {
+        return;
+      }
+      const { isStreaming, status, loading, revertBoundaryId } = packet;
+
+      cardDebugLog('[onSessionHydrated] received for session:', targetSessionId, 'count:', authoritativeMessages.length);
+
+      const activeSessionId = window.__sessionTabsStore?.getActiveSessionId?.() || currentSessionIdRef?.current || null;
+      const isForeground = !activeSessionId || targetSessionId === activeSessionId;
+
+      if (isForeground) {
+        setMessages(authoritativeMessages as ClaudeMessage[]);
+        // 水化是「整份替换」：窗口基准归零，否则随后到达的增量会按旧基准切片。
+        window.__messageBaseIndex = 0;
+        window.__opencodeListStart = 0;
+
+        if (typeof isStreaming === 'boolean') {
+          isStreamingRef.current = isStreaming;
+          options.setStreamingActive?.(isStreaming);
+          if (isStreaming) {
+            const lastAssistantIdx = findLastAssistantIndex(authoritativeMessages as ClaudeMessage[]);
+            if (lastAssistantIdx >= 0) {
+              streamingMessageIndexRef.current = lastAssistantIdx;
+              const lastAssistant = (authoritativeMessages as ClaudeMessage[])[lastAssistantIdx];
+              streamingContentRef.current = lastAssistant?.content || '';
+            }
+          } else {
+            streamingContentRef.current = '';
+          }
+        }
+
+        if (typeof loading === 'boolean') {
+          setLoading(loading);
+        }
+        if (typeof status === 'string') {
+          setStatus(status);
+        }
+        if (typeof revertBoundaryId !== 'undefined' && window.onRevertStateUpdate) {
+          window.onRevertStateUpdate(
+            targetSessionId,
+            revertBoundaryId
+              ? JSON.stringify({ hasRevert: true, messageId: revertBoundaryId })
+              : JSON.stringify({ hasRevert: false }),
+          );
+        }
+      }
+
+      // 无论前后台都写入 tab 快照，保证后台 tab 与宿主一致。
+      if (window.__sessionTabsStore) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.messages = authoritativeMessages;
+            t.messageBaseIndex = 0;
+            if (typeof isStreaming === 'boolean') t.streamingActive = isStreaming;
+            if (typeof loading === 'boolean') t.loading = loading;
+            if (typeof status === 'string') t.status = status;
+            if (typeof revertBoundaryId !== 'undefined') t.revertBoundaryId = revertBoundaryId;
+          }
+        );
+      }
+    } catch (e) {
+      console.error('[MultiSession] Failed to parse onSessionHydrated', e);
+    }
+  };
+
+  // 视图挂载晚于 `frontend_ready` 时，宿主的水化包已经到过（落在占位里）。
+  // 补放一次，否则新窗口/重载后的 panel 会停在空列表。
+  if (window.__pendingSessionHydrated) {
+    const pendingHydration = window.__pendingSessionHydrated;
+    window.__pendingSessionHydrated = undefined;
+    window.onSessionHydrated(pendingHydration);
+  }
+
   // =========================================================================
   // Codex History Page (paginated history loading)
   // =========================================================================
@@ -1328,8 +1424,7 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.addUserMessage = (content: string) => {
-    if (window.__sessionTransitioning) return;
+  window.addUserMessage = (content: string) => {    if (window.__sessionTransitioning) return;
     const userMessage: ClaudeMessage = {
       type: 'user',
       content: content || '',

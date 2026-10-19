@@ -696,13 +696,30 @@ const App = () => {
     // 并逐条广播 message.removed；宿主镜像删除后转发到这里。先把自己列表里的这些
     // 消息剔除，使随后到达的 updateMessages 快照与 prev 等长 —— 否则
     // preserveLatestMessagesOnShrink 会把它当成「暂时收缩」，把刚删的消息抢救回来。
-    window.onMessagesRemoved = (json: string) => {
+    //
+    // 宿主自多会话路由后按 `(sessionId, idsJson)` 双参下发；单参形态保留兼容。
+    // 删除必须落到对应会话：后台 tab 收到自己的删除时不能动前台列表。
+    window.onMessagesRemoved = (arg0: string, arg1?: string) => {
+      const [targetSessionId, json] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
       try {
         const parsed = JSON.parse(json) as unknown;
         if (!Array.isArray(parsed) || parsed.length === 0) return;
         const ids = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
         if (ids.length === 0) return;
-        console.debug('[App] onMessagesRemoved', ids);
+        console.debug('[App] onMessagesRemoved', targetSessionId, ids);
+
+        if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+          window.__sessionTabsStore.updateBackgroundTab(
+            (t) => t.sessionId === targetSessionId,
+            (t) => {
+              if (Array.isArray(t.messages)) {
+                t.messages = applyMessagesRemoved(t.messages, ids);
+              }
+            }
+          );
+          return;
+        }
+
         setMessages((prev) => applyMessagesRemoved(prev, ids));
       } catch {
         // ignore malformed payloads

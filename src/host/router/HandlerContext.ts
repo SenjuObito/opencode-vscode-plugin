@@ -102,6 +102,21 @@ export class HandlerContext {
 		this.editorContextPusher?.();
 	}
 
+	/**
+	 * 宿主注入的编辑器上下文刷新钩子：只作用于当前 webview。
+	 * `enabled` 是 tab 自身的开关状态——关掉时清空该 tab 的 chip，打开时补推当前文件。
+	 */
+	private editorContextRefresher: ((enabled: boolean) => void) | null = null;
+
+	setEditorContextRefresher(refresh: ((enabled: boolean) => void) | null): void {
+		this.editorContextRefresher = refresh;
+	}
+
+	/** tab 切换 / tab 内开关文件上下文时，把当前编辑器上下文同步到本视图。 */
+	refreshEditorContext(enabled: boolean): void {
+		this.editorContextRefresher?.(enabled);
+	}
+
 	/** 宿主注入的字体配置推送钩子（FontConfigHandler.pushInitialConfig）。 */
 	private fontConfigPusher: (() => void) | null = null;
 
@@ -116,6 +131,98 @@ export class HandlerContext {
 
 	getChannel(): WebviewChannel {
 		return this.channel;
+	}
+
+	/**
+	 * 当前正在处理的消息来自哪个视图（`view:left` / `panel:<tabId>`）。
+	 *
+	 * 实例与视图是 1:N，回复默认广播；但「就绪握手」「编辑器上下文刷新」这类
+	 * 推送天然只属于发起的那个视图，否则会把状态重复灌给其他视图。
+	 */
+	private dispatchOrigin: string | null = null;
+
+	setDispatchOrigin(viewId: string | null): void {
+		this.dispatchOrigin = viewId;
+	}
+
+	getDispatchOrigin(): string | null {
+		return this.dispatchOrigin;
+	}
+
+	/** 由 ChatInstance 注入：按视图定向投递（`ViewRegistry.callJavaScriptTo`）。 */
+	private viewSender: ((viewId: string, fn: string, ...args: string[]) => boolean) | null = null;
+
+	setViewSender(sender: ((viewId: string, fn: string, ...args: string[]) => boolean) | null): void {
+		this.viewSender = sender;
+	}
+
+	/** 有来源视图时只回给它，否则退回广播。 */
+	callJavaScriptToOrigin(functionName: string, ...args: string[]): void {
+		const origin = this.dispatchOrigin;
+		if (origin && this.viewSender?.(origin, functionName, ...args)) {
+			return;
+		}
+		this.callJavaScript(functionName, ...args);
+	}
+
+	/**
+	 * 是否已有任意视图发过 `frontend_ready`。
+	 *
+	 * 视图就绪前调用 `callJavaScript` 会被丢弃（脚本还没挂监听），因此需要
+	 * 按视图判断；这个布尔值只是「至少有一个视图可用」的全局近似。
+	 */
+	private frontendReady = false;
+
+	setFrontendReady(ready: boolean): void {
+		this.frontendReady = ready;
+	}
+
+	isFrontendReady(): boolean {
+		return this.frontendReady;
+	}
+
+	/** 由 ChatInstance 注入：把某个视图标记为就绪（转发给 ViewRegistry）。 */
+	private viewReadyMarker: ((viewId: string) => void) | null = null;
+
+	setViewReadyMarker(marker: ((viewId: string) => void) | null): void {
+		this.viewReadyMarker = marker;
+	}
+
+	/** `frontend_ready` 到达时按来源视图标记，其它组件可据此等待视图挂载。 */
+	markViewReady(viewId: string | null): void {
+		if (viewId) {
+			this.viewReadyMarker?.(viewId);
+		}
+	}
+
+	/** 定向投递给某个视图（新建标签这类「只该发生一次」的动作）。 */
+	callJavaScriptToView(viewId: string, functionName: string, ...args: string[]): boolean {
+		return this.viewSender?.(viewId, functionName, ...args) ?? false;
+	}
+
+	/**
+	 * 宿主注入的「把会话带到前台」钩子（TabManager.revealSession）。
+	 * 通知点击时用：先 reveal 对应原生 panel，再让该视图切到对应标签。
+	 */
+	private sessionFocuser: ((sessionId: string) => boolean) | null = null;
+
+	setSessionFocuser(focuser: ((sessionId: string) => boolean) | null): void {
+		this.sessionFocuser = focuser;
+	}
+
+	/**
+	 * @returns 是否已尝试定位（找不到对应 panel 时仍会推给本视图，让视图内
+	 *   标签切换生效）。
+	 */
+	focusSession(sessionId: string): boolean {
+		if (!sessionId) {
+			return false;
+		}
+		if (this.sessionFocuser?.(sessionId)) {
+			return true;
+		}
+		this.callJavaScript('focus_session', sessionId);
+		return true;
 	}
 
 	/** 当前存活 webview 数量；通道未上报时按单视图处理。 */

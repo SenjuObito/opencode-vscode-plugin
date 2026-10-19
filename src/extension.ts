@@ -16,6 +16,9 @@ import { OpenCodeDaemonBridge } from './host/provider/OpenCodeDaemonBridge.js';
 import { MementoSettingsStore, SettingsService } from './host/settings/SettingsService.js';
 import { WebviewBroadcaster } from './host/router/WebviewBroadcaster.js';
 import { TabManager } from './host/tabs/TabManager.js';
+import { ChatTabStore } from './host/tabs/ChatTabStore.js';
+import { ChatTabHandler } from './host/handlers/ChatTabHandler.js';
+import { createChatInstance } from './host/session/ChatInstance.js';
 import { EditorContextTracker } from './host/context/EditorContextTracker.js';
 import { logDiagnostic, logError, setDiagnosticVerbose } from './host/util/DiagnosticLogger.js';
 
@@ -121,7 +124,7 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	// ── 4. 编辑器上下文跟踪（当前文件 / 选区 → webview ContextBar）──────────
-	const editorContextTracker = new EditorContextTracker(settings);
+	const editorContextTracker = new EditorContextTracker();
 	editorContextTracker.register();
 	context.subscriptions.push({ dispose: () => editorContextTracker.dispose() });
 
@@ -141,39 +144,54 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// ── 6. 多标签页管理（openChat → 新原生编辑器 tab + 独立会话）───────────
-	const tabManager = new TabManager({
-		extensionUri: context.extensionUri,
+	// ── 6. 全局唯一聊天实例 + 视图挂载点 ─────────────────────────────
+	// 侧边栏左/右与每个编辑器窗口都是这个实例的视图；会话与标签全局唯一。
+	const instance = createChatInstance({
 		settings,
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
 		editorContextTracker,
+	});
+	context.subscriptions.push({ dispose: () => instance.dispose() });
+
+	const tabManager = new TabManager({
+		extensionUri: context.extensionUri,
+		settings,
+		instance,
 		onLog: (message) => logDiagnostic(message),
 	});
 	context.subscriptions.push({ dispose: () => tabManager.disposeAll() });
 
-	// ── 7. 双侧边栏 provider（左右完全独立会话实例，各自处理对话与状态）──────
+	// 通知点击「查看」：先 reveal 窗口，再让所有视图切到该标签。
+	instance.context.setSessionFocuser((sessionId) => tabManager.revealSession(sessionId));
+
+	// 聊天标签是全局状态：落盘 + 跨视图广播。
+	instance.dispatcher.registerHandler(
+		new ChatTabHandler(instance.context, new ChatTabStore(context.workspaceState)),
+	);
+
+	// 窗口重载后由 VS Code 归还已打开的对话窗口；它只是又一个视图，
+	// 内容由实例广播补齐，不再按 panel 绑会话。
+	context.subscriptions.push(
+		vscode.window.registerWebviewPanelSerializer('opencode-buddy.tab', {
+			deserializeWebviewPanel: async (panel) => {
+				tabManager.adoptRestoredPanel(panel);
+			},
+		}),
+	);
+
+	// ── 7. 双侧边栏 provider：同一实例的两个挂载点 ────────────────────
 	const leftProvider = new OpenCodeViewProvider({
 		extensionUri: context.extensionUri,
 		host: 'left',
-		settings,
-		daemon,
-		fileOps,
-		fallbackWorkingDirectoryResolver,
-		editorContextTracker,
-		tabManager,
+		instance,
 		getUiPreferences: () => settings.getUiPreferences(),
 	});
 	const rightProvider = new OpenCodeViewProvider({
 		extensionUri: context.extensionUri,
 		host: 'right',
-		settings,
-		daemon,
-		fileOps,
-		fallbackWorkingDirectoryResolver,
-		editorContextTracker,
-		tabManager,
+		instance,
 		getUiPreferences: () => settings.getUiPreferences(),
 	});
 
@@ -184,8 +202,9 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.commands.executeCommand('workbench.view.extension.opencode-buddy'),
 		),
 		vscode.commands.registerCommand('opencode-buddy.openChat', () => {
-			// 在编辑器区域新建一个独立的 OpenCode Buddy 对话标签页
-			tabManager.openNewTab();
+			// 标签是全局的：命令只负责「让某个视图新建一个标签」，
+			// 没有窗口时才先开窗口（新窗口就绪后补发）。
+			tabManager.openChat();
 		}),
 		{
 			dispose: () => {

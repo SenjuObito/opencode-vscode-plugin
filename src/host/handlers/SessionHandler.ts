@@ -124,10 +124,27 @@ export class SessionHandler extends BaseMessageHandler {
 	}
 
 	private sendWithPayload(payload: SendMessagePayload): void {
-		const targetSessionId = payload.sessionId || payload.tabId;
-		const session = (targetSessionId ? this.context.getSession(targetSessionId) : null) ?? this.context.getSession();
+		// 会话解析顺序（对应 idea SessionHandler：194-211）：
+		//   1. payload.sessionId —— 已绑定会话的 tab 直接命中
+		//   2. payload.tabId     —— 尚未绑定会话的新 tab，按 tabId 补建会话
+		//   3. 兜底 window 当前会话（旧版前端只发裸文本）
+		// 缺了第 2 步时，新 tab 的首条消息会落进上一个 tab 的会话。
+		const explicitId = payload.sessionId?.trim() || '';
+		const tabId = payload.tabId?.trim() || '';
+		let session = explicitId ? this.context.getSession(explicitId) : null;
+		if (!session && tabId) {
+			session = this.context.getSession(tabId)
+				?? this.context.getSessionManager()?.ensureSessionForTab(tabId)
+				?? null;
+		}
 		if (!session) {
-			this.callJavaScript('addErrorMessage', targetSessionId ?? '', escapeJs('会话尚未初始化，请重新打开面板。'));
+			session = this.context.getSession();
+		}
+
+		// 前端按这个标识把错误气泡归到正确的 tab（新 tab 此刻的会话 id 就是 tabId）
+		const targetSessionId = explicitId || tabId || session?.state.getSessionId() || '';
+		if (!session) {
+			this.callJavaScript('addErrorMessage', targetSessionId, escapeJs('会话尚未初始化，请重新打开面板。'));
 			return;
 		}
 
@@ -145,14 +162,14 @@ export class SessionHandler extends BaseMessageHandler {
 			const command = text.slice(1).trim();
 			session.sendShell(command, currentCwd).catch((ex: unknown) => {
 				const message = ex instanceof Error ? ex.message : String(ex);
-				this.callJavaScript('addErrorMessage', targetSessionId ?? '', escapeJs(`Shell 执行失败: ${message}`));
+				this.callJavaScript('addErrorMessage', targetSessionId, escapeJs(`Shell 执行失败: ${message}`));
 			});
 			return;
 		}
 
 		session.send(payload).catch((ex: unknown) => {
 			const message = ex instanceof Error ? ex.message : String(ex);
-			this.callJavaScript('addErrorMessage', targetSessionId ?? '', escapeJs(`发送失败: ${message}`));
+			this.callJavaScript('addErrorMessage', targetSessionId, escapeJs(`发送失败: ${message}`));
 		});
 	}
 

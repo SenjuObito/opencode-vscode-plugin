@@ -3,9 +3,13 @@
  * Tracks the active editor file + selection and pushes it to the webview
  * ContextBar via `window.addSelectionInfo('@path#L1-L2')` /
  * `window.clearSelectionInfo()`（200ms 防抖，与 IDE 版一致）。
+ *
+ * 注意：这里**不**读取「发送打开的文件路径」设置。
+ * 该设置只决定新会话 / 历史会话加载时 tab 的初始开关状态；tab 内是否展示、
+ * 发送时是否注入，都由前端按 tab 状态（send payload 的 autoOpenFileEnabled）
+ * 决定。宿主始终跟踪当前编辑器并广播，前端自行忽略即可。
  */
 import * as vscode from 'vscode';
-import type { SettingsService } from '../settings/SettingsService';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 
 const DEBOUNCE_MS = 200;
@@ -16,8 +20,6 @@ export class EditorContextTracker {
 	private readonly disposables: vscode.Disposable[] = [];
 	/** 最近一次计算的上下文（'@path#L1-L2' 或 null），供发送时注入。 */
 	private lastInfo: string | null = null;
-
-	constructor(private readonly settings: SettingsService) {}
 
 	/** 当前编辑器上下文（cc-gui EditorContextCollector.collectContext 等价物）。 */
 	getCurrentSelectionInfo(): string | null {
@@ -33,39 +35,58 @@ export class EditorContextTracker {
 		this.disposables.push(
 			vscode.window.onDidChangeTextEditorSelection(() => this.scheduleUpdate()),
 		);
+		// 编辑器打开 / 关闭（关闭最后一个文件后需要清空上下文）
+		this.disposables.push(
+			vscode.window.onDidChangeVisibleTextEditors(() => this.scheduleUpdate()),
+		);
 		this.updateNow();
 	}
 
-	/** 立即推送当前上下文（webview 面板就绪时调用）。 */
+	/** 立即计算并广播当前上下文（webview 面板就绪、编辑器事件触发时调用）。 */
 	updateNow(): void {
 		if (this.disposed) {
 			return;
 		}
-		try {
-			// 与 cc-gui 一致：关闭「自动打开文件」设置时清空 ContextBar。
-			const projectPath = this.settings.getPrimaryWorkspaceRoot();
-			if (projectPath && !this.settings.getAutoOpenFileEnabled(projectPath)) {
-				this.clear();
-				return;
-			}
+		const info = this.resolveInfo();
+		this.lastInfo = info;
+		if (info) {
+			WebviewBroadcaster.broadcastJavaScript('addSelectionInfo', info);
+		} else {
+			WebviewBroadcaster.broadcastJavaScript('clearSelectionInfo');
+		}
+	}
 
-			// 优先获取 activeTextEditor；如果当前焦点在 webview（activeTextEditor 为 undefined），
-			// 尝试从 visibleTextEditors 中寻找可见的文件编辑器；若都不可见但已有 lastInfo 则保持，否则才清空。
+	/**
+	 * 只把当前上下文推送给单个 webview（tab 切换 / tab 内打开文件上下文时调用）。
+	 * 推送目标由调用方通过 `emit` 决定，避免影响其他分栏。
+	 */
+	pushTo(emit: (info: string | null) => void): void {
+		if (this.disposed) {
+			emit(null);
+			return;
+		}
+		const info = this.resolveInfo();
+		this.lastInfo = info;
+		emit(info);
+	}
+
+	/**
+	 * 解析当前编辑器上下文：
+	 * - 优先 activeTextEditor；
+	 * - 焦点在 webview 时 activeTextEditor 为 undefined，回退到可见的文件编辑器
+	 *   （分栏仍显示，因此不会误清空）；
+	 * - 没有任何可见文件编辑器时返回 null（关闭全部文件 → 清空）。
+	 */
+	private resolveInfo(): string | null {
+		try {
 			let editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.uri.scheme !== 'file') {
-				const visibleFileEditor = vscode.window.visibleTextEditors.find(
+				editor = vscode.window.visibleTextEditors.find(
 					(e) => e.document.uri.scheme === 'file',
 				);
-				if (visibleFileEditor) {
-					editor = visibleFileEditor;
-				} else if (this.lastInfo) {
-					// 焦点临时切至 WebviewPanel 且分栏无可见编辑器时，广播保持最近一次选中的有效文件上下文
-					WebviewBroadcaster.broadcastJavaScript('addSelectionInfo', this.lastInfo);
-					return;
-				} else {
-					this.clear();
-					return;
-				}
+			}
+			if (!editor) {
+				return null;
 			}
 
 			let info = `@${editor.document.uri.fsPath}`;
@@ -79,15 +100,14 @@ export class EditorContextTracker {
 				}
 				info += `#L${startLine}-${endLine}`;
 			}
-
-			this.lastInfo = info;
-			WebviewBroadcaster.broadcastJavaScript('addSelectionInfo', info);
+			return info;
 		} catch (err) {
-			console.warn(`[EditorContextTracker] update failed: ${String(err)}`);
+			console.warn(`[EditorContextTracker] resolve failed: ${String(err)}`);
+			return this.lastInfo;
 		}
 	}
 
-	/** 清空上下文缓存并通知 webview（autoOpenFile 关闭等场景需同步调用）。 */
+	/** 清空上下文缓存并通知所有 webview。 */
 	clear(): void {
 		this.lastInfo = null;
 		WebviewBroadcaster.broadcastJavaScript('clearSelectionInfo');

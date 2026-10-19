@@ -1,21 +1,19 @@
 /**
- * TabManager — 多标签页会话管理器。
+ * TabManager — 编辑器里的对话窗口（WebviewPanel）管理器。
  *
- * 用户点击 VS Code 编辑器上的 OpenCode Buddy 按钮时，直接新建一个独立的对话标签页（WebviewPanel）。
- * 标签页使用标准的 'OpenCode Buddy' 原生标题，无需自增序号。
+ * 角色已经变了：它不再拥有会话。整个扩展只有一个 `ChatInstance`，这里的每个
+ * panel 只是该实例的一个挂载点（另一个窗口），与会话、标签一一对应的是
+ * webview 里的聊天标签，而不是窗口。
  *
- * 核心机制：
- * 1. 每个 WebviewPanel 拥有独立的 ChatInstance（包含独立 OpenCodeSession、SingleWebviewChannel 与 handlers）。
- * 2. 独立消息隔离，各个标签页可同时向 daemon 发起提问，并发流式输出，互不干扰。
- * 3. 通过 WebviewBroadcaster 接入全局配置广播，任何标签页修改设置，所有标签页实时同步生效。
- * 4. 设置 retainContextWhenHidden: true，切至后台时保持流式渲染与 DOM 状态。
- * 5. 面板关闭时（onDidDispose）彻底释放资源。
+ * 因此：
+ * 1. 新建窗口 ≠ 新建会话 —— 新窗口显示的是同一份内容；
+ * 2. 关闭窗口只解绑视图，会话与聊天标签都留在实例里；
+ * 3. 窗口之间不需要各自的消息通道，实例的广播会同时抵达所有窗口。
  */
 import * as vscode from 'vscode';
 import { WebviewChannel } from '../router/HandlerContext';
 import { SettingsService } from '../settings/SettingsService';
-import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
-import { ChatInstance, createChatInstance, ChatInstanceDeps } from '../session/ChatInstance';
+import { ChatInstance } from '../session/ChatInstance';
 import { BridgeMessage } from '../types';
 import { buildWebviewHtml, parseWirePayload, readWebviewHtml } from '../webview/OpenCodeViewProvider';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
@@ -24,15 +22,11 @@ import { logDiagnostic, logVerbose } from '../util/DiagnosticLogger';
 const TAB_VIEW_TYPE = 'opencode-buddy.tab';
 const DEFAULT_TAB_TITLE = 'OpenCode Buddy';
 
-import type { EditorContextTracker } from '../context/EditorContextTracker';
-
 export interface TabManagerOptions {
 	readonly extensionUri: vscode.Uri;
 	readonly settings: SettingsService;
-	readonly daemon: OpenCodeDaemonBridge;
-	readonly fileOps: ChatInstanceDeps['fileOps'];
-	readonly fallbackWorkingDirectoryResolver: () => string | null;
-	readonly editorContextTracker?: EditorContextTracker;
+	/** 全局唯一的聊天实例；所有窗口挂载到它。 */
+	readonly instance: ChatInstance;
 	readonly onLog?: (message: string) => void;
 }
 
@@ -69,16 +63,48 @@ interface TabEntry {
 	tabId: string;
 	panel: vscode.WebviewPanel;
 	channel: SingleWebviewChannel;
-	instance: ChatInstance;
 	unregisterBroadcaster: () => void;
+	detachView: () => void;
 }
 
 export class TabManager {
 	private readonly tabs = new Map<string, TabEntry>();
 	private tabCounter = 0;
 	private htmlCache: string | null = null;
+	/** 新窗口还没就绪时挂起的「新建对话」，等该视图 frontend_ready 后补发。 */
+	private readonly pendingNewChat = new Set<string>();
+	private readonly unregisterReady: () => void;
 
-	constructor(private readonly options: TabManagerOptions) {}
+	constructor(private readonly options: TabManagerOptions) {
+		this.unregisterReady = this.options.instance.onViewReady((viewId) => {
+			if (!this.pendingNewChat.delete(viewId)) {
+				return;
+			}
+			this.options.instance.context.callJavaScriptToView(viewId, 'createSessionTab');
+		});
+	}
+
+	/**
+	 * 「新建对话」命令的入口。
+	 *
+	 * 标签是全局的：真正的「新建」只能发生在一个视图里（`createSessionTab`
+	 * 内部负责「至多一个未绑定草稿」的去重），然后由宿主广播给其余视图。
+	 * 有窗口就投给它；一个都没有才先开窗口，并等它就绪后再补发。
+	 */
+	openChat(): void {
+		const readyIds = this.options.instance.getReadyViewIds();
+		// 优先投给编辑器窗口（用户正在对话的地方），否则任意一个已就绪视图
+		// （左右侧边栏）。没有就绪视图才开窗口，避免「点了命令弹出一个空窗口」。
+		const panelViewIds = [...this.tabs.keys()].map((tabId) => `panel:${tabId}`);
+		const target = panelViewIds.find((id) => readyIds.includes(id))
+			?? readyIds[0];
+		if (target) {
+			this.options.instance.context.callJavaScriptToView(target, 'createSessionTab');
+			return;
+		}
+		const tabId = this.openNewTab();
+		this.pendingNewChat.add(`panel:${tabId}`);
+	}
 
 	getTabCount(): number {
 		return this.tabs.size;
@@ -88,35 +114,9 @@ export class TabManager {
 		return [...this.tabs.keys()];
 	}
 
-	/** 新建并打开一个独立的对话标签页 */
+	/** 打开一个新的对话窗口（同一实例的又一个视图）。 */
 	openNewTab(): string {
 		const tabId = `tab_${Date.now()}_${++this.tabCounter}`;
-		const tab = this.spawnTab(tabId);
-		this.tabs.set(tabId, tab);
-		return tabId;
-	}
-
-	/** 关闭并清理一个标签页 */
-	closeTab(tabId: string): void {
-		const tab = this.tabs.get(tabId);
-		if (!tab) {
-			return;
-		}
-		tab.unregisterBroadcaster();
-		tab.channel.dispose();
-		tab.instance.dispose();
-		this.tabs.delete(tabId);
-		this.options.onLog?.(`[TabManager] closed tab ${tabId}`);
-	}
-
-	disposeAll(): void {
-		for (const tabId of [...this.tabs.keys()]) {
-			this.closeTab(tabId);
-		}
-	}
-
-	private spawnTab(tabId: string): TabEntry {
-		const { extensionUri, settings, daemon, fileOps, fallbackWorkingDirectoryResolver, editorContextTracker } = this.options;
 		const panel = vscode.window.createWebviewPanel(
 			TAB_VIEW_TYPE,
 			DEFAULT_TAB_TITLE,
@@ -125,10 +125,69 @@ export class TabManager {
 				enableScripts: true,
 				retainContextWhenHidden: true,
 				localResourceRoots: [
-					vscode.Uri.joinPath(extensionUri, 'dist', 'webview'),
+					vscode.Uri.joinPath(this.options.extensionUri, 'dist', 'webview'),
 				],
 			},
 		);
+		const entry = this.attachTab(tabId, panel);
+		this.tabs.set(tabId, entry);
+		return tabId;
+	}
+
+	/** 关闭窗口：只解绑视图，不触碰实例与会话。 */
+	closeTab(tabId: string): void {
+		const tab = this.tabs.get(tabId);
+		if (!tab) {
+			return;
+		}
+		tab.detachView();
+		tab.unregisterBroadcaster();
+		tab.channel.dispose();
+		this.tabs.delete(tabId);
+		this.options.onLog?.(`[TabManager] closed view ${tabId}`);
+	}
+
+	disposeAll(): void {
+		this.unregisterReady();
+		for (const tabId of [...this.tabs.keys()]) {
+			this.closeTab(tabId);
+		}
+	}
+
+	/** VS Code 恢复 panel 时接管它（视图重新挂载，不涉及会话绑定）。 */
+	adoptRestoredPanel(panel: vscode.WebviewPanel): string | null {
+		let tabId = `tab_${Date.now()}_${++this.tabCounter}`;
+		while (this.tabs.has(tabId)) {
+			tabId = `tab_${Date.now()}_${++this.tabCounter}`;
+		}
+		const entry = this.attachTab(tabId, panel);
+		this.tabs.set(tabId, entry);
+		return tabId;
+	}
+
+	/**
+	 * 把某个会话带到前台（通知点击「查看」）。
+	 *
+	 * 单实例下不再需要「在哪个实例里找会话」：会话存在就广播一次
+	 * `focus_session`，所有窗口一起切到该标签；若还有窗口，顺手 reveal 一个。
+	 */
+	revealSession(sessionId: string): boolean {
+		if (!sessionId || !this.options.instance.sessionManager.hasSession(sessionId)) {
+			return false;
+		}
+		const first = this.tabs.values().next().value as TabEntry | undefined;
+		first?.panel.reveal(undefined, false);
+		this.options.instance.context.callJavaScript('focus_session', sessionId);
+		return true;
+	}
+
+	/** 为一个已存在的 panel 装配视图通道与监听（新建与恢复共用）。 */
+	private attachTab(tabId: string, panel: vscode.WebviewPanel): TabEntry {
+		const { extensionUri, settings, instance } = this.options;
+
+		if (this.htmlCache === null) {
+			this.htmlCache = readWebviewHtml(extensionUri);
+		}
 
 		const isDark = vscode.window.activeColorTheme.kind !== vscode.ColorThemeKind.Light;
 		const iconFile = isDark ? 'opencode-activity-dark.svg' : 'opencode-activity-light.svg';
@@ -136,19 +195,14 @@ export class TabManager {
 
 		const channel = new SingleWebviewChannel(panel.webview);
 		const unregisterBroadcaster = WebviewBroadcaster.register(channel);
-
-		const instance = createChatInstance({
+		const viewId = `panel:${tabId}`;
+		const detachView = instance.attachView({
+			id: viewId,
+			kind: 'panel',
 			channel,
-			settings,
-			daemon,
-			fileOps,
-			fallbackWorkingDirectoryResolver,
-			editorContextTracker,
+			isVisible: () => panel.visible,
 		});
 
-		if (this.htmlCache === null) {
-			this.htmlCache = readWebviewHtml(extensionUri);
-		}
 		panel.webview.html = buildWebviewHtml(
 			this.htmlCache,
 			isDark,
@@ -170,12 +224,12 @@ export class TabManager {
 				return;
 			}
 			logVerbose(`[TabManager] dispatch type=${type} content=${content.substring(0, 200)}`);
-			instance.dispatcher.dispatch(type, content);
+			instance.dispatchFrom(viewId, type, content);
 		});
 
 		panel.onDidDispose(() => this.closeTab(tabId));
 
-		this.options.onLog?.(`[TabManager] opened new chat tab (${tabId})`);
-		return { tabId, panel, channel, instance, unregisterBroadcaster };
+		this.options.onLog?.(`[TabManager] opened view (${tabId})`);
+		return { tabId, panel, channel, unregisterBroadcaster, detachView };
 	}
 }

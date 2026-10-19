@@ -304,7 +304,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			if (activeSession.state.getSessionId() === sessionId) {
 				// 同会话软刷新
 				if (!daemon || activeSession.state.isBusy()) {
-					this.callJavaScript('historyLoadComplete');
+					activeSession.notifyHistoryLoadComplete();
 					return;
 				}
 				this.callJavaScript('setSessionId', sessionId);
@@ -334,7 +334,7 @@ export class HistoryHandler extends BaseMessageHandler {
 
 		if (session.state.getSessionId() === sessionId) {
 			if (!daemon || session.state.isBusy()) {
-				this.callJavaScript('historyLoadComplete');
+				session.notifyHistoryLoadComplete();
 				return;
 			}
 			this.callJavaScript('setSessionId', sessionId);
@@ -381,7 +381,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			tasks.push(this.requestSessionState(daemon, session, sessionId));
 		}
 		await Promise.all(tasks);
-		this.callJavaScript('historyLoadComplete');
+		session.notifyHistoryLoadComplete();
 	}
 
 	private requestMessages(
@@ -419,6 +419,14 @@ export class HistoryHandler extends BaseMessageHandler {
 						// 让失败可见：此前静默只表现为「这个会话没有消息」。
 						console.error(`[HistoryHandler] Failed to load messages for session ${sessionId}: ${reason}`);
 						this.callJavaScript('updateStatus', `Failed to load session messages: ${reason}`);
+						// 重试用尽仍拿不到：解除绑定。保留 sessionId 会让用户下一条
+						// 消息追加到这段会话上，旧对话整份冒出来 —— 而界面看起来是
+						// 一个空白的新会话（idea `settleSessionResync` 的教训）。
+						// 会话本身仍在服务端历史里，随时可以重新打开。
+						session.resetSession();
+						session.notifyMessageLoadFailure(reason);
+						resolve();
+						return;
 					}
 					// 恢复会话后同步 revert（redo）状态，供前端渲染撤销占位条 / 恢复按钮
 					const revertState = session.state.getRevertState();
@@ -513,7 +521,7 @@ export class HistoryHandler extends BaseMessageHandler {
 				done();
 				return;
 			}
-			this.callJavaScript('historyLoadComplete');
+			session.notifyHistoryLoadComplete();
 		};
 		const ok = daemon.request('opencode.getSessionInfo', { sessionId, directory }, {
 			onLine: (line) => chunks.push(line),
@@ -580,7 +588,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		if (summary) {
 			this.callJavaScript('updateSessionTitle', sessionId, summary.title);
 		}
-		this.callJavaScript('historyLoadComplete');
+		session.notifyHistoryLoadComplete();
 	}
 
 	/** 从 daemon 输出缓冲区提取 JSON 对象（容错非 JSON 诊断行）。 */

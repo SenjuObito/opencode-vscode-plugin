@@ -1,134 +1,164 @@
-# 多标签页与多会话隔离架构设计文档
+# 多会话与多视图架构（单实例 · 多视图）
 
-本文档详细记录 `opencode-vscode-plugin`（OpenCode Buddy）的**多实例会话隔离（One Instance Per Window / Tab）**、**精准中断隔离（Per-Session Abort Isolation）**、**全局设置广播机制（WebviewBroadcaster）** 与 **多视图编辑器上下文跟踪（EditorContextTracker）** 的设计与实现。
+本文档描述 `opencode-vscode-plugin`（OpenCode Buddy）当前的会话与视图模型：**一个扩展进程只有一个聊天实例，侧边栏与编辑器窗口都只是它的挂载点**。
 
----
-
-## 一、架构设计目标
-
-1. **会话完全独立（One Instance Per View）**：
-   - 左侧活动栏面板（`opencode-buddy.left`）、右侧辅助栏面板（`opencode-buddy.right`）以及编辑器区域打开的每一个标签页（`opencode-buddy.tab`）均分配独立的 `ChatInstance`。
-   - 每一个实例拥有专属的 `OpenCodeSession`、`SessionState`、`MessageHandler` 状态机与 `MessageDispatcher`。
-   - 用户在一个标签页发起提问时，只有该标签页进入流式接收状态，其他标签页/侧边栏互不影响。
-
-2. **多端全局设置联动（Global Settings Broadcast）**：
-   - 任何一个面板修改主题、语言、模型偏好、字号、快捷键或文件上下文开关时，通过 `WebviewBroadcaster` 实时同步推送到所有打开的视图。
-
-3. **精准会话中断（Per-Session Abort Isolation）**：
-   - 当用户在 Tab 1 点击“停止（Stop）”按钮时，仅中止 Tab 1 当前会话的流式生成，Tab 2 和 Tab 3 的流式生成不受任何影响继续正常执行。
-
-4. **编辑器上下文多视图同步与焦点保持（Multi-View Editor Context Tracking）**：
-   - VS Code 活动代码文件及选区变化时，自动将 `@/path/file#L1-L10` 广播给所有视图。
-   - 当用户点击切换进入 WebviewPanel（此时 VS Code `activeTextEditor` 变为 `undefined`）时，系统自动保持最近一次有效的代码文件上下文，不误清空 ContextBar。
+> 历史背景：早期实现是「一个视图一个 `ChatInstance`」，用多个面板来充当多会话。标签栏支持多会话之后，这条路径被移除——面板不再是会话的载体，只是同一份状态的另一个展示窗口。
 
 ---
 
-## 二、架构拓扑与交互关系
+## 一、模型
 
-```mermaid
-graph TD
-    subgraph VSCode_UI ["VS Code UI 容器"]
-        LeftView["左侧活动栏面板 (opencode-buddy.left)"]
-        RightView["右侧辅助栏面板 (opencode-buddy.right)"]
-        Tab1["编辑器标签页 1 (opencode-buddy.tab)"]
-        Tab2["编辑器标签页 2 (opencode-buddy.tab)"]
-    end
-
-    subgraph Instances ["聊天实例层 (ChatInstance)"]
-        InstLeft["Left ChatInstance (Channel + Session + Dispatcher)"]
-        InstRight["Right ChatInstance (Channel + Session + Dispatcher)"]
-        InstTab1["Tab1 ChatInstance (Channel + Session + Dispatcher)"]
-        InstTab2["Tab2 ChatInstance (Channel + Session + Dispatcher)"]
-    end
-
-    subgraph Global_Services ["宿主全局服务"]
-        Broadcaster["WebviewBroadcaster (全局设置/上下文广播)"]
-        ContextTracker["EditorContextTracker (活动编辑器与选区跟踪)"]
-        Settings["SettingsService (全局/工作区配置权威源)"]
-        TabMgr["TabManager (标签页生命周期管理)"]
-    end
-
-    subgraph Daemon_Layer ["OpenCode Daemon 进程 (Node.js)"]
-        Bridge["OpenCodeDaemonBridge (按 requestId / sessionId 路由)"]
-        DaemonService["opencode-daemon-service.js (_activeTurns: Map<sessionId, turn>)"]
-        SDK["@opencode-ai/sdk / opencode serve"]
-    end
-
-    LeftView --> InstLeft
-    RightView --> InstRight
-    Tab1 --> InstTab1
-    Tab2 --> InstTab2
-
-    InstLeft --> Broadcaster
-    InstRight --> Broadcaster
-    InstTab1 --> Broadcaster
-    InstTab2 --> Broadcaster
-
-    ContextTracker --> Broadcaster
-    Settings --> Broadcaster
-
-    InstLeft --> Bridge
-    InstRight --> Bridge
-    InstTab1 --> Bridge
-    InstTab2 --> Bridge
-
-    Bridge --> DaemonService
-    DaemonService --> SDK
+```
+        ┌──────────────────────── ChatInstance（全局唯一）────────────────────────┐
+        │  HandlerContext · MessageDispatcher · SessionManager · OpenCodeSession  │
+        │  SessionState（按 sessionId 分桶） · NotificationService                 │
+        └───────────────────────────────┬────────────────────────────────────────┘
+                                        │ ViewRegistry
+        ┌───────────────────┬───────────┴───────────┬────────────────────┐
+        │                   │                       │                    │
+   view:left           view:right             panel:tab_1          panel:tab_2
+  （侧边栏）           （侧边栏）             （编辑器窗口）        （编辑器窗口）
 ```
 
----
+三条不变量：
 
-## 三、核心模块与实现机制
-
-### 1. 聊天实例工厂 (`src/host/session/ChatInstance.ts`)
-负责为每一个面板/标签页装配专属的通信链路与消息处理器：
-- **`HandlerContext`**：封装当前视图的 `WebviewChannel`，并注入 `SettingsService`、`OpenCodeDaemonBridge` 与 `FileOps`。
-- **`MessageDispatcher`**：注册完整的处理器集合（`SessionHandler`、`ModelProviderHandler`、`SettingsHandler`、`FontConfigHandler`、`CliModelsHandler`、`CliStatusHandler`、`ContextHandler`、`WindowEventHandler`、`SkillHandler`、`AgentHandler`、`HistoryHandler`、`ExportHandler`、`FileHandler`、`McpServerHandler`、`McpMarketplaceHandler`、`DiffHandler`、`UndoFileHandler`、`PermissionHandler`、`TokenTrackerHandler`）。
-- **`OpenCodeSession`**：维护独立的会话状态（`SessionState`）、单轮流式上下文（`MarkerStreamContext`）与消息状态机（`MessageHandler`）。
-
-### 2. 全局广播器 (`src/host/router/WebviewBroadcaster.ts`)
-- 集中维护所有存活的 `WebviewChannel`（包含侧边栏的 `ProviderWebviewChannel` 与各标签页的 `SingleWebviewChannel`）。
-- 提供 `broadcastJavaScript(functionName, ...args)` 与 `broadcastRaw(message)` 方法。
-- 当接收到主题变化（`onIdeThemeChanged`）、字体配置（`onFontConfigChanged`）、守护进程状态（`onDaemonStatusChanged`）或编辑器选区（`addSelectionInfo` / `clearSelectionInfo`）时，自动广播给全量活跃视图。
-
-### 3. 精准中断机制 (`Per-Session Abort`)
-
-#### 痛点与根因
-在早期实现中：
-1. 宿主端 `OpenCodeDaemonBridge.sendAbort()` 盲目调用 `drainRequests()`，将宿主侧**所有正在等待响应的请求**（包括其他正在生成内容的标签页）一并清空并触发 `onAbort()` / `onComplete(false)`。
-2. Daemon 端 `abortCurrentTurn()` 遍历了 `_activeTurns` 中的所有 session 并全部调用 `sdk.abort(sessionId)`。
-3. 后台 SSE 事件流在分发 delta 标记时未将事件绑定到发起该轮 turn 的 `requestId` 上。
-
-#### 修复与精准隔离方案
-1. **宿主层精确定位**：
-   - `PendingRequest` 结构记录关联的 `sessionId`。
-   - `DaemonOutputCallback` 增加 `onStart(requestId)` 回调，`OpenCodeSession` 追踪当前 turn 的 `activeRequestId`。
-   - `OpenCodeSession.interrupt()` 调用 `daemon.sendAbort(sessionId, requestId)`。
-   - `OpenCodeDaemonBridge.sendAbort(sessionId?, requestId?)` 仅查找并移除目标请求，其他正在运行的会话请求保持活跃不受干扰。
-2. **Daemon 层按会话中断**：
-   - `daemon.js` 收到 `{ method: 'abort', params: { sessionId, requestId } }` 后，调用 `abortCurrentTurn(sessionId)`。
-   - `abortCurrentTurn(targetSessionId)` 仅中止指定 `sessionId` 的 turn，并调用 `sdk.abort(sessionId)`。
-3. **SSE 事件上下文绑定**：
-   - 每个 turn 独立记录 `turn.requestId`。
-   - `_handleEvent` 处理 SSE 事件时，通过 `requestContext.run({ id: turn.requestId }, () => ...)` 注入当前 turn 的 ALS 上下文，保证多会话并发流式输出标记精准打标并路由至正确的标签页。
-
-### 4. 编辑器上下文跟踪 (`src/host/context/EditorContextTracker.ts`)
-- 监听 `vscode.window.onDidChangeActiveTextEditor` 与 `vscode.window.onDidChangeTextEditorSelection`（200ms 防抖）。
-- **焦点保持策略**：当用户切换进入 Webview 时，VS Code 的 `activeTextEditor` 为 `undefined`。此时优先从 `visibleTextEditors` 中寻找可见代码编辑器；若无可见编辑器但已有有效 `lastInfo` 时保持当前上下文，仅在用户主动关闭文件或关闭 `autoOpenFileEnabled` 设置时才触发 `clear()`。
-- 通过 `WebviewBroadcaster.broadcastJavaScript('addSelectionInfo' | 'clearSelectionInfo')` 广播至所有视图。
-
-### 5. 会话导出与工具栏二级菜单
-- **`ExportHandler` 注册**：在 `createChatInstance` 中统一注册 `ExportHandler`，各 Tab 可独立将当前会话导出为 Markdown 文件、在编辑器中打开或复制至剪贴板。
-- **工具栏二级菜单**：在 `ChatHeader.tsx` 右侧通过 `...` 更多操作下拉菜单容纳“导出会话为 Markdown”和“设置”，保持界面简洁美观。
+1. **会话是全局的**：`SessionManager` 里每个 `sessionId` 只有一份状态，任何视图看到的都是同一份。
+2. **标签是全局的**：标签列表 + 当前激活标签由宿主持有并持久化，所有视图投影同一个列表。
+3. **视图是可丢弃的**：关闭视图只解绑通道，不销毁实例、不关闭会话。
 
 ---
 
-## 四、验证与测试矩阵
+## 二、出站通道：广播与定向
 
-| 场景 | 预期行为 | 验证状态 |
-| :--- | :--- | :--- |
-| **多 Tab 并发对话** | Tab 1、Tab 2、侧边栏同时提问，各视图独立流式输出，互不串流 | 通过 |
-| **单 Tab 停止对话** | 在 Tab 1 点击停止，仅 Tab 1 终止并定住已生成气泡，Tab 2 继续生成 | 通过 |
-| **全局主题与设置同步** | 在任意 Tab 修改设置，所有 Tab 与左/右侧边栏实时同步生效 | 通过 |
-| **文件上下文跟踪** | 切换代码文件或选区，所有视图的 ContextBar 均实时更新 `@file#L...` 标签 | 通过 |
-| **Tab 会话导出** | 在编辑器 Tab 的二级菜单中点击“导出会话为 Markdown”，正常导出当前会话内容 | 通过 |
+`ViewRegistry` 实现 `WebviewChannel`，因此可以原样塞进 `HandlerContext`：
+
+| 方法 | 语义 | 典型用途 |
+|---|---|---|
+| `callJavaScript(fn, ...args)` | 广播给所有挂载视图 | 消息增量、流式块、状态变更、标签列表 |
+| `callJavaScriptTo(viewId, fn, ...args)` | 只发一个视图 | 新建标签、视图专属推送 |
+| `HandlerContext.callJavaScriptToOrigin` | 回给「发起本次消息的视图」 | `frontend_ready` 回放、编辑器上下文刷新 |
+
+`HandlerContext.dispatchOrigin` 由 `ChatInstance.dispatchFrom(viewId, type, content)` 在分发期间设置，保证「谁问的答给谁」。
+
+**为什么默认广播**：同一份会话状态在多个窗口同时可见时，只更新发起窗口会导致另一个窗口停在旧内容。广播是默认安全选项；只有「动作必须只发生一次」的场景才定向投递（如 `createSessionTab`，广播会让每个窗口各建一个空标签）。
+
+---
+
+## 三、标签栏：全局状态
+
+### 3.1 归属
+
+| 数据 | 归属 | 落点 |
+|---|---|---|
+| 标签 id / sessionId / 标题 / 共享标记 / 文件上下文开关 | 宿主 | `ChatTabStore` → `context.workspaceState`（`opencode.chatTabs`） |
+| 当前激活标签 | 宿主（随快照广播） | 同上 |
+| 消息数组、流式运行时、输入草稿、弹窗队列 | 各视图 | 前端 React state + `runtimeSnapshotsRef` |
+
+只同步**结构字段**，不同步整包消息：N 个视图各持一份完整数组已经是 N 份快照，再反复整包广播会放大成 N 倍传输与渲染。消息靠会话广播自然收敛。
+
+### 3.2 协议
+
+| 方向 | 类型 | 语义 |
+|---|---|---|
+| 视图 → 宿主 | `get_tabs` | 视图挂载时索取权威快照（只回给发起者） |
+| 视图 → 宿主 | `sync_tabs` | 结构变化上行（新建 / 关闭 / 切换 / 改名） |
+| 宿主 → 视图 | `apply_tabs` | 广播权威快照 `{ tabs, activeTabId, restored }` |
+| 视图 → 宿主 | `request_session_snapshot` | 远端切换到一个本视图没有内容的标签时，补一次水化 |
+
+### 3.3 收敛规则
+
+- **首视图播种**：宿主没有存档（`restored: false`）时，视图保留自己的本地标签并把它上行，而不是被空列表清空。
+- **远端应用**：`apply_tabs` 只覆盖结构字段，保留本地运行时（消息、草稿、弹窗）。若激活标签变了，走 `selectTab(id, { remote: true })`——本地换页，但**不重复下发** `switch_session` / `set_mode` / `set_model`，因为宿主就是发起方。
+- **签名去抖**：远端应用后立即把 `lastSentSignature` 对齐到应用后的值，回声不会再触发一轮上行。
+- **绑定跟随**：同一标签的 `sessionId` 被别的窗口绑定（对方发出了第一条消息）时，本视图同步 `currentSessionId`，否则它会以为自己是「未绑定」，下一条消息另起会话。
+
+### 3.4 「至多一个未绑定标签」
+
+`createTab()` 的守卫：
+
+```ts
+const existingUnbound = tabsRef.current.find((t) => !t.sessionId);
+if (existingUnbound) { selectTab(existingUnbound.id); return; }
+```
+
+因为标签列表是全局的，这一处守卫就覆盖了所有视图——不再需要跨视图的草稿仲裁器，也不需要「panel 优先于侧边栏」这类规则。
+
+---
+
+## 四、视图生命周期
+
+### 4.1 挂载
+
+| 时机 | 行为 |
+|---|---|
+| 侧边栏 `resolveWebviewView` | `attachView(view:<host>)`；重复 resolve 先解绑旧的 |
+| 新建编辑器窗口 | `TabManager.openNewTab()` → `attachView(panel:<tabId>)` |
+| 窗口重载 | `WebviewPanelSerializer` → `adoptRestoredPanel()` → 挂载为又一个视图 |
+
+`frontend_ready` 到达时：
+
+1. `context.markViewReady(origin)`（供「新建对话」挑一个已就绪视图）；
+2. 定向回放 `applyBackendTabState` / `onModeReceived` / `setSessionId`；
+3. 若会话已绑定 → `hydrateSessionToWebview({ origin: true })` 补整包快照；
+4. 宿主内存为空且服务端有内容 → `resyncSessionFromServerIfNeeded`。
+
+**不再重置共享会话。** 视图就绪只意味着「多了一个挂载点」，宿主的会话不能因此被清空——这是旧 `reconcileWithFreshView` 被删除的原因。
+
+### 4.2 卸载
+
+- 关闭编辑器窗口：`detachView` → 从 `ViewRegistry` 摘除；会话与标签都保留。
+- 关闭侧边栏视图：同上（`onDidDispose` 里解绑）。
+- 最后一个视图关闭：`callJavaScript` 变成空操作，后台流式继续跑；下次挂载时靠水化补齐。
+
+### 4.3 视图就绪缓冲
+
+`frontend_ready` 在 `main.tsx` 里随 bridge 就绪发出，可能早于 React 回调注册。因此 `onSessionHydrated` 与 `apply_tabs` 各有一个占位缓冲（`window.__pendingSessionHydrated` / `window.__pendingTabs`），真实回调注册时补放最后一包。两者都是整包覆盖语义，丢中间包无副作用。
+
+---
+
+## 五、会话级路由（仍然隔离）
+
+单实例不意味着会话之间共享状态。所有会话级请求都带会话标识：
+
+| 请求 | 键 | 处理 |
+|---|---|---|
+| `send_message` | `sessionId` / `tabId` / 当前会话 | `SessionHandler` 依次解析，`tabId` 会补建会话 |
+| `revert_session` / `unrevert_session` / `fork_session` / `compact_session` | `{ sessionId, messageId }` envelope | 未知 id 直接报错（改的是服务端真实数据，不能猜） |
+| `set_model` | `{ sessionId, silent }` | `silent` 表示仅回显（切标签），不重推用量环 |
+| `set_mode` / `set_reasoning_effort` | `{ sessionId }` | 未知 id 补建会话（新标签的默认值不能写进旧标签） |
+| `refresh_editor_context` | `{ tabId, enabled }` | 只回给发起视图 |
+
+后台会话的流式增量按 `sessionId` 路由到对应标签的快照，不会写进前台标签（`updateBackgroundTab` 的谓词匹配）。
+
+---
+
+## 六、通知与声音
+
+- **系统通知**：标题 `【会话名】任务已完成`，正文取最后一条 assistant 的最后一个 text block（220 字符）。
+- **点击「查看」**：`NotificationService` → `context.focusSession(sessionId)` → `TabManager.revealSession` → 有窗口就 reveal 一个 + 广播 `focus_session`，视图内切到持有该会话的标签。
+- **声音**：与 idea 对齐，按「任务完成 / 提问 / 出错」三类播放；单实例下天然只播一次，不需要跨实例去重。
+- **焦点门控**：`systemNotificationOnlyWhenUnfocused` 仍以 `vscode.window.state.focused` 判定（窗口级，不是视图级）。
+
+---
+
+## 七、已知边界
+
+1. **N 份消息副本**：每个视图都持有完整消息数组。视图数量通常 ≤ 3；若要继续扩张，需要改成「宿主持有 + 视图按需取页」。
+2. **流式中远端切换不水化**：实时文本由各视图的 accumulator 持有，整份替换会吞掉半截输出。切标签只在空闲时补水化（`request_session_snapshot` 也带同样条件）。
+3. **`load_session` 与 `switch_session` 各打一次 `listMessages`**：可按时间窗去抖，尚未做。
+4. **`pageGeneration` 代际校验缺失**：极快来回切换时，理论上有旧响应覆盖新视图的窗口。
+
+---
+
+## 八、关键文件
+
+| 文件 | 职责 |
+|---|---|
+| `src/host/router/ViewRegistry.ts` | 视图挂载表 + 广播/定向投递 + 就绪订阅 |
+| `src/host/router/HandlerContext.ts` | 分发来源、`callJavaScriptToOrigin`、会话注册表 |
+| `src/host/session/ChatInstance.ts` | 单实例装配；`attachView` / `dispatchFrom` |
+| `src/host/tabs/TabManager.ts` | 编辑器窗口管理；`openChat` / `revealSession` / 序列化恢复 |
+| `src/host/tabs/ChatTabStore.ts` | 标签列表持久化（`workspaceState`） |
+| `src/host/handlers/ChatTabHandler.ts` | `get_tabs` / `sync_tabs` / `request_session_snapshot` |
+| `src/host/handlers/WindowEventHandler.ts` | `frontend_ready` 回放与定向水化 |
+| `webview/src/hooks/useSessionTabs.ts` | 标签投影与上行；`apply_tabs` 合并 |

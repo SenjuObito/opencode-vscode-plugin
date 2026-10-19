@@ -176,8 +176,10 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
       </div>
 
 
-      {/* Active Context Chip or Empty Placeholder */}
-      {displayText ? (
+      {/* Active Context Chip or Empty Placeholder.
+          展示完全由 tab 自身的开关决定：关闭时即使宿主推来了当前文件也不显示
+          （发送时同样按 tab 状态注入），打开且有打开的文件时展示当前文件。 */}
+      {autoOpenFileEnabled && displayText ? (
         <div
           className="context-item has-tooltip"
           data-tooltip={fullDisplayText}

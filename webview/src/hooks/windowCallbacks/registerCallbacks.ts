@@ -16,6 +16,8 @@ import { cardDebugLog } from '../../utils/bridge';
 import { parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
 import type { SubagentHistoryResponse } from '../../types/subagent';
+import type { TodoItem } from '../../types';
+import { normalizeTodoStatus } from '../../utils/todoShared';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -84,6 +86,13 @@ export function registerWindowCallbacks(
     contentUpdateTimeoutRef: options.contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef: options.thinkingUpdateTimeoutRef,
     streamingTurnIdRef: options.streamingTurnIdRef,
+    // Leaving a session does not stop its turn. Archive the live streaming
+    // runtime before the refs below are wiped, otherwise a session that keeps
+    // running in the background loses its accumulator / turnId and the next
+    // activation renders the previous session's text into the new one.
+    onBeforeResetTransientState: () => {
+      window.__sessionTabsStore?.archiveActiveStreamingRuntime?.();
+    },
   });
 
   // Expose as single entry point for session transition cleanup.
@@ -103,6 +112,14 @@ export function registerWindowCallbacks(
   registerAgentAndSelectionCallbacks(options);
 
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
+
+  // 通知「查看」动作：宿主已 reveal 对应原生 panel，这里把视图内标签也切过去。
+  // 找不到绑定的 tab 就忽略——会话可能已被用户关闭，但不该因此报错。
+  window.focus_session = (sessionId: string) => {
+    if (!sessionId) return;
+    cardDebugLog('[focus_session] switching to session:', sessionId);
+    window.__sessionTabsStore?.focusSession?.(sessionId);
+  };
 
   window.onSubagentHistoryLoaded = (json: string) => {
     // 子代理 transcript 上限：Record 按插入序保留最近 MAX_SUBAGENT_HISTORIES
@@ -155,19 +172,28 @@ export function registerWindowCallbacks(
   // this, the StatusPanel cannot tell a launched async agent from a finished
   // one, and the completion summary never surfaces.
   //
-  // Cross-session safety is enforced by three layers, so this handler does
-  // not re-check sessionId (which is not part of the taskEvent payload):
-  //   1. Java ClaudeChatWindow.titleEventListener drops events whose sessionId
-  //      does not match the active session.
-  //   2. beginSessionTransition (useSessionManagement) clears taskEvents on
-  //      session switch, so stale entries from the prior session cannot linger.
-  //   3. tool_use_ids are globally unique, so even a delayed event can only
-  //      update the agent it was emitted for, never mislabel another.
-  window.onTaskEvent = (eventJson: string) => {
+  // The host sends `(sessionId, eventJson)` since multi-session routing landed.
+  // Accepting a single argument as well keeps old payload shapes working while
+  // the arity contract test guards against future drift.
+  window.onTaskEvent = (arg0: string, arg1?: string) => {
+    const [targetSessionId, eventJson] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
     try {
-      if (!options.setTaskEvents) return;
       const taskEvent = parseTaskNotification(JSON.parse(eventJson));
       if (!taskEvent) return;
+
+      // Background sessions must accumulate their own agent state; writing it
+      // into the active tab would leak one conversation's subagents into another.
+      if (targetSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(targetSessionId)) {
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === targetSessionId,
+          (t) => {
+            t.taskEvents = { ...(t.taskEvents || {}), [taskEvent.toolUseId]: taskEvent };
+          }
+        );
+        return;
+      }
+
+      if (!options.setTaskEvents) return;
       const { toolUseId } = taskEvent;
       options.setTaskEvents((prev) => {
         const existing = prev[toolUseId];
@@ -196,24 +222,65 @@ export function registerWindowCallbacks(
   };
 
   // opencode todo.updated SSE event — stores authoritative todo list
-  window.onTodoUpdated = (payload: string) => {
+  window.onTodoUpdated = (arg0: string, arg1?: string) => {
+    const [targetSessionId, payload] = typeof arg1 !== 'undefined' ? [arg0, arg1] : [null, arg0];
+    if (!payload) return;
     try {
-      cardDebugLog('[onTodoUpdated] received payload length:', payload?.length);
-      const { sessionID, todos } = JSON.parse(payload);
-      cardDebugLog('[onTodoUpdated] parsed sessionID:', sessionID, 'currentSessionId:', options.currentSessionIdRef.current, 'todos count:', todos?.length);
-      if (sessionID !== options.currentSessionIdRef.current) {
-        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch');
+      cardDebugLog('[onTodoUpdated] received payload length:', payload.length);
+      let parsed = JSON.parse(payload);
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+      const sessionID = parsed?.sessionID ?? parsed?.sessionId;
+      const rawTodos = parsed?.todos;
+      const effectiveSessionId = targetSessionId || sessionID;
+
+      if (!Array.isArray(rawTodos)) {
+        cardDebugLog('[onTodoUpdated] SKIPPED: todos is not an array', rawTodos);
+        return;
+      }
+
+      const normalizedTodos: TodoItem[] = rawTodos
+        .filter((item): item is NonNullable<typeof item> => item != null && typeof item === 'object')
+        .map((item: any, index: number) => {
+          const content = item.content || item.step || item.title || item.text || item.subject || item.description || '';
+          return {
+            id: item.id != null ? String(item.id) : String(index),
+            content: typeof content === 'string' ? content.trim() : String(content),
+            status: normalizeTodoStatus(item.status),
+            ...(Array.isArray(item.blockedBy)
+              ? {
+                  blockedBy: item.blockedBy
+                    .map((id: unknown) => (id != null ? String(id) : null))
+                    .filter((id: unknown): id is string => id !== null),
+                }
+              : {}),
+          };
+        });
+
+      if (effectiveSessionId && window.__sessionTabsStore && !window.__sessionTabsStore.isActiveSession(effectiveSessionId)) {
+        cardDebugLog('[onTodoUpdated] updating background tab:', effectiveSessionId, 'with', normalizedTodos.length, 'todos');
+        window.__sessionTabsStore.updateBackgroundTab(
+          (t) => t.sessionId === effectiveSessionId,
+          (t) => {
+            t.sseTodos = normalizedTodos;
+          }
+        );
+        return;
+      }
+
+      if (effectiveSessionId && options.currentSessionIdRef.current && effectiveSessionId !== options.currentSessionIdRef.current) {
+        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch, effective:', effectiveSessionId, 'current:', options.currentSessionIdRef.current);
         return;
       }
       if (options.setSseTodos) {
-        cardDebugLog('[onTodoUpdated] calling setSseTodos with', todos?.length, 'todos');
-        options.setSseTodos(todos);
+        cardDebugLog('[onTodoUpdated] calling setSseTodos with', normalizedTodos.length, 'todos');
+        options.setSseTodos(normalizedTodos);
       } else {
         cardDebugLog('[onTodoUpdated] SKIPPED: setSseTodos is undefined');
       }
     } catch (e) {
       console.error('[onTodoUpdated] parse error:', e);
-      // Ignore malformed todo event payloads.
     }
   };
 

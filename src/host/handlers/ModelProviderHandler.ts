@@ -12,8 +12,44 @@
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
+import type { OpenCodeSession } from '../session/OpenCodeSession';
 
 const SUPPORTED_TYPES = ['set_model', 'set_provider'];
+
+interface ModelSelectionPayload {
+	model: string;
+	sessionId?: string;
+	/** 切 tab 时的状态回放，不是用户主动切换模型。 */
+	silent: boolean;
+}
+
+/**
+ * 解析 `set_model` 的 payload。
+ *
+ * 新格式 `{model, sessionId, silent}`；旧版前端发裸模型字符串，按窗口级处理。
+ * `sessionId` 让宿主写到调用方 tab 自己的会话，而不是「窗口当前会话」——
+ * 两者在切 tab 后就会分叉，写错会静默改掉另一个对话的模型。
+ */
+function parseModelPayload(content: string): ModelSelectionPayload {
+	const raw = content ?? '';
+	const trimmed = raw.trim();
+	if (trimmed === '' || !trimmed.startsWith('{')) {
+		return { model: raw, silent: false };
+	}
+	try {
+		const json = JSON.parse(trimmed) as Record<string, unknown>;
+		return {
+			model: typeof json.model === 'string' ? json.model : raw,
+			sessionId: typeof json.sessionId === 'string' && json.sessionId.trim() !== ''
+				? json.sessionId.trim()
+				: undefined,
+			silent: json.silent === true,
+		};
+	} catch {
+		// content 本身即 model
+		return { model: raw, silent: false };
+	}
+}
 
 export class ModelProviderHandler extends BaseMessageHandler {
 	constructor(context: HandlerContext) {
@@ -40,26 +76,24 @@ export class ModelProviderHandler extends BaseMessageHandler {
 	// ── set_model ──────────────────────────────────────────────────────────
 
 	handleSetModel(content: string): void {
-		let model = content ?? '';
-		if (model !== '') {
-			try {
-				const json = JSON.parse(model) as Record<string, unknown>;
-				if (typeof json?.model === 'string') {
-					model = json.model;
-				}
-			} catch {
-				// content 本身即 model
-			}
-		}
+		const payload = parseModelPayload(content);
+		const model = payload.model;
 
-		const previousModel = resolveCurrentSessionModel(this.context);
+		// 按 sessionId 路由到调用方 tab 自己的会话。找不到时按 tabId 补建
+		// （新 tab 在第一次发送前还没有宿主会话），最后才回退到窗口当前会话。
+		const target = this.resolveTargetSession(payload.sessionId);
+		const previousModel = target?.state.getModel() ?? this.context.getCurrentModel();
 		const modelChanged = isActualModelSwitch(previousModel, model);
-		console.log(`[ModelProviderHandler] set_model: ${model} (was: ${previousModel})`);
+		console.log(
+			`[ModelProviderHandler] set_model: ${model} (was: ${previousModel})`
+			+ (payload.silent ? ' [silent restore]' : '')
+			+ (payload.sessionId ? ` [session=${payload.sessionId}]` : ''),
+		);
 
+		// 窗口级模型仍然更新：它是新建会话 / 无 sessionId 请求的默认值。
 		this.context.setCurrentModel(model);
-		const session = this.context.getSession();
-		if (session) {
-			session.state.setModel(model);
+		if (target) {
+			target.state.setModel(model);
 		}
 		// workspaceState 持久化由 webview 侧 useModelStatePersistence 处理
 		this.callJavaScript('onModelConfirmed', model, this.context.getCurrentProvider());
@@ -67,9 +101,30 @@ export class ModelProviderHandler extends BaseMessageHandler {
 		// 上下文额度是模型自身的属性：不重推的话用量环会停在旧模型的分母上
 		// （1M 的模型切过去仍显示 200k），直到下一轮 usage 事件才纠正。
 		// 必须在 setModel 之后执行，否则解析到的还是旧额度。
-		if (modelChanged && session) {
-			session.republishUsageAfterModelChange();
+		//
+		// silent = 切 tab 时的状态回放，不是用户真的换了模型：此时重推会在会话
+		// 没有历史用量时把用量环清空，来回切 tab 就能把数字刷掉（idea 同款处理）。
+		if (modelChanged && target && !payload.silent) {
+			target.republishUsageAfterModelChange();
 		}
+	}
+
+	/** 按 sessionId 取目标会话；未知 id 先按 tabId 补建，最后回退到当前会话。 */
+	private resolveTargetSession(sessionId: string | undefined): OpenCodeSession | null {
+		const id = sessionId?.trim();
+		if (!id) {
+			return this.context.getSession();
+		}
+		const scoped = this.context.getSession(id);
+		if (scoped) {
+			return scoped;
+		}
+		const created = this.context.getSessionManager()?.ensureSessionForTab(id) ?? null;
+		if (created) {
+			return created;
+		}
+		console.warn(`[ModelProviderHandler] Unknown sessionId ${id} — falling back to current session`);
+		return this.context.getSession();
 	}
 
 	// ── set_provider ───────────────────────────────────────────────────────

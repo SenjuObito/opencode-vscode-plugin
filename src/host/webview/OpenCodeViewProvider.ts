@@ -1,24 +1,16 @@
 /**
- * OpenCodeViewProvider — VS Code 版的 WebviewViewProvider，对应 cc-gui 的
- * JCEF toolwindow 双面板（activity bar + secondary sidebar）。
+ * OpenCodeViewProvider — VS Code 版的 WebviewViewProvider。
  *
- * 两个面板（left / right）渲染同一份 React 单文件 bundle，共享同一个
- * HandlerContext / OpenCodeSession / daemon。宿主 → webview 用广播
- * （BroadcastChannel：postMessage 到所有存活 webview）；webview → 宿主
- * 走 `{ type:'bridge', payload: '<type>:<content>' }`，解析后交给共享的
- * MessageDispatcher。
+ * 侧边栏只是全局聊天实例的一个挂载点：本地不持有会话，也不做任何状态回放，
+ * 只负责把 webview 通道接进实例、把消息按来源转给实例的分发器。
  */
 import * as vscode from 'vscode';
 import { readFileSync } from 'fs';
-import { WebviewChannel, FileOps } from '../router/HandlerContext';
+import { WebviewChannel } from '../router/HandlerContext';
 import { ViewHost, BridgeMessage } from '../types';
 import { logDiagnostic, logVerbose } from '../util/DiagnosticLogger';
-import { DEFAULT_UI_PREFERENCES, type UiPreferences, type SettingsService } from '../settings/SettingsService';
-import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
-import type { EditorContextTracker } from '../context/EditorContextTracker';
-import type { TabManager } from '../tabs/TabManager';
-import { createChatInstance, type ChatInstance } from '../session/ChatInstance';
-import { TabHandler } from '../handlers/TabHandler';
+import { DEFAULT_UI_PREFERENCES, type UiPreferences } from '../settings/SettingsService';
+import type { ChatInstance } from '../session/ChatInstance';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 
 /**
@@ -74,12 +66,8 @@ export class ProviderWebviewChannel implements WebviewChannel {
 export interface OpenCodeViewProviderOptions {
 	readonly extensionUri: vscode.Uri;
 	readonly host: ViewHost;
-	readonly settings: SettingsService;
-	readonly daemon: OpenCodeDaemonBridge;
-	readonly fileOps: FileOps;
-	readonly fallbackWorkingDirectoryResolver: () => string | null;
-	readonly editorContextTracker?: EditorContextTracker;
-	readonly tabManager?: TabManager;
+	/** 全局唯一的聊天实例；本视图只是它的一个挂载点。 */
+	readonly instance: ChatInstance;
 	readonly getUiPreferences?: () => UiPreferences;
 	readonly onReady?: (host: ViewHost) => void;
 }
@@ -132,9 +120,11 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 	private readonly instance: ChatInstance;
 	private readonly onReady?: (host: ViewHost) => void;
 	private readonly getUiPreferences: () => UiPreferences;
+	private readonly viewId: string;
 	private view: vscode.WebviewView | null = null;
 	private html: string | null = null;
 	private readonly unregisterBroadcaster: () => void;
+	private detachView: (() => void) | null = null;
 
 	constructor(options: OpenCodeViewProviderOptions) {
 		this.extensionUri = options.extensionUri;
@@ -144,19 +134,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		this.getUiPreferences = options.getUiPreferences
 			?? (() => ({ ...DEFAULT_UI_PREFERENCES }));
 		this.onReady = options.onReady;
-
-		this.instance = createChatInstance({
-			channel: this.channel,
-			settings: options.settings,
-			daemon: options.daemon,
-			fileOps: options.fileOps,
-			fallbackWorkingDirectoryResolver: options.fallbackWorkingDirectoryResolver,
-			editorContextTracker: options.editorContextTracker,
-		});
-
-		if (options.tabManager) {
-			this.instance.dispatcher.registerHandler(new TabHandler(this.instance.context, options.tabManager));
-		}
+		this.instance = options.instance;
+		this.viewId = `view:${options.host}`;
 	}
 
 	resolveWebviewView(
@@ -184,6 +163,24 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		);
 
 		this.channel.attach(webviewView);
+		// 视图销毁时从实例的挂载表里摘掉，否则 ViewRegistry 会留下一个指向
+		// 已销毁 webview 的通道（推送时只能靠异常兜底才发现）。
+		webviewView.onDidDispose(() => {
+			this.detachView?.();
+			this.detachView = null;
+			if (this.view === webviewView) {
+				this.view = null;
+			}
+		});
+		// 视图可能被反复 resolve（面板被拖到别的位置）：先解绑旧的挂载点，
+		// 否则实例里会留下一个指向已销毁 webview 的通道。
+		this.detachView?.();
+		this.detachView = this.instance.attachView({
+			id: this.viewId,
+			kind: 'sidebar',
+			channel: this.channel,
+			isVisible: () => this.isVisible(),
+		});
 
 		webviewView.webview.onDidReceiveMessage((message: unknown) => {
 			const bridge = message as BridgeMessage | null;
@@ -200,7 +197,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 			logVerbose(`[OpenCodeViewProvider:${this.host}] dispatch type=${type} content=${content.substring(0, 200)}`);
-			this.instance.dispatcher.dispatch(type, content);
+			this.instance.dispatchFrom(this.viewId, type, content);
 		});
 
 		this.onReady?.(this.host);
@@ -211,9 +208,11 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	dispose(): void {
+		// 只解绑本视图；实例与会话属于整个扩展，由 ChatInstance.dispose 收尾。
+		this.detachView?.();
+		this.detachView = null;
 		this.unregisterBroadcaster();
 		this.channel.dispose();
-		this.instance.dispose();
 	}
 }
 

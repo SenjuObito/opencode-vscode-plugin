@@ -491,19 +491,52 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
           const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
           if (last && last.type === 'assistant') {
             const next = messages.slice();
-            next[lastIndex] = { ...last, content: (last.content || '') + delta };
+            const updatedContent = (last.content || '') + delta;
+            // Mirror the foreground accumulator: `content` drives plain text,
+            // `raw.message.content[last].text` drives blocks (markdown, tool
+            // cards). A background tab that only accumulates `content` renders
+            // degraded the moment the user switches back mid-stream.
+            let updatedRaw = last.raw;
+            if (updatedRaw && typeof updatedRaw === 'object') {
+              const rawObj = { ...(updatedRaw as Record<string, unknown>) } as any;
+              const msgObj = rawObj.message ? { ...rawObj.message } : { content: [] };
+              const contentBlocks = Array.isArray(msgObj.content) ? [...msgObj.content] : [];
+              const lastBlockIdx = contentBlocks.length - 1;
+              if (lastBlockIdx >= 0 && contentBlocks[lastBlockIdx]?.type === 'text') {
+                contentBlocks[lastBlockIdx] = {
+                  ...contentBlocks[lastBlockIdx],
+                  text: (contentBlocks[lastBlockIdx].text || '') + delta,
+                };
+              } else {
+                contentBlocks.push({ type: 'text', text: delta });
+              }
+              msgObj.content = contentBlocks;
+              rawObj.message = msgObj;
+              updatedRaw = rawObj;
+            }
+            next[lastIndex] = { ...last, content: updatedContent, raw: updatedRaw };
             t.messages = next;
           } else if (messages) {
+            const initialRaw = {
+              type: 'assistant',
+              message: { content: [{ type: 'text', text: delta }] },
+            };
             t.messages = [...messages, {
               type: 'assistant',
               content: delta,
+              raw: initialRaw as any,
               isStreaming: true,
               timestamp: new Date().toISOString(),
             }];
           } else {
+            const initialRaw = {
+              type: 'assistant',
+              message: { content: [{ type: 'text', text: delta }] },
+            };
             t.messages = [{
               type: 'assistant',
               content: delta,
+              raw: initialRaw as any,
               isStreaming: true,
               timestamp: new Date().toISOString(),
             }];

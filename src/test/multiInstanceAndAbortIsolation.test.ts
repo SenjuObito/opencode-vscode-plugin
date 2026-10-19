@@ -131,15 +131,21 @@ suite('createChatInstance Assembly', () => {
 			openExternal: () => {},
 			copyToClipboard: () => true,
 		};
-		const tracker = new EditorContextTracker(settings);
+		const tracker = new EditorContextTracker();
 
+		// 单个实例 + 视图挂载：channel 属于视图，不再是实例的构造入参。
 		const instance = createChatInstance({
-			channel,
 			settings,
 			daemon: fakeDaemon,
 			fileOps: fakeFileOps,
 			fallbackWorkingDirectoryResolver: () => '/workspace',
 			editorContextTracker: tracker,
+		});
+		instance.attachView({
+			id: 'view:test',
+			kind: 'sidebar',
+			channel,
+			isVisible: () => true,
 		});
 
 		// 验证 ExportHandler 已正确注册到当前实例的 dispatcher

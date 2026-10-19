@@ -15,6 +15,7 @@
 import * as vscode from 'vscode';
 import { readFileSync } from 'fs';
 import type { HandlerContext } from '../router/HandlerContext';
+import type { ChatMessage } from '../session/types';
 import { logDiagnostic } from '../util/DiagnosticLogger';
 import { COPY, type CopyKey, resolveCopyKey } from './NotificationCopy';
 
@@ -22,24 +23,114 @@ export { COPY, type CopyKey, resolveCopyKey };
 
 type SoundKind = 'turnCompleted' | 'question' | 'error';
 const MAX_CUSTOM_SOUND_BYTES = 5 * 1024 * 1024;
+/** 通知正文上限（idea `SystemNotificationService` 同量级）。 */
+const PREVIEW_MAX_CHARS = 220;
+/** 压缩前最多看这么多字符，避免对整份长回复跑正则。 */
+const CONDENSE_MAX_INPUT = 4000;
+const VIEW_ACTION = 'View';
+
+/**
+ * 通知标题：`【会话名】任务已完成`；没有会话名时退化为纯文案
+ * （idea `OpencodeNotifier.buildTitleFromSession`）。
+ */
+export function buildNotificationTitle(sessionName: string | null | undefined, fallback: string): string {
+	const name = typeof sessionName === 'string' ? sessionName.trim() : '';
+	return name ? `【${name}】${fallback}` : fallback;
+}
+
+/**
+ * 从最后一条 assistant 消息里摘出可读摘要。
+ *
+ * 优先取 raw 里**最后一个 text block**：工具轮次中 `content` 会把工具调用前的
+ * 说明文字一起拼进来，直接用它当摘要会显示「我这就去检查……」而不是最终答复。
+ */
+export function buildNotificationPreview(
+	messages: readonly ChatMessage[] | undefined,
+	fallback: string,
+): string {
+	if (!messages || messages.length === 0) {
+		return fallback;
+	}
+	for (let i = messages.length - 1; i >= 0; i -= 1) {
+		const message = messages[i];
+		if (!message || message.type !== 'assistant') {
+			continue;
+		}
+		const rawText = extractLastTextFromRaw(message);
+		const content = rawText && rawText.trim() !== '' ? rawText : message.content;
+		if (!content || content.trim() === '') {
+			// 纯工具调用的 assistant 帧没有文本，跳过它继续往前找。
+			continue;
+		}
+		const preview = condenseForToast(content);
+		if (preview !== '') {
+			return preview;
+		}
+	}
+	return fallback;
+}
+
+function extractLastTextFromRaw(message: ChatMessage): string | null {
+	const raw = message.raw as Record<string, unknown> | string | undefined;
+	if (!raw) {
+		return null;
+	}
+	let parsed: Record<string, unknown>;
+	try {
+		parsed = typeof raw === 'string' ? JSON.parse(raw) as Record<string, unknown> : raw;
+	} catch {
+		return null;
+	}
+	const container = (parsed.message && typeof parsed.message === 'object')
+		? parsed.message as Record<string, unknown>
+		: parsed;
+	const blocks = container.content;
+	if (!Array.isArray(blocks)) {
+		return null;
+	}
+	let lastText: string | null = null;
+	for (const block of blocks) {
+		if (!block || typeof block !== 'object') {
+			continue;
+		}
+		const obj = block as Record<string, unknown>;
+		if (obj.type === 'text' && typeof obj.text === 'string') {
+			lastText = obj.text;
+		}
+	}
+	return lastText;
+}
+
+/** 折叠换行/代码围栏，压成一行适合通知面板阅读的文本。 */
+function condenseForToast(raw: string): string {
+	const input = raw.length > CONDENSE_MAX_INPUT ? raw.slice(0, CONDENSE_MAX_INPUT) : raw;
+	const stripped = input
+		.replace(/```[a-zA-Z0-9_+-]*\s*/g, '')
+		.replace(/```/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	return stripped.length > PREVIEW_MAX_CHARS
+		? `${stripped.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…`
+		: stripped;
+}
 
 export class NotificationService {
 	constructor(private readonly context: HandlerContext) {}
 
 	/** 流式 turn 结束：按状态分发完成/警示通知与提示音。 */
-	onTurnCompleted(info: { status: 'completed' | 'aborted' | 'error' }): void {
+	onTurnCompleted(info: { status: 'completed' | 'aborted' | 'error'; sessionId?: string | null }): void {
 		if (info.status === 'aborted') {
 			return;
 		}
 		const settings = this.settings();
 		if (info.status === 'error') {
 			// 警示通知不受"任务完成通知"开关控制——出错必须让用户知道。
-			this.showSystemNotification('taskFailed', vscode.window.showWarningMessage);
+			this.showSystemNotification('taskFailed', vscode.window.showWarningMessage, info.sessionId);
 			this.playSoundIfEnabled('error', settings.getSoundNotificationEnabled());
 			return;
 		}
 		if (settings.getTaskCompletionNotificationEnabled()) {
-			this.showSystemNotification('taskCompleted', vscode.window.showInformationMessage);
+			this.showSystemNotification('taskCompleted', vscode.window.showInformationMessage, info.sessionId);
 		}
 		this.playSoundIfEnabled('turnCompleted', settings.getSoundNotificationEnabled());
 	}
@@ -95,14 +186,32 @@ export class NotificationService {
 
 	private showSystemNotification(
 		key: keyof (typeof COPY)['en'],
-		show: (message: string) => unknown,
+		show: (message: string, ...items: string[]) => Thenable<string | undefined>,
+		sessionId?: string | null,
 	): void {
 		const settings = this.settings();
 		if (!this.shouldShowSystem(settings.getSystemNotificationOnlyWhenUnfocused())) {
 			return;
 		}
 		const copy = COPY[this.copyKey()];
-		void show(copy[key]);
+		const session = sessionId ? this.context.getSession(sessionId) : null;
+		const sessionName = session?.state.getSummary() ?? (sessionId ?? null);
+		const title = buildNotificationTitle(sessionName, copy[key]);
+		const preview = session
+			? buildNotificationPreview(session.state.getMessages(), '')
+			: '';
+		const message = preview ? `${title}\n${preview}` : title;
+
+		// 「查看」按钮：把对应会话带到前台（原生 panel reveal + 视图内 tab 切换）。
+		// 没有 sessionId 时不给按钮——点了也没地方去。
+		const items = sessionId ? [VIEW_ACTION] : [];
+		void show(message, ...items).then((choice) => {
+			if (choice !== VIEW_ACTION || !sessionId) {
+				return;
+			}
+			const focused = this.context.focusSession(sessionId);
+			logDiagnostic(`[Notification] view action for ${sessionId} focused=${focused}`);
+		});
 	}
 
 	/** 声音门控：对应开关 + （默认用全局"声音仅未聚焦时"，可用参数覆盖）。 */

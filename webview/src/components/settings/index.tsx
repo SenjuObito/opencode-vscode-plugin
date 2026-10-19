@@ -13,7 +13,6 @@ import AgentSection from './AgentSection';
 import OtherSettingsSection from './OtherSettingsSection';
 import { SkillsSettingsSection } from '../skills';
 import SettingsDialogs from './SettingsDialogs';
-import { setNewSessionConfirmEnabled as persistNewSessionConfirmEnabled } from '../../utils/skipNewSessionConfirm';
 import { setCompactConfirmEnabled as persistCompactConfirmEnabled } from '../../utils/skipCompactConfirm';
 
 // Import custom hooks
@@ -117,8 +116,6 @@ const SettingsView = ({
     setDiffExpandedByDefault,
     historyCompletionEnabled,
     setHistoryCompletionEnabled,
-    skipNewSessionConfirm,
-    setSkipNewSessionConfirm,
     skipCompactConfirm,
     setSkipCompactConfirm,
     handleSaveOpencodeCliPath,
@@ -299,14 +296,6 @@ const SettingsView = ({
               onDiffThemeChange={setDiffTheme}
               diffExpandedByDefault={diffExpandedByDefault}
               onDiffExpandedByDefaultChange={setDiffExpandedByDefault}
-              newSessionConfirmEnabled={!skipNewSessionConfirm}
-              onNewSessionConfirmEnabledChange={(enabled) => {
-                // Optimistic local update so the toggle reflects instantly even if
-                // the CustomEvent loops back. persistNewSessionConfirmEnabled writes
-                // to localStorage and dispatches the sync event for other surfaces.
-                setSkipNewSessionConfirm(!enabled);
-                persistNewSessionConfirmEnabled(enabled);
-              }}
               compactConfirmEnabled={!skipCompactConfirm}
               onCompactConfirmEnabledChange={(enabled) => {
                 // Optimistic local update so the toggle reflects instantly even if

@@ -95,6 +95,51 @@ export class SessionManager {
 	}
 
 	/**
+	 * 把当前活跃会话的配置复制给一个新会话。
+	 *
+	 * 对应 idea `SessionLifecycleManager.createNewSession` / `createSessionForTab`：
+	 * 新会话先继承上一个会话的 cwd / mode / provider / model / 推理力度，
+	 * 否则新 tab 的第一轮会因为 state 为空而落到服务端默认模型上。
+	 */
+	private inheritConfigFrom(source: OpenCodeSession | undefined, target: OpenCodeSession): void {
+		if (!source) {
+			return;
+		}
+		const cwd = source.state.getCwd();
+		if (cwd) {
+			target.state.setCwd(cwd);
+		}
+		target.state.setPermissionMode(source.state.getPermissionMode());
+		target.state.setModel(source.state.getModel());
+		target.state.setReasoningEffort(source.state.getReasoningEffort());
+	}
+
+	/**
+	 * 按 tab 取会话；没有就建一个。
+	 *
+	 * 对应 idea `createSessionForTab`：只注册、不抢占 activeSessionKey
+	 * （idea 仅在 `this.session == null` 时才设为当前），也不向前端推
+	 * clearMessages / setSessionId —— 这是「补登记」，不是「切会话」。
+	 */
+	ensureSessionForTab(tabId: string): OpenCodeSession | undefined {
+		const key = tabId?.trim();
+		if (!key) {
+			return undefined;
+		}
+		const existing = this.sessions.get(key);
+		if (existing) {
+			return existing;
+		}
+
+		const session = this.createSessionInstance(key);
+		this.inheritConfigFrom(this.sessions.get(this.activeSessionKey), session);
+		this.sessions.set(key, session);
+		this.options.context.registerSession(key, session);
+		this.options.onSessionCreated?.(session);
+		return session;
+	}
+
+	/**
 	 * 创建新会话：
 	 * 在多会话架构中，新会话独立分配 targetSessionId 并注册，不打断后台正在运行的其他会话。
 	 */
@@ -104,6 +149,7 @@ export class SessionManager {
 			: randomUUID();
 
 		const newSession = this.createSessionInstance(targetSessionId);
+		this.inheritConfigFrom(this.sessions.get(this.activeSessionKey), newSession);
 		this.sessions.set(targetSessionId, newSession);
 		this.activeSessionKey = targetSessionId;
 		this.options.context.registerSession(targetSessionId, newSession);
@@ -116,7 +162,8 @@ export class SessionManager {
 		this.options.context.callJavaScript('showLoading', targetSessionId, 'false');
 		this.options.context.callJavaScript('setSessionId', targetSessionId);
 		this.options.context.callJavaScript('onRevertStateUpdate', targetSessionId, JSON.stringify({ hasRevert: false }));
-		this.options.context.callJavaScript('historyLoadComplete');
+		// 带 (sessionId, count)：前端据此做快照对账，裸调用会让那段逻辑变成死代码。
+		this.options.context.callJavaScript('historyLoadComplete', targetSessionId, '0');
 
 		return newSession;
 	}

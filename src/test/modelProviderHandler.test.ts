@@ -135,3 +135,71 @@ suite('ModelProviderHandler set_model usage refresh', () => {
 		assert.strictEqual(confirmed.args[0], 'deepseek/deepseek-v4-pro');
 	});
 });
+
+suite('ModelProviderHandler per-session routing', () => {
+	test('set_model with a sessionId writes that tab session, not the active one', () => {
+		const active = fakeSession('opencode/big-pickle');
+		const background = fakeSession('opencode/big-pickle');
+		const { handler, context } = makeHandler(active.session);
+		context.registerSession('ses_background', background.session);
+
+		handler.handle(
+			'set_model',
+			JSON.stringify({ model: 'deepseek/deepseek-v4-pro', sessionId: 'ses_background' }),
+		);
+
+		assert.strictEqual(background.modelNow(), 'deepseek/deepseek-v4-pro');
+		assert.strictEqual(active.modelNow(), 'opencode/big-pickle');
+	});
+
+	test('an unknown sessionId is registered as a tab session instead of hitting the active one', () => {
+		const active = fakeSession('opencode/big-pickle');
+		const created = fakeSession('');
+		const { handler, context } = makeHandler(active.session);
+
+		const ensured: string[] = [];
+		context.setSessionManager({
+			getActiveSession: () => active.session,
+			getSession: () => undefined,
+			ensureSessionForTab: (tabId: string) => {
+				ensured.push(tabId);
+				context.registerSession(tabId, created.session);
+				return created.session;
+			},
+		} as unknown as Parameters<typeof context.setSessionManager>[0]);
+
+		handler.handle(
+			'set_model',
+			JSON.stringify({ model: 'deepseek/deepseek-v4-pro', sessionId: 'tab-1729' }),
+		);
+
+		assert.deepStrictEqual(ensured, ['tab-1729']);
+		assert.strictEqual(created.modelNow(), 'deepseek/deepseek-v4-pro');
+		assert.strictEqual(active.modelNow(), 'opencode/big-pickle');
+	});
+
+	test('silent restore does not clear the usage ring', () => {
+		const fake = fakeSession('opencode/big-pickle');
+		const { handler } = makeHandler(fake.session);
+
+		handler.handle(
+			'set_model',
+			JSON.stringify({ model: 'deepseek/deepseek-v4-pro', silent: true }),
+		);
+
+		assert.strictEqual(fake.modelNow(), 'deepseek/deepseek-v4-pro');
+		assert.deepStrictEqual(fake.republishes, []);
+	});
+
+	test('a non-silent switch of the same shape still republishes', () => {
+		const fake = fakeSession('opencode/big-pickle');
+		const { handler } = makeHandler(fake.session);
+
+		handler.handle(
+			'set_model',
+			JSON.stringify({ model: 'deepseek/deepseek-v4-pro', silent: false }),
+		);
+
+		assert.deepStrictEqual(fake.republishes, ['deepseek/deepseek-v4-pro']);
+	});
+});

@@ -20,6 +20,7 @@ import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { SettingsService, DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from '../settings/SettingsService';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
+import type { OpenCodeSession } from '../session/OpenCodeSession';
 import * as vscode from 'vscode';
 import { isAbsolute, resolve } from 'path';
 import { existsSync, statSync } from 'fs';
@@ -221,16 +222,22 @@ export class SettingsHandler extends BaseMessageHandler {
 
 	private handleSetMode(content: string): void {
 		let mode = content;
+		let targetSessionId: string | undefined;
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			if (typeof json?.mode === 'string') {
 				mode = json.mode;
 			}
+			if (typeof json?.sessionId === 'string' && json.sessionId.trim() !== '') {
+				targetSessionId = json.sessionId.trim();
+			}
 		} catch {
 			// content 本身即 mode
 		}
 
-		const session = this.context.getSession();
+		// 按 sessionId 路由到调用方 tab 的会话（idea PermissionModeHandler 同款）。
+		// 旧版前端不带 sessionId 时仍写窗口当前会话。
+		const session = this.resolveSession(targetSessionId);
 		if (!session) {
 			return;
 		}
@@ -241,6 +248,22 @@ export class SettingsHandler extends BaseMessageHandler {
 		}
 		// 前端已做乐观更新，这里再回推权威值
 		this.callJavaScript('onModeChanged', session.state.getPermissionMode());
+	}
+
+	/** 按 sessionId 取会话；未知 id 先按 tabId 补建，最后回退到当前会话。 */
+	private resolveSession(sessionId: string | undefined): OpenCodeSession | null {
+		if (!sessionId) {
+			return this.context.getSession();
+		}
+		const scoped = this.context.getSession(sessionId);
+		if (scoped) {
+			return scoped;
+		}
+		const created = this.context.getSessionManager()?.ensureSessionForTab(sessionId) ?? null;
+		if (created) {
+			return created;
+		}
+		return this.context.getSession();
 	}
 
 	// ── model / reasoning effort ───────────────────────────────────────────
@@ -319,15 +342,20 @@ export class SettingsHandler extends BaseMessageHandler {
 
 	private handleSetReasoningEffort(content: string): void {
 		let effort = content;
+		let targetSessionId: string | undefined;
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			if (typeof json?.reasoningEffort === 'string') {
 				effort = json.reasoningEffort;
 			}
+			if (typeof json?.sessionId === 'string' && json.sessionId.trim() !== '') {
+				targetSessionId = json.sessionId.trim();
+			}
 		} catch {
 			// content 本身即 effort
 		}
-		const session = this.context.getSession();
+		// 按 sessionId 路由（idea ModelProviderHandler.handleSetReasoningEffort 同款）
+		const session = this.resolveSession(targetSessionId);
 		if (session) {
 			session.state.setReasoningEffort(effort);
 		}
@@ -415,14 +443,8 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.autoOpenFileEnabled === true;
 			this.settings().setAutoOpenFileEnabled(projectPath, enabled);
-			// 同步清空编辑器上下文缓存：tracker 的 lastInfo 只在编辑器事件时重算，
-			// 若不在此处清除，关闭后立即发送仍会把过期的 @file 注入消息。
-			if (!enabled) {
-				this.context.clearEditorContext();
-			} else {
-				// 启用时立即推送当前编辑器上下文，否则需等到下一次文件切换才显示。
-				this.context.pushEditorContext();
-			}
+			// 只持久化设置值：它仅决定「新建会话 / 从历史加载」时 tab 的初始开关，
+			// 已在运行的 tab 不受影响（tab 内的开关也不会回写这里）。
 			this.pushJson('updateAutoOpenFileEnabled', { autoOpenFileEnabled: enabled }, true);
 		} catch {
 			this.callJavaScript('showError', 'Failed to save auto open file config');

@@ -111,6 +111,33 @@ sequenceDiagram
 
 ---
 
+### 1.3 Webview → 宿主的请求契约（多会话）
+
+撤销 / 重做 / 分支这三个入口在**多会话**下都必须回答一个问题：这条指令属于哪个 tab 的会话。
+前端统一发 JSON envelope，宿主解析后再路由：
+
+| 事件 | 前端 payload | 宿主行为 |
+|---|---|---|
+| `revert_session` | `{sessionId, messageId}` | `messageId` 可为真实 `msg_xxx`、`latest` 或空（宿主回源 `listMessages` 取最后一条用户消息） |
+| `unrevert_session` | `{sessionId}` | 直接对该会话下发 `opencode.unrevert` |
+| `fork_session` | `{sessionId, messageId}` | 从指定消息处分叉 |
+| `fork_session` | `{sessionId, type: 'full'}` | 全量复制，不带 `messageID` |
+
+宿主侧对应 `WindowEventHandler.parseMessageEnvelope()` + `resolveSession()`：
+
+1. `content` 以 `{` 开头 → 解析 envelope；否则按旧版裸值处理（裸 `messageId` / 裸 `full`），
+   保证老前端不炸；
+2. `sessionId` 命中会话池就路由过去，未命中或未提供则回退到窗口当前会话；
+3. `onRevertStateUpdate` 回推时**首参带 sessionId**（`callJavaScript('onRevertStateUpdate', sessionId, json)`），
+   前端的 `window.onRevertStateUpdate` 支持 `(sessionId, json)` 两参形式，据此把状态归到对应 tab。
+
+> 历史坑：v2 多会话改造时 webview 换成了 JSON envelope，宿主仍把整个 content 当
+> `messageID` 用，daemon 收到的是 `{"sessionId":"ses_x","messageId":"msg_y"}` 这个字符串；
+> `fork` 的 `full` 语义也随之失效（`messageId === 'full'` 永远不成立）。
+> 现在两侧共用同一份解析规则（idea 端为 `WindowEventHandler.handleRevertSession`）。
+
+---
+
 ## 2. 核心模块与功能设计
 
 ### 2.1 会话撤销 (Undo / Revert)

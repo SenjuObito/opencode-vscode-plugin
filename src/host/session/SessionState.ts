@@ -217,6 +217,20 @@ export class SessionState {
 	}
 
 	/**
+	 * 原子替换整份消息列表（服务端对账专用）。
+	 *
+	 * 与「clearMessages + 逐条 addMessage」的区别在于：调用方拿到的是一次
+	 * 完成态的快照，中途不会出现「已清空、尚未装入」的空窗，也就不会把
+	 * 一次对账渲染成「对话被清空了」。
+	 */
+	replaceMessages(messages: readonly ChatMessage[]): void {
+		this.messages.length = 0;
+		for (const message of messages) {
+			this.addMessage(message);
+		}
+	}
+
+	/**
 	 * 把迟到的回合失败原因落到转录里。
 	 *
 	 * 本地 180s 兜底超时已经报过一次失败，所以这条修正必须**改写**那一行而不是

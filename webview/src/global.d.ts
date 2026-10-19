@@ -295,6 +295,15 @@ interface Window {
   onRevertStateUpdate?: (...args: any[]) => void;
 
   /**
+   * Host-authoritative session hydration (multi-session).
+   *
+   * Payload: JSON `{ sessionId, messages, isStreaming, loading, status?, revertBoundaryId? }`.
+   * Sent when switching tabs / when a native panel becomes visible again; the
+   * view must treat it as a full replacement, not a merge.
+   */
+  onSessionHydrated?: (packetJson: string) => void;
+
+  /**
    * Authoritative server-side deletion — JSON array of opencode message ids.
    *
    * opencode applies a pending revert at the start of the next prompt and drops
@@ -304,7 +313,12 @@ interface Window {
    * already shrunk by the time the (also shorter) snapshot lands — otherwise the
    * shrink-protection path would restore the just-deleted messages.
    */
-  onMessagesRemoved?: (json: string) => void;
+  onMessagesRemoved?: (arg0: string, arg1?: string) => void;
+
+  /**
+   * Notification action "View": bring the session's tab to the foreground.
+   */
+  focus_session?: (sessionId: string) => void;
 
   /**
    * Show PlanApproval dialog
@@ -1145,8 +1159,20 @@ interface Window {
   /** Applies the current Java session configuration without echoing bridge commands. */
   applyBackendTabState?: (json: string) => void;
 
+  /**
+   * 宿主下发的全局标签栏快照（单实例、多视图共享同一份标签）。
+   * `{ tabs, activeTabId }`：只含结构字段，消息由会话广播另行收敛。
+   */
+  apply_tabs?: (json: string) => void;
+
   /** Buffers backend tab state when Java responds before React callbacks mount. */
   __pendingBackendTabState?: string;
+
+  /** Buffers the authoritative session snapshot until `onSessionHydrated` mounts. */
+  __pendingSessionHydrated?: string;
+
+  /** Buffers the global tab list until `apply_tabs` mounts. */
+  __pendingTabs?: string;
 
   // ============================================================================
   // Provider settings panel callbacks (registered by ProviderList)
@@ -1217,6 +1243,11 @@ interface Window {
     archiveActiveStreamingRuntime?: () => void;
     /** Drop the archived runtime belonging to this session (called on stream end). */
     clearStreamingRuntimeFor?: (sessionId: string) => void;
+    /**
+     * Bring the view-internal tab that owns `sessionId` to the foreground.
+     * @returns false when no tab is bound to that session.
+     */
+    focusSession?: (sessionId: string) => boolean;
   };
 
   /**

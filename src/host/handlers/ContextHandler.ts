@@ -41,7 +41,9 @@ export class ContextHandler extends BaseMessageHandler {
 			// 解析失败用 session 兜底
 		}
 
-		const session = this.context.getSession();
+		// 优先按请求里的 sessionId 取会话：多 tab 下后台会话也会查用量，
+		// 用 active session 的 cwd 会读到别的工作目录。
+		const session = (sessionId ? this.context.getSession(sessionId) : null) ?? this.context.getSession();
 		if (!session) {
 			this.callContextUsageError('No active session', requestId);
 			return;

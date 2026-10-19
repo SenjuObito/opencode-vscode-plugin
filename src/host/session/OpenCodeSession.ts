@@ -14,6 +14,8 @@ import { SessionStreamRouter } from './SessionStreamRouter';
 import { SessionCallbackAdapter } from './SessionCallbackAdapter';
 import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
+import { convertSdkMessages } from './SdkMessageConverter';
+import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
 import { getModelContextLimit } from '../util/ModelContextLimits';
 import { logDiagnostic } from '../util/DiagnosticLogger';
@@ -28,6 +30,8 @@ export interface SendMessagePayload {
 	fileTags?: Array<{ displayPath?: string; absolutePath?: string }> | null;
 	permissionMode?: string;
 	reasoningEffort?: string;
+	/** 该 tab 的文件上下文开关（前端 per-tab 状态，优先于全局设置）。 */
+	autoOpenFileEnabled?: boolean;
 }
 
 export interface OpenCodeSessionOptions {
@@ -161,9 +165,12 @@ export class OpenCodeSession {
 		// 与 TUI 一致，任何前导 '/' 文本都视为命令（未知命令由服务端报错）。
 		const slashCommand = parseSlashCommand(text);
 
-		const injectProjectPath = this.context.getSettingsService().getPrimaryWorkspaceRoot();
-		const autoOpenFileOn = !injectProjectPath
-			|| this.context.getSettingsService().getAutoOpenFileEnabled(injectProjectPath);
+		const projectPath = this.context.getSettingsService().getPrimaryWorkspaceRoot();
+		// 文件上下文是否注入由「当前 tab」决定（前端随消息发送）；
+		// 只有旧版前端不带该字段时才回退到全局设置。
+		const autoOpenFileOn = typeof payload.autoOpenFileEnabled === 'boolean'
+			? payload.autoOpenFileEnabled
+			: (!projectPath || this.context.getSettingsService().getAutoOpenFileEnabled(projectPath));
 		const selInfo = this.editorSelectionResolver?.() ?? null;
 
 		let messageToSend = text;
@@ -372,36 +379,175 @@ export class OpenCodeSession {
 	}
 
 	/**
-	 * 视图就绪对齐（方案 B）。
+	 * 从服务端全量装入当前会话（idea `SessionMessageOrchestrator.loadFromServer`）。
 	 *
-	 * 每个新建的 webview 只会发一次 `frontend_ready`（`main.tsx` 里 waitForBridge
-	 * 回调），因此收到它就意味着「刚出现了一个空视图」。而宿主内存里的 state
-	 * 可能还留着上一会话的整份消息——两者不一致就会表现为：
-	 * 打开插件看到空对话（视图是空的），发第一条消息后旧对话立刻冒出来
-	 * （send() 会把 state.getMessages() 整份推给视图）。
+	 * 与 `HistoryHandler.fetchAndRestoreMessages` 的区别：那里是「打开历史列表里的
+	 * 某个会话」的交互流程（自带重试、回执、状态恢复），这里是**会话对象的自我
+	 * 修复**，供切换 tab / 视图重新可见 / 水化前对账调用。
 	 *
-	 * 这里在回放任何状态之前先把两者对齐：
-	 *
-	 * - 只有这一个存活视图：清空宿主内存 → 名副其实的「新会话」。旧会话仍在
-	 *   opencode 服务端，可从历史列表随时重新打开，不会丢。
-	 * - 已有别的视图在展示当前会话（侧边栏 + 编辑器分栏共享同一会话）：不能清，
-	 *   否则会把另一个视图正在看的对话擦掉；改为把宿主快照补推给新视图。
-	 * - 流式进行中：不动。流式快照本来就会广播给所有存活视图。
-	 * @returns 是否把会话清成了新会话（true 表示宿主已不再持有任何会话，
-	 *   调用方不应再向视图回放旧的 sessionId）。
+	 * 硬约束（照 idea）：
+	 *  - 失败**必须 reject**，不能吞成「成功但为空」—— 否则调用方会留下
+	 *    「sessionId 已绑定 + 消息为空」的幽灵会话，用户下一条消息就追加进旧对话；
+	 *  - 成功但为空是合法结果（新会话），由调用方按 `messages.length` 自行判断。
 	 */
-	reconcileWithFreshView(): boolean {
-		const messages = this.state.getMessages();
-		const hasSession = this.state.getSessionId() != null || messages.length > 0;
-		if (!hasSession || this.state.isBusy()) {
+	async loadFromServer(): Promise<void> {
+		const sessionId = this.state.getSessionId();
+		if (!sessionId) {
+			return;
+		}
+		this.state.setLoading(true);
+		this.adapter.onStateChange(this.state.isBusy(), true, this.state.getError());
+		try {
+			const messages = await this.fetchServerMessages(sessionId);
+			this.state.setError(null);
+			this.state.replaceMessages(messages);
+			this.adapter.onMessageUpdate(this.state.getMessages());
+			this.republishUsageFromHistory();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.state.setError(message);
+			throw error instanceof Error ? error : new Error(message);
+		} finally {
+			this.state.setLoading(false);
+			this.adapter.onStateChange(this.state.isBusy(), false, this.state.getError());
+		}
+	}
+
+	/**
+	 * 与服务端转录做**非破坏性**对账（idea `reconcileWithServer`）。
+	 *
+	 * 只在「空闲 + 服务端确实更多或末条不同」时替换本地快照；服务端返回空而本地
+	 * 有消息时保持本地（冷启动 / serve 未就绪时最容易命中，替换会把正常对话清空）。
+	 *
+	 * @returns 是否用服务端快照替换了本地状态。
+	 */
+	async reconcileWithServer(): Promise<boolean> {
+		const sessionId = this.state.getSessionId();
+		if (!sessionId || this.state.isBusy()) {
 			return false;
 		}
-		if (this.context.getViewCount() > 1) {
-			this.restoreMessages(messages);
+		let serverMessages: ChatMessage[];
+		try {
+			serverMessages = await this.fetchServerMessages(sessionId);
+		} catch (error) {
+			logDiagnostic(`[Reconcile] failed for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
 			return false;
 		}
-		this.resetSession();
+		if (serverMessages.length === 0) {
+			return false;
+		}
+		const localMessages = this.state.getMessages();
+		let needsUpdate = serverMessages.length > localMessages.length;
+		if (!needsUpdate && serverMessages.length === localMessages.length && localMessages.length > 0) {
+			const latestServer = serverMessages[serverMessages.length - 1];
+			const latestLocal = localMessages[localMessages.length - 1];
+			needsUpdate = (latestServer.content ?? '') !== (latestLocal.content ?? '');
+		}
+		if (!needsUpdate) {
+			return false;
+		}
+		// 拉取期间用户可能已经发起了新一轮：替换会把它抹掉。
+		if (this.state.isBusy()) {
+			logDiagnostic(`[Reconcile] session became busy during reconcile, discarding snapshot: ${sessionId}`);
+			return false;
+		}
+		this.state.setError(null);
+		this.state.replaceMessages(serverMessages);
+		this.adapter.onMessageUpdate(this.state.getMessages());
+		this.republishUsageFromHistory();
 		return true;
+	}
+
+	/**
+	 * 把宿主权威快照推给 webview（idea `hydrateSessionToWebview`）。
+	 *
+	 * 通道是 `callJavaScript(fn, ...args)` → `postMessage({ type, args })`，因此整包
+	 * 作为**单参**下发即可；让前端按 `(sessionId, payload)` 双参解只会多一层歧义。
+	 *
+	 * `origin: true` 时只发给发起当前消息的那个视图——就绪握手期间其余视图
+	 * 已经在展示同一份内容，无需重灌。
+	 */
+	hydrateSessionToWebview(options?: { origin?: boolean }): void {
+		const sessionId = this.state.getSessionId();
+		if (!sessionId || sessionId.trim() === '') {
+			return;
+		}
+		try {
+			const messages = this.state.getMessages();
+			const packet: Record<string, unknown> = {
+				sessionId,
+				isStreaming: this.state.isBusy(),
+				loading: this.state.isLoading(),
+				messages,
+			};
+			const revertState = this.state.getRevertState();
+			if (revertState) {
+				packet.revertBoundaryId = revertState.messageID;
+			}
+			const payload = JSON.stringify(packet);
+			if (options?.origin) {
+				this.context.callJavaScriptToOrigin('onSessionHydrated', payload);
+			} else {
+				this.callView('onSessionHydrated', payload);
+			}
+		} catch (error) {
+			logDiagnostic(`[hydrateSession] failed for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * 通知视图「历史加载结束」。
+	 *
+	 * 必须带 `(sessionId, count)`：前端据此做快照对账，避免「先渲染半截、
+	 * 快照再补齐」的闪烁，也避免把别的会话的回执当成自己的。此前宿主裸调用，
+	 * 前端那段解析逻辑成了死代码（idea `SessionLifecycleManager.java:287`）。
+	 */
+	notifyHistoryLoadComplete(): void {
+		const sessionId = this.state.getSessionId();
+		if (!sessionId) {
+			this.callView('historyLoadComplete');
+			return;
+		}
+		this.callView('historyLoadComplete', sessionId, String(this.state.getMessages().length));
+	}
+
+	/** 重试用尽仍拿不到消息：明确告知并提示旧会话仍可从历史打开。 */
+	notifyMessageLoadFailure(detail?: string): void {
+		const suffix = detail ? `: ${detail}` : '';
+		this.callView(
+			'addErrorMessage',
+			`Failed to load session messages${suffix}. Starting a new session; `
+			+ 'the previous conversation is still available in History.',
+		);
+	}
+
+	/** 通过 daemon `opencode.listMessages` 拉取服务端转录并转换为宿主消息。 */	private fetchServerMessages(sessionId: string): Promise<ChatMessage[]> {
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		return new Promise<ChatMessage[]>((resolve, reject) => {
+			const collector = new ListMessagesCollector();
+			void this.daemon
+				.request('opencode.listMessages', { sessionId, directory }, {
+					onLine: (line) => collector.onLine(line),
+					onError: (error) => {
+						reject(new Error(typeof error === 'string' ? error : 'listMessages failed'));
+					},
+					onComplete: (success) => {
+						if (!success) {
+							reject(new Error('listMessages failed'));
+							return;
+						}
+						try {
+							collector.reconcileFallback();
+							resolve(convertSdkMessages(collector.getEntries()) as ChatMessage[]);
+						} catch (error) {
+							reject(error instanceof Error ? error : new Error(String(error)));
+						}
+					},
+				})
+				.catch((error) => {
+					reject(error instanceof Error ? error : new Error(String(error)));
+				});
+		});
 	}
 
 	/**

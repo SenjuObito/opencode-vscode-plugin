@@ -113,10 +113,14 @@ export function useModelProviderState({ addToast, t, currentSessionId, currentSe
    * the session's context-usage and pushes an empty usage row. Replaying a tab's
    * own model on switch must not do that, or the usage ring zeroes out every
    * time two tabs with different models are alternated.
+   *
+   * `sessionId` overrides the "current session" lookup for callers that are
+   * restoring a tab before React state has caught up (or for an unbound tab,
+   * whose host session is keyed by the tab id).
    */
-  const handleModelSelect = useCallback((modelId: string, options?: { silent?: boolean }) => {
+  const handleModelSelect = useCallback((modelId: string, options?: { silent?: boolean; sessionId?: string | null }) => {
     setSelectedOpenCodeModel(modelId);
-    const sessionId = currentSessionIdRef?.current ?? currentSessionId ?? null;
+    const sessionId = options?.sessionId ?? currentSessionIdRef?.current ?? currentSessionId ?? null;
     sendBridgeEvent('set_model', buildModelSelectionPayload(modelId, sessionId, options));
   }, [setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
 

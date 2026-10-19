@@ -603,6 +603,21 @@ if (typeof window !== 'undefined' && !window.applyBackendTabState) {
   };
 }
 
+// 单实例多视图：视图刚挂载时宿主可能已经推过会话快照 / 全局标签列表，
+// 而 React 回调还没注册。留一个「最后一包」占位，注册时补放。
+// 这两条都是整包覆盖语义，丢中间包没有副作用。
+if (typeof window !== 'undefined' && !window.onSessionHydrated) {
+  window.onSessionHydrated = (json: string) => {
+    window.__pendingSessionHydrated = json;
+  };
+}
+
+if (typeof window !== 'undefined' && !window.apply_tabs) {
+  window.apply_tabs = (json: string) => {
+    window.__pendingTabs = json;
+  };
+}
+
 if (typeof window !== 'undefined' && !window.showPermissionDialog) {
   debugLog('[Main] Pre-registering showPermissionDialog placeholder');
   window.showPermissionDialog = (json: string) => {
