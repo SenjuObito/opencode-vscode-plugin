@@ -1,5 +1,4 @@
 import { type RefObject, useCallback, useMemo, useRef } from 'react';
-import type { TFunction } from 'i18next';
 import { cardDebugLog } from '../utils/bridge';
 import type {
   ClaudeContentBlock,
@@ -10,11 +9,6 @@ import type {
   ToolResultBlock,
 } from '../types';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
-import {
-  containsAnyTag,
-  hasTaskNotificationTag,
-  INTERNAL_METADATA_TAGS,
-} from '../utils/messageUtils';
 import { extractTodosFromToolUse, extractAccumulatedTasks } from '../utils/todoToolNormalization';
 import {
   computeStatusScopeMessages,
@@ -28,7 +22,6 @@ import { useFileChangesManagement } from './useFileChangesManagement';
 import type { useMessageProcessing } from './useMessageProcessing';
 
 interface UseChatComputationsParams {
-  t: TFunction;
   messages: ClaudeMessage[];
   mergedMessages: ClaudeMessage[];
   subagentHistories: Record<string, SubagentHistoryResponse>;
@@ -37,7 +30,6 @@ interface UseChatComputationsParams {
   currentProvider: string;
   currentSessionId: string | null;
   currentSessionIdRef: RefObject<string | null>;
-  getMessageText: ReturnType<typeof useMessageProcessing>['getMessageText'];
   getContentBlocks: ReturnType<typeof useMessageProcessing>['getContentBlocks'];
   /** Authoritative todo list from opencode's `todo.updated` SSE event. */
   sseTodos: TodoItem[] | null;
@@ -99,14 +91,12 @@ export function deriveTodosForTurn(
  * Stage 5 of TASK-P1-01 — moves ~120 lines of computation out of App.tsx.
  */
 export function useChatComputations({
-  t,
   messages,
   subagentHistories,
   customSessionTitle,
   streamingActive,
   currentSessionId,
   currentSessionIdRef,
-  getMessageText,
   getContentBlocks,
   sseTodos,
 }: UseChatComputationsParams) {
@@ -248,28 +238,6 @@ export function useChatComputations({
     return result;
   }, [sseTodos, messages, getContentBlocks, streamingActive]);
 
-  const sessionTitle = useMemo(() => {
-    if (customSessionTitle) return customSessionTitle;
-    if (messages.length === 0) return t('common.newSession');
-    // Pick the first REAL prompt: skip meta/caveat messages and anything whose
-    // text is raw internal XML (e.g. <local-command-caveat>) so the tag is
-    // never leaked as the session title.
-    let text = '';
-    for (const message of messages) {
-      if (message.type !== 'user') continue;
-      const raw = message.raw;
-      if (raw && typeof raw === 'object' && raw.isMeta === true) continue;
-      const candidate = getMessageText(message).trim();
-      if (!candidate) continue;
-      if (candidate.startsWith('<')) continue;
-      if (containsAnyTag(candidate, INTERNAL_METADATA_TAGS) || hasTaskNotificationTag(candidate)) continue;
-      text = candidate;
-      break;
-    }
-    if (!text) return t('common.newSession');
-    return text.length > 15 ? `${text.substring(0, 15)}...` : text;
-  }, [customSessionTitle, messages, t, getMessageText]);
-
   return {
     findToolResult,
     getToolResultRaw,
@@ -277,6 +245,8 @@ export function useChatComputations({
     filteredFileChanges,
     subagents,
     globalTodos,
-    sessionTitle,
+    // 无自定义标题时为 null：消费者用空值判断走各自的占位文案，
+    // 不再拿本地化字符串（"新会话"）当哨兵值比较。
+    sessionTitle: customSessionTitle,
   };
 }

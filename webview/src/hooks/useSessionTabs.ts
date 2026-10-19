@@ -92,7 +92,7 @@ function makeTabFromRecord(
 
 interface UseSessionTabsOptions {  currentSessionId: string | null;
   setCurrentSessionId?: (sessionId: string | null) => void;
-  sessionTitle: string;
+  sessionTitle: string | null;
   setCustomSessionTitle: (title: string | null) => void;
   updateHistoryTitle: (sessionId: string, newTitle: string) => void;
   messages: ClaudeMessage[];
@@ -356,7 +356,7 @@ export function useSessionTabs({
           return {
             ...tab,
             sessionId: currentSessionId ?? tab.sessionId,
-            title: (!sessionTitle || sessionTitle === t('common.newSession')) ? tab.title : (sessionTitle || tab.title),
+            title: sessionTitle || tab.title,
             isShared,
             messages,
             loading,
@@ -740,8 +740,7 @@ export function useSessionTabs({
       const snap = runtimeStateRef.current;
       currentActive.messages = snap.messages;
       currentActive.sessionId = snap.currentSessionId;
-      const isDefaultSnapTitle = !snap.sessionTitle || snap.sessionTitle === t('common.newSession');
-      currentActive.title = isDefaultSnapTitle ? currentActive.title : (snap.sessionTitle || currentActive.title);
+      currentActive.title = snap.sessionTitle || currentActive.title;
       currentActive.loading = snap.loading;
       currentActive.streamingActive = snap.streamingActive;
       currentActive.isThinking = snap.isThinking;

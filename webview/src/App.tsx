@@ -1052,9 +1052,9 @@ const App = () => {
     fileChangeMgmt,
     filteredFileChanges, subagents, globalTodos, sessionTitle,
   } = useChatComputations({
-    t, messages, mergedMessages, subagentHistories, customSessionTitle, streamingActive, currentProvider,
+    messages, mergedMessages, subagentHistories, customSessionTitle, streamingActive, currentProvider,
     currentSessionId, currentSessionIdRef,
-    getMessageText, getContentBlocks, sseTodos,
+    getContentBlocks, sseTodos,
   });
 
   const { handleUndoFile, handleDiscardAll: handleDiscardAllRaw, handleKeepAll } = fileChangeMgmt;
@@ -1077,15 +1077,10 @@ const App = () => {
 
   const statusPanelExpanded = !userCollapsedRef.current;
 
-  // Synchronize dynamic sessionTitle to IDE ToolWindow Tab display name
+  // Synchronize dynamic session title to IDE ToolWindow Tab display name
   useEffect(() => {
-    const isDefaultNewSession = !sessionTitle || sessionTitle === t('common.newSession');
-    if (isDefaultNewSession) {
-      sendBridgeEvent('update_tab_title', '');
-    } else {
-      sendBridgeEvent('update_tab_title', sessionTitle);
-    }
-  }, [sessionTitle, t]);
+    sendBridgeEvent('update_tab_title', sessionTitle ?? '');
+  }, [sessionTitle]);
 
 
   // Session tabs management
@@ -1232,7 +1227,6 @@ const App = () => {
           >
             <ChatScreen
               mergedMessages={mergedMessages}
-              sessionTitle={sessionTitle}
               getMessageText={getMessageText}
               getContentBlocks={getContentBlocks}
               findToolResult={findToolResult}

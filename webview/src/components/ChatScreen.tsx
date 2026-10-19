@@ -38,7 +38,6 @@ type FileChangeMgmt = ReturnType<typeof useFileChangesManagement>;
 export interface ChatScreenProps {
   // Computed message data
   mergedMessages: ClaudeMessage[];
-  sessionTitle: string;
   getMessageText: (message: ClaudeMessage) => string;
   getContentBlocks: ReturnType<typeof useMessageProcessing>['getContentBlocks'];
   findToolResult: (toolUseId?: string, messageIndex?: number) => ToolResultBlock | null;
