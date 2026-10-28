@@ -16,7 +16,7 @@ import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
 import { getModelContextLimit } from '../util/ModelContextLimits';
 import { logDiagnostic } from '../util/DiagnosticLogger';
-import type { ChatMessage, PermissionRequest } from './types';
+import type { ChatMessage, PermissionRequest, SessionCallback } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
 export interface SendMessagePayload {
@@ -105,6 +105,14 @@ export class OpenCodeSession {
 
 	getActiveRequestId(): string | null {
 		return this.activeRequestId;
+	}
+
+	getState(): SessionState {
+		return this.state;
+	}
+
+	setCallback(callback: SessionCallback): void {
+		this.callbackHandler.setCallback(callback);
 	}
 
 	getAdapter(): SessionCallbackAdapter {

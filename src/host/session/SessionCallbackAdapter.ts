@@ -44,6 +44,26 @@ export class SessionCallbackAdapter implements SessionCallback {
 	private active = true;
 	private streamEndSignalSent = false;
 	private streamEndFallbackTimer: NodeJS.Timeout | null = null;
+	private tabId: string | null = null;
+	private sessionId: string | null = null;
+
+	setTabId(tabId: string | null): void {
+		this.tabId = tabId;
+		this.streamCoalescer.setTabId(tabId);
+	}
+
+	getTabId(): string | null {
+		return this.tabId;
+	}
+
+	setSessionId(sessionId: string | null): void {
+		this.sessionId = sessionId;
+		this.streamCoalescer.setSessionId(sessionId);
+	}
+
+	getSessionId(): string | null {
+		return this.sessionId;
+	}
 
 	constructor(options: SessionCallbackAdapterOptions) {
 		this.jsTarget = options.jsTarget;

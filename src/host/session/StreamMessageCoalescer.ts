@@ -49,6 +49,24 @@ export class StreamMessageCoalescer {
 	private lastSnapshot: ChatMessage[] | null = null;
 	private lastSnapshotBaseIndex = 0;
 	private lastDeliveredSnapshot: ChatMessage[] | null = null;
+	private tabId: string | null = null;
+	private sessionId: string | null = null;
+
+	setTabId(tabId: string | null): void {
+		this.tabId = tabId;
+	}
+
+	getTabId(): string | null {
+		return this.tabId;
+	}
+
+	setSessionId(sessionId: string | null): void {
+		this.sessionId = sessionId;
+	}
+
+	getSessionId(): string | null {
+		return this.sessionId;
+	}
 
 	private updateTimer: NodeJS.Timeout | null = null;
 	private heartbeatTimer: NodeJS.Timeout | null = null;
