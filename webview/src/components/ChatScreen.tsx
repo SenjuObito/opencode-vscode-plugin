@@ -224,9 +224,13 @@ export const ChatScreen = ({
     setSearchOpen(false);
   }, [setSearchOpen]);
 
+  // 空态（无消息、非加载中）才显示极光/点阵底纹；有内容就退回纯色，
+  // 免得背景污染历史与设置页（§10.3 的验收判据）。
+  const isEmptyState = !sessionLoading && mergedMessages.length === 0;
+
   return (
     <>
-      <div className="messages-shell">
+      <div className={`messages-shell${isEmptyState ? ' is-empty-state' : ''}`}>
         <MessageAnchorRail
           messages={mergedMessages}
           messageKeys={messageKeySnapshot.keys}

@@ -1,5 +1,23 @@
 /* Welcome Screen Styles */
 
+/* 空态底纹（§10.3）：只在「没有消息且不在加载」时挂 .is-empty-state。
+   背景挂在消息容器上而不是 body —— 否则历史/设置页也会被染。 */
+.messages-shell.is-empty-state {
+    background-color: var(--bg-chat);
+    background-image:
+        radial-gradient(circle at 50% 40%, rgba(14, 165, 233, 0.1) 0%, rgba(99, 102, 241, 0.05) 35%, transparent 65%),
+        radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px;
+    transition: background 0.25s ease;
+}
+
+[data-theme="light"] .messages-shell.is-empty-state {
+    background-image:
+        radial-gradient(circle at 50% 40%, rgba(186, 230, 253, 0.45) 0%, rgba(224, 231, 255, 0.25) 35%, transparent 65%),
+        radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px;
+}
+
 .welcome-screen {
     display: flex;
     flex-direction: column;

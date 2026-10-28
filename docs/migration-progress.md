@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A6：首帧 splash + `@` 草稿恢复）
+> 最后更新：2026-10-28（P8-A6：首帧 splash / `@` 草稿恢复 / 空态底纹）
 
 ---
 
@@ -43,7 +43,7 @@
 |---|---|---|---|
 | 10.1 | 启动页与首帧 | ✅ | `index.html` 内联 `html,body,#app` 底色（跟随 `--vscode-sideBar-background`，不写死颜色）+ `#boot-splash`（SVG 标记、`prefers-reduced-motion` 下不动画）；`main.tsx` 在首帧提交后（双 rAF）移除。加载失败仍由 `ErrorBoundary` 兜底 |
 | 10.2 | 插件图标与品牌 | ⬜ | `media/*` 未更新；webview 无 `AeroOpenCodeLogo`（idea 独有，尚未引入） |
-| 10.3 | 新会话默认背景 | ⬜ | `welcome.less` 无 `.chat-screen-shell` / `.is-empty-state`；`ChatScreen` 无空态 class |
+| 10.3 | 新会话默认背景 | ✅ | 空态底纹挂在 `.messages-shell.is-empty-state`（径向极光 + 20px 点阵，含 light 变体），由 `ChatScreen` 按 `!sessionLoading && mergedMessages.length===0` 计算。**偏离方案**：方案写的是 `.chat-screen-shell`，本仓没有该壳层，改挂消息容器以避免污染历史/设置页 |
 | 10.4 | 模式列表 | ✅ | `ModeSelect` 改订阅 `store/agentStore`（`useAgents`/`selectPrimaryAgents`/`requestAgents`），只在内置 build/plan 上兜底；`utils/modeColors.ts` 已引入（含 idea 的 6 项测试），输入框描边改 `--mode-accent`，自定义 agent 的 `color` 由宿主 `AgentHandler` 透传；`agents.list` 命令已注册 |
 | 10.5 | 模型列表与置顶 | ⬜ | `ModelSelect` 无置顶拖拽排序/portal；仍为旧版点击置顶 |
 | 10.6 | 推理力度 | ✅ | `reasoningUtils.useReasoningEffortGuard` 成为唯一实现（档位来源 `types.getAvailableReasoningLevels`、可见性=无档位即隐藏、回落=推荐档→第一档）；`ReasoningSelect` 的内联副本已删除 |
@@ -149,6 +149,6 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
-| 2026-10-28 | **P8-A6**：`index.html` 内联首帧底色 + `#boot-splash`（`main.tsx` 首帧后移除）；`useFileTags.restoreFileTags` 移植并串到 imperative handle（新增 1 项测试，`useFileTags` 共 12 项通过） |
+| 2026-10-28 | **P8-A6**：`index.html` 内联首帧底色 + `#boot-splash`（`main.tsx` 首帧后移除）；`useFileTags.restoreFileTags` 移植并串到 imperative handle（新增 1 项测试，`useFileTags` 共 12 项通过）；§10.3 空态底纹（`.messages-shell.is-empty-state` + light 变体） |
 | 2026-10-28 | **P8-A5**：附件链路（`TabAttachmentStore` 按 tab 落盘、分块顺序校验、32MB 上限、发送按 id 解内联、关 tab 释放）、`session.load`、`settings.mode`、`agents.list`；`ModeSelect` 改订阅 `agentStore`、移植 `modeColors` + `--mode-accent`、`ReasoningSelect` 接 `useReasoningEffortGuard`。测试 `tabAttachments`（9 项）、`ModeSelect`（4 项）、`modeColors`（6 项，来自 idea） |
 | 2026-10-28 | **P8-A3**：webview 发送 / 中断 / 新会话改走 v2 命令（`session.send` / `session.interrupt` / `session.new`），删除 `create_new_session` 全部 8 处与协议常量，宿主移除对应 legacy handler；新增 `useMessageSender.tabSend` 测试 |
