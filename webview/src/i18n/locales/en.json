@@ -935,7 +935,8 @@
     "approvedStatus": "Allowed",
     "approvedAlwaysStatus": "Always allowed",
     "deniedStatus": "Denied",
-    "timeoutWarning": "Please answer soon, the card will close in {{seconds}} seconds"
+    "timeoutWarning": "Please answer soon, the card will close in {{seconds}} seconds",
+    "timedOut": "Request timed out — the session was stopped"
   },
   "askUserQuestion": {
     "title": "OpenCode has some questions for you",

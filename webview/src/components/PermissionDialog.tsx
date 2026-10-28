@@ -13,6 +13,10 @@ export interface PermissionRequest {
   toolName: string;
   inputs: Record<string, unknown>;
   suggestions?: string[];
+  /** 发起请求的会话（宿主盖章）。超时要按它中断目标会话，不能中断「当前活跃」那个。 */
+  sessionId?: string;
+  /** 发起请求的 tab（宿主盖章，用于跨 tab 排队）。 */
+  tabId?: string;
 }
 
 interface PermissionDialogProps {
@@ -20,6 +24,11 @@ interface PermissionDialogProps {
   request: PermissionRequest | null;
   onApprove: (channelId: string) => void;
   onSkip: (channelId: string) => void;
+  /**
+   * 倒计时归零。与 onSkip 的区别：超时是「人走了」，除了拒绝还要中断会话，
+   * 否则会话会带着"已被拒绝"的结果继续跑。不传则退回 onSkip。
+   */
+  onTimeout?: (channelId: string) => void;
   onApproveAlways?: (channelId: string) => void;
   timeoutSeconds?: number;
 }
@@ -67,6 +76,7 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
   request,
   onApprove,
   onSkip,
+  onTimeout,
   onApproveAlways,
   timeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
 }) => {
@@ -81,8 +91,13 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
   const handleTimeout = useCallback(() => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    if (request) onSkip(request.channelId);
-  }, [request, onSkip]);
+    if (!request) return;
+    if (onTimeout) {
+      onTimeout(request.channelId);
+    } else {
+      onSkip(request.channelId);
+    }
+  }, [request, onTimeout, onSkip]);
 
   const {remainingSeconds, isTimeWarning, markSubmitted} = useDialogCountdownTimeout({
     isOpen,

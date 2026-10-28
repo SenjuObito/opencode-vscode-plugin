@@ -940,7 +940,8 @@
     "approvedStatus": "已允许",
     "approvedAlwaysStatus": "已总是允许",
     "deniedStatus": "已拒绝",
-    "timeoutWarning": "请尽快回答，卡片将在 {{seconds}} 秒后自动关闭"
+    "timeoutWarning": "请尽快回答，卡片将在 {{seconds}} 秒后自动关闭",
+    "timedOut": "请求超时，已停止会话"
   },
   "askUserQuestion": {
     "title": "OpenCode 有一些问题想问你",

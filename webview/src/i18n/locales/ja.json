@@ -815,7 +815,8 @@
     "approvedStatus": "許可済み",
     "approvedAlwaysStatus": "常に許可",
     "deniedStatus": "拒否",
-    "timeoutWarning": "お早めにご回答ください。ダイアログは {{seconds}} 秒後に自動的に閉じます"
+    "timeoutWarning": "お早めにご回答ください。ダイアログは {{seconds}} 秒後に自動的に閉じます",
+    "timedOut": "リクエストがタイムアウトしました（セッションを停止しました）"
   },
   "askUserQuestion": {
     "title": "OpenCodeからいくつか質問があります",

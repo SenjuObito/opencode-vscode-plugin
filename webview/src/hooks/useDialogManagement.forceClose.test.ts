@@ -147,7 +147,25 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
     expect(result.current.permissionDialogOpen).toBe(false);
   });
 
+  it('clearing active dialogs via dialogStore clears every pending request', () => {
+    const { result } = renderHook(
+      () => ({ dialogs: useDialogManagement({ t }), session: useSession() }),
+      { wrapper },
+    );
+
+    act(() => { result.current.dialogs.openPermissionDialog(mkPermission('A')); });
+    act(() => { result.current.dialogs.openAskUserQuestionDialog(mkAsk('Q')); });
+
+    act(() => { window.__dialogStore?.clearActive(); });
+
+    expect(result.current.dialogs.askUserQuestionDialogOpen).toBe(false);
+    expect(result.current.dialogs.permissionDialogOpen).toBe(false);
+    expect(result.current.dialogs.pendingAskUserQuestionRequests).toEqual([]);
+    expect(result.current.dialogs.pendingPermissionRequests).toEqual([]);
+  });
+
   it('switching session clears every pending request', () => {
+    // 本仓比 idea 多一条：切会话后旧的权限/提问请求不该留在窗口里。
     const { result } = renderHook(
       () => ({ dialogs: useDialogManagement({ t }), session: useSession() }),
       { wrapper },
@@ -188,5 +206,63 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
 
     expect(result.current.planApprovalDialogOpen).toBe(false);
     expect(result.current.currentPlanApprovalRequest).toBeNull();
+  });
+
+  it('handleAskUserQuestionTimeout rejects question, interrupts session, and closes dialog', () => {
+    const sendCalls: string[] = [];
+    (window as any).sendToJava = vi.fn((payload: string) => {
+      sendCalls.push(payload);
+    });
+
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
+
+    act(() => {
+      result.current.openAskUserQuestionDialog({
+        requestId: 'Q1',
+        toolName: 'AskUserQuestion',
+        sessionId: 'ses_123',
+        questions: [],
+      } as any);
+    });
+
+    expect(result.current.askUserQuestionDialogOpen).toBe(true);
+
+    act(() => {
+      result.current.handleAskUserQuestionTimeout('Q1');
+    });
+
+    expect(result.current.askUserQuestionDialogOpen).toBe(false);
+    expect(result.current.currentAskUserQuestionRequest).toBeNull();
+    expect(sendCalls.some((c) => c.startsWith('ask_user_question_reject:'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_123'))).toBe(true);
+  });
+
+  it('handlePermissionTimeout rejects permission, interrupts session, and closes dialog', () => {
+    const sendCalls: string[] = [];
+    (window as any).sendToJava = vi.fn((payload: string) => {
+      sendCalls.push(payload);
+    });
+
+    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
+
+    act(() => {
+      result.current.openPermissionDialog({
+        channelId: 'P1',
+        toolName: 'Bash',
+        sessionId: 'ses_456',
+        inputs: {},
+      } as any);
+    });
+
+    expect(result.current.permissionDialogOpen).toBe(true);
+
+    act(() => {
+      result.current.handlePermissionTimeout('P1');
+    });
+
+    expect(result.current.permissionDialogOpen).toBe(false);
+    expect(result.current.currentPermissionRequest).toBeNull();
+    expect(sendCalls.some((c) => c.startsWith('permission_decision:') && c.includes('"allow":false'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_456'))).toBe(true);
   });
 });

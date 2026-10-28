@@ -810,7 +810,8 @@
     "approvedStatus": "अनुमति दी गई",
     "approvedAlwaysStatus": "हमेशा अनुमति",
     "deniedStatus": "अस्वीकृत",
-    "timeoutWarning": "कृपया जल्द उत्तर दें, डायलॉग {{seconds}} सेकंड में स्वचालित रूप से बंद हो जाएगा"
+    "timeoutWarning": "कृपया जल्द उत्तर दें, डायलॉग {{seconds}} सेकंड में स्वचालित रूप से बंद हो जाएगा",
+    "timedOut": "अनुरोध का समय समाप्त — सत्र रोक दिया गया"
   },
   "askUserQuestion": {
     "title": "OpenCode के आपसे कुछ सवाल हैं",

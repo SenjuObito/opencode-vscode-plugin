@@ -20,6 +20,10 @@ export interface AskUserQuestionRequest {
     multiSelect?: boolean;
   }[];
   provider?: 'opencode' | 'codex';
+  /** 发起请求的会话（宿主盖章）。超时按它中断，见 PermissionRequest 的说明。 */
+  sessionId?: string;
+  /** 发起请求的 tab（宿主盖章）。 */
+  tabId?: string;
 }
 
 interface AskUserQuestionDialogProps {
@@ -27,6 +31,11 @@ interface AskUserQuestionDialogProps {
   request: AskUserQuestionRequest | null;
   onSubmit: (requestId: string, answers: Record<string, string | string[]>) => void;
   onCancel: (requestId: string) => void;
+  /**
+   * 倒计时归零。与 onCancel 的区别同 PermissionDialog：超时还要中断会话。
+   * 不传则退回 onCancel。
+   */
+  onTimeout?: (requestId: string) => void;
   onUpdateHeight?: (height: number | null) => void;
   timeoutSeconds?: number;
 }
@@ -36,6 +45,7 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
   request,
   onSubmit,
   onCancel,
+  onTimeout,
   onUpdateHeight,
   timeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
 }) => {
@@ -53,8 +63,13 @@ export const AskUserQuestionDialog: React.FC<AskUserQuestionDialogProps> = ({
   const handleTimeout = useCallback(() => {
     if (submittedRef.current) return;
     submittedRef.current = true;
-    if (request) onCancel(request.requestId);
-  }, [request, onCancel]);
+    if (!request) return;
+    if (onTimeout) {
+      onTimeout(request.requestId);
+    } else {
+      onCancel(request.requestId);
+    }
+  }, [request, onTimeout, onCancel]);
 
   const {remainingSeconds, isTimeWarning, markSubmitted} = useDialogCountdownTimeout({
     isOpen,

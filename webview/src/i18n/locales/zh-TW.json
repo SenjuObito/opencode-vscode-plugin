@@ -818,7 +818,8 @@
     "approvedStatus": "已允許",
     "approvedAlwaysStatus": "已總是允許",
     "deniedStatus": "已拒絕",
-    "timeoutWarning": "請儘快回答，卡片將在 {{seconds}} 秒後自動關閉"
+    "timeoutWarning": "請儘快回答，卡片將在 {{seconds}} 秒後自動關閉",
+    "timedOut": "請求逾時，已停止工作階段"
   },
   "askUserQuestion": {
     "title": "OpenCode 有一些問題想問你",

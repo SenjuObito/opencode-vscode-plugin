@@ -850,7 +850,8 @@
     "approvedStatus": "허용됨",
     "approvedAlwaysStatus": "항상 허용",
     "deniedStatus": "거부됨",
-    "timeoutWarning": "곧 답변해주세요, {{seconds}}초 후 대화상자가 닫힙니다"
+    "timeoutWarning": "곧 답변해주세요, {{seconds}}초 후 대화상자가 닫힙니다",
+    "timedOut": "요청 시간이 초과되어 세션을 중지했습니다"
   },
   "askUserQuestion": {
     "title": "OpenCode의 몇 가지 질문입니다",

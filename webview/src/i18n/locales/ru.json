@@ -837,7 +837,8 @@
     "approvedStatus": "Разрешено",
     "approvedAlwaysStatus": "Всегда разрешать",
     "deniedStatus": "Отклонено",
-    "timeoutWarning": "Ответьте в течение {{seconds}} сек, иначе диалог закроется"
+    "timeoutWarning": "Ответьте в течение {{seconds}} сек, иначе диалог закроется",
+    "timedOut": "Время ожидания истекло — сеанс остановлен"
   },
   "askUserQuestion": {
     "title": "У OpenCode есть несколько вопросов к вам",

@@ -307,21 +307,51 @@ export function getRecommendedReasoningEffort(variants?: string[]): ReasoningEff
 }
 
 /**
+ * Check if a model is known to not support reasoning effort variants (e.g. MiMo).
+ */
+export function isKnownNonReasoningModel(modelId?: string): boolean {
+  if (!modelId) return false;
+  const lower = modelId.toLowerCase();
+  return lower.includes('mimo');
+}
+
+/**
  * Compute the visible reasoning levels for a model.
  * opencode reasoning effort = model variants (per-model, see docs/models#variants).
+ *
+ * 移植自 idea（同签名的唯一实现）。此前这里的实现是简化版：忽略 selectedModel、
+ * `modelVariants` 为空时回落到全部档位 —— 结果是选择器**永远不会隐藏**，
+ * 且把只在目录里出现的 `none` 当成了默认档。
  */
 export function getAvailableReasoningLevels(
   _provider?: string,
-  _selectedModel?: string,
+  selectedModel?: string,
   modelVariants?: string[],
 ): ReasoningInfo[] {
-  if (modelVariants && modelVariants.length > 0) {
-    const known = REASONING_LEVELS.filter((level) => modelVariants.includes(level.id));
-    if (known.length > 0) {
-      return known;
+  if (modelVariants === undefined) {
+    if (isKnownNonReasoningModel(selectedModel)) {
+      return [];
     }
+    // Legacy/v1 catalogs do not advertise variants. The legacy UI exposes the
+    // classic levels; `none` is a catalog-provided variant, not a default.
+    return REASONING_LEVELS.filter(level => level.id !== 'none');
   }
-  return REASONING_LEVELS;
+  if (modelVariants.length === 0) {
+    return [];
+  }
+
+  const known = new Map(REASONING_LEVELS.map((level) => [level.id, level]));
+  const levels: ReasoningInfo[] = [];
+  for (const id of modelVariants) {
+    if (id === 'default') continue;
+    levels.push(known.get(id as ReasoningEffort) ?? {
+      id: id as ReasoningEffort,
+      label: id.charAt(0).toUpperCase() + id.slice(1),
+      icon: 'codicon-circle-filled',
+      description: id,
+    });
+  }
+  return levels;
 }
 
 // ============================================================

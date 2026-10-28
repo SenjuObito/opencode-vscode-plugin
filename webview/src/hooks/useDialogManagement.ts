@@ -4,7 +4,8 @@ import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
-import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 import { useSession } from '../contexts/SessionContext';
 
 interface UseDialogManagementOptions {
@@ -20,6 +21,7 @@ interface UseDialogManagementReturn {
   handlePermissionApprove: (channelId: string) => void;
   handlePermissionApproveAlways: (channelId: string) => void;
   handlePermissionSkip: (channelId: string) => void;
+  handlePermissionTimeout: (channelId: string) => void;
   forceClosePermissionDialog: (requestId?: string | null) => void;
 
   // AskUserQuestion modal (top-level overlay; queue of pending requests)
@@ -29,6 +31,7 @@ interface UseDialogManagementReturn {
   openAskUserQuestionDialog: (request: AskUserQuestionRequest) => void;
   handleAskUserQuestionSubmit: (requestId: string, answers: Record<string, string | string[]>) => void;
   handleAskUserQuestionSkip: (requestId: string) => void;
+  handleAskUserQuestionTimeout: (requestId: string) => void;
   forceCloseAskUserQuestionDialog: (requestId?: string | null) => void;
 
   // PlanApproval dialog
@@ -97,6 +100,96 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   const [currentPlanApprovalRequest, setCurrentPlanApprovalRequest] = useState<PlanApprovalRequest | null>(null);
   const planApprovalDialogOpenRef = useRef(false);
   const currentPlanApprovalRequestRef = useRef<PlanApprovalRequest | null>(null);
+
+  /**
+   * 把未决弹窗暴露给 tab 层（`useTabLifecycle` 切 tab 时调 `restore`）。
+   *
+   * 移植自 idea `useDialogManagement.ts` 的同名块。之前本仓只在 `useTabLifecycle`
+   * 里调 `window.__dialogStore?.restore(...)`，却没人给它赋值 —— 那条路径一直是
+   * 死的，后台 tab 的 prompt 只能靠另建的队列顶着。
+   *
+   * `restore` 的语义是**整体替换**：切到没有未决请求的 tab 时，这里必须把当前
+   * 卡片清掉，否则会把上一个 tab 的权限卡带到新 tab 上。
+   */
+  useEffect(() => {
+    window.__dialogStore = {
+      getSnapshot: () => ({
+        permissions: currentPermissionRequestRef.current
+          ? [currentPermissionRequestRef.current, ...pendingPermissionRequestsRef.current]
+          : [...pendingPermissionRequestsRef.current],
+        questions: currentAskUserQuestionRequestRef.current
+          ? [currentAskUserQuestionRequestRef.current, ...pendingAskUserQuestionRequestsRef.current]
+          : [...pendingAskUserQuestionRequestsRef.current],
+      }),
+      restore: (
+        permissions: PermissionRequest[],
+        questions: AskUserQuestionRequest[],
+        plans: PlanApprovalRequest[] = [],
+      ) => {
+        if (permissions && permissions.length > 0) {
+          currentPermissionRequestRef.current = permissions[0];
+          setCurrentPermissionRequest(permissions[0]);
+          pendingPermissionRequestsRef.current = permissions.slice(1);
+          setPendingPermissionRequests(permissions.slice(1));
+          permissionDialogOpenRef.current = true;
+          setPermissionDialogOpen(true);
+        } else {
+          currentPermissionRequestRef.current = null;
+          setCurrentPermissionRequest(null);
+          pendingPermissionRequestsRef.current = [];
+          setPendingPermissionRequests([]);
+          permissionDialogOpenRef.current = false;
+          setPermissionDialogOpen(false);
+        }
+
+        if (plans && plans.length > 0) {
+          currentPlanApprovalRequestRef.current = plans[0];
+          setCurrentPlanApprovalRequest(plans[0]);
+          planApprovalDialogOpenRef.current = true;
+          setPlanApprovalDialogOpen(true);
+        } else {
+          currentPlanApprovalRequestRef.current = null;
+          setCurrentPlanApprovalRequest(null);
+          planApprovalDialogOpenRef.current = false;
+          setPlanApprovalDialogOpen(false);
+        }
+
+        if (questions && questions.length > 0) {
+          currentAskUserQuestionRequestRef.current = questions[0];
+          setCurrentAskUserQuestionRequest(questions[0]);
+          pendingAskUserQuestionRequestsRef.current = questions.slice(1);
+          setPendingAskUserQuestionRequests(questions.slice(1));
+          askUserQuestionDialogOpenRef.current = true;
+          setAskUserQuestionDialogOpen(true);
+        } else {
+          currentAskUserQuestionRequestRef.current = null;
+          setCurrentAskUserQuestionRequest(null);
+          pendingAskUserQuestionRequestsRef.current = [];
+          setPendingAskUserQuestionRequests([]);
+          askUserQuestionDialogOpenRef.current = false;
+          setAskUserQuestionDialogOpen(false);
+        }
+      },
+      clearActive: () => {
+        currentPermissionRequestRef.current = null;
+        setCurrentPermissionRequest(null);
+        pendingPermissionRequestsRef.current = [];
+        setPendingPermissionRequests([]);
+        permissionDialogOpenRef.current = false;
+        setPermissionDialogOpen(false);
+
+        currentAskUserQuestionRequestRef.current = null;
+        setCurrentAskUserQuestionRequest(null);
+        pendingAskUserQuestionRequestsRef.current = [];
+        setPendingAskUserQuestionRequests([]);
+        askUserQuestionDialogOpenRef.current = false;
+        setAskUserQuestionDialogOpen(false);
+      },
+    };
+    return () => {
+      delete window.__dialogStore;
+    };
+  }, []);
   const pendingPlanApprovalRequestsRef = useRef<PlanApprovalRequest[]>([]);
 
   // Context usage dialog state
@@ -304,6 +397,47 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
+  /**
+   * 倒计时归零（权限）。
+   *
+   * 与 handlePermissionSkip 的差别有两点，但都是必要的：
+   *  1) rejectMessage 用「超时」而不是「用户拒绝」——服务端与日志要能区分；
+   *  2) 额外中断发起请求的那个会话。人已经离开，会话不该带着被拒的结果继续跑；
+   *     中断按 sessionId 定向（宿主盖章），不是「当前活跃会话」。
+   */
+  const handlePermissionTimeout = useCallback((channelId: string) => {
+    cardDebugLog(`[PCard][webview] timeout channelId=${channelId}`);
+    const activeReq = currentPermissionRequestRef.current;
+    if (activeReq?.channelId !== channelId) {
+      forceClosePermissionDialog(channelId);
+      return;
+    }
+    const sessionId = activeReq.sessionId ?? null;
+    sendBridgeEvent('permission_decision', JSON.stringify({
+      channelId,
+      sessionId,
+      allow: false,
+      remember: false,
+      rejectMessage: t('permission.timedOut'),
+    }));
+    sendInterrupt({ tabId: activeReq.tabId ?? null, sessionId });
+    closePermissionCurrent();
+  }, [closePermissionCurrent, t, forceClosePermissionDialog]);
+
+  /** 倒计时归零（提问）：同上。 */
+  const handleAskUserQuestionTimeout = useCallback((requestId: string) => {
+    cardDebugLog(`[QCard][webview] timeout requestId=${requestId}`);
+    const activeReq = currentAskUserQuestionRequestRef.current;
+    if (activeReq?.requestId !== requestId) {
+      forceCloseAskUserQuestionDialog(requestId);
+      return;
+    }
+    const sessionId = activeReq.sessionId ?? null;
+    sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId, sessionId }));
+    sendInterrupt({ tabId: activeReq.tabId ?? null, sessionId });
+    closeQuestionCurrent();
+  }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
+
   // (force-close helpers are defined above the handlers)
 
   // Host-side reply failure (e.g. "Permission request not found" / "Question request
@@ -311,6 +445,9 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   // down the same way forceClose does.
   const invalidateQuestionCard = useCallback((requestId: string) => {
     cardDebugLog(`[QCard][webview] invalidateQuestionCard requestId=${requestId}`);
+    // 宿主编排已判定这张卡失效：答案也要从 store 里摘掉，否则消息流里会留下
+    // 一张永远等不到答复的「已作答」卡（idea 同款处理）。
+    removeQuestionAnswerByRequestId(requestId ?? '');
     forceCloseAskUserQuestionDialog(requestId ?? '');
   }, [forceCloseAskUserQuestionDialog]);
 
@@ -430,6 +567,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     handlePermissionApprove,
     handlePermissionApproveAlways,
     handlePermissionSkip,
+    handlePermissionTimeout,
     forceClosePermissionDialog,
 
     // AskUserQuestion modal
@@ -439,6 +577,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     openAskUserQuestionDialog,
     handleAskUserQuestionSubmit,
     handleAskUserQuestionSkip,
+    handleAskUserQuestionTimeout,
     forceCloseAskUserQuestionDialog,
 
     // PlanApproval dialog

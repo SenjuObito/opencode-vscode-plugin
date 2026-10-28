@@ -46,7 +46,6 @@ import { AppDialogs } from './components/AppDialogs';
 import ConfirmDialog from './components/ConfirmDialog';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from './utils/permissionDialogTimeout';
 import { useSessionTabs } from './hooks/useSessionTabs';
-import { flushQueuedPrompts } from './hooks/windowCallbacks/registerCallbacks/permissionCallbacks';
 import { convertMessagesToMarkdown, downloadMarkdown } from './utils/exportMarkdown';
 
 const App = () => {
@@ -984,12 +983,6 @@ const App = () => {
     openSessionInTabRef.current = openSessionInTab;
     appTabsRef.current = tabs;
   }, [openSessionInTab, tabs]);
-
-  // §10.7/10.8：后台 tab 的权限/提问请求入队，切到它时才弹（tab 栏已按
-  // pendingPermissions/pendingQuestions 显示"等待操作"角标）。
-  useEffect(() => {
-    flushQueuedPrompts(activeTabId);
-  }, [activeTabId]);
 
   // ── Render ──
   return (

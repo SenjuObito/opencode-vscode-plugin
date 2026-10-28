@@ -10,53 +10,82 @@ import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { cardDebugLog } from '../../../utils/bridge';
 import { setQuestionAnswer } from '../../../store/questionAnswerStore';
 import { getTabStore } from '../../../store/tabStore';
-import { drainPromptsForTab, enqueuePrompt, removeQueuedPrompt, type QueuedPromptKind } from '../../../utils/pendingPromptQueue';
+import type { SessionTabData } from '../../../components/ChatHeader/types';
 
 /**
- * 后台 tab 的 prompt 先排队，切过去再弹。
+ * 后台 tab 的 prompt 怎么处理（§10.7 / 10.8，与 idea 同一套机制）。
  *
- * 记住最近一次注册的回调：切 tab 时由 `flushQueuedPrompts` 调回来，
- * 而它不在 React 树里（由 App 的 effect 触发）。
+ * 请求**直接挂在那个 tab 的记录上**（`pendingPermissions` / `pendingQuestions` /
+ * `pendingPlans`），不另建队列：
+ *   - 角标直接读 tab 记录（`SessionTabBar` 本来就这么渲染）；
+ *   - 切 tab 时由 `useTabLifecycle` 调 `window.__dialogStore.restore(...)` 接管。
+ *
+ * 之前这里放了一个模块级 Map 队列，副本和 tab 记录各存一份，导致两个偏差：
+ * tab 已关时请求永远没人取（服务端干等）、force-close 清不掉角标。
  */
-let activeHandlers: {
-  permission: ((request: Record<string, unknown>) => void) | null;
-  question: ((request: Record<string, unknown>) => void) | null;
-  plan: ((request: Record<string, unknown>) => void) | null;
-} = { permission: null, question: null, plan: null };
 
-/** 该请求是否属于别的 tab（属于就先排队，别打断当前对话）。 */
-function shouldDefer(request: Record<string, unknown>): boolean {
-  const tabId = typeof request.tabId === 'string' ? request.tabId : '';
-  if (!tabId) {
+/** 请求属于哪个 tab：宿主盖章的 tabId 优先，sessionId 只在已绑定时可反查。 */
+function owningTabId(tabId: unknown, sessionId: unknown): string | null {
+  if (typeof tabId === 'string' && tabId) {
+    return tabId;
+  }
+  if (typeof sessionId === 'string' && sessionId) {
+    return getTabStore().findIdBySession(sessionId);
+  }
+  return null;
+}
+
+type PendingField = 'pendingPermissions' | 'pendingQuestions' | 'pendingPlans';
+
+/**
+ * 把请求挂到它的 tab 上，等切过去再弹。
+ *
+ * @returns true = 已挂上（调用方直接 return）；false = 找不到那个 tab
+ *          （已关闭 / 视图重载），调用方必须**当场弹出**——丢一张等于服务端
+ *          永远等一个没人能答的 prompt。
+ */
+function parkPromptOnTab(
+  owner: string | null,
+  field: PendingField,
+  idKey: 'channelId' | 'requestId',
+  request: Record<string, unknown>,
+): boolean {
+  if (!owner) {
     return false;
   }
-  const activeTabId = getTabStore().getActiveTabId();
-  return !!activeTabId && tabId !== activeTabId;
+  const id = String(request?.[idKey] ?? '');
+  return getTabStore().updateTab(owner, (tab) => {
+    const record = tab as unknown as Record<string, unknown>;
+    const list = (record[field] as Record<string, unknown>[] | undefined) ?? [];
+    if (list.some((item) => String(item?.[idKey] ?? '') === id)) {
+      return;
+    }
+    record[field] = [...list, request];
+  });
 }
 
-function routePrompt(
-  kind: QueuedPromptKind,
-  request: Record<string, unknown>,
-  open: ((request: never) => void) | ((request: Record<string, unknown>) => void) | null | undefined,
-): void {
-  if (shouldDefer(request) && open) {
-    cardDebugLog(`[PCard][webview] deferring ${kind} to tab ${String(request.tabId)}`);
-    enqueuePrompt({ kind, tabId: String(request.tabId), request });
+/** 这个请求是不是同一个 webview 正在显示的那个 tab 的。 */
+function isForActiveTab(owner: string | null, sessionId: unknown): boolean {
+  if (owner) {
+    return getTabStore().isActiveTab(owner);
+  }
+  // 没有任何归属可用（极早期 / 窗口级）：当作当前窗口的，直接弹。
+  return !sessionId;
+}
+
+/** 关掉某个 id 的请求后，把残留在任意 tab 上的同一份摘掉（否则角标不灭）。 */
+function clearParkedPrompt(field: PendingField, idKey: 'channelId' | 'requestId', id: string): void {
+  if (!id) {
     return;
   }
-  (open as ((request: Record<string, unknown>) => void) | undefined)?.(request);
-}
-
-/** 切到某个 tab 时把排队中的 prompt 弹出来（App 在 activeTabId 变化时调用）。 */
-export function flushQueuedPrompts(tabId: string | null | undefined): void {
-  for (const prompt of drainPromptsForTab(tabId)) {
-    const handler = activeHandlers[prompt.kind];
-    try {
-      handler?.(prompt.request);
-    } catch {
-      // 单个卡片失败不影响其余排队项
+  getTabStore().updateAllTabs((tab: SessionTabData) => {
+    const record = tab as unknown as Record<string, unknown>;
+    const list = record[field] as Record<string, unknown>[] | undefined;
+    if (!list || list.length === 0) {
+      return;
     }
-  }
+    record[field] = list.filter((item) => String(item?.[idKey] ?? '') !== id);
+  });
 }
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
@@ -101,20 +130,24 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     invalidatePermissionCard?.(channelId ?? '');
   };
 
-  // 排队项来自 JSON，只能以 Record 传递；具体形状由各自的 open* 负责校验，
-  // 所以这里做一次显式收窄（否则每个 handler 都要在队列里保留自己的强类型）。
-  type RequestOpener = (request: Record<string, unknown>) => void;
-  activeHandlers = {
-    permission: (openPermissionDialog as unknown as RequestOpener) ?? null,
-    question: (openAskUserQuestionDialog as unknown as RequestOpener) ?? null,
-    plan: (openPlanApprovalDialog as unknown as RequestOpener) ?? null,
-  };
-
   window.showPermissionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName}`);
-      routePrompt('permission', request, openPermissionDialog);
+      if (!request?.channelId) {
+        // 没有身份就无从答复：丢掉既不会误路由，也不会污染别人的卡片。
+        cardDebugLog('[PCard][webview] dropping a permission prompt without an id');
+        return;
+      }
+      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} tabId=${request.tabId}`);
+      const owner = owningTabId(request.tabId, request.sessionId);
+      if (!isForActiveTab(owner, request.sessionId)) {
+        if (parkPromptOnTab(owner, 'pendingPermissions', 'channelId', request)) {
+          cardDebugLog(`[PCard][webview] parked permission ${request.channelId} on tab ${owner}`);
+          return;
+        }
+        cardDebugLog(`[PCard][webview] owner tab not found for ${String(request.tabId ?? request.sessionId)}; showing in the active window`);
+      }
+      openPermissionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse permission request:', error);
     }
@@ -127,15 +160,17 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // the orphaned dialog, and the user appears to "lose" all further prompts
   // until they reload the tab — see issue #1360.
   window.forceClosePermissionDialog = (channelId) => {
-    // 服务端已关闭（答复/超时/关 tab）：队列里的同一请求也必须摘掉，
-    // 否则切回该 tab 会弹出一张失效的卡片。
-    removeQueuedPrompt('permission', String(channelId ?? ''));
-    forceClosePermissionDialog(channelId ?? null);
+    // 服务端已关闭（答复/超时/关 tab）：tab 上挂着的同一请求也要摘掉，
+    // 否则切回该 tab 会弹出一张失效的卡片，角标也一直亮着。
+    const id = String(channelId ?? '');
+    forceClosePermissionDialog(id || null);
+    clearParkedPrompt('pendingPermissions', 'channelId', id);
   };
 
   window.forceCloseAskUserQuestionDialog = (requestId) => {
-    removeQueuedPrompt('question', String(requestId ?? ''));
-    forceCloseAskUserQuestionDialog(requestId ?? null);
+    const id = String(requestId ?? '');
+    forceCloseAskUserQuestionDialog(id || null);
+    clearParkedPrompt('pendingQuestions', 'requestId', id);
   };
 
   window.forceClosePlanApprovalDialog = (requestId) => {
@@ -156,8 +191,20 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showAskUserQuestionDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0}`);
-      routePrompt('question', request, openAskUserQuestionDialog);
+      if (!request?.requestId) {
+        cardDebugLog('[QCard][webview] dropping a question without an id');
+        return;
+      }
+      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} tabId=${request.tabId}`);
+      const owner = owningTabId(request.tabId, request.sessionId);
+      if (!isForActiveTab(owner, request.sessionId)) {
+        if (parkPromptOnTab(owner, 'pendingQuestions', 'requestId', request)) {
+          cardDebugLog(`[QCard][webview] parked question ${request.requestId} on tab ${owner}`);
+          return;
+        }
+        cardDebugLog(`[QCard][webview] owner tab not found for ${String(request.tabId ?? request.sessionId)}; showing in the active window`);
+      }
+      openAskUserQuestionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse ask user question request:', error);
     }
@@ -189,7 +236,19 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showPlanApprovalDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      routePrompt('plan', request, openPlanApprovalDialog);
+      if (!request?.requestId) {
+        cardDebugLog('[PlanApproval][webview] dropping a plan approval without an id');
+        return;
+      }
+      const owner = owningTabId(request.tabId, request.sessionId);
+      if (owner && !getTabStore().isActiveTab(owner)) {
+        // 后台 tab 的计划确认不该抢前台：挂到它的记录上，切过去再弹。
+        if (parkPromptOnTab(owner, 'pendingPlans', 'requestId', request)) {
+          cardDebugLog('[PlanApproval][webview] parked on tab', owner);
+          return;
+        }
+      }
+      openPlanApprovalDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse plan approval request:', error);
     }

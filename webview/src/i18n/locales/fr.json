@@ -810,7 +810,8 @@
     "approvedStatus": "Autorisé",
     "approvedAlwaysStatus": "Toujours autorisé",
     "deniedStatus": "Refusé",
-    "timeoutWarning": "Veuillez répondre rapidement, la boîte de dialogue se fermera dans {{seconds}} secondes"
+    "timeoutWarning": "Veuillez répondre rapidement, la boîte de dialogue se fermera dans {{seconds}} secondes",
+    "timedOut": "Délai dépassé — la session a été arrêtée"
   },
   "askUserQuestion": {
     "title": "OpenCode a quelques questions pour vous",

@@ -865,7 +865,8 @@
     "approvedStatus": "Permitido",
     "approvedAlwaysStatus": "Sempre permitido",
     "deniedStatus": "Negado",
-    "timeoutWarning": "Por favor, responda em breve, o diálogo fechará em {{seconds}} segundos"
+    "timeoutWarning": "Por favor, responda em breve, o diálogo fechará em {{seconds}} segundos",
+    "timedOut": "Solicitação expirada — a sessão foi interrompida"
   },
   "askUserQuestion": {
     "title": "OpenCode tem algumas perguntas para você",
