@@ -126,7 +126,10 @@ export class ChatWindow {
 			},
 		});
 
-		this.contextCommandHandler = new TabContextCommandHandler(() => this.daemon);
+		this.contextCommandHandler = new TabContextCommandHandler(
+			() => this.daemon,
+			(type, tabId, payload) => this.publishTabEvent(type, tabId, payload),
+		);
 
 		this.fileCommandHandler = new TabFileCommandHandler({
 			listFiles: (query, directory) =>

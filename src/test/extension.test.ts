@@ -2,6 +2,10 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { sanitizeUserText, needsSanitize } from '../host/session/UserTextSanitizer';
 import { parseSlashCommand } from '../host/session/OpenCodeSession';
+import {
+	clearAdvertisedCommands,
+	rememberAdvertisedCommands,
+} from '../host/util/SlashCommandCatalog';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -31,7 +35,14 @@ suite('Extension Test Suite', () => {
 		assert.deepStrictEqual(parseSlashCommand('/review src/main.rs'), { command: 'review', arguments: 'src/main.rs' });
 		assert.deepStrictEqual(parseSlashCommand('/init'), { command: 'init', arguments: '' });
 		assert.deepStrictEqual(parseSlashCommand('/compact'), { command: 'compact', arguments: '' });
+
+		// 自定义命令不在内置表里，但服务端公布过 → 仍是命令。
+		rememberAdvertisedCommands([{ name: 'custom_cmd-1' }]);
 		assert.deepStrictEqual(parseSlashCommand('/custom_cmd-1 arg1 arg2'), { command: 'custom_cmd-1', arguments: 'arg1 arg2' });
+		clearAdvertisedCommands();
+
+		// 没公布过 → 按普通消息处理（否则命令会吃掉编辑器上下文）。
+		assert.strictEqual(parseSlashCommand('/custom_cmd-1 arg1 arg2'), null);
 	});
 
 	test('parseSlashCommand rejects URL paths and file paths', () => {

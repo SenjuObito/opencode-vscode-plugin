@@ -11,8 +11,9 @@
  *   - `commands.refresh` `{}`           按目标 tab 的 cwd 列举 opencode 斜杠命令，
  *                                       回推 `updateSlashCommands`。
  *
- * 说明：斜杠命令列表当前仍是窗口级单例（`slashCommandProvider`），因此回推用
- * 广播；待 webview 侧命令列表按 tab 分区后改为只发目标 tab 的视图。
+ * 斜杠命令列表**按 tab**：命令是按目录发现的（自定义命令 / skill），不同 cwd 的
+ * tab 看到的列表不同。结果作为语义事件 `slash.commands` 投回**目标 tab**；
+ * 没有 tab 身份时（窗口级 `frontend_ready` 回放）才广播。
  */
 import { TabCommand } from '../tab/TabCommand';
 import { TabRecord } from '../tab/TabRecord';
@@ -22,7 +23,15 @@ import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
 export class TabContextCommandHandler {
-	constructor(private readonly daemon: () => OpenCodeDaemonBridge | null) {}
+	constructor(
+		private readonly daemon: () => OpenCodeDaemonBridge | null,
+		/** 按 tab 投递语义事件（`slash.commands`）。 */
+		private readonly publish?: (
+			type: string,
+			tabId: string,
+			payload: Record<string, unknown>,
+		) => void,
+	) {}
 
 	/**
 	 * 设置目标 tab 的上下文注入开关。
@@ -43,10 +52,17 @@ export class TabContextCommandHandler {
 		);
 	}
 
-	/** 按目标 tab 的 cwd 列举斜杠命令并回推。 */
+	/** 按目标 tab 的 cwd 列举斜杠命令，并投回那个 tab。 */
 	refreshCommands(command: TabCommand, record?: TabRecord): void {
 		const directory = record && record.getCwd() ? record.getCwd() : null;
+		const tabId = record ? record.getTabId().value : null;
 		listSlashCommands(this.daemon(), directory, (commands) => {
+			if (tabId && this.publish) {
+				// 命名事件：webview 侧按 envelope.tabId 归到对应 tab 的缓存。
+				this.publish('slash.commands', tabId, { commands });
+				return;
+			}
+			// 没有 tab 身份（窗口级回放）才广播。
 			WebviewBroadcaster.broadcastJavaScript('updateSlashCommands', JSON.stringify(commands));
 		});
 		PluginFileLogger.info(

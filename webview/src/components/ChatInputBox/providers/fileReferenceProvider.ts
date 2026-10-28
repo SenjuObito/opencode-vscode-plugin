@@ -54,6 +54,11 @@ function setupFileListCallback() {
     let data: { files?: FileItem[]; requestId?: number | string } | FileItem[];
     try {
       data = JSON.parse(json);
+      // legacy 回退路径收到的是宿主事件载荷的包装（`{data:"<json>"}`），
+      // v2 语义事件收到的是解包后的字符串。两种都要能处理。
+      if (data && !Array.isArray(data) && typeof (data as { data?: unknown }).data === 'string') {
+        data = JSON.parse((data as { data: string }).data);
+      }
     } catch (error) {
       debugError('[fileReferenceProvider] Parse error:', error);
       // Reject the latest pending request if any — parse errors are rare and global.

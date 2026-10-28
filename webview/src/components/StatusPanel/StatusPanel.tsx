@@ -161,7 +161,13 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
   useEffect(() => {
     const handleUndoResult = (resultJson: string) => {
       try {
-        const result = JSON.parse(resultJson);
+        const parsed = JSON.parse(resultJson);
+        if (parsed && typeof parsed === 'object' && typeof (parsed as { data?: unknown }).data === 'string') {
+          // 事件路由器会同时投递 v2 批次与 legacy 回调；这个包装形态是
+          // 「某个 tab 的事件」的 legacy 副本，v2 那条已经处理过了（否则 toast 会弹两次）。
+          return;
+        }
+        const result = parsed;
         setUndoingFile(null);
 
         if (result.success) {

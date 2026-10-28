@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A17：autoOpenFile 按 tab 生效）
+> 最后更新：2026-10-28（P8-A18：斜杠命令列表按 tab + 未知命令回退普通消息）
 
 ---
 
@@ -54,7 +54,7 @@
 | 10.11 | 引用文件 `@` | ✅ | `useFileTags.restoreFileTags` 已移植并接到 imperative handle / 选择控制器（切 tab 回填草稿时不再退化成纯文本），有单测。**已补**：`files.listed` 事件化 —— 新增 tab 命令 `files.list`（宿主 `TabFileCommandHandler`：按**目标 tab 的 cwd** 列举，结果作为 `files.listed` 语义事件回到该 tab，`requestId` 原样带回）；webview `fileReferenceProvider` 改发 `files.list`（带 tab 身份，无活跃 tab 时退回 legacy `list_files`），并注册 `files.listed` 处理器。测试：宿主 `tabFiles`(2) + 前端 1 项 |
 | 10.12 | 文件上下文 | ✅ | `context.refresh` 已注册（`src/host/window/TabContextCommandHandler.ts`），写目标 tab 的 `TabSettings.autoOpenFileEnabled/contextEnabled`。发送时已按 tab 取值：`OpenCodeSession` 接受 `autoOpenFileEnabledResolver`（由 `ChatWindow` 按 tab 记录提供），tab 显式设过就用它的、没设过才回落到全局 `getAutoOpenFileEnabled`；`TabSettings.autoOpenFileEnabled` 因此改成三态（`undefined` = 跟随全局）。`context.updated` 回推 |
 | 10.13 | bash `!` | ✅ | `session.send` 的 `!cmd` 分支在 `TabSessionSendHandler`，cwd 取目标 tab（`record.getCwd()`）；`SessionHandler` 的旧路径保留为兜底 |
-| 10.14 | opencode `/` | 🟡（宿主已接） | `commands.refresh` 已注册，按目标 tab 的 cwd 列命令（`{directory}`）并回推 `updateSlashCommands`；webview 不再发旧名 `refresh_slash_commands`（`slashCommandProvider` / `main.tsx` 已改）。**仍缺**：列表仍是窗口级单例（回推用广播）、内置命令本地执行与 per-tab 缓存 |
+| 10.14 | opencode `/` | ✅ | **列表按 tab**：宿主 `commands.refresh` 按目标 tab 的 cwd 列命令，结果作为语义事件 `slash.commands` 投回**那个 tab**（命名载荷 `{commands}`，带 envelope.tabId）；webview `slashCommandProvider` 改为按 tab 缓存（`commandsByTab`）+ 按 tab 节流，切到某 tab 直接用它自己的缓存，后台 tab 的列表不会污染当前 tab。**未知命令回退普通消息**：宿主新增 `session/KnownCommands.ts`（移植 idea 的已知命令表），`parseSlashCommand` 只认「内置表 ∪ 服务端公布过的自定义命令」，其余以 `/` 开头的文本（`/Users/...`、`/v2/...`）按普通消息处理 —— 命令不该吃编辑器上下文。分享入口保持隐藏（`SHARE_MENU_ENABLED=false`）。测试：宿主 `slashCommands`(4)，前端 `slashCommandProvider.perTab`(2) |
 
 ### 2.1 宿主单会话遗留（P8 的前置）——已处理
 
@@ -149,6 +149,7 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
+| 2026-10-28 | **P8-A18**：§10.14 斜杠命令 —— 列表按 tab（宿主 `slash.commands` 语义事件按 tab 投递 + webview 按 tab 缓存与节流）；未知命令回退普通消息（移植 idea 的 `KnownCommands`，自定义命令以服务端公布名单为准）；顺带修 **legacy 副本**问题：事件路由器会同时投递 v2 批次与 legacy 回调，前端据此区分「某个 tab 的事件的副本」（忽略）与「窗口级回放」（采纳）。测试：宿主 `slashCommands`(4)，前端 `slashCommandProvider.perTab`(2)；**修 `scripts/run-tests.mjs` 的写死分组**（新增测试文件此前根本没进全量运行） |
 | 2026-10-28 | **P8-A17**：§10.12 `autoOpenFileEnabled` 真正按 tab 生效 —— `OpenCodeSession` 新增 `autoOpenFileEnabledResolver`（`ChatWindow` 按 tab 记录提供），`TabSettings.autoOpenFileEnabled` 改三态（未设置=跟随全局项目设置）。测试 `tabAutoOpenFile`(1) |
 | 2026-10-28 | **P8-A16**：`todos` 事件按 tab 路由（`onTodoUpdated` 按 sessionID 反查归属 tab，后台 tab 的待办写进该 tab 而非丢弃；字段名/状态归一同 idea）；附件草稿按 tab 保存（`usePerTabAttachments` + `tab.pendingAttachments`，切 tab 各自保留、同 tab 换会话才清空，取代旧的 `useResetAttachmentsOnSessionChange`）。测试：前端 `todoRouting`(4) + `usePerTabAttachments`(3) |
 | 2026-10-28 | **P8-A15**：§10.5 整份移植 idea 的 `ModelSelect.tsx` + `styles/selectors.css`（长按 180ms 触发置顶拖拽排序，落位写回 `writePinnedModelIds`），测试移植 idea 的 `ModelSelect.test.tsx`(14)；§10.11 `files.listed` 事件化（新增 tab 命令 `files.list` + `TabFileCommandHandler`，按目标 tab 的 cwd 列举，结果按 tab 回到请求方，`requestId` 带回）；§10.9 `files.undo` / `files.undo.all` 事件化（`HandlerContext.setEventPublisher` → `ChatWindow.publishTabEvent`）。测试：宿主 `tabFiles`(2)，前端 `ModelSelect`(14) 与 `fileReferenceProvider`(+1) |

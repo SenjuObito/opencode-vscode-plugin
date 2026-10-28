@@ -156,7 +156,8 @@ describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 
 			const chatWindow = makeChatWindow(daemon);
 			const channel = new MockChannel();
-			const unregister = WebviewBroadcaster.register(channel);
+			// 命令列表现在按 tab 投回（语义事件 `slash.commands`），视图必须先注册。
+			chatWindow.registerView('sidebar', channel);
 
 			try {
 				const tabId = chatWindow.registry.getActiveTabId()!;
@@ -166,12 +167,15 @@ describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 				assert.strictEqual(requests[0].method, 'opencode.listCommands');
 				assert.strictEqual(requests[0].params.directory, '/mock/workspace');
 
-				const pushed = channel.calls.filter((c) => c.fn === 'updateSlashCommands');
-				assert.strictEqual(pushed.length, 1);
-				const commands = JSON.parse(pushed[0].args[0]) as Array<{ name: string }>;
+				const events = channel.raw
+					.flatMap((m: any) => (Array.isArray(m?.batch) ? m.batch : []))
+					.filter((e: any) => e?.type === 'slash.commands');
+				assert.strictEqual(events.length, 1);
+				assert.strictEqual(events[0].tabId, tabId.value);
+				const commands = (events[0].payload as { commands: Array<{ name: string }> }).commands;
 				assert.deepStrictEqual(commands.map((c) => c.name), ['init', 'compact']);
 			} finally {
-				unregister();
+				chatWindow.unregisterView('sidebar');
 			}
 		});
 
@@ -190,17 +194,19 @@ describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 
 			const chatWindow = makeChatWindow(daemon);
 			const channel = new MockChannel();
-			const unregister = WebviewBroadcaster.register(channel);
+			chatWindow.registerView('sidebar', channel);
 
 			try {
 				const tabId = chatWindow.registry.getActiveTabId()!;
 				await sendCommand(chatWindow, 'sidebar', 'commands.refresh', tabId.value, {});
 
-				const pushed = channel.calls.filter((c) => c.fn === 'updateSlashCommands');
-				assert.strictEqual(pushed.length, 1);
-				assert.deepStrictEqual(JSON.parse(pushed[0].args[0]), []);
+				const events = channel.raw
+					.flatMap((m: any) => (Array.isArray(m?.batch) ? m.batch : []))
+					.filter((e: any) => e?.type === 'slash.commands');
+				assert.strictEqual(events.length, 1);
+				assert.deepStrictEqual((events[0].payload as { commands: unknown[] }).commands, []);
 			} finally {
-				unregister();
+				chatWindow.unregisterView('sidebar');
 			}
 		});
 	});

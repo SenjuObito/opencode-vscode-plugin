@@ -48,6 +48,37 @@ export function extractJsonObject(raw: string): Record<string, unknown> | null {
 }
 
 /** 把 `command.list` 的原始 payload 归一化成 webview 期望的形状。 */
+/**
+ * 服务端公布过的命令名（自定义命令 / skill / mcp）。
+ *
+ * 内置命令在 `KnownCommands` 里；自定义命令只能从这份名单得知 —— 名单来自
+ * `opencode.listCommands`，每次列举后刷新。
+ */
+const advertisedCommandNames = new Set<string>();
+
+/** 记住一份服务端公布的命令名（供发送时判断「这是不是命令」）。 */
+export function rememberAdvertisedCommands(commands: SlashCommandEntry[]): void {
+	advertisedCommandNames.clear();
+	for (const command of commands) {
+		if (command.name) {
+			advertisedCommandNames.add(command.name.toLowerCase());
+		}
+	}
+}
+
+/** 服务端是否公布过这个命令（自定义命令）。 */
+export function isAdvertisedCommand(name: string | null | undefined): boolean {
+	if (!name) {
+		return false;
+	}
+	return advertisedCommandNames.has(name.trim().toLowerCase());
+}
+
+/** 清空记住的命令名（测试 / 断线重连）。 */
+export function clearAdvertisedCommands(): void {
+	advertisedCommandNames.clear();
+}
+
 export function parseSlashCommands(payload: Record<string, unknown> | null): SlashCommandEntry[] {
 	const raw = payload && Array.isArray(payload.commands) ? payload.commands : [];
 	const commands: SlashCommandEntry[] = [];
@@ -96,7 +127,9 @@ export function listSlashCommands(
 				onDone([]);
 				return;
 			}
-			onDone(parseSlashCommands(extractJsonObject(chunks.join('\n'))));
+			const commands = parseSlashCommands(extractJsonObject(chunks.join('\n')));
+			rememberAdvertisedCommands(commands);
+			onDone(commands);
 		},
 	});
 }

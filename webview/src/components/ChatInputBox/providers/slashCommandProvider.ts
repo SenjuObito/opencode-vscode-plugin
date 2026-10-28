@@ -1,6 +1,7 @@
 import type { CommandItem, DropdownItemData } from '../types';
 import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
 import { getTabStore } from '../../../store/tabStore';
+import { hostEventHandler, registerHostEvents } from '../../../utils/hostEventRegistry';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 
@@ -106,6 +107,15 @@ type LoadingState = 'idle' | 'loading' | 'success' | 'failed';
 let cachedSdkCommands: CommandItem[] = [];
 let loadingState: LoadingState = 'idle';
 let lastRefreshTime = 0;
+/**
+ * 每个 tab 的命令列表（§10.14）。
+ *
+ * 命令是按目录发现的（自定义命令 / skill），不同 cwd 的 tab 看到的列表不同，
+ * 所以列表必须按 tab 存；否则切到另一个 tab 时会显示上一个目录的命令。
+ */
+const commandsByTab = new Map<string, CommandItem[]>();
+/** 每个 tab 的上次刷新时间：节流也要按 tab，否则切 tab 后会被上一次挡住。 */
+const lastRefreshByTab = new Map<string, number>();
 let callbackRegistered = false;
 let retryCount = 0;
 let pendingWaiters: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
@@ -119,6 +129,8 @@ const MAX_RETRY_COUNT = 3;
 
 export function resetSlashCommandsState() {
   cachedSdkCommands = [];
+  commandsByTab.clear();
+  lastRefreshByTab.clear();
   loadingState = 'idle';
   lastRefreshTime = 0;
   retryCount = 0;
@@ -133,51 +145,112 @@ interface SDKSlashCommand {
   source?: string;
 }
 
+/**
+ * 把宿主给的两种载荷（对象数组或名字数组）归一成 CommandItem。
+ *
+ * @returns null 表示载荷形状不认识
+ */
+function normalizeCommands(raw: unknown): CommandItem[] | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+  if (raw.length === 0) {
+    return [];
+  }
+  if (typeof raw[0] === 'object' && raw[0] !== null && 'name' in (raw[0] as Record<string, unknown>)) {
+    const sdkCommands = raw as SDKSlashCommand[];
+    return sdkCommands.map(cmd => ({
+      id: cmd.name.replace(/^\//, ''),
+      label: cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`,
+      description: formatCommandDescription(cmd.description || '', cmd.source),
+      category: getCategoryFromCommand(cmd.name),
+    }));
+  }
+  if (typeof raw[0] === 'string') {
+    const commandNames = raw as string[];
+    return commandNames.map(name => ({
+      id: name.replace(/^\//, ''),
+      label: name.startsWith('/') ? name : `/${name}`,
+      description: '',
+      category: getCategoryFromCommand(name),
+    }));
+  }
+  return null;
+}
+
+/**
+ * 应用一份命令列表。
+ *
+ * @param tabId 这份列表属于哪个 tab；null = 窗口级（没有归属）
+ */
+function applyCommands(commands: CommandItem[], tabId: string | null): void {
+  if (tabId) {
+    commandsByTab.set(tabId, commands);
+  }
+  const active = getTabStore().getActiveTabId();
+  // 只有活跃 tab 的列表才影响当前下拉；后台 tab 的先存着。
+  if (tabId && tabId !== active) {
+    debugLog('[SlashCommand] cached commands for background tab', tabId, commands.length);
+    return;
+  }
+  cachedSdkCommands = commands;
+  loadingState = 'success';
+  retryCount = 0;
+  pendingWaiters.forEach(w => w.resolve());
+  pendingWaiters = [];
+  debugLog('[SlashCommand] Successfully loaded ' + commands.length + ' commands');
+}
+
+/** 切到某个 tab 时，若它已有缓存的列表，直接采用（不必等一次刷新）。 */
+function adoptCachedCommandsForActiveTab(): boolean {
+  const active = getTabStore().getActiveTabId();
+  if (!active) {
+    return false;
+  }
+  const cached = commandsByTab.get(active);
+  if (!cached) {
+    return false;
+  }
+  cachedSdkCommands = cached;
+  loadingState = 'success';
+  retryCount = 0;
+  return true;
+}
+
 export function setupSlashCommandsCallback() {
   if (typeof window === 'undefined') return;
-  if (callbackRegistered && window.updateSlashCommands) return;
+  // 已注册过（语义事件或 legacy 回调任一）就不再重复挂。
+  if (callbackRegistered && (hostEventHandler('slash.commands') || window.updateSlashCommands)) return;
 
   const handler = (json: string) => {
     debugLog('[SlashCommand] Received data from backend, length=' + json.length);
 
     try {
       const parsed = JSON.parse(json);
-      let commands: CommandItem[] = [];
-
-      if (Array.isArray(parsed)) {
-        if (parsed.length > 0) {
-          if (typeof parsed[0] === 'object' && parsed[0] !== null && 'name' in parsed[0]) {
-            const sdkCommands: SDKSlashCommand[] = parsed;
-            commands = sdkCommands.map(cmd => ({
-              id: cmd.name.replace(/^\//, ''),
-              label: cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`,
-              description: formatCommandDescription(cmd.description || '', cmd.source),
-              category: getCategoryFromCommand(cmd.name),
-            }));
-          } else if (typeof parsed[0] === 'string') {
-            const commandNames: string[] = parsed;
-            commands = commandNames.map(name => ({
-              id: name.replace(/^\//, ''),
-              label: name.startsWith('/') ? name : `/${name}`,
-              description: '',
-              category: getCategoryFromCommand(name),
-            }));
-          }
-        }
-
-        cachedSdkCommands = commands;
-        loadingState = 'success';
-        retryCount = 0;
-        pendingWaiters.forEach(w => w.resolve());
-        pendingWaiters = [];
-        debugLog('[SlashCommand] Successfully loaded ' + commands.length + ' commands');
-      } else {
+      // legacy 回退路径收到的是宿主事件载荷的包装（`{commands:[...]}` 或
+      // `{data:"<json>"}`）；v2 语义事件收到的是解包后的数组。
+      let raw: unknown = parsed;
+      if (raw && !Array.isArray(raw) && typeof (raw as { data?: unknown }).data === 'string') {
+        raw = JSON.parse((raw as { data: string }).data);
+      }
+      if (raw && !Array.isArray(raw)) {
+        // 对象形态 = 某个 tab 的事件在 legacy 通道上的副本（事件路由器会同时投递
+        // v2 批次与 legacy 回调）。归属由 v2 的 envelope.tabId 决定；这里再赋值，
+        // 就会把别的 tab 的列表写到当前 tab 上。
+        debugLog('[SlashCommand] ignoring per-tab legacy twin');
+        return;
+      }
+      const commands = normalizeCommands(raw);
+      if (commands === null) {
         loadingState = 'failed';
         const error = new Error('Slash commands payload is not an array');
         pendingWaiters.forEach(w => w.reject(error));
         pendingWaiters = [];
         debugWarn('[SlashCommand] Invalid commands payload');
+        return;
       }
+      // 窗口级回放（legacy 回调）没有 tab 身份，归给当前活跃 tab。
+      applyCommands(commands, getTabStore().getActiveTabId());
     } catch (error) {
       loadingState = 'failed';
       pendingWaiters.forEach(w => w.reject(error));
@@ -192,6 +265,20 @@ export function setupSlashCommandsCallback() {
     handler(json);
     originalHandler?.(json);
   };
+
+  // v2 语义事件：宿主按 tab 投回 `slash.commands`（命名事件，带 envelope.tabId）。
+  registerHostEvents({
+    'slash.commands': (payload: unknown, envelope?: { tabId?: string | null }) => {
+      const raw = (payload as { commands?: unknown } | null)?.commands;
+      const commands = normalizeCommands(raw);
+      if (commands === null) {
+        debugWarn('[SlashCommand] Invalid slash.commands payload');
+        return;
+      }
+      applyCommands(commands, envelope?.tabId ?? null);
+    },
+  });
+
   callbackRegistered = true;
   debugLog('[SlashCommand] Callback registered');
 
@@ -255,8 +342,11 @@ function waitForSlashCommands(signal: AbortSignal, timeoutMs: number): Promise<v
 
 function requestRefresh(): boolean {
   const now = Date.now();
+  const tabId = getTabStore().getActiveTabId() ?? '';
 
-  if (now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+  // 节流按 tab：切到另一个 tab 时不该被上一个 tab 的刷新挡住。
+  const lastForTab = lastRefreshByTab.get(tabId) ?? 0;
+  if (now - lastForTab < MIN_REFRESH_INTERVAL) {
     debugLog('[SlashCommand] Skipping refresh (too soon)');
     return false;
   }
@@ -280,6 +370,7 @@ function requestRefresh(): boolean {
   }
 
   lastRefreshTime = now;
+  lastRefreshByTab.set(tabId, now);
   loadingState = 'loading';
   retryCount = attempt;
 
@@ -375,6 +466,13 @@ export async function slashCommandProvider(
 
   const now = Date.now();
 
+  // 切 tab 后先看这个 tab 有没有缓存的列表：有就直接用，没有才去刷新。
+  const hasCachedForActiveTab = adoptCachedCommandsForActiveTab();
+
+  if (hasCachedForActiveTab) {
+    return filterCommands(cachedSdkCommands, query);
+  }
+
   if (loadingState === 'idle' || loadingState === 'failed') {
     requestRefresh();
   } else if (loadingState === 'loading' && now - lastRefreshTime > LOADING_TIMEOUT) {
@@ -423,6 +521,7 @@ export function forceRefreshSlashCommands(): void {
   debugLog('[SlashCommand] Force refresh requested');
   loadingState = 'idle';
   lastRefreshTime = 0;
+  lastRefreshByTab.delete(getTabStore().getActiveTabId() ?? '');
   retryCount = 0;
   pendingWaiters.forEach(w => w.reject(new Error('Slash commands refresh requested')));
   pendingWaiters = [];

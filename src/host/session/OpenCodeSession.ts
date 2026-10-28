@@ -16,6 +16,8 @@ import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
 import { getModelContextLimit } from '../util/ModelContextLimits';
 import { logDiagnostic } from '../util/DiagnosticLogger';
+import { isKnownSlashCommand } from './KnownCommands';
+import { isAdvertisedCommand } from '../util/SlashCommandCatalog';
 import type { ChatMessage, PermissionRequest, SessionCallback } from './types';
 
 /** webview send_message / send_message_with_attachments 的 payload。 */
@@ -559,10 +561,20 @@ function generateAttachmentSummary(attachments?: SendMessagePayload['attachments
 }
 
 /** 解析前导斜杠命令：'/name args...' → {command, arguments}；非合法命令（如 URL/文件路径 /v2/...、普通语句）返回 null。 */
+/**
+ * 识别一条消息是不是 opencode 斜杠命令。
+ *
+ * 命中的条件（与 idea 一致）：命令名在已知命令表里，**或者**服务端公布过它
+ * （自定义命令）。都不命中就按普通消息处理 —— 这样 `/Users/...`、`/v2/...`
+ * 这类路径不会被当成命令，也不会因此丢掉编辑器上下文。
+ */
 export function parseSlashCommand(text: string): { command: string; arguments: string } | null {
 	const trimmed = text.trim();
 	const m = /^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/.exec(trimmed);
 	if (!m || !m[1]) {
+		return null;
+	}
+	if (!isKnownSlashCommand(m[1]) && !isAdvertisedCommand(m[1])) {
 		return null;
 	}
 	return { command: m[1], arguments: (m[2] ?? '').trim() };
