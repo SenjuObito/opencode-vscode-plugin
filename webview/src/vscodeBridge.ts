@@ -53,11 +53,20 @@ export function postToHost(payload: string): void {
   vscodeApi.postMessage({ type: 'bridge', payload });
 }
 
-/** 入站：把宿主消息分发给 window.<fn>。 */
+/** 入站：把宿主消息分发给 window.<fn> 或 __opencodeDispatchBatch。 */
 function dispatchHostMessage(message: unknown): void {
   if (!message || typeof message !== 'object') {
     return;
   }
+
+  const raw = message as { type?: unknown; batch?: unknown; args?: unknown[] };
+  if (raw.type === 'host.events' && Array.isArray(raw.batch)) {
+    if (typeof window.__opencodeDispatchBatch === 'function') {
+      window.__opencodeDispatchBatch(raw.batch);
+    }
+    return;
+  }
+
   const { type, args } = message as HostToWebviewMessage;
   if (typeof type !== 'string' || !type) {
     return;

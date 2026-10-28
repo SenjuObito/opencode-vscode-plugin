@@ -32,11 +32,12 @@ import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
+import type { SessionTabData } from './components/ChatHeader/types';
 import { ToastContainer } from './components/Toast';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
 import type { MessageListRevealHandle } from './components/ConversationSearch/types';
-import { useSubagentContextValues, useSetTaskEvents } from './contexts/SubagentContext';
+import { useSubagentContextValues, useSetTaskEvents, useTaskEvents } from './contexts/SubagentContext';
 import { useMessages } from './contexts/MessagesContext';
 import { useSession } from './contexts/SessionContext';
 import { useUIState } from './contexts/UIStateContext';
@@ -44,6 +45,8 @@ import { useDialogs } from './contexts/DialogContext';
 import { AppDialogs } from './components/AppDialogs';
 import ConfirmDialog from './components/ConfirmDialog';
 import { DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from './utils/permissionDialogTimeout';
+import { useSessionTabs } from './hooks/useSessionTabs';
+import { convertMessagesToMarkdown, downloadMarkdown } from './utils/exportMarkdown';
 
 const App = () => {
   const { t } = useTranslation();
@@ -71,20 +74,29 @@ const App = () => {
   const {
     messages, setMessages,
     subagentHistories, setSubagentHistories,
-    setStatus,
-    loading, setLoading, setLoadingStartTime,
-    setIsThinking,
+    status, setStatus,
+    loading, setLoading, loadingStartTime, setLoadingStartTime,
+    isThinking, setIsThinking,
     streamingActive, setStreamingActive,
-    setSessionLoading,
+    sessionLoading, setSessionLoading,
     setSseTodos,
     sseTodos,
     isCompacting, setIsCompacting,
-    setCompactingStartTime,
+    compactingStartTime, setCompactingStartTime,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
   // not re-render every MessagesContext consumer.
   const setTaskEvents = useSetTaskEvents();
+  const taskEvents = useTaskEvents();
+
+  const openSessionInTabRef = useRef<((
+    sessionId: string,
+    title?: string,
+    historyModel?: string,
+    historyMode?: string,
+  ) => void) | null>(null);
+  const appTabsRef = useRef<SessionTabData[]>([]);
 
   // ── Session state (extracted to SessionContext, stage 2 of TASK-P1-01) ──
   const {
@@ -100,7 +112,7 @@ const App = () => {
     currentView, setCurrentView,
     settingsInitialTab, setSettingsInitialTab,
     toasts, addToast, dismissToast, clearToasts,
-    setContextInfo,
+    contextInfo, setContextInfo,
     searchOpen, setSearchOpen,
   } = useUIState();
 
@@ -141,6 +153,7 @@ const App = () => {
   const {
     messagesContainerRef, messagesEndRef, inputAreaRef,
     isUserAtBottomRef, isAutoScrollingRef, userPausedRef, scrollToBottom,
+    captureScrollState, restoreScrollState,
   } = useScrollBehavior({ currentView, messages, loading, streamingActive });
 
   // ── Streaming messages ──
@@ -151,6 +164,8 @@ const App = () => {
     streamingTurnIdRef, turnIdCounterRef,
     findLastAssistantIndex, extractRawBlocks,
     getOrCreateStreamingAssistantIndex, patchAssistantForStreaming,
+    deleteRuntimeForTab,
+    setRuntimeStreamingForTab,
   } = useStreamingMessages();
 
   // (Toast helpers moved to UIStateContext)
@@ -289,7 +304,7 @@ const App = () => {
   const {
     showNewSessionConfirm, showInterruptConfirm,
     suppressNextStatusToastRef,
-    createNewSession, forceCreateNewSession,
+    forceCreateNewSession,
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
@@ -885,7 +900,87 @@ const App = () => {
     setCurrentView('settings');
   }, [setSettingsInitialTab, setCurrentView]);
 
-  const statusPanelExpanded = !userCollapsedRef.current;
+  const {
+    tabs,
+    activeTabId,
+    selectTab,
+    createTab,
+    closeTab,
+    closeOtherTabs,
+    closeTabsToLeft,
+    closeTabsToRight,
+    closeAllTabs,
+    renameTab,
+    forkTab,
+    reorderTabs,
+    openSessionInTab,
+    activeTabAutoOpenFileEnabled,
+    statusPanelExpanded,
+  } = useSessionTabs({
+    currentSessionId,
+    currentSessionIdRef,
+    setCurrentSessionId,
+    sessionTitle,
+    setCustomSessionTitle,
+    updateHistoryTitle,
+    messages,
+    setMessages,
+    loading,
+    setLoading,
+    streamingActive,
+    setStreamingActive,
+    isThinking,
+    setIsThinking,
+    status,
+    setStatus,
+    sessionLoading,
+    setSessionLoading,
+    revertBoundaryId,
+    setRevertBoundaryId,
+    isCompacting,
+    setIsCompacting,
+    compactingStartTime,
+    setCompactingStartTime,
+    taskEvents,
+    setTaskEvents,
+    sseTodos,
+    setSseTodos,
+    subagentHistories,
+    setSubagentHistories,
+    filteredFileChanges,
+    permissionMode,
+    setPermissionMode,
+    selectedModel,
+    setSelectedModel: handleModelSelect,
+    reasoningEffort,
+    setReasoningEffort: handleReasoningChange,
+    contextInfo,
+    setContextInfo,
+    loadingStartTime,
+    setLoadingStartTime,
+    usagePercentage,
+    setUsagePercentage,
+    usageUsedTokens,
+    setUsageUsedTokens,
+    usageMaxTokens,
+    setUsageMaxTokens,
+    isShared,
+    setCurrentView,
+    chatInputRef,
+    defaultAutoOpenFileEnabled: autoOpenFileEnabled,
+    forceCreateNewSession,
+    loadHistorySession,
+    deleteTabRuntime: deleteRuntimeForTab,
+    setTabRuntimeStreaming: setRuntimeStreamingForTab,
+    captureScrollState,
+    restoreScrollState,
+    t,
+  });
+
+  useEffect(() => {
+    openSessionInTabRef.current = openSessionInTab;
+    appTabsRef.current = tabs;
+  }, [openSessionInTab, tabs]);
 
   // ── Render ──
   return (
@@ -893,34 +988,44 @@ const App = () => {
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       <ChatHeader
         currentView={currentView}
-        sessionTitle={sessionTitle}
         t={t}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={selectTab}
+        onCloseTab={closeTab}
+        onCloseOtherTabs={closeOtherTabs}
+        onCloseTabsToLeft={closeTabsToLeft}
+        onCloseTabsToRight={closeTabsToRight}
+        onCloseAllTabs={closeAllTabs}
+        onRenameTab={renameTab}
+        onForkTab={forkTab}
+        onReorderTabs={reorderTabs}
+        onShareTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          void handleShare();
+        }}
+        onCopyShareLinkTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          handleCopyShareLink();
+        }}
+        onUnshareTab={(tab) => {
+          if (tab.id !== activeTabId) selectTab(tab.id);
+          void handleUnshare();
+        }}
         onBack={() => setCurrentView('chat')}
-        onNewSession={createNewSession}
+        onNewSession={createTab}
         onHistory={() => setCurrentView('history')}
         onSettings={() => {
           setSettingsInitialTab(undefined);
           setCurrentView('settings');
         }}
         onOpenSearch={() => setSearchOpen(true)}
-        titleEditable
-        onTitleChange={(newTitle) => {
-          setCustomSessionTitle(newTitle);
-          if (currentSessionId) {
-            updateHistoryTitle(currentSessionId, newTitle);
-          }
-        }}
-        isShared={isShared}
-        sharePending={sharePending}
-        shareHidden={shareHidden}
-        onCopyShareLink={handleCopyShareLink}
-        onShare={handleShare}
-        onUnshare={handleUnshare}
-        onForkAll={handleForkFull}
-        onExport={() => {
-          if (currentSessionId) {
-            exportHistorySession(currentSessionId, sessionTitle);
-          }
+        onExportTab={(tab) => {
+          const tabMessages = tab.id === activeTabId ? messages : (tab.messages || []);
+          const title = tab.title || t('common.newSession', { defaultValue: '新会话' });
+          const md = convertMessagesToMarkdown(tabMessages, title);
+          downloadMarkdown(md, `${title}.md`);
+          addToast(t('history.exportSuccess', { defaultValue: '会话已导出' }), 'success');
         }}
       />
 
@@ -989,7 +1094,7 @@ const App = () => {
               activeProviderConfig={activeProviderConfig}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}
-              autoOpenFileEnabled={autoOpenFileEnabled}
+              autoOpenFileEnabled={activeTabAutoOpenFileEnabled ?? autoOpenFileEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
@@ -1007,7 +1112,13 @@ const App = () => {
               historyData={historyData}
               currentProvider={currentProvider}
               currentSessionId={currentSessionId}
-              onLoadSession={loadHistorySession}
+              onLoadSession={(sessionId) => {
+                if (openSessionInTabRef.current) {
+                  openSessionInTabRef.current(sessionId);
+                } else {
+                  loadHistorySession(sessionId);
+                }
+              }}
               onDeleteSession={deleteHistorySession}
               onDeleteSessions={deleteHistorySessions}
               onExportSession={exportHistorySession}

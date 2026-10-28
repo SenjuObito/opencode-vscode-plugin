@@ -18,7 +18,7 @@
     align-items: center;
     flex: 1;
     min-width: 0; /* Allow flex items to shrink below their minimum content size */
-    overflow: hidden;
+    overflow: visible;
     .flex-gap-horizontal(12px);
 
     > * {
@@ -106,10 +106,9 @@
     font-size: 18px;
 }
 
-/* More menu dropdown */
 .header-more-menu-wrapper {
     position: relative;
-    display: inline-flex;
+    display: flex;
     align-items: center;
 }
 
@@ -117,52 +116,9 @@
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
-    background: var(--color-chat-bars-bg, var(--bg-secondary));
-    border: 1px solid var(--color-chat-bars-border, var(--border-primary));
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    padding: 4px;
-    min-width: 180px;
+    margin-top: 0;
+    min-width: 170px;
     z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.header-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 6px 10px;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: var(--color-chat-bars-text, var(--text-primary));
-    font-size: 13px;
-    cursor: pointer;
-    text-align: left;
-    transition: background-color 0.15s ease, color 0.15s ease;
-    white-space: nowrap;
-
-    .codicon {
-        font-size: 14px;
-        color: var(--color-chat-bars-muted-text, var(--text-secondary));
-        flex-shrink: 0;
-    }
-
-    &:hover {
-        background-color: var(--color-chat-bars-hover-bg, var(--bg-hover));
-        color: var(--color-chat-bars-text, var(--text-primary));
-
-        .codicon {
-            color: var(--color-chat-bars-text, var(--text-primary));
-        }
-    }
-
-    &:active {
-        background-color: var(--color-chat-bars-hover-bg, var(--bg-hover));
-    }
 }
 
 /* Session title: editable on hover */
@@ -326,3 +282,540 @@
         transform: scale(0.92);
     }
 }
+
+/* =========================================================================
+   Session Tabs & Context Menu Styles
+   ========================================================================= */
+
+.session-tabs-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 0;
+    margin: -4px 0;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
+
+    &:hover {
+        overflow: visible;
+    }
+
+    &.is-reordering {
+        cursor: grabbing;
+        user-select: none;
+        overflow: hidden !important;
+
+        .session-tab-item:not(.session-tab-item-following) {
+            pointer-events: none;
+
+            .session-tab-inner {
+                position: relative !important;
+                transform: none !important;
+                box-shadow: none !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                z-index: 1 !important;
+            }
+        }
+    }
+}
+
+.session-tab-drop-indicator {
+    width: 2px;
+    height: 20px;
+    background: var(--accent-primary, #007acc);
+    border-radius: 1px;
+    margin: 0 1px;
+    position: relative;
+    flex-shrink: 0;
+    z-index: 10;
+    animation: session-tab-drop-pulse 0.8s ease-in-out infinite alternate;
+
+    &::before,
+    &::after {
+        content: '';
+        position: absolute;
+        left: -3px;
+        width: 8px;
+        height: 4px;
+        background: var(--accent-primary, #007acc);
+        border-radius: 2px;
+    }
+
+    &::before {
+        top: -2px;
+    }
+
+    &::after {
+        bottom: -2px;
+    }
+}
+
+@keyframes session-tab-drop-pulse {
+    from {
+        opacity: 0.7;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.session-tab-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    max-width: 150px;
+    height: 28px;
+    flex-shrink: 0;
+    user-select: none;
+    box-sizing: border-box;
+
+    &.is-dragging {
+        opacity: 0.55;
+        cursor: grabbing;
+    }
+
+    /* 正随鼠标跟随移动的 tab：固定定位并悬浮在最上层，位置由 JS 实时更新 */
+    &.session-tab-item-following {
+        position: fixed;
+        z-index: 10001;
+        pointer-events: none;
+        opacity: 0.95 !important;
+        transform: none !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        border-color: var(--accent-primary, #007acc);
+        background: var(--bg-tertiary);
+        border-radius: 6px;
+        max-width: none !important;
+        cursor: grabbing;
+
+        .session-tab-inner {
+            box-shadow: none !important;
+            background: transparent !important;
+            transform: none !important;
+            width: 100% !important;
+            max-width: none !important;
+
+            .session-tab-title {
+                overflow: visible !important;
+                text-overflow: clip !important;
+                white-space: nowrap !important;
+                flex: none !important;
+            }
+        }
+    }
+
+    .session-tab-inner {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--color-chat-bars-muted-text, var(--text-tertiary));
+        background: transparent;
+        border: 1px solid transparent;
+        cursor: pointer;
+        white-space: nowrap;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        /* 背景不做过渡：悬停卡片会盖住相邻的 tab。若让背景从 transparent
+           淡入，卡片最初几帧仍是半透明的，下面那个 tab 的蓝色图标和标题
+           会透出来，看起来就像悬停的标题先闪了一下蓝色再恢复正常。
+           背景直接切换，缩放和阴影仍然保留浮起动画。 */
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    box-shadow 0.2s ease,
+                    border-color 0.15s ease,
+                    color 0.15s ease;
+
+        .session-tab-icon {
+            font-size: 13px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            color: var(--text-tertiary);
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .session-tab-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+            transition: color 0.15s ease;
+        }
+
+        .session-tab-inline-input {
+            background: var(--bg-primary);
+            border: 1px solid var(--accent-primary);
+            color: var(--text-primary);
+            border-radius: 3px;
+            font-size: 12px;
+            padding: 1px 4px;
+            outline: none;
+            max-width: 100px;
+        }
+
+        .session-tab-close-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border: none;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            opacity: 0;
+            padding: 0;
+            transition: opacity 0.15s ease, background 0.15s ease;
+            flex-shrink: 0;
+
+            &:hover {
+                opacity: 1 !important;
+                background: var(--color-button-danger-hover-bg, rgba(239, 68, 68, 0.2));
+                color: var(--color-danger, #ef4444);
+            }
+
+            .codicon {
+                font-size: 12px;
+            }
+        }
+    }
+
+    /* Active 状态 */
+    &.active .session-tab-inner {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-secondary);
+        font-weight: 500;
+
+        .session-tab-icon {
+            color: var(--accent-primary);
+        }
+
+        .session-tab-close-btn {
+            opacity: 0.7;
+        }
+    }
+
+    /* Hover 状态：macOS Dock 风格悬浮变大、置顶、以标题栏可用空间展开完整标题 */
+    &:hover:not(.is-dragging):not(.is-editing) {
+        z-index: 1000;
+
+        .session-tab-inner {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: max-content;
+            min-width: 100%;
+            max-width: calc(100vw - 80px);
+            height: 100%;
+            z-index: 1000;
+            transform: translateY(-2px) scale(1.06);
+            transform-origin: left center;
+            color: var(--color-chat-bars-text, var(--text-primary));
+            background: var(--bg-secondary);
+            border-color: var(--border-secondary);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.12);
+
+            .session-tab-icon {
+                transform: scale(1.1);
+            }
+
+            .session-tab-title {
+                overflow: visible;
+                text-overflow: clip;
+                white-space: nowrap;
+                flex: none;
+                font-size: 12.5px;
+            }
+
+            .session-tab-close-btn {
+                opacity: 0.85;
+            }
+        }
+
+        &.active .session-tab-inner {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-primary, #007acc);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--accent-primary, #007acc);
+        }
+    }
+}
+
+/* Session Tab Context Menu */
+.session-context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: var(--color-chat-bars-bg, var(--bg-secondary));
+    border: 1px solid var(--border-secondary);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    padding: 4px 0;
+    min-width: 145px;
+
+    .context-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 6px 12px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s ease, color 0.15s ease;
+
+        &:hover {
+            background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+            color: var(--text-primary);
+        }
+
+        .codicon {
+            font-size: 13px;
+            color: var(--text-tertiary);
+        }
+
+        &:hover .codicon {
+            color: var(--accent-primary);
+        }
+
+        &:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+    }
+
+    .context-menu-divider {
+        height: 1px;
+        background: var(--border-secondary);
+        margin: 4px 0;
+    }
+}
+
+/* Session Tab Overflow Menu */
+.session-tab-overflow-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.session-tab-overflow-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--color-chat-bars-muted-text, var(--text-tertiary));
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    position: relative;
+
+    &:hover {
+        background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+        color: var(--color-chat-bars-text, var(--text-secondary));
+    }
+
+    &.active {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-secondary);
+    }
+
+    .session-tab-busy-dot {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+    }
+
+    .session-tab-attention-dot {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--color-warning, #f59e0b);
+        box-shadow: 0 0 6px var(--color-warning, #f59e0b);
+        animation: pulseWarning 1.5s infinite;
+    }
+}
+
+.session-tab-attention-icon {
+    color: var(--color-warning, #f59e0b) !important;
+    animation: pulseWarning 1.5s infinite;
+}
+
+@keyframes pulseWarning {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.15); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.session-tab-overflow-drop-indicator {
+    height: 2px;
+    background: var(--accent-primary, #007acc);
+    border-radius: 1px;
+    margin: 2px 4px;
+    position: relative;
+    z-index: 10;
+    animation: session-tab-drop-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.session-tab-overflow-menu {
+    position: fixed;
+    min-width: 200px;
+    max-width: calc(100vw - 16px);
+    max-height: 360px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--color-chat-bars-bg, var(--bg-secondary));
+    border: 1px solid var(--border-secondary);
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    z-index: 10000;
+    padding: 6px;
+    box-sizing: border-box;
+
+    .session-tab-overflow-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--color-chat-bars-muted-text, var(--text-secondary));
+        cursor: pointer;
+        /* The drag handle is the title itself; without this a long title starts a
+           native text selection instead of the custom drag. */
+        user-select: none;
+        position: relative;
+        box-sizing: border-box;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                    box-shadow 0.2s ease,
+                    background 0.15s ease,
+                    color 0.15s ease;
+
+        &.is-dragging {
+            opacity: 0.4;
+        }
+
+        &.session-tab-item-following {
+            background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-secondary);
+            border-radius: 6px;
+        }
+
+        /* 鼠标悬浮时放大并展示完整标题，宽度不超过插件宽度 */
+        &:hover:not(.is-dragging) {
+            background: var(--color-chat-bars-hover-bg, var(--bg-hover));
+            color: var(--text-primary);
+            transform: scale(1.025);
+            transform-origin: center center;
+            z-index: 10;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+
+            .session-tab-icon {
+                transform: scale(1.15);
+            }
+
+            .session-tab-overflow-title {
+                max-width: none;
+                overflow: visible;
+                text-overflow: clip;
+                white-space: normal;
+                word-break: break-word;
+                font-size: 12.5px;
+                color: var(--text-primary);
+            }
+
+            .session-tab-overflow-close {
+                opacity: 0.85;
+            }
+        }
+
+        &.active {
+            background: var(--bg-tertiary);
+            color: var(--accent-primary);
+            font-weight: 500;
+        }
+
+        .session-tab-icon {
+            font-size: 13px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            color: var(--text-tertiary);
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        &.active .session-tab-icon {
+            color: var(--accent-primary);
+        }
+
+        .session-tab-overflow-title {
+            flex: 1;
+            min-width: 0;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            transition: color 0.15s ease, font-size 0.15s ease;
+            line-height: 1.4;
+        }
+
+        .session-tab-overflow-close {
+            opacity: 0;
+            background: transparent;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 2px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+            flex-shrink: 0;
+
+            &:hover {
+                opacity: 1 !important;
+                background: var(--color-button-danger-hover-bg, rgba(239, 68, 68, 0.2));
+                color: var(--color-danger, #ef4444);
+            }
+
+            .codicon {
+                font-size: 12px;
+            }
+        }
+    }
+}
+
+
+
