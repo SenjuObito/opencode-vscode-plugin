@@ -11,11 +11,11 @@
 | **P0 基线** | 协议与护栏 | 协议/ID冻结、`src/host/tab` 骨架、grep 护栏、EventCatalog 一致性测试 | ✅ 已完成 (`b28fcc9`) | 单测通过，无单会话遗留命令泄漏 |
 | **P1 Core + 引擎** | 依赖与引擎 | pin `v1.0.0`、L0 env、`engine_status`、`daemon.status.engine` | ✅ 已完成 (`e8ef19b`) | core 单测全绿，三态环境检测就绪 |
 | **P2 宿主 Tab 内核** | Tab 模型与路由 | `TabId` / `TabRegistry` / `TabSessionActor` / `TabStreamRouter` / `PendingSend` | ✅ 已完成 (`9258cfd`) | 跨 Tab 并发互不干扰，单测 22 项通过 |
-| **P3 宿主单实例多视图** | 多视图协同 | `ChatWindow` / `ViewRegistry` / `PromptRegistry` / `TabEventRouter` | 🟡 核心完成，宿主装配中 (`a45b128`) | 单测通过；待接入 `OpenCodeViewProvider` |
+| **P3 宿主单实例多视图** | 多视图协同 | `ChatWindow` / `ViewRegistry` / `PromptRegistry` / `TabEventRouter` / 宿主装配 | ✅ 已完成 (`da64da2`) | 左右栏与编辑器 Panel 共享唯一 TabRegistry，全视图实时同步 |
 | **P4 协议 v2** | 出入站协议 | `HostCommand` / LRU 去重 / `command.rejected` / batch 批处理通道 | ✅ 已完成 (`a45b128`) | 5 大拒绝码校验通过，双向映射就绪 |
 | **P5 Webview A 类引入** | 架构文件引入 | 30 个架构文件、8 个 Tab 状态 Store、useSessionTabs、44 项新单测 | ✅ 已完成 (`32f022a`) | 69 文件 / 833 单测 100% 绿灯 |
 | **P6 Webview B 类合并** | 重分叉文件合并 | `ChatHeader.tsx`、`header.less`、`App.tsx` 接入 `useSessionTabs`、类型对齐 | ✅ 已完成 (`528c2de`) | `tsc --noEmit` 0 error，全量构建打包成功 |
-| **P7 多会话 UI 校验** | 标签栏交互 | 标签栏切换、新建、关闭、重命名、拖拽排序、右键菜单、溢出折叠 | 🔄 进行中 | 待多视图宿主装配后 E2E 验证 |
+| **P7 多会话 UI 校验** | 标签栏交互 | 标签栏切换、新建、关闭、重命名、拖拽排序、右键菜单、溢出折叠 | 🔄 进行中 | P3/P5/P6 基础就绪，展开交互回归 |
 | **P8 功能矩阵回归** | 功能 Tab 隔离 | fork / revert / compact / 权限弹窗定点 / 附件分块 / 状态面板隔离 | ⏳ 待开始 | 遵循“只影响目标 tab”原则 |
 | **P9 性能与发布验证** | 健壮性与包验证 | resync 重建、reload 恢复、core pin 依赖检查、干净打包 | ⏳ 待开始 | CI / GitHub Release 验收 |
 
@@ -28,12 +28,16 @@
 - Core 依赖固定为 `v1.0.0`，实现 `engine_status` 与 L0 环境变量注入。
 - 建立架构护栏测试，杜绝在 `src/host/tab` 中出现单会话遗留命令。
 
-### P3 ~ P4：单实例多视图与协议 v2 (Commit: `a45b128`)
+### P3 ~ P4：单实例多视图与协议 v2 (Commit: `a45b128`, `da64da2`)
 - 实现 `ChatWindow` 单实例顶层聚合：
   - `ViewRegistry`：维护 VS Code 左侧边栏、右侧边栏、编辑器 Panel 等各视图，精确计算 `promptHostId`。
   - `TabEventRouter`：提供 fair-weight batching 与 lane 优先级分流。
   - `PromptRegistry`：权限申请与提问弹窗唯一定向。
   - `HostCommand`：协议 v2 出入站校验与 LRU 2048 `requestId` 去重，非法调用回传标准 `command.rejected`。
+- **宿主顶层装配落盘 (`da64da2`)**：
+  - `src/extension.ts`：初始化全局唯一的 `chatWindow` 单例实例。
+  - `src/host/webview/OpenCodeViewProvider.ts`：左/右侧边栏均注入 `chatWindow`，注册视图与可见性监听，统一由 `chatWindow.handleViewCommand` 处理 `host_command`，并触发 `resyncView`。
+  - `src/host/tabs/TabManager.ts`：编辑器原生 Tab Panel 打开时注册为 `chatWindow` 视图，生命周期和消息通道无缝接入同一会话核心。
 - 宿主 22 项单测全绿。
 
 ### P5：Webview A 类架构文件完整引入 (Commit: `32f022a`)
@@ -72,14 +76,13 @@
 
 ---
 
-## 4. 下一步行动计划 (P3 装配与 P7 UI 联动)
+## 4. 下一步行动计划 (P7 UI 与 P8 功能矩阵回归)
 
-1. **宿主层装配**：
-   - 在 `src/extension.ts` 中初始化唯一的 `ChatWindow` 单例。
-   - 改造 `src/host/webview/OpenCodeViewProvider.ts`，接收 `ChatWindow`，将 webview 注册为该窗口的 View，消息直接流转至 `chatWindow.handleViewCommand`。
-   - 改造 `src/host/tabs/TabManager.ts`（原生编辑器 Panel），同样作为 `ChatWindow` 的 View 注册，实现侧边栏与编辑器 Panel 共享同一 Tab 集合。
-2. **P7 多标签页交互验证**：
-   - 验证 Tab 新建、切换、关闭（关自身/关其他/关左侧/关右侧/全部关闭）。
-   - 验证双视图实时同步（左侧边栏切 Tab，右侧/编辑器面板同时响应）。
-   - 验证右键菜单与重命名。
-3. **P8 & P9 验收推进**。
+1. **P7 标签栏交互矩阵验证**：
+   - 验证单视图与多视图场景下标签创建、关闭、重命名、拖拽排序、溢出展开菜单。
+   - 验证标签右键菜单项功能（关闭其他标签页、关闭左侧标签页、关闭右侧标签页、全部关闭、复制分享链接等）。
+2. **P8 功能矩阵回归与隔离性验证**：
+   - 会话 Fork、Revert、Unrevert、Compact 严格限制在目标 Tab。
+   - 权限申请与 Ask User Question 对话框通过 `promptHostId` 精确路由至前台活跃 View。
+   - 附件分块传输（96KB 分片）与模型选择 per-tab 隔离。
+3. **P9 终验与发布前准备**。
