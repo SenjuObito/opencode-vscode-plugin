@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
+import { getTabStore } from '../store/tabStore';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 import { expandQuoteTokens } from '../components/ChatInputBox/utils/quoteRegistry';
@@ -247,38 +248,35 @@ export function useMessageSender({
 
     const reasoningEffortPayload = { reasoningEffort };
 
+    // v2：发送带上 tab 身份，宿主按 tabId 解析目标会话（A 的输入不会落到 B）。
+    // 没有活跃 tab（极早期）时退回 legacy send_message，由宿主用当前会话处理。
+    const tabId = getTabStore().getActiveTabId();
+    const attachmentPayload = hasAttachments
+      ? (attachments || []).map(a => ({
+        fileName: a.fileName,
+        mediaType: a.mediaType,
+        data: a.data,
+      }))
+      : undefined;
+
+    const commandPayload: Record<string, unknown> = {
+      text,
+      fileTags: fileTagsInfo,
+      permissionMode: effectivePermissionMode,
+      ...reasoningEffortPayload,
+      ...(attachmentPayload ? { attachments: attachmentPayload } : {}),
+    };
+
+    if (tabId) {
+      sendHostCommand(tabId, 'session.send', commandPayload);
+      return;
+    }
+
+    const legacyPayload = JSON.stringify(commandPayload);
     if (hasAttachments) {
-      try {
-        const payload = JSON.stringify({
-          text,
-          attachments: (attachments || []).map(a => ({
-            fileName: a.fileName,
-            mediaType: a.mediaType,
-            data: a.data,
-          })),
-          fileTags: fileTagsInfo,
-          permissionMode: effectivePermissionMode,
-          ...reasoningEffortPayload,
-        });
-        sendBridgeEvent('send_message_with_attachments', payload);
-      } catch (error) {
-        console.error('[Frontend] Failed to serialize attachments payload', error);
-        const fallbackPayload = JSON.stringify({
-          text,
-          fileTags: fileTagsInfo,
-          permissionMode: effectivePermissionMode,
-          ...reasoningEffortPayload,
-        });
-        sendBridgeEvent('send_message', fallbackPayload);
-      }
+      sendBridgeEvent('send_message_with_attachments', legacyPayload);
     } else {
-      const payload = JSON.stringify({
-        text,
-        fileTags: fileTagsInfo,
-        permissionMode: effectivePermissionMode,
-        ...reasoningEffortPayload,
-      });
-      sendBridgeEvent('send_message', payload);
+      sendBridgeEvent('send_message', legacyPayload);
     }
   }, [currentProvider, selectedModel, reasoningEffort]);
 
@@ -442,7 +440,7 @@ export function useMessageSender({
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
 
-    sendBridgeEvent('interrupt_session');
+    sendInterrupt();
   }, [
     isStreamingRef,
     streamingContentRef,

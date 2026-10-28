@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendBridgeEvent, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendInterrupt, sendNewSession, cardDebugLog } from '../utils/bridge';
 import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 
@@ -212,7 +212,7 @@ export function useSessionManagement({
       if (getSkipNewSessionConfirm()) {
         onResetToPreferredModel?.();
         beginSessionTransition(null, null);
-        sendBridgeEvent('create_new_session');
+        sendNewSession();
         return;
       }
       // If there are messages but not loading, show new session confirmation
@@ -222,39 +222,39 @@ export function useSessionManagement({
       // If empty and not loading, directly create new session
       onResetToPreferredModel?.();
       beginSessionTransition(null, null);
-      sendBridgeEvent('create_new_session');
+      sendNewSession();
     }
   }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
     if (loading) {
-      sendBridgeEvent('interrupt_session');
+      sendInterrupt();
     }
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
+    sendNewSession();
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
     if (loading) {
-      sendBridgeEvent('interrupt_session');
+      sendInterrupt();
     }
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendBridgeEvent('set_provider', providerId);
-    sendBridgeEvent('create_new_session');
+    sendNewSession();
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
   // Confirm new session
   const handleConfirmNewSession = useCallback(() => {
     setShowNewSessionConfirm(false);
     if (loading) {
-      sendBridgeEvent('interrupt_session');
+      sendInterrupt();
     }
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
+    sendNewSession();
     pendingActionRef.current = null;
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
@@ -267,10 +267,10 @@ export function useSessionManagement({
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
-    sendBridgeEvent('interrupt_session');
+    sendInterrupt();
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
-    sendBridgeEvent('create_new_session');
+    sendNewSession();
     pendingActionRef.current = null;
   }, [beginSessionTransition, onResetToPreferredModel]);
 
@@ -369,14 +369,14 @@ export function useSessionManagement({
       if (sessionId === currentSessionId) {
         // [FIX] Send interrupt signal if AI is responding
         if (loading) {
-          sendBridgeEvent('interrupt_session');
+          sendInterrupt();
         }
         onResetToPreferredModel?.();
         beginSessionTransition(null, null);
         startedSessionTransition = true;
         // Set flag to suppress next updateStatus toast
         suppressNextStatusToastRef.current = true;
-        sendBridgeEvent('create_new_session');
+        sendNewSession();
       }
 
     }
@@ -415,13 +415,13 @@ export function useSessionManagement({
 
       if (currentSessionId && deletedSessionIds.has(currentSessionId)) {
         if (loading) {
-          sendBridgeEvent('interrupt_session');
+          sendInterrupt();
         }
         onResetToPreferredModel?.();
         beginSessionTransition(null, null);
         startedSessionTransition = true;
         suppressNextStatusToastRef.current = true;
-        sendBridgeEvent('create_new_session');
+        sendNewSession();
       }
 
     }

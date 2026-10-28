@@ -55,9 +55,7 @@ export class ChatWindow {
 	readonly deduplicator = new RequestIdDeduplicator(2048);
 
 	private readonly options: ChatWindowOptions;
-	private readonly settings: SettingsService;
 	private readonly daemon: OpenCodeDaemonBridge;
-	private readonly fileOps: FileOps;
 	private readonly fallbackWorkingDirectoryResolver: () => string | null;
 	/** 每个 tab 的输出投影 sink（按 tabId 复用，保证同一个 tab 只有一份计数）。 */
 	private readonly sinks = new Map<string, TabScopedSink>();
@@ -67,9 +65,7 @@ export class ChatWindow {
 
 	constructor(options: ChatWindowOptions) {
 		this.options = options;
-		this.settings = options.settings;
 		this.daemon = options.daemon;
-		this.fileOps = options.fileOps;
 		this.fallbackWorkingDirectoryResolver = options.fallbackWorkingDirectoryResolver;
 
 		this.registry = new TabRegistry();
@@ -314,6 +310,14 @@ export class ChatWindow {
 		});
 		this.commandRouter.register('session.interrupt', (cmd, record) => {
 			this.sessionSendHandler.interrupt(cmd, record);
+		});
+		// 在同一个 tab 内开新对话（/clear、新建对话按钮）：保留 tab，重置会话与绑定。
+		this.commandRouter.register('session.new', () => {
+			if (!this.sessionManager) {
+				PluginFileLogger.warn('ChatWindow', 'session.new ignored: no session manager bound');
+				return;
+			}
+			this.sessionManager.createNewSession();
 		});
 	}
 

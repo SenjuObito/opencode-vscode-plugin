@@ -62,14 +62,8 @@ export class WindowEventHandler extends BaseMessageHandler {
 			case 'heartbeat':
 				// 心跳由 daemon 生命周期管理；这里仅确认存活
 				return true;
-			case 'create_new_session':
-				this.handleCreateNewSession();
-				return true;
 			case 'frontend_ready':
 				this.handleFrontendReady();
-				return true;
-			case 'refresh_slash_commands':
-				this.handleRefreshSlashCommands();
 				return true;
 			case 'get_active_provider':
 				this.handleGetActiveProvider();
@@ -115,18 +109,6 @@ export class WindowEventHandler extends BaseMessageHandler {
 			return true;
 			default:
 				return false;
-		}
-	}
-
-	private handleCreateNewSession(): void {
-		const sessionManager = this.context.getSessionManager();
-		if (sessionManager) {
-			sessionManager.createNewSession();
-		} else {
-			const session = this.context.getSession();
-			session?.resetSession();
-			this.callJavaScript('showLoading', 'false');
-			this.callJavaScript('historyLoadComplete');
 		}
 	}
 

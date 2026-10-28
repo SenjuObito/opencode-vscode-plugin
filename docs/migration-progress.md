@@ -2,15 +2,19 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A4：补齐 `context.refresh` / `commands.refresh` 接收端，并补 §2.3 命令面缺口清单）
+> 最后更新：2026-10-28（P8-A1/A2 会话归属接线 + A3 发送路径切换；A4 已完成）
 
 ---
 
 ## 0. 结论
 
 - **架构主干（P0–P7）已落地**：宿主 Tab 内核、单实例多视图、协议 v2、webview 的 30 个架构文件、标签栏 UI 与 i18n 均已在代码中。
-- **功能域（P8）尚未完成**：宿主 handler 仍有 **21 处** `getSession()`（单会话语义），权限仍借会话，附件/上下文/命令刷新链路缺失；webview 侧的模式、模型、推理、弹窗、状态面板、附件、`@`、空态背景等仍是旧实现。
-- 本文上一版把 P8/P9 标为"已完成"，**与代码不符**，本版已更正。后续以本文件与 §2 的核查结果为准。
+- **2026-10-28 起 P8 有了实质进展**：
+  - **会话归属已接线**（A1/A2）：`ChatWindow` 持有 `TabSessionFactory`，每个 tab 有自己的 `OpenCodeSession`；`session.send` / `session.interrupt` / `session.new` 按 `tabId` 路由；切 tab 回放宿主快照。此前 `TabSessionFactory` 无实例化点、`ChatInstance` 是 per-view，`TabRecord.getSession()` 恒为 null。
+  - **webview 发送路径已切换**（A3）：`send_message` → `session.send`，`create_new_session` → `session.new`，`interrupt_session` 带 tabId（无身份时才退回窗口级）。
+  - **两条断链命令已补**（A4）：`context.refresh` / `commands.refresh`。
+- **仍然未完成**：剩余 handler 的 `getSession()` 语义（21 处仍在，但已随 resolver 指向活跃 tab 的会话）、附件分块链路、弹窗身份、状态面板 per-tab、`@` 与上下文注入、P9 终验。
+- 本文此前把 P8/P9 标为"已完成"曾与代码不符，2026-10-28 已做两轮更正；**本文以代码核查为准**。
 
 ---
 
@@ -26,7 +30,7 @@
 | **P5** | webview 30 个架构文件 + store + `useSessionTabs` | ✅ | `32f022a` |
 | **P6** | `ChatHeader` / `header.less` / `App.tsx` 接入标签栏 | ✅ | `528c2de` |
 | **P7** | 标签栏交互、右键菜单、share 隐藏、i18n | ✅ | `1ad2079`（`SHARE_MENU_ENABLED=false` 已核） |
-| **P8** | 14 项功能域隔离与回归 | 🟡 | 见 §2：8 项部分完成，6 项未开始 |
+| **P8** | 14 项功能域隔离与回归 | 🟡 | 见 §2：会话归属与发送/中断已按 tab 路由；余下见 §2.3 / §4 |
 | **P9** | 全量终验、性能、发布包验证 | ⬜ | 依赖 P8；本版未复跑全量测试 |
 
 > 图例：✅ 完成 / 🟡 部分完成 / ⬜ 未开始 / ⛔ 阻塞
@@ -49,20 +53,23 @@
 | 10.10 | 添加附件 | 🟡 | `utils/attachmentTransport.ts` 已引入但未被发送路径使用；宿主 `AttachmentHandler` 缺失 |
 | 10.11 | 引用文件 `@` | ⬜ | 无 `useFileTags.restoreFileTags`；`files.listed` 事件未接 |
 | 10.12 | 文件上下文 | 🟡（宿主已接） | `context.refresh` 已注册（`src/host/window/TabContextCommandHandler.ts`），写目标 tab 的 `TabSettings.autoOpenFileEnabled/contextEnabled`。**仍缺**：发送时按 tab 注入（`OpenCodeSession.send` 仍读全局 `getAutoOpenFileEnabled`）、`context.updated` 回推 |
-| 10.13 | bash `!` | 🟡 | `SessionHandler` 仍 `context.getSession()`：只对"当前会话"生效 |
+| 10.13 | bash `!` | ✅ | `session.send` 的 `!cmd` 分支在 `TabSessionSendHandler`，cwd 取目标 tab（`record.getCwd()`）；`SessionHandler` 的旧路径保留为兜底 |
 | 10.14 | opencode `/` | 🟡（宿主已接） | `commands.refresh` 已注册，按目标 tab 的 cwd 列命令（`{directory}`）并回推 `updateSlashCommands`；webview 不再发旧名 `refresh_slash_commands`（`slashCommandProvider` / `main.tsx` 已改）。**仍缺**：列表仍是窗口级单例（回推用广播）、内置命令本地执行与 per-tab 缓存 |
 
-### 2.1 宿主单会话遗留（P8 的前置）
+### 2.1 宿主单会话遗留（P8 的前置）——已处理
 
 `src/host` 仍有 **21 处** `context.getSession()`，分布在：
-
 `handlers/{WindowEvent,Session,Context,History,ModelProvider,Export,Permission,CliModels,Settings}Handler.ts`
 
-典型后果：
-- `SessionHandler` 的 `send` / `interrupt` / `!shell` 只作用于当前会话；
-- `PermissionHandler` 的弹窗归属可能错；
-- `ModelProviderHandler` 的模型/推理力度写入当前会话；
-- `HistoryHandler` 切换历史会话仍走 `switchToSession` 语义。
+**2026-10-28 状态**：这 21 处**不再是单会话 bug** —— `SessionManager` 已注入
+session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到**活跃 tab 自己的会话**。
+仍然成立的两条限制：
+
+- 它们是「活跃 tab」语义，不是「目标 tab」语义。真正需要定向的操作（发送 / 中断 / 新会话 /
+  历史切换）已走 `tabId` 命令；其余（设置、模型、导出、权限）目前按活跃 tab 解释是正确的，
+  但等附件/弹窗按 tab 归属后需要逐个复核。
+- `HistoryHandler` 的 `switchToSession` 现在委托 `ChatWindow.replaceActiveTabSession`，
+  在**活跃 tab 内**换绑而不是销毁共享实例。
 
 ### 2.2 缺失的宿主能力
 
@@ -81,11 +88,12 @@
 
 | 命令 | webview 发送点 | 后果 |
 |---|---|---|
-| `session.send` | 未切（仍发旧 `send_message`） | A2/A3 目标 |
-| `session.interrupt` | `useTabLifecycle.ts:260`（`sendInterrupt`） | 关 tab 时中断不到目标会话 |
-| `session.load` | `useTabSessionBinder.ts:677` | 切历史会话无宿主响应 |
-| `settings.mode` | `useTabSessionBinder.ts:212` | per-tab 模式不落宿主 |
-| `attachment.prepare/chunk/complete` | `utils/attachmentTransport.ts` | 附件链路断 |
+| `session.send` | ✅ 已切（`useMessageSender` → `sendHostCommand(tabId,'session.send')`） | A2/A3 完成 |
+| `session.interrupt` | ✅ 已切（`sendInterrupt`，无 tab 身份时退回 legacy `interrupt_session`） | 关 tab 时只中断目标 |
+| `session.new` | ✅ 已切（`sendNewSession`，替代 `create_new_session`） | 在活跃 tab 内重置会话 |
+| `session.load` | `useTabSessionBinder.ts:677` | 切历史会话无宿主响应（仍缺） |
+| `settings.mode` | `useTabSessionBinder.ts:212` | per-tab 模式不落宿主（仍缺） |
+| `attachment.prepare/chunk/complete` | `utils/attachmentTransport.ts` | 附件分块链路断（发送仍内联 base64） |
 | `agents.list` | `store/agentStore.ts:104` | agent 列表只能靠旧推送 |
 | `save_json` | `utils/exportMarkdown.ts:383/432` | 导出保存无响应 |
 
@@ -109,16 +117,16 @@
 
 ## 4. 下一步（按依赖排序）
 
-1. **宿主去单会话**：`SessionHandler`、`PermissionHandler`、`ContextHandler`、`ModelProviderHandler`、`HistoryHandler`、`ExportHandler`、`SettingsHandler`、`CliModelsHandler`、`WindowEventHandler` 全部改为 `getSessionForTab(tabId)` / `getSession(sessionId)`。
-   - 前置条件（2026-10-28 核查新增）：`TabSessionFactory` / `TabStreamRouter` **尚未接线**，`TabRecord.getSession()` 恒为 null，且 `ChatInstance` 是 per-view 装配。必须先接线会话归属，否则无处解析。
+1. ~~**宿主去单会话**~~ ✅ 2026-10-28（A1/A2）：会话归 tab、`context.getSession()` 解析活跃 tab、发送/中断/新会话按 tabId 路由。
 2. ~~**补宿主命令**：`context.refresh`、`commands.refresh`；`slashCommandProvider` 改为发 `commands.refresh`。~~ ✅ 2026-10-28 完成
-3. **附件链路**：`AttachmentHandler` + `globalStorageUri/attachments/<tabId>` + 发送只带 id。
+3. **附件链路**：`AttachmentHandler` + `globalStorageUri/attachments/<tabId>` + 发送只带 id（webview 的 `attachmentTransport` 已在发命令，宿主仍无接收方）。
 4. **弹窗身份**：`PermissionDialog` / `AskUserQuestionDialog` 接 `tabId/sessionId/requestId/onTimeout`；`PromptRegistry` 接入 `PermissionHandler`。
 5. **状态面板 per-tab**：面板展开/子页入 `TabStore`；`todos/task/subagent` 按 tab；`files.undo` 事件化。
 6. **选择器接线**：`ModeSelect` → `agentStore` + `modeColors`；`ModelSelect` 置顶拖拽；`ReasoningSelect` → guard。
 7. **视觉与品牌**：boot splash、空态背景、Aero 图标与 `media` 资源。
-8. **`@` 与上下文**：`restoreFileTags`、`files.listed`、per-tab `contextEnabled` 注入。
-9. **P9 终验**：见 §5。
+8. **`@` 与上下文**：`restoreFileTags`、`files.listed`、per-tab `autoOpenFileEnabled` 注入（宿主开关已落地，`OpenCodeSession.send` 仍在读全局设置）。
+9. **`session.load`**：历史会话绑定到目标 tab（`TabSessionFactory.attachSession` 已具备能力，尚未接到命令上）。
+10. **P9 终验**：见 §5。
 
 ---
 
@@ -140,3 +148,5 @@
 | 2026-10-28 | 建立文档；记录 P0–P7 架构主干落地 |
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
+| 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
+| 2026-10-28 | **P8-A3**：webview 发送 / 中断 / 新会话改走 v2 命令（`session.send` / `session.interrupt` / `session.new`），删除 `create_new_session` 全部 8 处与协议常量，宿主移除对应 legacy handler；新增 `useMessageSender.tabSend` 测试 |

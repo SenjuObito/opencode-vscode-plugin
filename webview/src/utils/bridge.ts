@@ -238,6 +238,11 @@ export const sendInterrupt = (
     ?? ownerTabId
     ?? tabStore.getActiveTabId()
     ?? '';
+  if (!tabId && !options.sessionId) {
+    // 没有任何身份可定位（tab 已被关闭/极早期）：退回窗口级中断，
+    // 宿主侧 legacy handler 会中断当前的活跃会话。
+    return sendBridgeEvent('interrupt_session');
+  }
   return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
 };
 
@@ -273,8 +278,18 @@ export const sendWindowCommand = (
   return sendBridgeEvent('host_command', JSON.stringify(envelope));
 };
 
-/** 强类型桥接调用函数 */
-export const sendTypedBridgeEvent = <T>(event: BridgeMessageType, payload?: T): boolean => {
+/**
+ * 在活跃 tab 内开新对话（/clear、新建对话按钮）。
+ *
+ * 语义是「重置当前会话」而不是「新建 tab」：多 tab 下重复点 /clear 不应该不断
+ * 长出标签页；需要并列的新对话由标签栏的 + 走 `tab.create`。
+ */
+export const sendNewSession = (): boolean => {
+  const tabId = getTabStore().getActiveTabId();
+  return tabId ? sendHostCommand(tabId, 'session.new') : sendWindowCommand('session.new');
+};
+
+/** 强类型桥接调用函数 */export const sendTypedBridgeEvent = <T>(event: BridgeMessageType, payload?: T): boolean => {
   const content = payload === undefined ? '' : typeof payload === 'string' ? payload : JSON.stringify(payload);
   return sendBridgeEvent(event, content);
 };
