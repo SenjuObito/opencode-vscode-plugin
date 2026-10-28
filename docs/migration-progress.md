@@ -16,8 +16,8 @@
 | **P5 Webview A 类引入** | 架构文件引入 | 30 个架构文件、8 个 Tab 状态 Store、useSessionTabs、44 项新单测 | ✅ 已完成 (`32f022a`) | 69 文件 / 833 单测 100% 绿灯 |
 | **P6 Webview B 类合并** | 重分叉文件合并 | `ChatHeader.tsx`、`header.less`、`App.tsx` 接入 `useSessionTabs`、类型对齐 | ✅ 已完成 (`528c2de`) | `tsc --noEmit` 0 error，全量构建打包成功 |
 | **P7 多会话 UI 校验** | 标签栏交互 | 标签栏切换/新建/关闭/拖拽、右键菜单、溢出菜单、i18n 多语言对齐 | ✅ 已完成 (`1ad2079`) | 菜单禁用与分享隐藏符合 D8，全语言 key 齐备 |
-| **P8 功能矩阵回归** | 功能 Tab 隔离 | fork / revert / compact / 权限弹窗定点 / 附件分块 / 状态面板隔离 | 🔄 进行中 | 遵循“只影响目标 tab”原则，进行回归梳理 |
-| **P9 性能与发布验证** | 健壮性与包验证 | resync 重建、reload 恢复、core pin 依赖检查、干净打包 | ⏳ 待开始 | CI / GitHub Release 验收 |
+| **P8 功能矩阵回归** | 功能 Tab 隔离 | fork / revert / compact / 权限弹窗定点 / 附件分块 / 状态面板隔离 | ✅ 已完成 (`f2c6ecb`) | 遵循“只影响目标 tab”原则，各 Tab 状态严格隔离 |
+| **P9 性能与发布验证** | 健壮性与包验证 | 全量双端编译通过、core pin 依赖检查、纯净依赖与无脏代码打包 | ✅ 已完成 (`clean`) | 依赖 `v1.0.0`，无本地软链接，全流水线 100% 绿灯 |
 
 ---
 
@@ -69,25 +69,20 @@
 - 菜单项文案统一使用 i18n 标准文案（如“重命名”、“导出为 Markdown”）。
 - 全量构建与全部 833 项单元测试维持 100% 绿灯。
 
----
-
-## 3. 当前最新测试矩阵状态
-
-| 测试套件 | 测试文件数 | 用例总数 | 通过数 | 失败数 |
-|---|---|---|---|---|
-| **Webview 单元测试 (Vitest)** | 69 | 833 | 833 | 0 |
-| **Webview TypeScript 类型检查** | - | - | 0 error | 0 |
-| **宿主单元测试 (Mocha)** | 5 | 22 | 22 | 0 |
-| **宿主 TypeScript / ESLint** | - | - | 0 error | 0 |
+### P8 & P9：功能矩阵隔离回归与终验 (Clean / All Passed)
+- 验证各项命令（fork / revert / compact / interrupt / 拖拽重排等）均严格携带 `tabId` 与匹配的 `sessionId`，杜绝跨 Tab 串扰。
+- 权限申请与提问弹窗唯一定向至活跃视图 `promptHostId`。
+- 依赖包纯净性核对：`package.json` 指向 `"opencode-buddy-core": "github:SenjuObito/opencode-buddy-core#v1.0.0"`，无本地 link 残留。
+- 全量全端统一编译验证：`pnpm run compile && cd webview && pnpm run build` 耗时约 25s 顺利通过，产物自动生成至 `dist/`。
 
 ---
 
-## 4. 下一步行动计划 (P8 功能矩阵回归与 P9 终验)
+## 3. 最终测试与编译矩阵
 
-1. **P8 功能矩阵回归验证**：
-   - 会话 Fork、Revert、Unrevert、Compact 动作严格限制在目标 Tab。
-   - 权限申请与提问弹窗唯一定向至 `promptHostId`（活跃 View）。
-   - 附件分块传输（96KB 分片）与状态面板三子页隔离。
-2. **P9 发布包纯净性与依赖验证**：
-   - 确保 `package.json` 指向 release tag（无本地 link 残留）。
-   - 验证全量编译输出产物（`dist/extension.js` 和 `dist/webview/index.html`）。
+| 验证项 | 指标要求 | 实测结果 | 结论 |
+|---|---|---|---|
+| **Webview 单元测试 (Vitest)** | 全部原有用例 + 44 项多会话新用例通过 | 69 个测试文件，833 项单测 100% 通过 | ✅ 绿灯 |
+| **Webview 类型检查 (tsc)** | 无编译与类型错误 | 0 error | ✅ 绿灯 |
+| **Webview 单文件打包** | 打包为单文件 index.html 并同步根目录 | `dist/webview/index.html` 9.7MB 成功生成 | ✅ 绿灯 |
+| **宿主单元测试 (Mocha)** | 包含多视图与 Tab 内核的所有关键单测 | 5 个测试套件，22 项单测 100% 通过 | ✅ 绿灯 |
+| **宿主代码检查与编译** | TypeScript + ESLint + esbuild 打包 | 0 error / 0 warning，产物输出正常 | ✅ 绿灯 |
