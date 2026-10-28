@@ -1,5 +1,6 @@
 import { isJavaFqcnCandidate, normalizeFileNavigationTarget, parseFileLinkTarget } from './linkify';
 import type { BridgeMessageType } from '../types/protocol';
+import { getTabStore } from '../store/tabStore';
 
 const BRIDGE_UNAVAILABLE_WARNED = new Set<string>();
 const SAFE_BROWSER_PROTOCOLS = /^(https?|mailto):/i;
@@ -174,6 +175,102 @@ const callBridge = (payload: string) => {
 
 export const sendBridgeEvent = (event: string, content = '') => {
   return callBridge(`${event}:${content}`);
+};
+
+function createTabRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export interface HostCommandEnvelope {
+  v: 2;
+  type: string;
+  requestId: string;
+  tabId: string | null;
+  sessionId: string | null;
+  payload: unknown;
+}
+
+export const sendTabCommand = (
+  tabId: string,
+  command: string,
+  payload: Record<string, unknown> = {},
+): boolean => {
+  if (!tabId || !command) return false;
+  return sendBridgeEvent('host_command', JSON.stringify({
+    v: 2,
+    type: command,
+    requestId: createTabRequestId(),
+    tabId,
+    sessionId: null,
+    payload,
+  }));
+};
+
+export const sendHostCommand = (
+  tabId: string,
+  type: string,
+  payload: Record<string, unknown> = {},
+  sessionId?: string | null,
+): boolean => {
+  if ((!tabId && !sessionId) || !type) return false;
+  const envelope: HostCommandEnvelope = {
+    v: 2,
+    type,
+    requestId: createTabRequestId(),
+    tabId,
+    sessionId: sessionId ?? null,
+    payload,
+  };
+  return sendBridgeEvent('host_command', JSON.stringify(envelope));
+};
+
+export const sendInterrupt = (
+  options: { tabId?: string | null; sessionId?: string | null } = {},
+): boolean => {
+  const tabStore = getTabStore();
+  const ownerTabId = options.sessionId
+    ? tabStore.findIdBySession(options.sessionId)
+    : null;
+  const tabId = options.tabId
+    ?? ownerTabId
+    ?? tabStore.getActiveTabId()
+    ?? '';
+  return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
+};
+
+export const sendSessionCommand = (
+  type: string,
+  sessionId: string | null | undefined,
+  payload: Record<string, unknown> = {},
+): boolean => {
+  const tabStore = getTabStore();
+  const tabId = sessionId
+    ? tabStore.findIdBySession(sessionId)
+    : tabStore.getActiveTabId();
+  if (!tabId) {
+    console.warn(`[bridge] dropped the ${type} command: no tab owns the session`);
+    return false;
+  }
+  return sendHostCommand(tabId, type, payload, sessionId ?? null);
+};
+
+export const sendWindowCommand = (
+  type: string,
+  payload: unknown = {},
+): boolean => {
+  if (!type) return false;
+  const envelope: HostCommandEnvelope = {
+    v: 2,
+    type,
+    requestId: createTabRequestId(),
+    tabId: null,
+    sessionId: null,
+    payload,
+  };
+  return sendBridgeEvent('host_command', JSON.stringify(envelope));
 };
 
 /** 强类型桥接调用函数 */

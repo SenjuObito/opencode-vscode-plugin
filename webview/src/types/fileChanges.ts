@@ -41,4 +41,6 @@ export interface FileChangeSummary {
   operations: EditOperation[];
   /** 任一编辑操作仍在进行中（tool_result 未到达）。UI 显示 pending 指示并禁用撤销/对比。 */
   pending?: boolean;
+  multiAgent?: boolean;
+  agentIds?: string[];
 }

@@ -3,7 +3,6 @@ import {
   normalizeToolName,
   isToolName,
   FILE_MODIFY_TOOL_NAMES,
-  EDIT_TOOL_NAMES,
 } from './toolConstants';
 
 describe('normalizeToolName', () => {

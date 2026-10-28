@@ -5,9 +5,9 @@ describe('normalizeCliPermissionMode', () => {
 
 
 
-  it('passes non-plan modes through unchanged for other providers', () => {
-    expect(normalizeCliPermissionMode('acceptEdits', 'pi')).toBe('acceptEdits');
-    expect(normalizeCliPermissionMode('bypassPermissions', 'grok')).toBe('bypassPermissions');
+  it('passes non-plan modes through unchanged', () => {
+    expect(normalizeCliPermissionMode('acceptEdits')).toBe('acceptEdits');
+    expect(normalizeCliPermissionMode('bypassPermissions')).toBe('bypassPermissions');
   });
 });
 

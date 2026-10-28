@@ -13,8 +13,8 @@ vi.mock('react-i18next', () => ({
 
 describe('useSettingsWindowCallbacks', () => {
   const createDeps = (): SettingsWindowCallbacksDeps => ({
-    setClaudeCliPath: vi.fn(),
-    setSavingClaudeCliPath: vi.fn(),
+    setOpencodeCliPath: vi.fn(),
+    setSavingOpencodeCliPath: vi.fn(),
     setWorkingDirectory: vi.fn(),
     setSavingWorkingDirectory: vi.fn(),
     setEditorFontConfig: vi.fn(),

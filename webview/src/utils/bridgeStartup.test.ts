@@ -1,9 +1,4 @@
 import {
-  isDependencyStatusResponse,
-  requestFreshDependencyStatus,
-  requestDependencyStatusUntilSettled,
-  retryDependencyStatusRequest,
-  settleDependencyStatusRequest,
   waitForBridge,
 } from './bridgeStartup';
 
@@ -12,7 +7,6 @@ describe('bridge startup recovery', () => {
     vi.useFakeTimers();
     delete window.sendToJava;
     delete window.__ccgOnBridgeReady;
-    window.__dependencyStatusState = 'pending';
   });
 
   afterEach(() => {

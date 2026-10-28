@@ -102,8 +102,8 @@ interface MessageListProps {
   isThinking: boolean;
   loading: boolean;
   loadingStartTime: number | null;
-  isCompacting: boolean;
-  compactingStartTime: number | null;
+  isCompacting?: boolean;
+  compactingStartTime?: number | null;
   t: TFunction;
   getMessageText: (message: ClaudeMessage) => string;
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];

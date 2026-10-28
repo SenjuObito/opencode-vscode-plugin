@@ -108,7 +108,11 @@ export function useSubmitHandler({
 
     // Call onSubmit even when loading - let parent handle queueing
     setTimeout(() => {
-      onSubmit?.(content, attachmentsToSend, fileTagsToSend);
+      if (fileTagsToSend !== undefined) {
+        onSubmit?.(content, attachmentsToSend, fileTagsToSend);
+      } else {
+        onSubmit?.(content, attachmentsToSend);
+      }
     }, 10);
   }, [
     getTextContent,

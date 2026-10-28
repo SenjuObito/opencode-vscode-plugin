@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import type { Attachment } from '../types.js';
 import { usePasteAndDrop } from './usePasteAndDrop.js';
 

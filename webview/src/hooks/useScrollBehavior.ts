@@ -6,11 +6,24 @@ const BOTTOM_THRESHOLD_PX = 100;
 
 type ViewMode = 'chat' | 'history' | 'settings';
 
+/**
+ * Scroll state owned by one session tab.
+ *
+ * Stored on `SessionTabData` so switching tabs restores the reader's position
+ * instead of applying the outgoing tab's "at bottom" decision to the target.
+ */
+export interface TabScrollState {
+  scrollTop: number;
+  isUserAtBottom: boolean;
+  userPaused: boolean;
+}
+
 export interface UseScrollBehaviorOptions {
   currentView: ViewMode;
   messages: ClaudeMessage[];
   expandedThinking?: Record<string, boolean>;
   loading: boolean;
+  isCompacting?: boolean;
   streamingActive: boolean;
 }
 
@@ -22,6 +35,10 @@ interface UseScrollBehaviorReturn {
   isAutoScrollingRef: React.MutableRefObject<boolean>;
   userPausedRef: React.MutableRefObject<boolean>;
   scrollToBottom: () => void;
+  /** Snapshot the currently visible tab's scroll position and follow flags. */
+  captureScrollState: () => TabScrollState | null;
+  /** Queue a restore for the tab about to be swapped in (null = start at bottom). */
+  restoreScrollState: (state?: TabScrollState | null) => void;
 }
 
 /**
@@ -37,6 +54,7 @@ export function useScrollBehavior({
   messages,
   expandedThinking,
   loading,
+  isCompacting,
   streamingActive,
 }: UseScrollBehaviorOptions): UseScrollBehaviorReturn {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -52,12 +70,64 @@ export function useScrollBehavior({
   // because the viewport is still within the 100px threshold.
   const userPausedRef = useRef(false);
 
+  // A tab swap queues the target tab's saved position here. The next layout
+  // pass (or the rAF fallback) consumes it and skips the auto-follow for that
+  // commit, otherwise restoring an upwards scroll would immediately snap back.
+  const pendingRestoreRef = useRef<TabScrollState | null>(null);
+
   const syncScrollAnchoring = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
     const shouldEnableScrollAnchoring = userPausedRef.current || !isUserAtBottomRef.current;
     container.classList.toggle(SCROLL_ANCHOR_ENABLED_CLASS, shouldEnableScrollAnchoring);
   }, []);
+
+  const captureScrollState = useCallback((): TabScrollState | null => {
+    const container = messagesContainerRef.current;
+    // Hidden (history/settings view) containers report a bogus scrollTop;
+    // keep the last meaningful snapshot instead of overwriting it.
+    if (!container || container.clientHeight === 0) return null;
+    return {
+      scrollTop: container.scrollTop,
+      isUserAtBottom: isUserAtBottomRef.current,
+      userPaused: userPausedRef.current,
+    };
+  }, []);
+
+  const applyPendingRestore = useCallback((): boolean => {
+    const state = pendingRestoreRef.current;
+    if (!state) return false;
+    const container = messagesContainerRef.current;
+    // Do not burn a restore while the chat view is hidden: scrollHeight is 0
+    // there, so the position would be lost. Leave it queued for the commit
+    // that makes the container visible again.
+    if (container && container.clientHeight === 0) return false;
+    pendingRestoreRef.current = null;
+    userPausedRef.current = state.userPaused;
+    isUserAtBottomRef.current = state.isUserAtBottom;
+    if (container) {
+      // A tab that was following the bottom should land on the newest content
+      // (the transcript may have grown while it was in the background).
+      container.scrollTop = state.isUserAtBottom ? container.scrollHeight : state.scrollTop;
+    }
+    syncScrollAnchoring();
+    return true;
+  }, [syncScrollAnchoring]);
+
+  const restoreScrollState = useCallback((state?: TabScrollState | null) => {
+    pendingRestoreRef.current = state ?? {
+      // New tab: behave exactly like the old "scroll to bottom" path.
+      scrollTop: Number.MAX_SAFE_INTEGER,
+      isUserAtBottom: true,
+      userPaused: false,
+    };
+    // If the tab swap does not change `messages` (two empty tabs), the layout
+    // effect never runs. Apply on the next frame so the restore is not left
+    // queued and later applied to an unrelated commit.
+    requestAnimationFrame(() => {
+      applyPendingRestore();
+    });
+  }, [applyPendingRestore]);
 
   const syncUserAtBottomState = useCallback((container: HTMLDivElement) => {
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
@@ -244,6 +314,10 @@ export function useScrollBehavior({
 
   useLayoutEffect(() => {
     if (currentView !== 'chat') return;
+    // A tab swap queued a restore for this commit: apply it and do NOT follow
+    // the bottom, otherwise the reader would be thrown back to the newest
+    // message on every switch.
+    if (applyPendingRestore()) return;
     syncScrollAnchoring();
     if (userPausedRef.current) return;
     if (!isUserAtBottomRef.current) return;
@@ -261,7 +335,7 @@ export function useScrollBehavior({
     } else {
       scrollToBottom();
     }
-  }, [currentView, messages, expandedThinking, loading, streamingActive, scrollToBottom, syncScrollAnchoring]);
+  }, [currentView, messages, expandedThinking, loading, isCompacting, streamingActive, scrollToBottom, syncScrollAnchoring, applyPendingRestore]);
 
   // Cleanup scroll debounce on unmount
   useEffect(() => {
@@ -272,16 +346,21 @@ export function useScrollBehavior({
     };
   }, []);
 
-  // Scroll to bottom when switching back to chat view
+  // Returning to the chat view must not discard the reader's position: the
+  // container stays mounted while hidden, so only follow the bottom when the
+  // user was already there (and had not paused).
   useEffect(() => {
     if (currentView === 'chat') {
       // Use setTimeout to ensure view is fully rendered before scrolling
       const timer = setTimeout(() => {
-        scrollToBottom();
+        if (applyPendingRestore()) return;
+        if (!userPausedRef.current && isUserAtBottomRef.current) {
+          scrollToBottom();
+        }
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [currentView, scrollToBottom]);
+  }, [currentView, scrollToBottom, applyPendingRestore]);
 
   return {
     messagesContainerRef,
@@ -291,5 +370,7 @@ export function useScrollBehavior({
     isAutoScrollingRef,
     userPausedRef,
     scrollToBottom,
+    captureScrollState,
+    restoreScrollState,
   };
 }

@@ -27,17 +27,11 @@ describe('CommitSection', () => {
   it('renders commit provider model controls above the prompt textarea', () => {
     const config: CommitAiConfig = {
       provider: null,
-      effectiveProvider: 'codex',
+      effectiveProvider: 'opencode',
       resolutionSource: 'auto',
       models: { ...DEFAULT_AI_FEATURE_MODELS },
       availability: {
-        claude: true,
-        codex: true,
-        grok: false,
-        kimi: false,
-        opencode: false,
-        pi: false,
-        omp: false,
+        opencode: true,
       },
     };
 

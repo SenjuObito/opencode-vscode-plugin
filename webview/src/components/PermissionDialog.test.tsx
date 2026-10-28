@@ -17,7 +17,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('./MarkdownBlock', () => ({
-  default: function MarkdownBlockMock({ content }: { content: string }) {
+  default: function MarkdownBlockMock(_props: { content: string }) {
     return null;
   },
 }));

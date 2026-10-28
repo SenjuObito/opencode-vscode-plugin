@@ -28,11 +28,9 @@ describe('useMessageSender - /context command', () => {
     setLoading: vi.fn(),
     setLoadingStartTime: vi.fn(),
     setStreamingActive: vi.fn(),
-    setSettingsInitialTab: vi.fn(),
     setCurrentView: vi.fn(),
     forceCreateNewSession: vi.fn(),
     handleModeSelect: vi.fn(),
-    longContextEnabled: false,
     openContextUsageDialog: vi.fn(),
     closeContextUsageDialog: vi.fn().mockReturnValue(true),
     ...overrides,
@@ -50,10 +48,9 @@ describe('useMessageSender - /context command', () => {
     window.sendToJava = vi.fn();
   });
 
-  it('sends get_context_usage with base model when longContext is disabled', () => {
+  it('sends get_context_usage with base model', () => {
     const opts = createOptions({
       selectedModel: 'claude-opus-4-8',
-      longContextEnabled: false,
     });
 
     const { result } = renderHook(() => useMessageSender(opts));
@@ -74,7 +71,6 @@ describe('useMessageSender - /context command', () => {
   it('sends get_context_usage with selected model when longContext is enabled', () => {
     const opts = createOptions({
       selectedModel: 'claude-opus-4-8',
-      longContextEnabled: true,
     });
 
     const { result } = renderHook(() => useMessageSender(opts));

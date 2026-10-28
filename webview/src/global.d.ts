@@ -914,6 +914,9 @@ interface Window {
   __pendingUpdateJson?: string | null;
   __pendingUpdateSequence?: number | null;
   __minAcceptedUpdateSequence?: number;
+  /** Per-session minimum accepted update sequence map, isolating sequence counters between sessions. */
+  __sessionMinAcceptedUpdateSequence?: Map<string, number> | Record<string, number>;
+  __openNewSessionTab?: () => void;
   /** Number of paged history messages prepended ahead of the backend session snapshot. */
   __prependedHistoryMessageCount?: number;
   /** Backend index represented by the first non-prepended message; zero means its full prefix is present. */
@@ -1143,6 +1146,18 @@ interface Window {
         }
   ) => void;
   __pendingCliModels?: unknown;
+  /**
+   * Dialog store for switching and preserving pending permissions/questions across session tabs
+   */
+  __dialogStore?: {
+    getSnapshot: () => { permissions: any[]; questions: any[] };
+    restore: (
+      permissions: any[],
+      questions: any[],
+      plans?: any[],
+    ) => void;
+    clearActive: () => void;
+  };
 }
 
 declare module 'mermaid' {

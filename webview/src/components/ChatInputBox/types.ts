@@ -234,7 +234,7 @@ export const AVAILABLE_PROVIDERS: ProviderInfo[] = [
  * Reasoning Effort (thinking depth)
  * Controls the depth of reasoning for AI models
  */
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * Reasoning level information
@@ -281,6 +281,30 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
     description: 'Maximum reasoning depth',
   },
 ];
+
+/**
+ * Determine the recommended reasoning effort for a list of variant IDs.
+ * Preference: 'medium' -> 'low' -> first available variant.
+ */
+export function getRecommendedReasoningEffort(variants?: string[]): ReasoningEffort | undefined {
+  if (!variants || variants.length === 0) {
+    return undefined;
+  }
+  const cleanVariants = variants.filter(v => v !== 'default');
+  if (cleanVariants.length === 0) {
+    return undefined;
+  }
+  // `none` means "thinking disabled". Prefer an actual thinking level when the
+  // model offers one; only fall back to `none` if it is all the model has.
+  const thinkingVariants = cleanVariants.filter(v => v !== 'none');
+  if (thinkingVariants.includes('medium')) {
+    return 'medium';
+  }
+  if (thinkingVariants.includes('low')) {
+    return 'low';
+  }
+  return (thinkingVariants[0] ?? cleanVariants[0]) as ReasoningEffort;
+}
 
 /**
  * Compute the visible reasoning levels for a model.
