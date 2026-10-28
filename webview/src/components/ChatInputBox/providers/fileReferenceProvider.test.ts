@@ -10,6 +10,8 @@ import {
   fileReferenceProvider,
 } from './fileReferenceProvider';
 import type { FileItem } from '../types';
+import { getTabStore, resetTabStore } from '../../../store/tabStore';
+import { dispatchHostEvent } from '../../../utils/hostDispatcher';
 
 function file(partial: Partial<FileItem> & { name: string; path: string }): FileItem {
   return {
@@ -22,6 +24,7 @@ function file(partial: Partial<FileItem> & { name: string; path: string }): File
 describe('fileReferenceProvider matching', () => {
   beforeEach(() => {
     resetFileReferenceState();
+    resetTabStore();
     delete window.onFileListResult;
     delete window.sendToJava;
   });
@@ -88,6 +91,42 @@ describe('fileReferenceProvider matching', () => {
     expect(names).not.toContain('SlashCommandRegistry.java');
     expect(names).not.toContain('skills-lock.json');
     expect(names[0]).toBe('build.gradle');
+  });
+
+  it('有活跃 tab 时改发 files.list 命令（带 tab 身份），结果由 files.listed 事件回填', async () => {
+    const sendToJava = vi.fn();
+    window.sendToJava = sendToJava;
+
+    const store = getTabStore();
+    store.setTabs([{ id: 'tab-a', sessionId: null, title: '', messages: [] } as never]);
+    store.setActiveTabId('tab-a');
+
+    const controller = new AbortController();
+    const promise = fileReferenceProvider('b', controller.signal);
+
+    // 走 v2 命令：带 tab 身份，宿主按该 tab 的 cwd 列举
+    const raw = String(sendToJava.mock.calls[0][0]);
+    expect(raw.startsWith('host_command:')).toBe(true);
+    const envelope = JSON.parse(raw.replace('host_command:', '')) as {
+      type: string;
+      tabId: string;
+      payload: { query: string; requestId: number };
+    };
+    expect(envelope.type).toBe('files.list');
+    expect(envelope.tabId).toBe('tab-a');
+    expect(envelope.payload.query).toBe('b');
+
+    // 宿主按语义事件回推（payload.data 会被分发器解包成字符串）
+    dispatchHostEvent('files.listed', [JSON.stringify({
+      requestId: envelope.payload.requestId,
+      files: [
+        { name: 'build.gradle', path: 'build.gradle', type: 'file' },
+        { name: 'CONTRIBUTING.md', path: 'CONTRIBUTING.md', type: 'file' },
+      ],
+    })]);
+
+    const results = await promise;
+    expect(results.map((f) => f.name)).toEqual(['build.gradle', 'CONTRIBUTING.md']);
   });
 
   it('ignores stale list_files responses when requestId does not match', async () => {

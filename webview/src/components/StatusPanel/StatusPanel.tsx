@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FileChangeSummary } from '../../types';
 import { undoFileChanges, sendToJava, cardDebugLog } from '../../utils/bridge';
+import { registerHostEvents } from '../../utils/hostEventRegistry';
+import { getTabStore } from '../../store/tabStore';
 import { getFileName } from '../../utils/helpers';
 import TodoList from './TodoList';
 import SubagentList from './SubagentList';
@@ -142,7 +144,7 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
     setIsDiscardingAll(true);
     setConfirmDiscardAll(false);
 
-    sendToJava('undo_all_file_changes', { files });
+    sendToJava('undo_all_file_changes', { files, tabId: getTabStore().getActiveTabId() ?? undefined });
   }, [fileChanges]);
 
   const handleCancelDiscardAll = useCallback(() => {
@@ -181,6 +183,8 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
     };
 
     window.onUndoFileResult = handleUndoResult;
+    // 语义事件路径：宿主按 tab 投回 `files.undo`（payload.data 会被解包成字符串）。
+    registerHostEvents({ 'files.undo': handleUndoResult });
     return () => {
       delete window.onUndoFileResult;
     };
@@ -232,6 +236,7 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
     };
 
     window.onUndoAllFileResult = handleUndoAllResult;
+    registerHostEvents({ 'files.undo.all': handleUndoAllResult });
     return () => {
       delete window.onUndoAllFileResult;
     };

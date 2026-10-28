@@ -114,6 +114,32 @@ export class HandlerContext {
 		this.fontConfigPusher?.();
 	}
 
+	/**
+	 * 语义事件发布器（宿主注入）。
+	 *
+	 * 处理器把结果按语义事件投回某个 tab（`files.undo` 等），而不是窗口级
+	 * `callJavaScript` —— 多 tab 时窗口级回调会把结果送到别的 tab 的视图上。
+	 */
+	private eventPublisher: ((type: string, tabId: string, payload: Record<string, unknown>) => void) | null = null;
+
+	setEventPublisher(
+		publisher: ((type: string, tabId: string, payload: Record<string, unknown>) => void) | null,
+	): void {
+		this.eventPublisher = publisher;
+	}
+
+	/**
+	 * 把语义事件投给某个 tab。返回 false 表示没有发布器（未装配 / 单测），
+	 * 调用方应退回 legacy 回调。
+	 */
+	publishTabEvent(type: string, tabId: string | null | undefined, payload: Record<string, unknown>): boolean {
+		if (!this.eventPublisher || !tabId) {
+			return false;
+		}
+		this.eventPublisher(type, tabId, payload);
+		return true;
+	}
+
 	getChannel(): WebviewChannel {
 		return this.channel;
 	}

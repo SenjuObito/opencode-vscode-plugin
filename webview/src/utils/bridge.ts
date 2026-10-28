@@ -485,5 +485,8 @@ export const undoFileChanges = (
   if (!isValidMutatingPath(filePath)) {
     return;
   }
-  sendToJava('undo_file_changes', { filePath, status, operations });
+  // 带上 tab 身份：宿主把结果按 `files.undo` 事件投回这个 tab，
+  // 而不是窗口级回调（多 tab 时结果会串到别的视图上）。
+  const tabId = getTabStore().getActiveTabId();
+  sendToJava('undo_file_changes', { filePath, status, operations, tabId: tabId ?? undefined });
 };

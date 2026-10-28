@@ -177,9 +177,15 @@ export function activate(context: vscode.ExtensionContext) {
 		saveText: (content, filename) => {
 			void instance.saveText(content, filename);
 		},
+		// @ 文件候选：目录由宿主按目标 tab 的 cwd 给出（多 tab 各按各的目录）。
+		listFiles: (query, directory) => instance.listFiles(query, directory),
 	});
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
 	chatWindow.bindSessionManager(instance.sessionManager);
+	// 语义事件按 tab 投递（files.undo 等）：结果回到发起请求的那个 tab。
+	instance.setEventPublisher((type, tabId, payload) => {
+		chatWindow.publishTabEvent(type, tabId, payload);
+	});
 	// 未决弹窗的 tab 归属：关 tab 时按 tab 拒绝（会话层先建，只能后注入）。
 	instance.attachPromptRegistry(
 		chatWindow.promptRegistry,

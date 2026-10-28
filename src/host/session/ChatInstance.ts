@@ -52,7 +52,7 @@ import { WindowEventHandler } from '../handlers/WindowEventHandler';
 import { SkillHandler } from '../handlers/SkillHandler';
 import { AgentHandler } from '../handlers/AgentHandler';
 import { HistoryHandler } from '../handlers/HistoryHandler';
-import { FileHandler } from '../handlers/FileHandler';
+import { FileHandler, type FileEntry } from '../handlers/FileHandler';
 import { DiffHandler } from '../handlers/DiffHandler';
 import { UndoFileHandler } from '../handlers/UndoFileHandler';
 import { McpServerHandler } from '../handlers/McpServerHandler';
@@ -102,6 +102,15 @@ export interface ChatInstance {
 	rejectPrompts(requestIds: string[]): void;
 	/** 把文本存到用户选定文件（v2 `save_json`）。 */
 	saveText(content: string, filename: string): Promise<boolean>;
+	/** 列举候选文件（v2 `files.list`）：目录由宿主按目标 tab 的 cwd 给出。 */
+	listFiles(query: string, directory: string | undefined): Promise<FileEntry[]>;
+	/**
+	 * 接上语义事件发布器（`files.undo` 等按 tab 投递）。
+	 * 会话层先建、ChatWindow 后建，只能后注入。
+	 */
+	setEventPublisher(
+		publisher: (type: string, tabId: string, payload: Record<string, unknown>) => void,
+	): void;
 	dispose(): void;
 }
 
@@ -129,7 +138,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	dispatcher.registerHandler(historyHandler);
 	const exportHandler = new ExportHandler(context);
 	dispatcher.registerHandler(exportHandler);
-	dispatcher.registerHandler(new FileHandler(context));
+	const fileHandler = new FileHandler(context);
+	dispatcher.registerHandler(fileHandler);
 	dispatcher.registerHandler(new McpServerHandler(context));
 	dispatcher.registerHandler(new McpMarketplaceHandler(context));
 	dispatcher.registerHandler(new DiffHandler(context));
@@ -185,6 +195,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		},
 		rejectPrompts: (requestIds) => permissionHandler.rejectPrompts(requestIds),
 		saveText: (content, filename) => exportHandler.saveText(content, filename),
+		listFiles: (query, directory) => fileHandler.listFiles(query, directory),
+		setEventPublisher: (publisher) => context.setEventPublisher(publisher),
 		dispose: () => sessionManager.dispose(),
 	};
 }

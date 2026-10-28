@@ -28,7 +28,7 @@ const EXCLUDED_DIR_NAMES = new Set([
 ]);
 const EXCLUDED_FILE_NAMES = new Set(['.DS_Store', 'Thumbs.db']);
 
-interface FileEntry {
+export interface FileEntry {
 	name: string;
 	path: string;
 	absolutePath: string;
@@ -103,6 +103,28 @@ export class FileHandler extends BaseMessageHandler {
 
 	// ── list_files ─────────────────────────────────────────────────────────
 
+	/**
+	 * 列举候选文件（v2 `files.list` 命令用）。
+	 *
+	 * 与 legacy `list_files` 共用同一份实现：daemon `opencode.findFiles` 优先，
+	 * 失败回退本地收集。`directory` 由调用方给出 —— 多 tab 下候选必须按
+	 * **目标 tab 的 cwd** 来，而不是窗口级的设置目录。
+	 */
+	async listFiles(query: string, directory?: string): Promise<FileEntry[]> {
+		try {
+			return await this.findViaDaemon(query, directory);
+		} catch (err) {
+			console.warn(
+				`[FileHandler] findFiles via daemon failed (${String(err)}); falling back to local scan`,
+			);
+			try {
+				return await this.collectEntries(query);
+			} catch {
+				return [];
+			}
+		}
+	}
+
 	private handleListFiles(content: string): void {
 		let query = '';
 		let requestId: number | null = null;
@@ -119,13 +141,7 @@ export class FileHandler extends BaseMessageHandler {
 		}
 
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		void this.findViaDaemon(query, directory)
-			.catch((err: unknown) => {
-				console.warn(
-					`[FileHandler] findFiles via daemon failed (${String(err)}); falling back to local scan`,
-				);
-				return this.collectEntries(query);
-			})
+		void this.listFiles(query, directory)
 			.then((files) => {
 				console.log(`[FileHandler] list_files query="${query}" -> ${files.length} entries`);
 				this.replyFileList(files, requestId);

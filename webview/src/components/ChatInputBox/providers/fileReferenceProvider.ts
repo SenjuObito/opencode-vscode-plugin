@@ -2,6 +2,9 @@ import type { FileItem, DropdownItemData } from '../types';
 import { getFileIcon, getFolderIcon } from '../../../utils/fileIcons';
 import { icon_terminal, icon_server } from '../../../utils/icons';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
+import { sendHostCommand } from '../../../utils/bridge';
+import { getTabStore } from '../../../store/tabStore';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
 
 interface PendingRequest {
   requestId: number;
@@ -40,7 +43,14 @@ function setupFileListCallback() {
     return;
   }
 
-  window.onFileListResult = (json: string) => {
+  /**
+   * 候选列表的统一入口。
+   *
+   * 两条路都走这里：legacy 的 `window.onFileListResult`（宿主 callJavaScript）
+   * 与 v2 的 `files.listed` 语义事件（宿主按 tab 推回）。后者带 tab 身份，
+   * 多个 tab / 多个视图时不会把别处的候选串到这里。
+   */
+  const handleFileListResult = (json: string) => {
     let data: { files?: FileItem[]; requestId?: number | string } | FileItem[];
     try {
       data = JSON.parse(json);
@@ -120,6 +130,9 @@ function setupFileListCallback() {
     });
     pending.resolve(files);
   };
+
+  window.onFileListResult = handleFileListResult;
+  registerHostEvents({ 'files.listed': handleFileListResult });
 }
 
 /**
@@ -297,17 +310,28 @@ export async function fileReferenceProvider(
       reject(new DOMException('Aborted', 'AbortError'));
     }, { once: true });
 
-    if (!window.sendToJava) {
+    // v2：请求带 tab 身份，宿主按**目标 tab 的 cwd** 列举，结果也回到那个 tab。
+    const tabId = getTabStore().getActiveTabId();
+    if (!tabId && !window.sendToJava) {
       cleanup();
       resolve(filterFiles(DEFAULT_FILES, searchQuery));
       return;
     }
 
-    sendToJava('list_files', {
-      query: searchQuery,
-      currentPath,
-      requestId,
-    });
+    if (tabId) {
+      sendHostCommand(tabId, 'files.list', {
+        query: searchQuery,
+        currentPath,
+        requestId,
+      });
+    } else {
+      // 没有活跃 tab（极早期）：退回窗口级 legacy 路径。
+      sendToJava('list_files', {
+        query: searchQuery,
+        currentPath,
+        requestId,
+      });
+    }
 
     // Timeout: resolve empty rather than hang forever
     setTimeout(() => {

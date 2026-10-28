@@ -10,6 +10,7 @@ import { TabEventRouter } from './TabEventRouter';
 import { PromptRegistry } from '../prompt/PromptRegistry';
 import { TabSessionCommandHandler } from './TabSessionCommandHandler';
 import { TabContextCommandHandler } from './TabContextCommandHandler';
+import { TabFileCommandHandler } from './TabFileCommandHandler';
 import { TabSessionSendHandler } from './TabSessionSendHandler';
 import { TabAttachmentCommandHandler } from './TabAttachmentCommandHandler';
 import { TabScopedSink } from './TabScopedSink';
@@ -18,6 +19,7 @@ import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router
 import type { WebviewChannel, FileOps } from '../router/HandlerContext';
 import type { SettingsService } from '../settings/SettingsService';
 import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
+import type { FileEntry } from '../handlers/FileHandler';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import type { JsTarget } from '../session/SessionCallbackAdapter';
 import type { SessionManager } from '../session/SessionManager';
@@ -51,6 +53,11 @@ export interface ChatWindowOptions {
 	/** 保存导出文件（窗口级 `save_json`，不带 tab）。 */
 	saveText?: (content: string, filename: string) => void;
 	/**
+	 * 列举候选文件（v2 `files.list`）：由 ChatInstance 接到 FileHandler。
+	 * 目录由宿主按目标 tab 的 cwd 给出。
+	 */
+	listFiles?: (query: string, directory: string | undefined) => Promise<FileEntry[]>;
+	/**
 	 * 关 tab 时被作废的未决 prompt id。
 	 * 宿主必须把它们 deny / rejectQuestion 掉，否则服务端一直在等。
 	 */
@@ -70,6 +77,7 @@ export class ChatWindow {
 	readonly sessionCommandHandler: TabSessionCommandHandler;
 	readonly contextCommandHandler: TabContextCommandHandler;
 	readonly sessionSendHandler: TabSessionSendHandler;
+	readonly fileCommandHandler: TabFileCommandHandler;
 	readonly sessionFactory: TabSessionFactory;
 	readonly attachments: TabAttachmentStore;
 	readonly attachmentCommandHandler: TabAttachmentCommandHandler;
@@ -116,6 +124,23 @@ export class ChatWindow {
 		});
 
 		this.contextCommandHandler = new TabContextCommandHandler(() => this.daemon);
+
+		this.fileCommandHandler = new TabFileCommandHandler({
+			listFiles: (query, directory) =>
+				this.options.listFiles
+					? this.options.listFiles(query, directory)
+					: Promise.resolve([]),
+			publish: (tabId, epoch, payload) => {
+				this.eventRouter.publish(
+					new TabEvent({
+						type: 'files.listed',
+						tabId,
+						epoch,
+						payload,
+					}),
+				);
+			},
+		});
 
 		this.sessionFactory = new TabSessionFactory(this.registry, {
 			newSession: (cwd, tabId) => this.createSessionForTab(cwd, tabId),
@@ -344,6 +369,11 @@ export class ChatWindow {
 		this.commandRouter.register('commands.refresh', (cmd, record) => {
 			this.contextCommandHandler.refreshCommands(cmd, record);
 		});
+
+		// @ 文件补全候选：结果按 tab 回到发起请求的那个 tab。
+		this.commandRouter.register('files.list', (cmd, record) => {
+			void this.fileCommandHandler.list(cmd, record);
+		});
 	}
 
 	private registerSessionRuntimeCommands(): void {
@@ -444,6 +474,24 @@ export class ChatWindow {
 			}
 		}
 		return this.registry.getActiveTabId()?.value ?? null;
+	}
+
+	/**
+	 * 把语义事件投给某个 tab（§10.9 的 `files.undo` 等）。
+	 *
+	 * 事件带上 tab 的 epoch：webview 侧会丢掉比当前绑定更早的事件，
+	 * 避免一次 reattach 之前的迟到结果覆盖新会话。
+	 */
+	publishTabEvent(type: string, tabId: string, payload: Record<string, unknown>): void {
+		const record = this.registry.get(TabId.of(tabId));
+		this.eventRouter.publish(
+			new TabEvent({
+				type,
+				tabId,
+				epoch: record?.epoch ?? 0,
+				payload,
+			}),
+		);
 	}
 
 	/** 该 tab 的输出投影：只有活跃 tab 的调用会被放行到所有视图。 */

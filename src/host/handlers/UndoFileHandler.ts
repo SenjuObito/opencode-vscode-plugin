@@ -28,6 +28,8 @@ interface FileChangeInput {
 	filePath?: string;
 	status?: string;
 	operations?: EditOperationInput[];
+	/** 发起撤销的 tab：结果按语义事件回到这个 tab（§10.9）。 */
+	tabId?: string;
 }
 
 export class UndoFileHandler extends BaseMessageHandler {
@@ -66,18 +68,19 @@ export class UndoFileHandler extends BaseMessageHandler {
 		const filePath = typeof req?.filePath === 'string' ? req.filePath : '';
 		const status = typeof req?.status === 'string' ? req.status : '';
 		const operations = Array.isArray(req?.operations) ? req.operations : [];
+		const tabId = typeof req?.tabId === 'string' ? req.tabId : undefined;
 
 		if (!filePath) {
-			this.sendError('', 'File path is required');
+			this.sendError('', 'File path is required', tabId);
 			return;
 		}
 		const absPath = this.resolveAbsolutePath(filePath);
 		if (!this.isPathInWorkspace(absPath)) {
-			this.sendError(filePath, 'Invalid file path: path must be within workspace');
+			this.sendError(filePath, 'Invalid file path: path must be within workspace', tabId);
 			return;
 		}
 		if (!status) {
-			this.sendError(filePath, 'File status is required');
+			this.sendError(filePath, 'File status is required', tabId);
 			return;
 		}
 
@@ -86,39 +89,40 @@ export class UndoFileHandler extends BaseMessageHandler {
 				await this.deleteAddedFile(absPath);
 			} else if (status === 'M') {
 				if (operations.length === 0) {
-					this.sendError(filePath, 'No operations to undo');
+					this.sendError(filePath, 'No operations to undo', tabId);
 					return;
 				}
 				await this.reverseEdits(absPath, operations);
 			} else if (status === 'D') {
-				this.sendError(filePath, 'Cannot restore a file that was deleted by AI');
+				this.sendError(filePath, 'Cannot restore a file that was deleted by AI', tabId);
 				return;
 			} else {
-				this.sendError(filePath, `Unknown file status: ${status}`);
+				this.sendError(filePath, `Unknown file status: ${status}`, tabId);
 				return;
 			}
-			this.sendSuccess(filePath);
+			this.sendSuccess(filePath, tabId);
 		} catch (ex) {
 			const message = ex instanceof Error ? ex.message : String(ex);
 			console.warn(`[UndoFileHandler] undo failed for ${filePath}: ${message}`);
-			this.sendError(filePath, message);
+			this.sendError(filePath, message, tabId);
 		}
 	}
 
 	// ── undo_all_file_changes ──────────────────────────────────────────────
 
 	private async handleUndoAllFileChanges(content: string): Promise<void> {
-		let req: { files?: FileChangeInput[] };
+		let req: { files?: FileChangeInput[]; tabId?: string };
 		try {
-			req = JSON.parse(content) as { files?: FileChangeInput[] };
+			req = JSON.parse(content) as { files?: FileChangeInput[]; tabId?: string };
 		} catch (ex) {
 			this.sendAllError(`Invalid request: ${String(ex)}`);
 			return;
 		}
 
+		const tabId = typeof req?.tabId === 'string' ? req.tabId : undefined;
 		const files = Array.isArray(req?.files) ? req.files : [];
 		if (files.length === 0) {
-			this.sendAllError('No files to undo');
+			this.sendAllError('No files to undo', tabId);
 			return;
 		}
 
@@ -154,12 +158,12 @@ export class UndoFileHandler extends BaseMessageHandler {
 				failed.push({ filePath: rawPath, error: message });
 			}
 		}
-		this.callJavaScript('onUndoAllFileResult', JSON.stringify({
+		this.reply('files.undo.all', 'onUndoAllFileResult', {
 			success: failed.length === 0,
 			total: files.length,
 			undone,
 			failed,
-		}));
+		}, tabId);
 	}
 
 	// ── helpers ────────────────────────────────────────────────────────────
@@ -232,18 +236,34 @@ export class UndoFileHandler extends BaseMessageHandler {
 
 	// ── callbacks ──────────────────────────────────────────────────────────
 
-	private sendSuccess(filePath: string): void {
-		this.callJavaScript('onUndoFileResult', JSON.stringify({ success: true, filePath }));
+	/**
+	 * 撤销结果回推。
+	 *
+	 * 请求带了 tabId 时走语义事件 `files.undo`（投回发起请求的那个 tab）；
+	 * 否则退回窗口级 legacy 回调（没有 tab 身份可依）。
+	 */
+	private sendSuccess(filePath: string, tabId?: string): void {
+		this.reply('files.undo', 'onUndoFileResult', { success: true, filePath }, tabId);
 	}
 
-	private sendError(filePath: string, error: string): void {
-		this.callJavaScript(
-			'onUndoFileResult',
-			JSON.stringify({ success: false, filePath: filePath ?? '', error }),
-		);
+	private sendError(filePath: string, error: string, tabId?: string): void {
+		this.reply('files.undo', 'onUndoFileResult', { success: false, filePath: filePath ?? '', error }, tabId);
 	}
 
-	private sendAllError(error: string): void {
-		this.callJavaScript('onUndoAllFileResult', JSON.stringify({ success: false, error }));
+	private reply(
+		eventType: string,
+		legacyFn: string,
+		payload: Record<string, unknown>,
+		tabId?: string,
+	): void {
+		const json = JSON.stringify(payload);
+		if (this.context.publishTabEvent(eventType, tabId, { data: json })) {
+			return;
+		}
+		this.callJavaScript(legacyFn, json);
+	}
+
+	private sendAllError(error: string, tabId?: string): void {
+		this.reply('files.undo.all', 'onUndoAllFileResult', { success: false, error }, tabId);
 	}
 }

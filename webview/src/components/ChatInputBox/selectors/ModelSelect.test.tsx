@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ModelSelect } from './ModelSelect';
 import type { ModelInfo } from '../types';
-import { __resetPinnedModelsStoreForTests } from '../modelSelectUtils';
+import { __resetPinnedModelsStoreForTests, readPinnedModelIds, writePinnedModelIds } from '../modelSelectUtils';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -327,6 +327,169 @@ describe('ModelSelect', () => {
     expect(updatedBtn.querySelector('.codicon-refresh')).toBeTruthy();
 
     vi.useRealTimers();
+  });
+
+  describe('置顶模型拖拽重排与持久化 (Apple Dock 风格)', () => {
+    const testModels: ModelInfo[] = [
+      { id: 'opencode/model-a', label: 'Model A' },
+      { id: 'opencode/model-b', label: 'Model B' },
+      { id: 'opencode/model-c', label: 'Model C' },
+    ];
+
+    it('置顶列表支持鼠标长按/移动拖拽重排并自动持久化', () => {
+      // 预先置顶 A, B, C
+      writePinnedModelIds('opencode', ['opencode/model-a', 'opencode/model-b', 'opencode/model-c']);
+
+      const onChange = vi.fn();
+      render(
+        <ModelSelect
+          value="opencode/model-a"
+          onChange={onChange}
+          models={testModels}
+          currentProvider="opencode"
+        />,
+      );
+
+      // 打开下拉框
+      fireEvent.click(screen.getByRole('button'));
+
+      const optA = screen.getByTestId('model-option-opencode/model-a');
+      const optB = screen.getByTestId('model-option-opencode/model-b');
+      const optC = screen.getByTestId('model-option-opencode/model-c');
+
+      // mock 元素位置
+      vi.spyOn(optA, 'getBoundingClientRect').mockReturnValue({
+        top: 100,
+        bottom: 136,
+        height: 36,
+        width: 200,
+        left: 10,
+        right: 210,
+      } as DOMRect);
+      vi.spyOn(optB, 'getBoundingClientRect').mockReturnValue({
+        top: 136,
+        bottom: 172,
+        height: 36,
+        width: 200,
+        left: 10,
+        right: 210,
+      } as DOMRect);
+      vi.spyOn(optC, 'getBoundingClientRect').mockReturnValue({
+        top: 172,
+        bottom: 208,
+        height: 36,
+        width: 200,
+        left: 10,
+        right: 210,
+      } as DOMRect);
+
+      // 在 A 上按下鼠标并移动，进入拖拽状态
+      fireEvent.mouseDown(optA, { clientX: 20, clientY: 110, button: 0 });
+      // 移动超过 4px 并且越过 B 的中线 (154px)，停留在 B 与 C 之间 (170px)
+      fireEvent.mouseMove(document, { clientX: 20, clientY: 170 });
+
+      // 验证浮起卡片渲染且原位出现 slot 样式
+      expect(screen.getByTestId('model-option-lifted')).toBeTruthy();
+      expect(optA.classList.contains('model-option-slot')).toBe(true);
+
+      // 抬起鼠标完成拖拽
+      fireEvent.mouseUp(document);
+
+      // 验证置顶数据持久化已更新：插入到 B 和 C 之间，放入 A (变成 B, A, C)
+      const updatedPinned = readPinnedModelIds('opencode');
+      expect(updatedPinned).toEqual(['opencode/model-b', 'opencode/model-a', 'opencode/model-c']);
+
+      // 验证拖拽结束后 150ms 内点击防误触
+      fireEvent.click(optA);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('普通轻触点击不会触发拖拽重排且正常选中模型', () => {
+      writePinnedModelIds('opencode', ['opencode/model-a', 'opencode/model-b']);
+
+      const onChange = vi.fn();
+      render(
+        <ModelSelect
+          value="opencode/model-a"
+          onChange={onChange}
+          models={testModels}
+          currentProvider="opencode"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button'));
+      const optB = screen.getByTestId('model-option-opencode/model-b');
+
+      // 轻触点击 (直接触发 click，没有拖动)
+      fireEvent.click(optB);
+
+      expect(onChange).toHaveBeenCalledWith('opencode/model-b');
+      // 置顶顺序不应发生变化
+      expect(readPinnedModelIds('opencode')).toEqual(['opencode/model-a', 'opencode/model-b']);
+    });
+
+    it('鼠标长按超过 200ms 会自动触发拖起状态', () => {
+      vi.useFakeTimers();
+      writePinnedModelIds('opencode', ['opencode/model-a', 'opencode/model-b']);
+
+      render(
+        <ModelSelect
+          value="opencode/model-a"
+          onChange={vi.fn()}
+          models={testModels}
+          currentProvider="opencode"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button'));
+      const optA = screen.getByTestId('model-option-opencode/model-a');
+
+      // 鼠标按下，不发生移动
+      fireEvent.mouseDown(optA, { clientX: 20, clientY: 110, button: 0 });
+
+      // 未到 200ms 时还未浮起
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(screen.queryByTestId('model-option-lifted')).toBeNull();
+
+      // 到达 200ms 时触发拖起
+      act(() => {
+        vi.advanceTimersByTime(110);
+      });
+      expect(screen.getByTestId('model-option-lifted')).toBeTruthy();
+
+      fireEvent.mouseUp(document);
+      vi.useRealTimers();
+    });
+
+    it('搜索过滤状态下禁止拖拽重排', () => {
+      writePinnedModelIds('opencode', ['opencode/model-a', 'opencode/model-b']);
+
+      render(
+        <ModelSelect
+          value="opencode/model-a"
+          onChange={vi.fn()}
+          models={testModels}
+          currentProvider="opencode"
+          onRefresh={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button'));
+
+      // 输入搜索关键字
+      const searchInput = screen.getByTestId('model-search-input');
+      fireEvent.change(searchInput, { target: { value: 'model' } });
+
+      const optA = screen.getByTestId('model-option-opencode/model-a');
+      fireEvent.mouseDown(optA, { clientX: 20, clientY: 110, button: 0 });
+      fireEvent.mouseMove(document, { clientX: 20, clientY: 170 });
+
+      // 搜索模式下不应触发拖拽浮起
+      expect(screen.queryByTestId('model-option-lifted')).toBeNull();
+      fireEvent.mouseUp(document);
+    });
   });
 });
 

@@ -493,3 +493,55 @@
   opacity: 1;
   visibility: visible;
 }
+
+/* ── Pinned Models Drag-to-reorder (Apple Dock fluid style) ── */
+.model-option-pinned-item {
+  transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform;
+  user-select: none;
+  cursor: grab;
+}
+
+.model-option-pinned-item:active {
+  cursor: grabbing;
+}
+
+.model-selector-dropdown.is-reordering .model-option-pinned-item {
+  cursor: grabbing;
+}
+
+/* 正在被拖动的原位占位槽（保留空隙等待落位） */
+.model-option-pinned-item.model-option-slot {
+  opacity: 0.28;
+  background: var(--button-hover, rgba(255, 255, 255, 0.05));
+  border: 1px dashed var(--accent-color, #6c9eff);
+  border-radius: 4px;
+}
+
+/* 浮动跟随卡片（苹果 Dock 拖起风格） */
+.model-option-lifted {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  cursor: grabbing;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--dropdown-bg, #1e1e1e);
+  color: var(--text-primary);
+  font-size: 12px;
+  border: 1px solid var(--accent-color, #6c9eff);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
+  transform: scale(1.02);
+  opacity: 0.98;
+  box-sizing: border-box;
+}
+
+.model-option-lifted .selector-button-text,
+.model-option-lifted span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
