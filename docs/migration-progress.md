@@ -15,8 +15,8 @@
 | **P4 协议 v2** | 出入站协议 | `HostCommand` / LRU 去重 / `command.rejected` / batch 批处理通道 | ✅ 已完成 (`a45b128`) | 5 大拒绝码校验通过，双向映射就绪 |
 | **P5 Webview A 类引入** | 架构文件引入 | 30 个架构文件、8 个 Tab 状态 Store、useSessionTabs、44 项新单测 | ✅ 已完成 (`32f022a`) | 69 文件 / 833 单测 100% 绿灯 |
 | **P6 Webview B 类合并** | 重分叉文件合并 | `ChatHeader.tsx`、`header.less`、`App.tsx` 接入 `useSessionTabs`、类型对齐 | ✅ 已完成 (`528c2de`) | `tsc --noEmit` 0 error，全量构建打包成功 |
-| **P7 多会话 UI 校验** | 标签栏交互 | 标签栏切换、新建、关闭、重命名、拖拽排序、右键菜单、溢出折叠 | 🔄 进行中 | P3/P5/P6 基础就绪，展开交互回归 |
-| **P8 功能矩阵回归** | 功能 Tab 隔离 | fork / revert / compact / 权限弹窗定点 / 附件分块 / 状态面板隔离 | ⏳ 待开始 | 遵循“只影响目标 tab”原则 |
+| **P7 多会话 UI 校验** | 标签栏交互 | 标签栏切换/新建/关闭/拖拽、右键菜单、溢出菜单、i18n 多语言对齐 | ✅ 已完成 (`1ad2079`) | 菜单禁用与分享隐藏符合 D8，全语言 key 齐备 |
+| **P8 功能矩阵回归** | 功能 Tab 隔离 | fork / revert / compact / 权限弹窗定点 / 附件分块 / 状态面板隔离 | 🔄 进行中 | 遵循“只影响目标 tab”原则，进行回归梳理 |
 | **P9 性能与发布验证** | 健壮性与包验证 | resync 重建、reload 恢复、core pin 依赖检查、干净打包 | ⏳ 待开始 | CI / GitHub Release 验收 |
 
 ---
@@ -35,7 +35,7 @@
   - `PromptRegistry`：权限申请与提问弹窗唯一定向。
   - `HostCommand`：协议 v2 出入站校验与 LRU 2048 `requestId` 去重，非法调用回传标准 `command.rejected`。
 - **宿主顶层装配落盘 (`da64da2`)**：
-  - `src/extension.ts`：初始化全局唯一的 `chatWindow` 单例实例。
+  - `src/extension.ts`：初始化全局唯一的 `chatWindow` 单例。
   - `src/host/webview/OpenCodeViewProvider.ts`：左/右侧边栏均注入 `chatWindow`，注册视图与可见性监听，统一由 `chatWindow.handleViewCommand` 处理 `host_command`，并触发 `resyncView`。
   - `src/host/tabs/TabManager.ts`：编辑器原生 Tab Panel 打开时注册为 `chatWindow` 视图，生命周期和消息通道无缝接入同一会话核心。
 - 宿主 22 项单测全绿。
@@ -63,6 +63,12 @@
   - `cd webview && pnpm run build`：生产打包通过，单文件 `dist/webview/index.html` 自动同步完成。
   - 宿主构建 `pnpm run compile`：0 error 绿灯。
 
+### P7：多会话 UI 与交互对齐 (Commit: `1ad2079`)
+- 按照 §7 规范全面补齐中英文 i18n key：`common.newSession`、`common.pendingApproval`、`common.moreSessions`、`chat.renameSession`、`chat.forkSession`、`chat.exportMarkdown`、`chat.closeOtherTabs`、`chat.closeTabsToRight`、`chat.closeTabsToLeft`、`chat.closeAllTabs`、`chat.tabBusy`、`chat.tabWaiting`、`chat.sendFailedNoTab`。
+- `SessionTabContextMenu.tsx` 中 `SHARE_MENU_ENABLED = false` 保持分享入口隐藏（符合 D8 决策）。
+- 菜单项文案统一使用 i18n 标准文案（如“重命名”、“导出为 Markdown”）。
+- 全量构建与全部 833 项单元测试维持 100% 绿灯。
+
 ---
 
 ## 3. 当前最新测试矩阵状态
@@ -76,13 +82,12 @@
 
 ---
 
-## 4. 下一步行动计划 (P7 UI 与 P8 功能矩阵回归)
+## 4. 下一步行动计划 (P8 功能矩阵回归与 P9 终验)
 
-1. **P7 标签栏交互矩阵验证**：
-   - 验证单视图与多视图场景下标签创建、关闭、重命名、拖拽排序、溢出展开菜单。
-   - 验证标签右键菜单项功能（关闭其他标签页、关闭左侧标签页、关闭右侧标签页、全部关闭、复制分享链接等）。
-2. **P8 功能矩阵回归与隔离性验证**：
-   - 会话 Fork、Revert、Unrevert、Compact 严格限制在目标 Tab。
-   - 权限申请与 Ask User Question 对话框通过 `promptHostId` 精确路由至前台活跃 View。
-   - 附件分块传输（96KB 分片）与模型选择 per-tab 隔离。
-3. **P9 终验与发布前准备**。
+1. **P8 功能矩阵回归验证**：
+   - 会话 Fork、Revert、Unrevert、Compact 动作严格限制在目标 Tab。
+   - 权限申请与提问弹窗唯一定向至 `promptHostId`（活跃 View）。
+   - 附件分块传输（96KB 分片）与状态面板三子页隔离。
+2. **P9 发布包纯净性与依赖验证**：
+   - 确保 `package.json` 指向 release tag（无本地 link 残留）。
+   - 验证全量编译输出产物（`dist/extension.js` 和 `dist/webview/index.html`）。
