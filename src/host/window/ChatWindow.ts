@@ -334,7 +334,7 @@ export class ChatWindow {
 			const record = this.registry.findBySession(sessionId);
 			return record?.getSession() ?? null;
 		});
-		sessionManager.setActiveSessionReplacer((sessionId) => this.replaceActiveTabSession(sessionId));
+		sessionManager.setActiveSessionReplacer((sessionId) => this.switchActiveTabSession(sessionId));
 	}
 
 	/** 该 tab 的输出投影：只有活跃 tab 的调用会被放行到所有视图。 */
@@ -499,8 +499,14 @@ export class ChatWindow {
 		sink.callJavaScript('historyLoadComplete');
 	}
 
-	/** 在活跃 tab 内换会话（新对话 / 切历史）。 */
-	private replaceActiveTabSession(sessionId: string | null): OpenCodeSession | null {
+	/**
+	 * 在活跃 tab 内换会话（新对话 / 切历史）。
+	 *
+	 * `sessionId === null` = 新对话；否则 = 绑到已有会话（`session.load` / 历史切换）。
+	 * 两种情况都先释放本 tab 的旧绑定：`TabRegistry.bind` 在「已绑到别的会话」时会
+	 * 抛错，不释放就只能回退成单会话语义（内容落到孤儿会话上，UI 什么都不显示）。
+	 */
+	switchActiveTabSession(sessionId: string | null): OpenCodeSession | null {
 		const tabId = this.registry.getActiveTabId();
 		if (!tabId) {
 			return null;
@@ -511,33 +517,52 @@ export class ChatWindow {
 		}
 
 		const previous = record.getSession();
+		const previousSessionId = record.getSessionIdString();
 		const cwd = record.getCwd() || this.fallbackWorkingDirectoryResolver() || '';
 
 		if (sessionId) {
+			if (previousSessionId && previousSessionId === sessionId) {
+				// 已经就绑在这个会话上：不重建（重建会丢掉正在进行的流与状态）。
+				return previous;
+			}
+			if (previousSessionId) {
+				this.dropBinding(tabId);
+			}
 			try {
 				const attached = this.sessionFactory.attachSession(tabId, sessionId, cwd);
-				previous?.dispose();
-				return attached.getSession();
+				const session = attached.getSession();
+				if (previous && previous !== session) {
+					previous.dispose();
+				}
+				return session;
 			} catch (err) {
 				PluginFileLogger.warn('ChatWindow', `attach session failed: ${String(err)}`);
 				return null;
 			}
 		}
 
-		// 新对话：先解除绑定（旧 sessionId 不能再反查到本 tab），再挂一个全新会话。
-		this.bindingUnsubs.get(tabId.value)?.();
-		this.bindingUnsubs.delete(tabId.value);
-		this.registry.release(tabId);
+		// 新对话：解除绑定后挂一个全新会话。
+		this.dropBinding(tabId);
 		const created = this.createSessionForTab(cwd, tabId);
 		if (!created) {
 			return null;
 		}
 		record.attachPendingSession(created, created.getAdapter(), created.getAdapter().getCoalescer());
-		previous?.dispose();
+		if (previous && previous !== created) {
+			previous.dispose();
+		}
 		return created;
 	}
 
-	registerView(viewId: string, channel: WebviewChannel): ViewRecord {		const record = this.viewRegistry.register(viewId, channel);
+	/** 释放本 tab 的会话绑定（保留 tab 本身）。 */
+	private dropBinding(tabId: TabId): void {
+		this.bindingUnsubs.get(tabId.value)?.();
+		this.bindingUnsubs.delete(tabId.value);
+		this.registry.release(tabId);
+	}
+
+	registerView(viewId: string, channel: WebviewChannel): ViewRecord {
+		const record = this.viewRegistry.register(viewId, channel);
 		this.resyncView(viewId, channel);
 		return record;
 	}

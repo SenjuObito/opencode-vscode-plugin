@@ -55,7 +55,9 @@ function makeSessionFactory(): { create: (sink: JsTarget) => OpenCodeSession; al
 		};
 		record.session = {
 			state,
+			getState: () => state,
 			getAdapter: () => adapter,
+			setCallback: () => {},
 			send: async (payload: SendMessagePayload) => {
 				record.sent.push(payload);
 			},
@@ -216,8 +218,49 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.ok(fns.includes('historyLoadComplete'), '回放结束要释放过渡态');
 	});
 
-	it('TabScopedSink 只放行活跃 tab，addErrorMessage 例外', () => {
-		let active = false;
+	it('切历史会话：先释放旧绑定再重绑，旧会话被释放', async () => {
+		const factory = makeSessionFactory();
+		const chatWindow = makeChatWindow(factory);
+		chatWindow.registerView('sidebar', new MockChannel());
+
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		await sendCommand(chatWindow, 'sidebar', 'session.send', tabA.value, { text: 'old' });
+		const oldSession = chatWindow.registry.get(tabA)!.getSession()!;
+		oldSession.state.setSessionId('ses_old');
+
+		const attached = chatWindow.switchActiveTabSession('ses_new');
+		assert.ok(attached, '必须能绑到新会话（已绑定时不释放会抛 already bound）');
+		assert.notStrictEqual(attached, oldSession);
+		assert.strictEqual(chatWindow.registry.get(tabA)!.getSessionIdString(), 'ses_new');
+		assert.strictEqual(chatWindow.registry.findBySession('ses_old'), null, '旧会话不能再反查到本 tab');
+		assert.strictEqual(
+			factory.all.find((s) => s.session === oldSession)!.disposed,
+			1,
+			'旧会话必须被释放',
+		);
+
+		// 重复切到同一个会话不重建（重建会丢正在进行的流）
+		const again = chatWindow.switchActiveTabSession('ses_new');
+		assert.strictEqual(again, attached);
+	});
+
+	it('新对话在同一个 tab 内重置绑定', async () => {
+		const factory = makeSessionFactory();
+		const chatWindow = makeChatWindow(factory);
+		chatWindow.registerView('sidebar', new MockChannel());
+
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		await sendCommand(chatWindow, 'sidebar', 'session.send', tabA.value, { text: 'old' });
+		chatWindow.registry.get(tabA)!.getSession()!.state.setSessionId('ses_old');
+
+		const fresh = chatWindow.switchActiveTabSession(null);
+		assert.ok(fresh);
+		assert.strictEqual(chatWindow.registry.size(), 1, '新对话不能新增 tab');
+		assert.strictEqual(chatWindow.registry.get(tabA)!.getSessionIdString(), null);
+		assert.strictEqual(chatWindow.registry.findBySession('ses_old'), null);
+	});
+
+	it('TabScopedSink 只放行活跃 tab，addErrorMessage 例外', () => {		let active = false;
 		const forwarded: string[] = [];
 		const sink = new TabScopedSink('tab-a', () => active, {
 			callJavaScript: (fn) => forwarded.push(fn),
