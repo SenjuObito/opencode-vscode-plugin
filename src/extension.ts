@@ -18,6 +18,7 @@ import { WebviewBroadcaster } from './host/router/WebviewBroadcaster.js';
 import { TabManager } from './host/tabs/TabManager.js';
 import { EditorContextTracker } from './host/context/EditorContextTracker.js';
 import { logDiagnostic, logError, setDiagnosticVerbose } from './host/util/DiagnosticLogger.js';
+import { ChatWindow } from './host/window/ChatWindow.js';
 
 export function activate(context: vscode.ExtensionContext) {
 	// ── 0a. 生产包 console 降级：只保留 error 级 ─────────────────────────────
@@ -140,19 +141,28 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// ── 6. 多标签页管理（openChat → 新原生编辑器 tab + 独立会话）───────────
+	// ── 5b. 全局唯一 ChatWindow（单实例多视图单例）─────────────────────────
+	const chatWindow = new ChatWindow({
+		settings,
+		daemon,
+		fileOps,
+		fallbackWorkingDirectoryResolver,
+	});
+
+	// ── 6. 多标签页管理（openChat → 新原生编辑器 tab 作为 View 注册）──────────
 	const tabManager = new TabManager({
 		extensionUri: context.extensionUri,
 		settings,
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
+		chatWindow,
 		editorContextTracker,
 		onLog: (message) => logDiagnostic(message),
 	});
 	context.subscriptions.push({ dispose: () => tabManager.disposeAll() });
 
-	// ── 7. 双侧边栏 provider（左右完全独立会话实例，各自处理对话与状态）──────
+	// ── 7. 双侧边栏 provider（单实例多视图镜像，共享 TabRegistry 与会话）─────
 	const leftProvider = new OpenCodeViewProvider({
 		extensionUri: context.extensionUri,
 		host: 'left',
@@ -160,6 +170,7 @@ export function activate(context: vscode.ExtensionContext) {
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
+		chatWindow,
 		editorContextTracker,
 		tabManager,
 		getUiPreferences: () => settings.getUiPreferences(),
@@ -171,6 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
+		chatWindow,
 		editorContextTracker,
 		tabManager,
 		getUiPreferences: () => settings.getUiPreferences(),

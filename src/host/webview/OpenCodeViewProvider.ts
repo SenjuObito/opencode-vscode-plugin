@@ -20,6 +20,7 @@ import type { TabManager } from '../tabs/TabManager';
 import { createChatInstance, type ChatInstance } from '../session/ChatInstance';
 import { TabHandler } from '../handlers/TabHandler';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
+import type { ChatWindow } from '../window/ChatWindow';
 
 /**
  * 可接收广播的 webview 宿主：侧边栏视图（WebviewView）或编辑器分栏面板
@@ -78,6 +79,7 @@ export interface OpenCodeViewProviderOptions {
 	readonly daemon: OpenCodeDaemonBridge;
 	readonly fileOps: FileOps;
 	readonly fallbackWorkingDirectoryResolver: () => string | null;
+	readonly chatWindow: ChatWindow;
 	readonly editorContextTracker?: EditorContextTracker;
 	readonly tabManager?: TabManager;
 	readonly getUiPreferences?: () => UiPreferences;
@@ -130,6 +132,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 	private readonly host: ViewHost;
 	private readonly channel: ProviderWebviewChannel;
 	private readonly instance: ChatInstance;
+	private readonly chatWindow: ChatWindow;
 	private readonly onReady?: (host: ViewHost) => void;
 	private readonly getUiPreferences: () => UiPreferences;
 	private view: vscode.WebviewView | null = null;
@@ -139,6 +142,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 	constructor(options: OpenCodeViewProviderOptions) {
 		this.extensionUri = options.extensionUri;
 		this.host = options.host;
+		this.chatWindow = options.chatWindow;
 		this.channel = new ProviderWebviewChannel();
 		this.unregisterBroadcaster = WebviewBroadcaster.register(this.channel);
 		this.getUiPreferences = options.getUiPreferences
@@ -184,11 +188,20 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		);
 
 		this.channel.attach(webviewView);
+		this.chatWindow.registerView(this.host, this.channel);
 
-		webviewView.webview.onDidReceiveMessage((message: unknown) => {
+		webviewView.onDidChangeVisibility(() => {
+			this.chatWindow.viewRegistry.setVisible(this.host, webviewView.visible);
+		});
+
+		webviewView.webview.onDidReceiveMessage(async (message: unknown) => {
 			const bridge = message as BridgeMessage | null;
 			if (!bridge || bridge.type !== 'bridge' || typeof bridge.payload !== 'string') {
-				logVerbose(`[OpenCodeViewProvider:${this.host}] non-bridge message: type=${typeof bridge?.type}`);
+				if (message && typeof message === 'object') {
+					await this.chatWindow.handleViewCommand(this.host, message);
+				} else {
+					logVerbose(`[OpenCodeViewProvider:${this.host}] non-bridge message: type=${typeof bridge?.type}`);
+				}
 				return;
 			}
 			const { type, content } = parseWirePayload(bridge.payload);
@@ -197,6 +210,15 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 			}
 			if (type === 'cardDebug') {
 				logDiagnostic(`[Webview] ${content}`, 'Webview');
+				return;
+			}
+			if (type === 'host_command') {
+				try {
+					const commandObj = JSON.parse(content);
+					await this.chatWindow.handleViewCommand(this.host, commandObj);
+				} catch (e) {
+					logDiagnostic(`[OpenCodeViewProvider:${this.host}] Failed to parse host_command: ${content}`, 'error');
+				}
 				return;
 			}
 			logVerbose(`[OpenCodeViewProvider:${this.host}] dispatch type=${type} content=${content.substring(0, 200)}`);
@@ -211,6 +233,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	dispose(): void {
+		this.chatWindow.unregisterView(this.host);
 		this.unregisterBroadcaster();
 		this.channel.dispose();
 		this.instance.dispose();

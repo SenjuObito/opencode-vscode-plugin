@@ -20,6 +20,7 @@ import { BridgeMessage } from '../types';
 import { buildWebviewHtml, parseWirePayload, readWebviewHtml } from '../webview/OpenCodeViewProvider';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logDiagnostic, logVerbose } from '../util/DiagnosticLogger';
+import type { ChatWindow } from '../window/ChatWindow';
 
 const TAB_VIEW_TYPE = 'opencode-buddy.tab';
 const DEFAULT_TAB_TITLE = 'OpenCode Buddy';
@@ -32,6 +33,7 @@ export interface TabManagerOptions {
 	readonly daemon: OpenCodeDaemonBridge;
 	readonly fileOps: ChatInstanceDeps['fileOps'];
 	readonly fallbackWorkingDirectoryResolver: () => string | null;
+	readonly chatWindow: ChatWindow;
 	readonly editorContextTracker?: EditorContextTracker;
 	readonly onLog?: (message: string) => void;
 }
@@ -102,6 +104,7 @@ export class TabManager {
 		if (!tab) {
 			return;
 		}
+		this.options.chatWindow.unregisterView(tabId);
 		tab.unregisterBroadcaster();
 		tab.channel.dispose();
 		tab.instance.dispose();
@@ -137,6 +140,13 @@ export class TabManager {
 		const channel = new SingleWebviewChannel(panel.webview);
 		const unregisterBroadcaster = WebviewBroadcaster.register(channel);
 
+		this.options.chatWindow.registerView(tabId, channel);
+
+		panel.onDidChangeViewState((e) => {
+			this.options.chatWindow.viewRegistry.setVisible(tabId, e.webviewPanel.visible);
+			this.options.chatWindow.viewRegistry.setFocused(tabId, e.webviewPanel.active);
+		});
+
 		const instance = createChatInstance({
 			channel,
 			settings,
@@ -155,10 +165,14 @@ export class TabManager {
 			settings.getUiPreferences(),
 		);
 
-		panel.webview.onDidReceiveMessage((message: unknown) => {
+		panel.webview.onDidReceiveMessage(async (message: unknown) => {
 			const bridge = message as BridgeMessage | null;
 			if (!bridge || bridge.type !== 'bridge' || typeof bridge.payload !== 'string') {
-				logVerbose(`[TabManager] non-bridge message: type=${typeof bridge?.type}`);
+				if (message && typeof message === 'object') {
+					await this.options.chatWindow.handleViewCommand(tabId, message);
+				} else {
+					logVerbose(`[TabManager] non-bridge message: type=${typeof bridge?.type}`);
+				}
 				return;
 			}
 			const { type, content } = parseWirePayload(bridge.payload);
@@ -167,6 +181,15 @@ export class TabManager {
 			}
 			if (type === 'cardDebug') {
 				logDiagnostic(`[Webview] ${content}`, 'Webview');
+				return;
+			}
+			if (type === 'host_command') {
+				try {
+					const commandObj = JSON.parse(content);
+					await this.options.chatWindow.handleViewCommand(tabId, commandObj);
+				} catch (e) {
+					logDiagnostic(`[TabManager] Failed to parse host_command: ${content}`, 'error');
+				}
 				return;
 			}
 			logVerbose(`[TabManager] dispatch type=${type} content=${content.substring(0, 200)}`);
