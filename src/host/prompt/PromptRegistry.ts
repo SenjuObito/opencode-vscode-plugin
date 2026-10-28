@@ -227,4 +227,26 @@ export class PromptRegistry {
 	pendingCount(): number {
 		return this.permissions.size + this.askFutures.size + this.planFutures.size;
 	}
+
+	/**
+	 * 忘掉一个已答复/已失效的 prompt。
+	 *
+	 * 不清理的话 tab 映射会一直留着：关 tab 时 `rejectForTab` 会把早就答过的
+	 * requestId 也当成「未决」返回，宿主再去 deny 一个不存在的请求。
+	 */
+	forget(requestId: string): void {
+		if (!requestId) {
+			return;
+		}
+		this.permissions.delete(requestId);
+		this.permissionSessions.delete(requestId);
+		this.permissionTabs.delete(requestId);
+		this.askFutures.delete(requestId);
+		this.askSessions.delete(requestId);
+		this.askTabs.delete(requestId);
+		this.questions.delete(requestId);
+		this.planFutures.delete(requestId);
+		this.planSessions.delete(requestId);
+		this.planTabs.delete(requestId);
+	}
 }

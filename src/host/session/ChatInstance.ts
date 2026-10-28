@@ -13,6 +13,7 @@ import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { OpenCodeSession, TurnCompletedInfo } from './OpenCodeSession';
 import { SessionManager } from './SessionManager';
 import type { JsTarget } from './SessionCallbackAdapter';
+import type { PromptRegistry } from '../prompt/PromptRegistry';
 import { NotificationService } from '../notifications/NotificationService';
 
 /**
@@ -89,6 +90,16 @@ export interface ChatInstance {
 	loadSessionById(sessionId: string): void;
 	/** 重新向 daemon 枚举 agent 目录并推送（v2 `agents.list`）。 */
 	refreshAgents(): void;
+	/**
+	 * 接入窗口级 PromptRegistry（未决弹窗的 tab 归属 + 关 tab 时拒绝）。
+	 * 会话层先建、ChatWindow 后建，所以只能后注入。
+	 */
+	attachPromptRegistry(
+		registry: PromptRegistry,
+		resolveTabId: (sessionId: string | null) => string | null,
+	): void;
+	/** 关 tab 时拒绝这些未决 prompt（deny / rejectQuestion）。 */
+	rejectPrompts(requestIds: string[]): void;
 	dispose(): void;
 }
 
@@ -166,6 +177,10 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		createSession: (viewSink) => sessionManager.createSessionInstance({ viewSink }),
 		loadSessionById: (sessionId) => historyHandler.loadSessionById(sessionId),
 		refreshAgents: () => agentHandler.refresh(),
+		attachPromptRegistry: (registry, resolveTabId) => {
+			permissionHandler.attachPromptRegistry(registry, resolveTabId);
+		},
+		rejectPrompts: (requestIds) => permissionHandler.rejectPrompts(requestIds),
 		dispose: () => sessionManager.dispose(),
 	};
 }

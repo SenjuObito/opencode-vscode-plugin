@@ -31,6 +31,11 @@ export interface PermissionRequest {
 	inputs?: Record<string, unknown>;
 	decision?: 'allow' | 'deny';
 	sessionId?: string;
+	/**
+	 * 发起请求的 tab。由 `SessionCallbackAdapter` 补上——它是唯一同时知道
+	 * 「这条流属于哪个 tab、哪个 session」的地方，靠活跃会话去猜会错归属。
+	 */
+	tabId?: string;
 	/** opencode 侧请求 id（permission/question 事件 `data.id`），用于回传。 */
 	requestId?: string;
 	/** 对应会话的工作区目录（用于服务端多实例寻址）。 */

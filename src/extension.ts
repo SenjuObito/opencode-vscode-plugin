@@ -172,9 +172,16 @@ export function activate(context: vscode.ExtensionContext) {
 			? join(context.globalStorageUri.fsPath, 'attachments')
 			: null,
 		requestAgents: () => instance.refreshAgents(),
+		// 关 tab 时把它的未决权限/提问拒掉，别让服务端一直等。
+		onPromptsRejected: (requestIds) => instance.rejectPrompts(requestIds),
 	});
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
 	chatWindow.bindSessionManager(instance.sessionManager);
+	// 未决弹窗的 tab 归属：关 tab 时按 tab 拒绝（会话层先建，只能后注入）。
+	instance.attachPromptRegistry(
+		chatWindow.promptRegistry,
+		(sessionId) => chatWindow.resolveTabIdForSession(sessionId),
+	);
 
 	// ── 6. 多标签页管理（openChat → 新原生编辑器 tab 作为 View 注册）──────────
 	const tabManager = new TabManager({

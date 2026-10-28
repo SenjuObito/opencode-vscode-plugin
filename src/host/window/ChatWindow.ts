@@ -48,6 +48,11 @@ export interface ChatWindowOptions {
 	attachmentsRoot?: string | null;
 	/** 重新枚举 agent 目录（`agents.list`）：由 ChatInstance 接到 AgentHandler。 */
 	requestAgents?: () => void;
+	/**
+	 * 关 tab 时被作废的未决 prompt id。
+	 * 宿主必须把它们 deny / rejectQuestion 掉，否则服务端一直在等。
+	 */
+	onPromptsRejected?: (requestIds: string[]) => void;
 }
 
 /**
@@ -205,7 +210,14 @@ export class ChatWindow {
 		// tab.close
 		this.commandRouter.register('tab.close', (command) => {
 			const tabId = command.tabId;
-			this.promptRegistry.rejectForTab(tabId.value);
+			const rejectedPrompts = this.promptRegistry.rejectForTab(tabId.value);
+			if (rejectedPrompts.length > 0) {
+				PluginFileLogger.info(
+					'ChatWindow',
+					`tab ${tabId.value} closed: rejecting ${rejectedPrompts.length} pending prompt(s)`,
+				);
+				this.options.onPromptsRejected?.(rejectedPrompts);
+			}
 			this.bindingUnsubs.get(tabId.value)?.();
 			this.bindingUnsubs.delete(tabId.value);
 			this.sinks.delete(tabId.value);
@@ -416,6 +428,20 @@ export class ChatWindow {
 			return record?.getSession() ?? null;
 		});
 		sessionManager.setActiveSessionReplacer((sessionId) => this.switchActiveTabSession(sessionId));
+	}
+
+	/**
+	 * sessionId → tabId（未决弹窗归属用）。
+	 * 会话还没绑定时退回活跃 tab —— 首次发送创建的会话就是这样。
+	 */
+	resolveTabIdForSession(sessionId: string | null): string | null {
+		if (sessionId) {
+			const owner = this.registry.findBySession(sessionId);
+			if (owner) {
+				return owner.getTabId().value;
+			}
+		}
+		return this.registry.getActiveTabId()?.value ?? null;
 	}
 
 	/** 该 tab 的输出投影：只有活跃 tab 的调用会被放行到所有视图。 */

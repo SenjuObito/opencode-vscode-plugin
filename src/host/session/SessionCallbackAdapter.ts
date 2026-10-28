@@ -191,7 +191,13 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
-		this.permissionHandler?.(request);
+		// 归属由 adapter 盖章：请求本身不带 tab/session，宿主去猜就会把后台 tab
+		// 的弹窗算到当前活跃会话头上。
+		this.permissionHandler?.({
+			...request,
+			sessionId: request.sessionId ?? this.sessionId ?? undefined,
+			tabId: request.tabId ?? this.tabId ?? undefined,
+		});
 	}
 
 	onPermissionClosed(kind: 'question' | 'permission', content: string): void {

@@ -9,6 +9,7 @@ import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import type { PermissionRequest } from '../session/types';
 import { NotificationService } from '../notifications/NotificationService';
+import type { PromptRegistry } from '../prompt/PromptRegistry';
 import { logDiagnostic } from '../util/DiagnosticLogger';
 
 const SUPPORTED_TYPES = ['permission_decision', 'ask_user_question_response', 'ask_user_question_reject', 'plan_approval_response'];
@@ -31,6 +32,15 @@ export class PermissionHandler extends BaseMessageHandler {
 	private readonly pendingPermissions = new Map<string, PendingPermission>();
 	private readonly pendingQuestions = new Map<string, PendingQuestion>();
 	private readonly notifications: NotificationService;
+	/**
+	 * 未决 prompt 的 tab 归属索引（由 ChatWindow 注入）。
+	 *
+	 * 关 tab 时宿主必须主动 deny/reject 该 tab 的未决请求，否则服务端会一直
+	 * 等一个再也不会有人回答的 prompt，后续回合全卡在那里。
+	 */
+	private prompts: PromptRegistry | null = null;
+	/** sessionId → tabId（多 tab 下弹窗归属）。 */
+	private resolveTabId: ((sessionId: string | null) => string | null) | null = null;
 
 	private debugLog(msg: string): void {
 		const line = `${new Date().toISOString()} [PermissionHandler] ${msg}\n`;
@@ -46,6 +56,25 @@ export class PermissionHandler extends BaseMessageHandler {
 
 	getSupportedTypes(): string[] {
 		return SUPPORTED_TYPES;
+	}
+
+	/**
+	 * 注入未决 prompt 的归属索引（多 tab）。
+	 *
+	 * @param registry    ChatWindow 的 PromptRegistry（关 tab 时按 tab 拒绝）
+	 * @param resolveTabId sessionId → tabId；会话还没绑定时退回活跃 tab
+	 */
+	attachPromptRegistry(
+		registry: PromptRegistry | null,
+		resolveTabId: ((sessionId: string | null) => string | null) | null,
+	): void {
+		this.prompts = registry;
+		this.resolveTabId = resolveTabId;
+	}
+
+	/** 该会话所属 tab（解析不出来时返回 null，调用方按「不登记」处理）。 */
+	private tabIdForSession(sessionId: string | null): string | null {
+		return this.resolveTabId ? this.resolveTabId(sessionId) : null;
 	}
 
 	handle(type: string, content: string): boolean {
@@ -86,17 +115,22 @@ export class PermissionHandler extends BaseMessageHandler {
 			?? this.context.getFallbackWorkingDirectory()
 			?? null;
 		this.debugLog(`onPermissionRequested storing channelId=${channelId} sessionId=${sessionId} permissionId=${permissionId} directory=${directory}`);
+		const tabId = request.tabId ?? this.tabIdForSession(sessionId);
 		this.pendingPermissions.set(channelId, {
 			sessionId,
 			permissionId,
 			toolName: request.toolName,
 			directory,
 		});
+		if (tabId) {
+			this.prompts?.rememberPermissionTab(channelId, tabId);
+		}
 		this.callJavaScript(
 			'showPermissionDialog',
 			JSON.stringify({
 				channelId,
 				sessionId,
+				tabId,
 				toolName: request.toolName ?? request.tool ?? '',
 				description: request.description ?? '',
 				inputs: request.inputs ?? { command: request.description ?? '' },
@@ -114,14 +148,21 @@ export class PermissionHandler extends BaseMessageHandler {
 			?? this.context.getFallbackWorkingDirectory()
 			?? null;
 		this.debugLog(`onQuestionRequested requestId=${requestId} sessionId=${request.sessionId} toolName="${request.toolName}" toolNameType=${typeof request.toolName} questions=${request.questions?.length ?? 0} directory=${directory}`);
+		const questionSessionId = request.sessionId ?? this.context.getSession()?.state.getSessionId() ?? null;
+		const tabId = request.tabId ?? this.tabIdForSession(questionSessionId);
 		this.pendingQuestions.set(requestId, {
-			sessionId: request.sessionId ?? null,
+			sessionId: questionSessionId,
 			questions: request.questions ?? [],
 			toolName: request.tool ?? request.toolName ?? '',
 			directory,
 		});
+		if (tabId) {
+			this.prompts?.rememberQuestionTab(requestId, tabId);
+		}
 		const payload = JSON.stringify({
 			requestId,
+			tabId,
+			sessionId: questionSessionId,
 			// normalizeQuestionRequest 返回字段名为 tool，直接回传即可；
 			// toolName 留空会让前端只能走模糊 name 匹配，导致问题卡片错位。
 			toolName: request.tool ?? request.toolName,
@@ -151,6 +192,7 @@ export class PermissionHandler extends BaseMessageHandler {
 				if (requestId) {
 					logDiagnostic(`[PermissionHandler] onPromptClosed deleting pendingQuestions[${requestId}], had=${this.pendingQuestions.has(requestId)}`);
 					this.pendingQuestions.delete(requestId);
+					this.prompts?.forget(requestId);
 					this.callJavaScript('forceCloseAskUserQuestionDialog', JSON.stringify(requestId));
 				}
 			} else {
@@ -171,6 +213,7 @@ export class PermissionHandler extends BaseMessageHandler {
 					if (matchedChannelId) {
 						logDiagnostic(`[PermissionHandler] onPromptClosed deleting pendingPermissions[${matchedChannelId}], had=true`);
 						this.pendingPermissions.delete(matchedChannelId);
+						this.prompts?.forget(matchedChannelId);
 						this.callJavaScript('forceClosePermissionDialog', JSON.stringify(matchedChannelId));
 					}
 				}
@@ -180,8 +223,56 @@ export class PermissionHandler extends BaseMessageHandler {
 		}
 	}
 
-	clearPendingRequests(): void {
-		this.pendingPermissions.clear();
+	/**
+	 * 关 tab 时主动拒绝该 tab 的未决 prompt。
+	 *
+	 * 只把对话框关掉是不够的：服务端还在等一个永远不会有人回答的请求，
+	 * 那个会话的后续回合会一直卡住。所以这里对每条未决项都回一次
+	 * deny / rejectQuestion。
+	 */
+	rejectPrompts(requestIds: string[]): void {
+		if (!requestIds || requestIds.length === 0) {
+			return;
+		}
+		const daemon = this.context.getDaemon();
+
+		for (const requestId of requestIds) {
+			const permission = this.pendingPermissions.get(requestId);
+			if (permission) {
+				this.pendingPermissions.delete(requestId);
+				this.prompts?.forget(requestId);
+				this.callJavaScript('forceClosePermissionDialog', JSON.stringify(requestId));
+				logDiagnostic(`[PermissionHandler] tab closed: denying permission ${requestId}`);
+				if (daemon) {
+					void daemon.request('opencode.replyPermission', {
+						sessionId: permission.sessionId ?? undefined,
+						permissionID: permission.permissionId,
+						reply: 'deny',
+						rejectMessage: '会话已关闭',
+						directory: permission.directory ?? undefined,
+					}, { onLine: () => {}, onError: () => {}, onComplete: () => {} });
+				}
+				continue;
+			}
+
+			const question = this.pendingQuestions.get(requestId);
+			if (question) {
+				this.pendingQuestions.delete(requestId);
+				this.prompts?.forget(requestId);
+				this.callJavaScript('forceCloseAskUserQuestionDialog', JSON.stringify(requestId));
+				logDiagnostic(`[PermissionHandler] tab closed: rejecting question ${requestId}`);
+				if (daemon) {
+					void daemon.request('opencode.rejectQuestion', {
+						sessionId: question.sessionId ?? undefined,
+						questionID: requestId,
+						directory: question.directory ?? undefined,
+					}, { onLine: () => {}, onError: () => {}, onComplete: () => {} });
+				}
+			}
+		}
+	}
+
+	clearPendingRequests(): void {		this.pendingPermissions.clear();
 		this.pendingQuestions.clear();
 		this.forceCloseFrontendDialog('forceClosePermissionDialog');
 		this.forceCloseFrontendDialog('forceCloseAskUserQuestionDialog');
@@ -203,6 +294,7 @@ export class PermissionHandler extends BaseMessageHandler {
 				return;
 			}
 			this.pendingPermissions.delete(channelId);
+			this.prompts?.forget(channelId);
 
 			const daemon = this.context.getDaemon();
 			if (!daemon) {
@@ -247,6 +339,7 @@ export class PermissionHandler extends BaseMessageHandler {
 			return;
 		}
 		this.pendingQuestions.delete(requestId);
+		this.prompts?.forget(requestId);
 		// Emit complete Q&A data to webview so it can render the summary card
 		// without needing to match tool_use_id across messages.
 		const onQAData = {
@@ -299,6 +392,7 @@ export class PermissionHandler extends BaseMessageHandler {
 				return;
 			}
 			this.pendingQuestions.delete(requestId);
+			this.prompts?.forget(requestId);
 			const daemon = this.context.getDaemon();
 			if (!daemon) {
 				return;
