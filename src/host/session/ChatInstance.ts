@@ -85,7 +85,10 @@ export interface ChatInstance {
 	 * 依赖（daemon / 权限回调 / 回合完成回调 / 编辑器选区解析）全部来自本实例，
 	 * 所以 tab 会话与 legacy 单会话共享同一套宿主依赖。
 	 */
-	createSession(viewSink?: JsTarget): OpenCodeSession;
+	createSession(
+		viewSink?: JsTarget,
+		autoOpenFileEnabledResolver?: () => boolean | null | undefined,
+	): OpenCodeSession;
 	/** 把某个历史会话加载进活跃 tab（v2 `session.load`）。 */
 	loadSessionById(sessionId: string): void;
 	/** 重新向 daemon 枚举 agent 目录并推送（v2 `agents.list`）。 */
@@ -187,7 +190,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		historyHandler,
 		permissionHandler,
 		fontConfigHandler,
-		createSession: (viewSink) => sessionManager.createSessionInstance({ viewSink }),
+		createSession: (viewSink, autoOpenFileEnabledResolver) =>
+			sessionManager.createSessionInstance({ viewSink, autoOpenFileEnabledResolver }),
 		loadSessionById: (sessionId) => historyHandler.loadSessionById(sessionId),
 		refreshAgents: () => agentHandler.refresh(),
 		attachPromptRegistry: (registry, resolveTabId) => {

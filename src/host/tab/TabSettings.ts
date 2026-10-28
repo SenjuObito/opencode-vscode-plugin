@@ -10,7 +10,8 @@ export class TabSettings {
 	private permissionMode = 'default';
 	private reasoningEffort = 'default';
 	private contextEnabled = true;
-	private autoOpenFileEnabled = false;
+	/** 未设置（undefined）= 跟随全局项目设置；显式 true/false = 本 tab 自己决定。 */
+	private autoOpenFileEnabled: boolean | undefined = undefined;
 	private title = '';
 	private titleSource: TitleSource = 'AUTO';
 	private draft = '';
@@ -71,8 +72,13 @@ export class TabSettings {
 		this.contextEnabled = enabled;
 	}
 
-	isAutoOpenFileEnabled(): boolean {
+	/** 本 tab 的显式取值；undefined 表示跟随全局项目设置。 */
+	getAutoOpenFileOverride(): boolean | undefined {
 		return this.autoOpenFileEnabled;
+	}
+
+	isAutoOpenFileEnabled(): boolean {
+		return this.autoOpenFileEnabled ?? false;
 	}
 
 	setAutoOpenFileEnabled(enabled: boolean): void {

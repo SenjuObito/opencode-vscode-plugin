@@ -55,6 +55,13 @@ export interface OpenCodeSessionOptions {
 	 * 缺省仍退回 `context.callJavaScript`（单会话/测试路径）。
 	 */
 	viewSink?: JsTarget;
+	/**
+	 * 本 tab 的「自动打开文件」开关（§10.12）。
+	 *
+	 * 返回 null/undefined = 本 tab 没有单独设置，继续用全局项目设置；
+	 * 返回 true/false = 本 tab 自己的决定（每个 tab 可以不同）。
+	 */
+	autoOpenFileEnabledResolver?: () => boolean | null | undefined;
 }
 
 export type TurnCompletedStatus = 'completed' | 'aborted' | 'error';
@@ -100,6 +107,7 @@ export class OpenCodeSession {
 		this.permissionClosedHandler = options.permissionClosedHandler;
 		this.onTurnCompleted = options.onTurnCompleted;
 		this.editorSelectionResolver = options.editorSelectionResolver;
+		this.autoOpenFileEnabledResolver = options.autoOpenFileEnabledResolver;
 		this.view = options.viewSink ?? {
 			callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
 		};
@@ -137,6 +145,8 @@ export class OpenCodeSession {
 		return this.adapter;
 	}
 
+	private readonly autoOpenFileEnabledResolver?: () => boolean | null | undefined;
+
 	private callView(functionName: string, ...args: string[]): void {
 		this.view.callJavaScript(functionName, ...args);
 	}
@@ -154,8 +164,12 @@ export class OpenCodeSession {
 		const slashCommand = parseSlashCommand(text);
 
 		const injectProjectPath = this.context.getSettingsService().getPrimaryWorkspaceRoot();
-		const autoOpenFileOn = !injectProjectPath
-			|| this.context.getSettingsService().getAutoOpenFileEnabled(injectProjectPath);
+		// per-tab 优先：tab 自己设过就用 tab 的，没设过才用全局项目设置。
+		const tabAutoOpenFile = this.autoOpenFileEnabledResolver?.();
+		const autoOpenFileOn = tabAutoOpenFile !== undefined && tabAutoOpenFile !== null
+			? tabAutoOpenFile
+			: (!injectProjectPath
+				|| this.context.getSettingsService().getAutoOpenFileEnabled(injectProjectPath));
 		const selInfo = this.editorSelectionResolver?.() ?? null;
 
 		let messageToSend = text;

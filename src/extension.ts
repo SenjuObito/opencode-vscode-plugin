@@ -161,7 +161,8 @@ export function activate(context: vscode.ExtensionContext) {
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
-		createSession: (viewSink) => instance.createSession(viewSink),
+		createSession: (viewSink, autoOpenFileEnabledResolver) =>
+			instance.createSession(viewSink, autoOpenFileEnabledResolver),
 		configureSession: (session) => seedSessionFromPersistedSelection(settings, session),
 		onSessionBound: (tabId, sessionId) => {
 			logDiagnostic(`[Session] tab=${tabId} bound to session=${sessionId}`);

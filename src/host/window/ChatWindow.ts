@@ -36,7 +36,10 @@ export interface ChatWindowOptions {
 	 * 为一个 tab 创建会话（输出经 `viewSink` 归属到该 tab）。
 	 * 缺省不创建会话——单会话/单测路径保持原样，`TabRecord.getSession()` 为 null。
 	 */
-	createSession?: (viewSink: JsTarget) => OpenCodeSession | null;
+	createSession?: (
+		viewSink: JsTarget,
+		autoOpenFileEnabledResolver?: () => boolean | null | undefined,
+	) => OpenCodeSession | null;
 	/** 会话新建后的初始化（从持久化设置回灌 model / mode / effort）。 */
 	configureSession?: (session: OpenCodeSession) => void;
 	/** 服务端分配了会话 id、且已绑定到 tab 时回调（历史索引 / 标题等）。 */
@@ -526,7 +529,12 @@ export class ChatWindow {
 		if (!create) {
 			return null;
 		}
-		const session = create(this.sinkFor(tabId));
+		const session = create(this.sinkFor(tabId), () => {
+			// per-tab 的「自动打开文件」开关（§10.12）：tab 自己设过就用它的，
+			// 没设过（undefined）才回落到全局项目设置。
+			const record = this.registry.get(tabId);
+			return record ? record.getSettings().getAutoOpenFileOverride() : undefined;
+		});
 		if (!session) {
 			return null;
 		}
