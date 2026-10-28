@@ -1,6 +1,6 @@
 # opencode-idea-gui → opencode-vscode-plugin 架构同步技术方案
 
-> 版本：2.0（修订版）
+> 版本：2.1（修订版）
 > 日期：2026-10-28
 > 状态：实施蓝本
 > 源仓库：`opencode-idea-gui`（HEAD `4a5b42a`，release 0.3.0）
@@ -25,6 +25,7 @@
 | 6 | "contexts 降为纯 UI"、"运行态全 per-tab store"、"不做快照交换" | 现状：`MessagesContext` 已是 `TabStore` 的投影；流式运行态是 `useStreamingMessages` 里的 per-tab map；**状态标量（loading/streaming/usage/revert…）仍是 React state + 切 tab 时 `TabStatusStore` 快照交换** | 多视图下快照交换会分叉，必须改成 TabStore 权威（本仓库必要偏离，见 §5.4） |
 | 7 | "删除 `applyBackendTabState`" | `tab.state → applyBackendTabState` 仍在目录中，用于恢复该 tab 的 model/mode/reasoning | 删了会导致刷新后模型/模式丢 |
 | 8 | `revision` 快照版本 | 实际是 `sequence`（coalescer 单调号）+ `baseIndex`（窗口起点）+ `epoch`（tab 绑定代际）+ per-session barrier | 幂等/乱序判定实现错误 |
+| 9 | 只覆盖架构与部分功能 | 用户可见功能仍需逐项迁移：启动页、图标、空态背景、模式/模型/推理、权限/问题弹窗、状态面板、附件、`@`、文件上下文、bash、opencode 命令 | 已补 §10（14 项），P8 按该章验收 |
 
 ---
 
@@ -43,7 +44,7 @@
 | 分类 | 数量（源码 / 测试） | 处置 |
 |---|---|---|
 | 两仓内容完全一致 | 354（276 / 78） | 不动 |
-| 同名但已分叉 | 225（159 / 66） | 仅 25 个重分叉文件需三方合并，其余按原样保留（§10） |
+| 同名但已分叉 | 225（159 / 66） | 仅 25 个重分叉文件需三方合并，其余按原样保留（§11） |
 | idea 独有 | 73（36 / 37） | 30 个架构文件照搬；6 个 IDEA-only 不搬 |
 | vscode 独有 | 6（5 / 1） | 保留 3（`wxq.png`、`useHistoryLoader.test.ts`、`types/protocol.ts`）、删除 3（`.DS_Store`、`sessionTransition.ts`、`skipNewSessionConfirm.ts`） |
 
@@ -66,6 +67,8 @@
 | 权限/提问/计划 | `PromptBroker` + 三类 future + tab/session 归属 | 单 handler 内 Map，借当前会话 | **移植** |
 
 > **判断规则**：只搬"多会话身份 + 语义事件 + per-tab 状态 + v1/v2 引擎链路"。凡属于 IntelliJ 平台能力或 idea 独有产品功能，一律不搬；凡 VS Code 已有更完整实现的（daemon 失败分类），以本仓库为准。
+>
+> 每个功能域的具体落点、验收与陷阱见 **§10**；实施状态见 `docs/migration-progress.md`。
 
 ---
 
@@ -718,30 +721,178 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 
 ---
 
-## 10. 迁移策略（关键：不要整树覆盖）
+## 10. 功能域迁移规格（14 项）
 
-### 10.1 为什么不整树覆盖
+> 本章回答"每个用户可见功能具体改哪里、验收什么"。
+> 与 §11 的文件分类配合使用：A 类照搬的文件直接服务本章，B 类合并按本章逐项验收。
+> 每项标注 **VS Code 现状 → idea 落点 → 迁移动作 → 验收 → 陷阱**。
+
+### 10.1 启动页与首帧（Boot Splash）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `webview/index.html` 只有主题脚本，`#app` 在 React 挂载前是空白；`buildWebviewHtml` 注入主题/偏好但不设底色 → 冷启动白闪（暗色主题最明显） |
+| idea 落点 | `AeroLoadingPanel.java`（Java2D 原生，**不搬**）、`HtmlLoader.injectIdeTheme`、`index.html` 内联深色底、`ErrorPanelBuilder` |
+| 迁移动作 | 1) `buildWebviewHtml` 注入 `<style>`：`html,body,#app{background:var(--vscode-sideBar-background)}`；2) `#app` 内置 `#boot-splash`（内联 Aero 标记 SVG + 环形微动效）；3) `main.tsx` 首个 commit 后移除 splash；4) 加载失败渲染静态错误页而不是空白 |
+| 验收 | 冷启动无白闪；首帧即深色；logo 首帧可见；`prefers-reduced-motion` 下无动画；失败有可读文案 |
+| 陷阱 | 不要写死 `#121317`（必须跟随主题）；不要新增内联 `<script>`（继续用现有主题脚本 + React 移除） |
+
+### 10.2 插件图标与品牌资源
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `media/opencode.png`、`opencode.svg`、`opencode-activity{,-dark,-light}.svg`；活动栏是旧方块字形 |
+| idea 落点 | `META-INF/pluginIcon.svg`（512）、`icons/opencode-icon{,_dark}.svg`（24 viewBox）、`logo-16/logo-16@2x/logo.png`；`webview/components/shared/AeroOpenCodeLogo.tsx` + `ProviderModelIcon` |
+| 迁移动作 | 1) 由 idea 512 SVG 导出 `media/opencode.png`；2) 生成活动栏单色版（`currentColor`，暗/亮各一）；3) `package.json` 的 `icon` 与 `viewsContainers` 图标更新；4) `WebviewPanel.iconPath` 按主题；5) webview 内品牌位改用 `AeroOpenCodeLogo`（A 类照搬） |
+| 验收 | 市场页 / 活动栏 / 面板标签 / 欢迎页同一套标记；16px 可辨；暗亮主题各一版；高对比度不丢轮廓 |
+| 陷阱 | 活动栏图标必须单色（VS Code 会着色）；彩色 Aero 只能用于 webview 内，不能直接当活动栏图标 |
+
+### 10.3 新会话默认背景（Empty State）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `welcome.less` 只有基础居中；`ChatScreen` 无空态 shell；新会话是纯色平铺 |
+| idea 落点 | `welcome.less` 的 `.chat-screen-shell` + `.is-empty-state`（径向极光 + 20px 点阵，含 light 变体）；`ChatScreen.tsx:232` `isEmptyState = !sessionLoading && mergedMessages.length===0`；`WelcomeScreen` + `AnimatedText` |
+| 迁移动作 | 移植 shell/空态样式与 light 变体；`ChatScreen` 按 activeTab 计算空态并加 class；WelcomeScreen 布局对齐 |
+| 验收 | 空 tab 显示背景 + 微光 + logo + 提示；首条消息发出后背景消失；切 tab 各自正确；亮色主题不刺眼 |
+| 陷阱 | 背景只挂在 empty state，不要挂到 `body`（会污染历史/设置页） |
+
+### 10.4 模式列表（Agents / permissionMode）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `providers/agentProvider.ts` 模块缓存 + `get_agents` / `updateAgents`；`ModeSelect` 读同步缓存；无自定义配色 |
+| idea 落点 | `store/agentStore.ts`（`agents.updated` 推送 + `useSyncExternalStore` + `requestAgents`）；`ModeSelect` 用 store + `FALLBACK_PRIMARY_AGENTS`；`utils/modeColors.ts`（agent.color） |
+| 迁移动作 | 移植 `agentStore` + `modeColors`；`AgentHandler` 在 `view.ready` 与目录变更后推 `agents.updated`；`ModeSelect` 改为订阅 store；保留 per-tab `permissionMode` |
+| 验收 | 列表来自宿主；自定义 agent 即时出现；颜色正确；无推送时回退 build/plan；A/B 模式独立；切 tab 不重置 |
+| 陷阱 | 禁止在 webview 伪造完整列表（只允许两档 fallback）；agent id 必须与 opencode 一致（`build`/`plan`） |
+
+### 10.5 模型列表与置顶
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `useCliModels` + `get_cli_models` + `updateCliModels`；`ModelSelect` 分组/搜索；`pinned_models` 点击置顶；`useModelStatePersistence` |
+| idea 落点 | 同一数据链 + **置顶拖拽排序**（长按 180ms、Dock 风格、portal 下拉、`writePinnedModelIds`）；`models.list`；模型上下文目录 |
+| 迁移动作 | 保留 VS Code 数据链，移植拖拽排序与 portal；置顶写回 `settings.pinned.models`；新 tab 默认首选置顶；`selectedModel` 入 tab；首发送携带 model |
+| 验收 | 列表/搜索/分组正常；拖拽排序持久化；不同 tab 不同模型；刷新后恢复；空目录有回退 |
+| 陷阱 | 模型拖拽与 tab 拖拽手势冲突（不同容器 + `stopPropagation`）；模型 id 不要二次拼 `provider/` |
+
+### 10.6 推理力度（variants）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `ReasoningSelect` 已按 `modelVariants` 显示；`reasoningUtils.ts` 已有 `useReasoningEffortGuard`，但 `ReasoningSelect` 未使用它，"档位失效自动回落"未生效 |
+| idea 落点 | `components/ChatInputBox/reasoningUtils.ts`（`useReasoningEffortGuard`、`resolveCurrentReasoningLevel`）；`getAvailableReasoningLevels` 单一实现 |
+| 迁移动作 | 移植 guard；effort 入 tab（`TabRecord.settings` / `SessionTabData.reasoningEffort`）；发送带 effort；切模型时不可用档位回落 `default` |
+| 验收 | 切模型档位联动；不支持时隐藏选择器；A/B 独立；`none/default/minimal` 文案正确；首发送生效 |
+| 陷阱 | 不要用全局 effort 覆盖其他 tab；`xhigh/max` 只在 variants 出现时展示 |
+
+### 10.7 权限弹窗
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `PermissionHandler` 用 `channelId` 索引 pending，`request.sessionId ?? context.getSession()` 借会话；`PermissionDialog.tsx` 307 行；单模态 |
+| idea 落点 | `prompt/PromptBroker`（permission/question/plan 三表 + tab/session 归属）；`PermissionHandler.showPermissionDialog(request, targetSessionId)`；`permission.requested {tabId, sessionId, requestId, data}`；后台 tab 队列 + 角标 |
+| 迁移动作 | 实现 `PromptRegistry`；dialog 增加 `tabId/sessionId/requestId`；回复 `permission_decision` 三重校验；`prompt.closed` 只按 requestId 移除；超时只拒绝当前 |
+| 验收 | 后台请求切过去可见；两 tab 同时请求互不覆盖；批准/拒绝只作用于目标；超时只关当前；关闭 tab 拒绝本 tab |
+| 陷阱 | `channelId`（call_*）≠ `permissionId`（per_*）；回复必须用 `per_*`；禁止 `?? getSession()` |
+
+### 10.8 问题弹窗（Ask User Question）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `AskUserQuestionDialog.tsx` 387 行；提交走 `ask_user_question_response`；`questionAnswerStore` 已引入但未接事件与答案卡 |
+| idea 落点 | `store/questionAnswerStore.ts`（callId 索引）；`question.answered` / `question.invalidated`；`QuestionAnswerSummary.tsx`（227 行，答案卡）；超时回调 |
+| 迁移动作 | 移植 store 与事件；dialog 增加 tab 身份与 `onTimeout`；提交/取消分别走 response/reject；答案卡按 callId 渲染 |
+| 验收 | 单选/多选/取消正常；答案卡落到对应 tool_use；后台会话只显示角标；超时自动关闭；多会话不串 |
+| 陷阱 | `questions` 可能是 string/object/array（需归一化）；不要用 `requestId` 当 `callId` |
+
+### 10.9 状态面板（任务 / 子代理 / 编辑）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `StatusPanel.tsx` 334 行，展开/子页是组件本地 state；`useSubagents` 自带三套状态判定；undo 走 `window.onUndoFileResult` |
+| idea 落点 | 面板状态入 tab（`statusPanelExpanded` / `statusPanelTab`）；`todos.updated` / `task.event` / `subagent.status` / `subagent.history` 按 tab 路由；`resolveSubagentRunState` 统一 v1 `task` 与 v2 `subagent`；`files.undo` / `files.undo.all` 事件化；毛玻璃胶囊样式 |
+| 迁移动作 | 面板状态入 `TabStore`；事件路由按 tab；统一子代理状态函数；transcript 按需加载（上限 50）；undo 事件化 |
+| 验收 | A/B 并行 todo/subagent/edit 不串；切 tab 恢复展开与子页；子代理 transcript 正确；undo 只影响目标；长列表不卡 |
+| 陷阱 | 子代理终态不能被迟到的 `running` 覆盖；transcript 必须有上限；所有更新带 sessionId 过滤 |
+
+### 10.10 添加附件
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `useAttachmentHandlers` / `useAttachmentPersistence`（localStorage 草稿，2MB 上限）+ 单帧 base64 `send_message_with_attachments` |
+| idea 落点 | `utils/attachmentTransport.ts`（24KB/块）+ `AttachmentHandler`（prepare/chunk/complete/abort）+ `TabAttachmentStore`（32MB，按 tab 临时目录）+ 切 tab 恢复 |
+| 迁移动作 | 移植 transport（VS Code 96KB/块）；host 落盘 `globalStorageUri/attachments/<tabId>/`；`session.send.attachments` 只带 id/文件名/类型；tab 关闭 `release()` |
+| 验收 | 10MB 图片可发且不卡；A/B 附件不串；切 tab 恢复；关闭释放临时文件；超 32MB 明确报错；粘贴/拖拽/选择三入口一致 |
+| 陷阱 | 不要把 base64 写 localStorage（配额）；分块必须按 offset 顺序；`complete` 之前不得发送 |
+
+### 10.11 引用文件（`@`）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `fileReferenceProvider` 发 `list_files`、收 `window.onFileListResult`；`useFileTags` 渲染 chip；没有"恢复草稿时重建 chip"的能力（只回填原始文本会退化为纯文本） |
+| idea 落点 | `files.listed` 事件；`useFileTags.restoreFileTags(tags)`（重建路径映射 + chip）；按 tab cwd 列举；`fileTags` 随 send |
+| 迁移动作 | `files.listed` 事件化；host 用目标 tab 的 cwd；接入 `restoreFileTags`；路径空格/中文引用格式统一 |
+| 验收 | 两 tab 不同 cwd 候选不同；切 tab chip 仍可发送；服务端收到绝对路径；同名文件不歧义 |
+| 陷阱 | 不要把 `displayPath` 当绝对路径；`@` 请求必须带 requestId 防乱序 |
+
+### 10.12 文件上下文（Context Bar）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `EditorContextTracker` 广播 `addSelectionInfo` / `clearSelectionInfo`；`ContextBar` 展示；无 per-tab 开关；webview 已发 `context.refresh` 但宿主无 handler（断链） |
+| idea 落点 | `context.refresh {enabled}` per tab；`TabSettings.contextEnabled`；发送时 `buildSessionContextAppend(openedFiles, fileTagPaths)`；`context.updated` |
+| 迁移动作 | 开关入 tab；发送时按目标 tab 注入；关闭开关立即清空；`autoOpenFileEnabled` 入 tab |
+| 验收 | A 开/B 关时发送内容不同；切 tab 恢复；选区/文件插入正确；关闭后不注入 |
+| 陷阱 | 编辑器上下文是窗口级（同一份），"是否注入"是 tab 级；不要存进全局设置 |
+
+### 10.13 执行 bash 命令（`!`）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `SessionHandler` 检测 `text.startsWith('!')` → `session.sendShell(command, cwd)` → core `opencode.shell`；乐观用户气泡 |
+| idea 落点 | `SessionHandler` 用目标 tab 的 session/cwd；`OpencodeSession.sendShell(finalPrompt, command)` 保留展示文本；`normalizeUserShellPrompt` 兼容 `!bash pwd` |
+| 迁移动作 | 按 tab 解析目标；保留 `!cmd` 展示；输出作为 bash 工具结果入对话；错误/中断只影响目标 |
+| 验收 | `!ls` 只影响目标 tab；输出进对话并触发 AI 回复；`!bash pwd` 识别；失败提示；停止按钮生效；A/B 并行不串 |
+| 陷阱 | 不要把 `!` 内容当 prompt 发给模型；cwd 必须取 tab 的 |
+
+### 10.14 执行 opencode 命令（`/`）
+
+| 项 | 内容 |
+|---|---|
+| 现状 | `OpenCodeSession.send` 已解析 `/name args` → core `session.command`；命令列表由 `updateSlashCommands` 推送；`refresh_slash_commands` 是窗口级 |
+| idea 落点 | `commands.refresh` 按 tab（cwd）；`SlashCommandRegistry` 合并内置 + skills + commands；命令不注入上下文/agent prompt；内置 `/new /resume /plan /context /compact /undo /redo /fork` |
+| 迁移动作 | 命令列表按 tab 刷新与缓存；移除 `/share`、`/unshare`（已下线）；`/plan` 映射到 agent/permissionMode；保留 core command 发送路径 |
+| 验收 | `/name` 走 command 端点且不带上下文；列表随 cwd；内置命令本地执行；未知命令回退普通消息；分享命令不存在 |
+| 陷阱 | 别把 slash 命令当普通 prompt（会注入上下文/agent role）；`/v2/...` 这类路径不能被误判为命令 |
+
+---
+
+## 11. 迁移策略（关键：不要整树覆盖）
+
+### 11.1 为什么不整树覆盖
 
 - idea webview 里有 36 个本仓库没有的源码文件，其中 6 个是 IDEA-only 功能（命令管理 `PromptSection`、`modeColors`、`MessagesErrorBoundary`、`AeroOpenCodeLogo`）；
 - 159 个分叉源文件里，有相当一部分差异来自 **idea 独有功能**（分享、PromptSection、节点进程、JCEF 重绘），整树覆盖会把这些变成"有 UI 无后端"的死入口；
 - 反向地，本仓库有 idea 没有的能力（`DaemonStatus` 失败分类、`verboseDiagnostics`、`convert_to_cli_session` 待删），整树覆盖会静默丢失；
 - 覆盖后 `git diff` 无法区分"架构迁移"与"功能回退"，出问题无法按阶段回滚。
 
-### 10.2 文件四类处置
+### 11.2 文件四类处置
 
 | 类 | 判定 | 数量（webview src） | 做法 |
 |---|---|---|---|
 | **A 直接照搬** | idea 独有且纯架构、零 VS Code 依赖 | 30（其中 3 个需小改） | 复制 + 改 import + 补测试 |
-| **B 三方合并** | 同名分叉，且差异含本次架构改造 | 约 25（重） | 见 §10.3 |
+| **B 三方合并** | 同名分叉，且差异含本次架构改造 | 约 25（重） | 见 §11.3 |
 | **C 保持不动** | 同名分叉但差异与本次无关（样式、版本、功能修补） | 约 134 | 不做无意义合并 |
 | **D 删除/不搬** | IDEA-only 或 VS Code 遗留死功能 | 见 §9 / §5.5 | 按清单 |
 
-**A 类清单（30）**：`store/{tabStore,tabMessageStore,tabDraftStore,tabPromptStore,tabTransitionStore,tabRuntime,agentStore,questionAnswerStore}.ts`（8）、`hooks/sessionTabs/{types,useTabBarState,useTabLifecycle,useTabSessionBinder}.ts`（4）、`hooks/useSessionTabs.ts`（1）、`components/ChatHeader/{SessionTabBar,SessionTabContextMenu,types}.ts(x)`（3）、`utils/{hostDispatcher,hostEventRegistry,hostEventTypes,semanticEvents,sessionIdentity,tabPartition,attachmentTransport,revertStateEvent,sessionTitle}.ts`（9）、`hooks/windowCallbacks/{sequenceBarrier,tabTransition,resetTransientState}.ts`（3）、`test/{seedTabStore,testEvents}.ts`（2）。
-其中需要小改的 3 个：`SessionTabContextMenu`（关闭分享分组）、`hostDispatcher`（新增 `host.events` 批量入口）、`attachmentTransport`（VS Code 分块大小，见 §10.5）。`sessionIdentity` 的 `cardDebugLog` 直接可用。
+**A 类清单（30）**：`store/{tabStore,tabMessageStore,tabDraftStore,tabPromptStore,tabStatusStore,tabTransitionStore,tabRuntime,agentStore}.ts`（8；`questionAnswerStore.ts` 两仓已有，不属新增）、`hooks/sessionTabs/{types,useTabBarState,useTabLifecycle,useTabSessionBinder}.ts`（4）、`hooks/useSessionTabs.ts`（1）、`components/ChatHeader/{SessionTabBar,SessionTabContextMenu,types}.ts(x)`（3）、`utils/{hostDispatcher,hostEventRegistry,hostEventTypes,semanticEvents,sessionIdentity,tabPartition,attachmentTransport,revertStateEvent,sessionTitle}.ts`（9）、`hooks/windowCallbacks/{sequenceBarrier,tabTransition,resetTransientState}.ts`（3）、`test/{seedTabStore,testEvents}.ts`（2）。
+其中需要小改的 3 个：`SessionTabContextMenu`（关闭分享分组）、`hostDispatcher`（新增 `host.events` 批量入口）、`attachmentTransport`（VS Code 分块大小，见 §11.5）。`sessionIdentity` 的 `cardDebugLog` 直接可用。
 
 **B 类重点文件（按 diff 规模）**：`messageCallbacks`、`App.tsx`、`header.less`、`streamingCallbacks`、`registerCallbacks`、`global.d.ts`、`ChatHeader`、`main.tsx`、`useSessionManagement`、`sessionCallbacks`、`useDialogManagement`、`MessagesContext`、`permissionCallbacks`、`useStreamingMessages`、`utils/bridge.ts`、`useMessageSender`、`useHistoryLoader`、`useScrollBehavior`、`ChatScreen`、`useUsageTracking`、`i18n/*`。
 
-### 10.3 B 类合并流程（每个文件一遍）
+### 11.3 B 类合并流程（每个文件一遍）
 
 1. 以**本仓库当前文件**为基线（保住 VS Code 功能）；
 2. 用 idea 版本做参考，只取**架构相关段落**：tab 身份参数、store 写入、事件注册、resync、per-tab 状态；
@@ -749,7 +900,7 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 4. 改完立即跑该文件的现有测试 + `tsc`；
 5. 在实施记录里登记：文件、取用段落、保留段落、丢弃段落。
 
-### 10.4 反模式（评审时逐条检查）
+### 11.4 反模式（评审时逐条检查）
 
 | 反模式 | 后果 |
 |---|---|
@@ -763,7 +914,7 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 | 在 `TabEvent` 里塞 `data` 字符串再前端二次 `JSON.parse` | 双重转义（已踩过一次） |
 | 忘记给 webview 发 `tab.resync` | 侧栏隐藏后重建 → 只剩空 tab |
 
-### 10.5 附件分块适配（B 类 `attachmentTransport`）
+### 11.5 附件分块适配（B 类 `attachmentTransport`）
 
 | 项 | idea（JCEF 帧预算 32k） | 本仓库（postMessage） |
 |---|---|---|
@@ -777,7 +928,9 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 
 ---
 
-## 11. 阶段计划
+## 12. 阶段计划
+
+> **当前进度**：P0–P7 架构主干已落地（见 `docs/migration-progress.md`）；P8 的 14 项功能域多数未完成，P9 未终验。本章为完整目标计划，不表示已完成。
 
 | 阶段 | 交付 | 工期 | 验收 |
 |---|---|---|---|
@@ -787,16 +940,16 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 | **P3 单实例多视图** | `ChatWindow` / `ViewRegistry` / `TabEventRouter` / `PromptRegistry`；`extension.ts` 单窗口；视图 resync | 2d | 左右栏 + 面板同 tab 列表；切换全视图同步；视图重建恢复 |
 | **P4 协议 v2** | `HostCommand`；入站批量；`vscodeBridge` batch；删除会话级广播；真实命令/事件目录对账 | 1.5d | 协议单测；`command.rejected`；无 handler 命令检测为 0 |
 | **P5 webview A 类引入** | 30 个架构文件 + 类型 + store 测试 | 2d | `tsc` + 新增 store 测试绿；不影响现有单会话路径 |
-| **P6 webview B 类合并** | 25 个重点文件按 §10.3 合并；删除清单落地 | 4d | 单会话行为不回退；`getSession()` 在 webview 归零 |
+| **P6 webview B 类合并** | 25 个重点文件按 §11.3 合并；删除清单落地 | 4d | 单会话行为不回退；`getSession()` 在 webview 归零 |
 | **P7 多会话 UI** | tab 栏 + 四档响应式 + 菜单 + 拖拽 + 快捷键 + i18n | 3d | §7.15 十项 |
-| **P8 功能回归** | fork/revert/compact、附件分块、@引用、模型/模式/力度、token、bash、命令、状态面板三子页、权限/提问/计划、分享入口隐藏核对 | 4d | 功能矩阵"只影响目标 tab" |
+| **P8 功能回归** | 按 §10 逐项：启动页/图标/空态背景、模式/模型/推理力度、权限/问题弹窗、状态面板三子页、附件/引用文件/文件上下文、bash `!`、opencode `/`、fork/revert/compact、分享入口隐藏核对 | 5d | §10 各节验收 + 功能矩阵"只影响目标 tab" |
 | **P9 生命周期+性能+发布** | resync、daemon 重启、释放清单、lane 预算、基准、core pin 打包验证 | 2d | reload 流式恢复；1000 次开关无泄漏；6 tab/3 流达标 |
 
-合计约 **23.5 人日**（比草案多 4.5 天，来自"逐文件合并"与"多视图一致性"）。
+合计约 **24.5 人日**（"逐文件合并" + "多视图一致性" + "14 项功能域验收"）。
 
 ---
 
-## 12. 测试矩阵
+## 13. 测试矩阵
 
 | 层 | 用例 | 命令 |
 |---|---|---|
@@ -809,7 +962,7 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 
 ---
 
-## 13. 风险与回滚
+## 14. 风险与回滚
 
 | 风险 | 缓解 |
 |---|---|
@@ -826,9 +979,10 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 
 ---
 
-## 14. 文档处置
+## 15. 文档处置
 
 - 本文为唯一权威方案，已删除：`multi-tab-and-opencode-v2-sync-plan.md`、`multi-tab-and-session-isolation.md`、`opencode-v2-adaptation-guide.md`、`opencode-v2-compatibility-analysis.md`。
+- 实施进度与逐项状态维护在 `docs/migration-progress.md`（每完成一项更新该文档，不改本文的目标态描述）。
 - 实施后需增量更新：`permission-and-question-flow.md`、`undo-redo-and-fork-flow.md`、`opencode-serve-process-management.md`、`input-commands-and-mentions.md`。
 - 日志统一带 `tabId` / `sessionId` / `viewId`；排查入口见 `docs/log.md`。
 - `opencode-idea-gui/webview/src/ARCHITECTURE.md` 已过期（仍描述单会话 + claude/codex），**不得作为参考**。
