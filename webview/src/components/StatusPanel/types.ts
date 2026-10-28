@@ -21,6 +21,12 @@ export interface StatusPanelProps {
   onDiscardAll?: () => void;
   /** Callback when user clicks Keep All (accept changes as new baseline) */
   onKeepAll?: () => void;
+  /**
+   * 当前展开的子页（受控）。传入时由 tab 状态驱动，切 tab 会带着自己的子页回来；
+   * 不传则退回组件本地 state（历史单会话用法 / 单测）。
+   */
+  activeTab?: TabType | null;
+  onActiveTabChange?: (tab: TabType | null) => void;
 }
 
 export const statusClassMap: Record<TodoItem['status'], string> = {

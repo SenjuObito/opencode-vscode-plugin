@@ -11,10 +11,19 @@ import DiscardAllDialog from './DiscardAllDialog';
 import type { TabType, StatusPanelProps } from './types';
 import './StatusPanel.less';
 
-const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll }: StatusPanelProps) => {
+const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll, activeTab, onActiveTabChange }: StatusPanelProps) => {
   cardDebugLog('[StatusPanel] render, sessionLoading:', sessionLoading, 'expanded:', expanded);
   const { t } = useTranslation();
-  const [openPopover, setOpenPopover] = useState<TabType | null>(null);
+  const [localPopover, setLocalPopover] = useState<TabType | null>(null);
+  // 受控时以 tab 的 statusPanelTab 为准：切 tab 会带回它自己的子页（§10.9）。
+  const isControlled = activeTab !== undefined;
+  const openPopover = isControlled ? (activeTab ?? null) : localPopover;
+  const setOpenPopover = useCallback((next: TabType | null) => {
+    if (!isControlled) {
+      setLocalPopover(next);
+    }
+    onActiveTabChange?.(next);
+  }, [isControlled, onActiveTabChange]);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Undo related state
@@ -59,7 +68,7 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
     if (!expanded) {
       setOpenPopover(null);
     }
-  }, [expanded]);
+  }, [expanded, setOpenPopover]);
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -73,11 +82,11 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [openPopover]);
+  }, [openPopover, setOpenPopover]);
 
   const handleTabClick = useCallback((tab: TabType) => {
-    setOpenPopover((prev) => (prev === tab ? null : tab));
-  }, []);
+    setOpenPopover(openPopover === tab ? null : tab);
+  }, [openPopover, setOpenPopover]);
 
   // Undo handlers
   const handleUndoClick = useCallback((fileChange: FileChangeSummary) => {

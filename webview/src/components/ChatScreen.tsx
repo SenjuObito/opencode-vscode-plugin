@@ -10,6 +10,7 @@ import { MessageList } from './MessageList';
 import { StatusNoticeBar } from './StatusNoticeBar';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
+import type { TabType } from './StatusPanel/types';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ConversationSearch } from './ConversationSearch';
 import type { MessageListRevealHandle } from './ConversationSearch/types';
@@ -70,6 +71,9 @@ export interface ChatScreenProps {
 
   // Status panel
   statusPanelExpanded: boolean;
+  /** 当前 tab 展开的状态面板子页（受控；切 tab 各自恢复） */
+  statusPanelTab?: TabType | null;
+  onStatusPanelTabChange?: (tab: TabType | null) => void;
   forceStatusUpdate: React.Dispatch<React.SetStateAction<number>>;
   onUndoFile: FileChangeMgmt['handleUndoFile'];
   onDiscardAll: () => void;
@@ -129,7 +133,7 @@ export const ChatScreen = ({
   chatInputRef, messagesContainerRef, messagesEndRef, inputAreaRef,
   messageNodeMapRef, userCollapsedRef, messageListRef, isAutoScrollingRef,
   anchorCollapsedCount, setAnchorCollapsedCount, onMessageNodeRef,
-  statusPanelExpanded, forceStatusUpdate,
+  statusPanelExpanded, statusPanelTab, onStatusPanelTabChange, forceStatusUpdate,
   onUndoFile, onDiscardAll, onKeepAll,
   onSubmit, onInterrupt,
   onNavigateToProviderSettings,
@@ -308,6 +312,8 @@ export const ChatScreen = ({
           currentProvider={currentProvider}
           sessionLoading={sessionLoading}
           expanded={statusPanelExpanded}
+          activeTab={statusPanelTab}
+          onActiveTabChange={onStatusPanelTabChange}
           isStreaming={streamingActive}
           onUndoFile={onUndoFile}
           onDiscardAll={onDiscardAll}

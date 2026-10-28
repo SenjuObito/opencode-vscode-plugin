@@ -916,6 +916,8 @@ const App = () => {
     openSessionInTab,
     activeTabAutoOpenFileEnabled,
     statusPanelExpanded,
+    statusPanelTab,
+    setStatusPanelTab,
   } = useSessionTabs({
     currentSessionId,
     currentSessionIdRef,
@@ -1074,6 +1076,8 @@ const App = () => {
               setAnchorCollapsedCount={setAnchorCollapsedCount}
               onMessageNodeRef={handleMessageNodeRef}
               statusPanelExpanded={statusPanelExpanded}
+              statusPanelTab={statusPanelTab}
+              onStatusPanelTabChange={setStatusPanelTab}
               forceStatusUpdate={forceStatusUpdate}
               onUndoFile={handleUndoFile}
               onDiscardAll={onDiscardAll}
