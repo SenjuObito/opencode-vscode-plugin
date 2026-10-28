@@ -1,10 +1,10 @@
 /**
  * WindowEventHandler — port of cc-gui `handler/WindowEventHandler.java`.
- * Handles window-level events: heartbeat, create_new_session, frontend_ready,
- * history_dom_committed.
+ * Handles window-level events: heartbeat, frontend_ready, history_dom_committed.
  *
- * 斜杠命令刷新已迁出：`commands.refresh` 是 tab 命令（见 `window/TabContextCommandHandler`），
- * 这里只保留共享的解析工具。
+ * 多 tab 后两条能力已迁出：
+ * - 斜杠命令刷新 → `commands.refresh`（`window/TabContextCommandHandler`）
+ * - 新建会话 → `session.new`（`TabSessionSendHandler` 同层，按 tab 重置）
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
@@ -21,7 +21,6 @@ const SUPPORTED_TYPES = [
 	'heartbeat',
 	'tab_loading_changed',
 	'tab_status_changed',
-	'create_new_session',
 	'frontend_ready',
 	'history_dom_committed',
 	'history_render_complete',

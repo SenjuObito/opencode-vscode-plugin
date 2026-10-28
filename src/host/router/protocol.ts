@@ -10,7 +10,6 @@ export const BridgeMessageType = {
 	// 会话与对话
 	SEND_MESSAGE: 'send_message',
 	SEND_MESSAGE_WITH_ATTACHMENTS: 'send_message_with_attachments',
-	CREATE_NEW_SESSION: 'create_new_session',
 	INTERRUPT_SESSION: 'interrupt_session',
 	RESTART_SESSION: 'restart_session',
 
