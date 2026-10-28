@@ -196,6 +196,7 @@ export class TabRegistry {
 						record.isStreaming(),
 						record.getState() === TabState.LOADING_HISTORY,
 						record.getEpoch(),
+						record.getSettings().getDraft(),
 					),
 				);
 			}

@@ -13,6 +13,15 @@ export class TabSettings {
 	private autoOpenFileEnabled = false;
 	private title = '';
 	private titleSource: TitleSource = 'AUTO';
+	private draft = '';
+
+	getDraft(): string {
+		return this.draft;
+	}
+
+	setDraft(draft: string): void {
+		this.draft = draft || '';
+	}
 
 	getProvider(): string {
 		return this.provider;

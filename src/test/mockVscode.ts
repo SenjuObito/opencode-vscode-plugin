@@ -42,5 +42,5 @@ try {
 				file: (p: string) => ({ fsPath: p, scheme: 'file', path: p }),
 			},
 		},
-	};
+	} as unknown as NodeModule;
 }

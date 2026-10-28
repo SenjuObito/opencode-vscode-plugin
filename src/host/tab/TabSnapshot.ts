@@ -10,6 +10,7 @@ export interface TabSnapshotData {
 	streaming: boolean;
 	loading: boolean;
 	epoch: number;
+	draft?: string;
 }
 
 export class TabSnapshot {
@@ -21,6 +22,7 @@ export class TabSnapshot {
 		readonly streaming: boolean,
 		readonly loading: boolean,
 		readonly epoch: number,
+		readonly draft: string = '',
 	) {}
 
 	toJson(): TabSnapshotData {
@@ -32,6 +34,7 @@ export class TabSnapshot {
 			streaming: this.streaming,
 			loading: this.loading,
 			epoch: this.epoch,
+			draft: this.draft,
 		};
 	}
 }
