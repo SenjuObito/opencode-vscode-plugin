@@ -14,6 +14,7 @@ export interface UseChatInputImperativeHandleOptions {
   clearInput: () => void;
   hasContent: boolean;
   extractFileTags: () => FileTagInfo[];
+  restoreFileTags: (tags: FileTagInfo[]) => void;
 }
 
 /**
@@ -33,6 +34,7 @@ export function useChatInputImperativeHandle({
   clearInput,
   hasContent,
   extractFileTags,
+  restoreFileTags,
 }: UseChatInputImperativeHandleOptions): void {
   useImperativeHandle(
     ref,
@@ -64,6 +66,7 @@ export function useChatInputImperativeHandle({
       clear: clearInput,
       hasContent: () => hasContent,
       getFileTags: extractFileTags,
+      restoreFileTags,
     }),
     [
       getTextContent,
@@ -76,6 +79,7 @@ export function useChatInputImperativeHandle({
       clearInput,
       hasContent,
       extractFileTags,
+      restoreFileTags,
     ]
   );
 }

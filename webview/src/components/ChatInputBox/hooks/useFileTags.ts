@@ -34,6 +34,13 @@ interface UseFileTagsReturn {
   justRenderedTagRef: React.MutableRefObject<boolean>;
   /** Extract all file tags from current input (for sending to backend) */
   extractFileTags: () => FileTagInfo[];
+  /**
+   * Restore tags of a saved draft.
+   *
+   * 只回填文本是不够的：`renderFileTags` 只把 **pathMappingRef 里认识的路径**
+   * 渲染成 chip，草稿恢复时若不先重建映射，标签会退化成纯文本（§10.11）。
+   */
+  restoreFileTags: (tags: FileTagInfo[]) => void;
   /** Set the path to place cursor after on next renderFileTags call */
   setCursorAfterPath: (path: string | null) => void;
 }
@@ -510,11 +517,26 @@ export function useFileTags({
     cursorAfterPathRef.current = path;
   }, []);
 
+  /**
+   * 恢复草稿的 file tags：先把 displayPath → absolutePath 写回映射，再重绘。
+   * 顺序不能反——重绘只认识映射里已有的路径。
+   */
+  const restoreFileTags = useCallback((tags: FileTagInfo[]) => {
+    if (!tags || tags.length === 0) return;
+    for (const tag of tags) {
+      if (tag.displayPath) {
+        pathMappingRef.current.set(tag.displayPath, tag.absolutePath || tag.displayPath);
+      }
+    }
+    renderFileTags();
+  }, [renderFileTags]);
+
   return {
     renderFileTags,
     pathMappingRef,
     justRenderedTagRef,
     extractFileTags,
+    restoreFileTags,
     setCursorAfterPath,
   };
 }

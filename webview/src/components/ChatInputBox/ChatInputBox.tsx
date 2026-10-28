@@ -173,7 +173,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     }, []);
 
     // File tags hook
-    const { renderFileTags, pathMappingRef, justRenderedTagRef, extractFileTags, setCursorAfterPath } = useFileTags({
+    const { renderFileTags, pathMappingRef, justRenderedTagRef, extractFileTags, restoreFileTags, setCursorAfterPath } = useFileTags({
       editableRef,
       getTextContent,
       onCloseCompletions: closeAllCompletions,
@@ -463,6 +463,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       clearInput,
       hasContent,
       extractFileTags,
+      restoreFileTags,
       inlineCompletion,
       handleInput,
       ctxMenu,

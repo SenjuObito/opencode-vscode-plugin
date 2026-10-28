@@ -48,6 +48,27 @@ describe('useFileTags', () => {
     expect(editable.querySelectorAll('.file-tag').length).toBe(0);
   });
 
+  it('restoreFileTags 先重建路径映射再重绘（草稿恢复不能退化成纯文本）', () => {
+    const editable = createEditable();
+    editable.textContent = '@src/a.ts ';
+    mockSelection();
+
+    const { result } = setupHook(editable);
+
+    // 映射为空时直接重绘：什么都不是 chip（这就是「草稿恢复只剩纯文本」的成因）
+    result.current.renderFileTags();
+    expect(editable.querySelectorAll('.file-tag').length).toBe(0);
+
+    result.current.restoreFileTags([
+      { displayPath: 'src/a.ts', absolutePath: 'C:////src////a.ts' },
+    ]);
+
+    expect(editable.querySelectorAll('.file-tag').length).toBe(1);
+    expect(result.current.extractFileTags()).toEqual([
+      { displayPath: 'src/a.ts', absolutePath: 'C:////src////a.ts' },
+    ]);
+  });
+
   it('does not render tags for unknown references', () => {
     const editable = createEditable();
     editable.textContent = '@unknown/file.ts ';

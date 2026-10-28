@@ -361,6 +361,11 @@ export interface ChatInputBoxHandle {
   hasContent: () => boolean;
   /** Get file tags from input (for Codex context injection) */
   getFileTags: () => FileTagInfo[];
+  /**
+   * 恢复草稿的 file tags（切 tab 回填输入框）。
+   * 只写文本不够：需要先把 displayPath → absolutePath 写回映射再重绘，否则 chip 退化成纯文本。
+   */
+  restoreFileTags?: (tags: FileTagInfo[]) => void;
 }
 
 // ============================================================

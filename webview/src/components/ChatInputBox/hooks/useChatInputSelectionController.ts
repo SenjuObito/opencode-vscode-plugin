@@ -25,6 +25,7 @@ interface UseChatInputSelectionControllerOptions {
   clearInput: () => void;
   hasContent: boolean;
   extractFileTags: () => FileTagInfo[];
+  restoreFileTags: (tags: FileTagInfo[]) => void;
   inlineCompletion: InlineCompletionController;
   handleInput: () => void;
   ctxMenu: ContextMenuSelectionState;
@@ -43,6 +44,7 @@ export function useChatInputSelectionController({
   clearInput,
   hasContent,
   extractFileTags,
+  restoreFileTags,
   inlineCompletion,
   handleInput,
   ctxMenu,
@@ -104,6 +106,7 @@ export function useChatInputSelectionController({
     clearInput,
     hasContent,
     extractFileTags,
+    restoreFileTags,
   });
 
   return {

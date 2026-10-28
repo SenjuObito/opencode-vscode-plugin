@@ -658,6 +658,14 @@ ReactDOM.createRoot(document.getElementById('app') as HTMLElement).render(
   </ErrorBoundary>,
 );
 
+// 首帧已经画出来了：撤掉 index.html 里的启动标记（它只负责遮住白闪）。
+// 用 rAF 确保上面的 render 已经提交，而不是抢在 React 之前把它删掉。
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    document.getElementById('boot-splash')?.remove();
+  });
+});
+
 // Once the bridge is available, initialize slash commands
 waitForBridge(() => {
   debugLog('[Main] Bridge ready, setting up slash commands');

@@ -8,9 +8,52 @@
          style-src 'unsafe-inline' is needed for dynamically applied CSS variables and theme styles.
          TODO: Migrate to nonce-based CSP for stronger XSS protection. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: blob: https://cc-gui-font.local; connect-src 'self' https://api.github.com; frame-src 'none';" data-page-node-id="mBToZECZbhBRf0BEwMoiWG" />
-    <title>Claude Chat Webview</title>
+    <title>OpenCode Buddy</title>
+    <!-- 首帧底色：React 挂载前 body 是白的，暗色主题下会闪一下。
+         跟随 VS Code 注入的主题变量，不写死颜色。 -->
+    <style>
+      html,
+      body,
+      #app {
+        margin: 0;
+        height: 100%;
+        background: var(--vscode-sideBar-background, var(--vscode-editor-background, #1e1e1e));
+        color: var(--vscode-foreground, #cccccc);
+      }
+
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+
+      #boot-splash .boot-mark {
+        width: 42px;
+        height: 42px;
+        opacity: 0.55;
+        color: var(--vscode-foreground, #cccccc);
+      }
+
+      /* 环形微动效：只在用户没有要求减少动效时出现 */
+      @media (prefers-reduced-motion: no-preference) {
+        #boot-splash .boot-mark {
+          animation: boot-spin 1.6s linear infinite;
+        }
+      }
+
+      @keyframes boot-spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
     <!-- Set theme data-theme attribute immediately before React loads -->
-    <!-- Note: Background color is injected as inline style on the HTML tag by Java; only data-theme needs to be set here -->
     <script>
       (function() {
         try {
@@ -37,6 +80,14 @@
     </script>
   </head>
   <body data-page-node-id="3Emlpq35sr8GuSn9jrhB1i">
+    <div id="boot-splash" aria-hidden="true">
+      <svg class="boot-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="12" cy="12" r="9" stroke-opacity="0.35" />
+        <path d="M12 3a9 9 0 0 1 9 9" stroke-linecap="round" />
+        <path d="M7.5 9.5 10.5 12 7.5 14.5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M12.5 15h4" stroke-linecap="round" />
+      </svg>
+    </div>
     <div id="app" data-page-node-id="te4e4ca0HwPFMDqC4CfltZ"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
