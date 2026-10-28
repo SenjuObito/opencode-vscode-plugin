@@ -1,7 +1,10 @@
 /**
  * WindowEventHandler — port of cc-gui `handler/WindowEventHandler.java`.
  * Handles window-level events: heartbeat, create_new_session, frontend_ready,
- * refresh_slash_commands, history_dom_committed.
+ * history_dom_committed.
+ *
+ * 斜杠命令刷新已迁出：`commands.refresh` 是 tab 命令（见 `window/TabContextCommandHandler`），
+ * 这里只保留共享的解析工具。
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
@@ -10,6 +13,7 @@ import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { pushHistoryData, upsertSessionSummary } from '../session/SessionHistoryStore';
 import { pushUserLanguageConfig, pushUiPreferences, pushPinnedModels } from './SettingsHandler';
 import { updateModelContextWindows } from '../util/ModelContextWindowCatalog';
+import { extractJsonObject, listSlashCommands } from '../util/SlashCommandCatalog';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 
 
@@ -21,7 +25,6 @@ const SUPPORTED_TYPES = [
 	'frontend_ready',
 	'history_dom_committed',
 	'history_render_complete',
-	'refresh_slash_commands',
 	'refresh_file',
 	'get_active_provider',
 	'get_thinking_enabled',
@@ -202,82 +205,16 @@ export class WindowEventHandler extends BaseMessageHandler {
 		);
 	}
 
+	/**
+	 * 窗口级斜杠命令回放（frontend_ready）。
+	 * 请求与解析统一走 `SlashCommandCatalog`；tab 级刷新见 `commands.refresh`。
+	 */
 	private handleRefreshSlashCommands(): void {
-		const daemon = this.context.getDaemon();
-		if (!daemon) {
-			this.pushSlashCommands([]);
-			return;
-		}
-
-		const chunks: string[] = [];
-		void daemon.request('opencode.listCommands', {}, {
-			onLine: (line) => chunks.push(line),
-			onError: () => this.pushSlashCommands([]),
-			onComplete: (success) => {
-				// 单一数据源：SDK command.list（含 opencode 全部内置命令）。
-				// 失败时回推空列表——绝不展示可能不存在的硬编码"幽灵命令"。
-				if (!success) {
-					this.pushSlashCommands([]);
-					return;
-				}
-				const payload = this.extractJsonObject(chunks.join('\n'));
-				const raw = payload && Array.isArray(payload.commands) ? payload.commands : [];
-				const commands: Array<{ name: string; description?: string; source?: string }> = [];
-				for (const c of raw) {
-					const cmd = c as Record<string, unknown>;
-					const rawName = typeof cmd?.name === 'string' ? cmd.name : '';
-					const name = rawName.replace(/^\//, '');
-					if (!name) {
-						continue;
-					}
-					commands.push({
-						name,
-						description: typeof cmd.description === 'string' ? cmd.description : undefined,
-						source:
-							cmd.source === 'command' || cmd.source === 'mcp' || cmd.source === 'skill'
-								? String(cmd.source)
-								: undefined,
-					});
-				}
-				this.pushSlashCommands(commands);
-			},
-		});
+		listSlashCommands(this.context.getDaemon(), null, (commands) => this.pushSlashCommands(commands));
 	}
 
 	private pushSlashCommands(commands: Array<{ name: string; description?: string; source?: string }>): void {
 		this.callJavaScript('updateSlashCommands', JSON.stringify(commands));
-	}
-
-	/** 从 daemon 输出缓冲区提取 JSON 对象（容错非 JSON 诊断行）。 */
-	private extractJsonObject(raw: string): Record<string, unknown> | null {
-		if (!raw || raw.trim() === '') {
-			return null;
-		}
-		const lines = raw.split(/\r?\n/);
-		for (let i = lines.length - 1; i >= 0; i--) {
-			const line = lines[i].trim();
-			if (!line.startsWith('{') || !line.endsWith('}')) {
-				continue;
-			}
-			try {
-				const obj = JSON.parse(line) as Record<string, unknown>;
-				if (obj && (obj.commands !== undefined || obj.models !== undefined || obj.success !== undefined)) {
-					return obj;
-				}
-			} catch {
-				// 跳过
-			}
-		}
-		try {
-			const start = raw.lastIndexOf('{');
-			const end = raw.lastIndexOf('}');
-			if (start >= 0 && end > start) {
-				return JSON.parse(raw.substring(start, end + 1)) as Record<string, unknown>;
-			}
-		} catch {
-			// 忽略
-		}
-		return null;
 	}
 
 	/** webview 内 window.open / <a target=_blank> 被 VS Code 拦截，改由宿主 openExternal。 */
@@ -335,7 +272,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 					reportError();
 					return;
 				}
-				const payload = this.extractJsonObject(chunks.join('\n'));
+				const payload = extractJsonObject(chunks.join('\n'));
 				logDiagnostic(`[share] parsed payload=${JSON.stringify(payload)}`);
 				if (payload && payload.share && typeof payload.share === 'object') {
 					const shareObj = payload.share as Record<string, unknown>;
@@ -571,7 +508,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 	/** Parse a `{ success, session }` daemon response and push the session's revert state to the frontend. */
 	private pushRevertStateFromResponse(raw: string): void {
-		const payload = this.extractJsonObject(raw);
+		const payload = extractJsonObject(raw);
 		const sessionObj = payload?.session as Record<string, unknown> | undefined;
 		const revert = (sessionObj?.revert ?? null) as { messageID?: string } | null;
 		logDiagnostic(`[revert-state] hasRevert=${!!revert} revert=${JSON.stringify(revert)}`);
@@ -685,7 +622,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 					this.callJavaScript('onForkError', '');
 					return;
 				}
-				const payload = this.extractJsonObject(chunks.join('\n'));
+				const payload = extractJsonObject(chunks.join('\n'));
 				const newSessionId = payload && typeof payload.newSessionId === 'string' ? payload.newSessionId : '';
 				logDiagnostic(`[fork] newSessionId="${newSessionId}"`);
 				if (newSessionId) {
@@ -715,7 +652,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 			onComplete: (success) => {
 				let title = '';
 				if (success) {
-					const payload = this.extractJsonObject(chunks.join('\n'));
+					const payload = extractJsonObject(chunks.join('\n'));
 					const info = payload?.session as { title?: string } | undefined;
 					title = typeof info?.title === 'string' ? info.title.trim() : '';
 				}
@@ -824,7 +761,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 						resolve(false);
 						return;
 					}
-					const payload = this.extractJsonObject(chunks.join('\n'));
+					const payload = extractJsonObject(chunks.join('\n'));
 					if (!payload || payload.success === false) {
 						const err = (typeof payload?.error === 'string' && payload.error)
 							? payload.error

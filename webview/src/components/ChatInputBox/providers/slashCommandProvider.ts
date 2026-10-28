@@ -1,5 +1,6 @@
 import type { CommandItem, DropdownItemData } from '../types';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { sendHostCommand, sendWindowCommand } from '../../../utils/bridge';
+import { getTabStore } from '../../../store/tabStore';
 import i18n from '../../../i18n/config';
 import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
 
@@ -267,7 +268,12 @@ function requestRefresh(): boolean {
   }
 
   const attempt = retryCount + 1;
-  const sent = sendBridgeEvent('refresh_slash_commands');
+  // 按 tab 刷新：命令列表依赖目标 tab 的 cwd（自定义命令/skill 是按目录发现的）。
+  // 没有活跃 tab（启动早期）时退回窗口级命令，宿主用默认目录列举。
+  const activeTabId = getTabStore().getActiveTabId();
+  const sent = activeTabId
+    ? sendHostCommand(activeTabId, 'commands.refresh')
+    : sendWindowCommand('commands.refresh');
   if (!sent) {
     debugLog('[SlashCommand] Bridge not available yet, refresh not sent');
     return false;

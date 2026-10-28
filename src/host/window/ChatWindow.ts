@@ -8,6 +8,7 @@ import { ViewRegistry, ViewRecord } from './ViewRegistry';
 import { TabEventRouter } from './TabEventRouter';
 import { PromptRegistry } from '../prompt/PromptRegistry';
 import { TabSessionCommandHandler } from './TabSessionCommandHandler';
+import { TabContextCommandHandler } from './TabContextCommandHandler';
 import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router/HostCommand';
 import type { WebviewChannel, FileOps } from '../router/HandlerContext';
 import type { SettingsService } from '../settings/SettingsService';
@@ -32,6 +33,7 @@ export class ChatWindow {
 	readonly eventRouter: TabEventRouter;
 	readonly commandRouter: TabCommandRouter;
 	readonly sessionCommandHandler: TabSessionCommandHandler;
+	readonly contextCommandHandler: TabContextCommandHandler;
 	readonly deduplicator = new RequestIdDeduplicator(2048);
 
 	private readonly settings: SettingsService;
@@ -71,7 +73,10 @@ export class ChatWindow {
 			},
 		});
 
+		this.contextCommandHandler = new TabContextCommandHandler(() => this.daemon);
+
 		this.registerBuiltinTabCommands();
+		this.registerContextCommands();
 		this.ensureInitialTab();
 	}
 
@@ -244,8 +249,18 @@ export class ChatWindow {
 		this.commandRouter.register('session.unshare', (cmd) => this.sessionCommandHandler.unshare(cmd));
 	}
 
-	registerView(viewId: string, channel: WebviewChannel): ViewRecord {
-		const record = this.viewRegistry.register(viewId, channel);
+	private registerContextCommands(): void {
+		// 上下文注入开关（per tab）：webview 在切换「自动附带当前文件」时发送。
+		this.commandRouter.register('context.refresh', (cmd, record) => {
+			this.contextCommandHandler.refreshContext(cmd, record);
+		});
+		// 斜杠命令列表（per tab 的 cwd）：webview 打 `/` 与 tab 切换时发送。
+		this.commandRouter.register('commands.refresh', (cmd, record) => {
+			this.contextCommandHandler.refreshCommands(cmd, record);
+		});
+	}
+
+	registerView(viewId: string, channel: WebviewChannel): ViewRecord {		const record = this.viewRegistry.register(viewId, channel);
 		this.resyncView(viewId, channel);
 		return record;
 	}

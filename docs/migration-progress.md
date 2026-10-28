@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（按代码核查更正 P8/P9 状态，并补 14 项功能域核查）
+> 最后更新：2026-10-28（P8-A4：补齐 `context.refresh` / `commands.refresh` 接收端，并补 §2.3 命令面缺口清单）
 
 ---
 
@@ -48,9 +48,9 @@
 | 10.9 | 状态面板三子页 | ⬜ | `StatusPanel` 仍用组件本地 `openPopover`；undo 走 `window.onUndoFileResult`；`useSubagents` 未统一 `resolveSubagentRunState` |
 | 10.10 | 添加附件 | 🟡 | `utils/attachmentTransport.ts` 已引入但未被发送路径使用；宿主 `AttachmentHandler` 缺失 |
 | 10.11 | 引用文件 `@` | ⬜ | 无 `useFileTags.restoreFileTags`；`files.listed` 事件未接 |
-| 10.12 | 文件上下文 | 🟡（断链） | webview 已发 `context.refresh`，宿主 `WindowEventHandler` **无该 handler** |
+| 10.12 | 文件上下文 | 🟡（宿主已接） | `context.refresh` 已注册（`src/host/window/TabContextCommandHandler.ts`），写目标 tab 的 `TabSettings.autoOpenFileEnabled/contextEnabled`。**仍缺**：发送时按 tab 注入（`OpenCodeSession.send` 仍读全局 `getAutoOpenFileEnabled`）、`context.updated` 回推 |
 | 10.13 | bash `!` | 🟡 | `SessionHandler` 仍 `context.getSession()`：只对"当前会话"生效 |
-| 10.14 | opencode `/` | 🟡 | `slashCommandProvider` 仍发 `refresh_slash_commands`（窗口级）；宿主无 `commands.refresh` |
+| 10.14 | opencode `/` | 🟡（宿主已接） | `commands.refresh` 已注册，按目标 tab 的 cwd 列命令（`{directory}`）并回推 `updateSlashCommands`；webview 不再发旧名 `refresh_slash_commands`（`slashCommandProvider` / `main.tsx` 已改）。**仍缺**：列表仍是窗口级单例（回推用广播）、内置命令本地执行与 per-tab 缓存 |
 
 ### 2.1 宿主单会话遗留（P8 的前置）
 
@@ -68,11 +68,26 @@
 
 | 能力 | 现状 |
 |---|---|
-| `context.refresh` | 未注册（webview 已发送 → 当前是断链） |
-| `commands.refresh` | 未注册（webview 仍发旧名 `refresh_slash_commands`） |
+| `context.refresh` | ✅ 已注册（`TabContextCommandHandler.refreshContext`） |
+| `commands.refresh` | ✅ 已注册（按目标 tab 的 cwd 列命令） |
 | `AttachmentHandler` | 不存在（`attachment.prepare/chunk/complete/abort` 无接收方） |
 | `PromptRegistry` 接线 | 类已存在，`PermissionHandler` 未使用 |
 | `TabSessionCommandHandler` | 存在，但 share 分组需保持休眠 |
+
+### 2.3 命令面缺口（webview 已发 / 宿主无接收方）
+
+`ChatWindow.handleViewCommand` 对未注册命令一律回 `command.rejected: UNKNOWN_TYPE`。
+按 webview 的发送点清点，当前仍未注册的命令：
+
+| 命令 | webview 发送点 | 后果 |
+|---|---|---|
+| `session.send` | 未切（仍发旧 `send_message`） | A2/A3 目标 |
+| `session.interrupt` | `useTabLifecycle.ts:260`（`sendInterrupt`） | 关 tab 时中断不到目标会话 |
+| `session.load` | `useTabSessionBinder.ts:677` | 切历史会话无宿主响应 |
+| `settings.mode` | `useTabSessionBinder.ts:212` | per-tab 模式不落宿主 |
+| `attachment.prepare/chunk/complete` | `utils/attachmentTransport.ts` | 附件链路断 |
+| `agents.list` | `store/agentStore.ts:104` | agent 列表只能靠旧推送 |
+| `save_json` | `utils/exportMarkdown.ts:383/432` | 导出保存无响应 |
 
 ---
 
@@ -95,13 +110,14 @@
 ## 4. 下一步（按依赖排序）
 
 1. **宿主去单会话**：`SessionHandler`、`PermissionHandler`、`ContextHandler`、`ModelProviderHandler`、`HistoryHandler`、`ExportHandler`、`SettingsHandler`、`CliModelsHandler`、`WindowEventHandler` 全部改为 `getSessionForTab(tabId)` / `getSession(sessionId)`。
-2. **补宿主命令**：`context.refresh`、`commands.refresh`；`slashCommandProvider` 改为发 `commands.refresh`。
+   - 前置条件（2026-10-28 核查新增）：`TabSessionFactory` / `TabStreamRouter` **尚未接线**，`TabRecord.getSession()` 恒为 null，且 `ChatInstance` 是 per-view 装配。必须先接线会话归属，否则无处解析。
+2. ~~**补宿主命令**：`context.refresh`、`commands.refresh`；`slashCommandProvider` 改为发 `commands.refresh`。~~ ✅ 2026-10-28 完成
 3. **附件链路**：`AttachmentHandler` + `globalStorageUri/attachments/<tabId>` + 发送只带 id。
 4. **弹窗身份**：`PermissionDialog` / `AskUserQuestionDialog` 接 `tabId/sessionId/requestId/onTimeout`；`PromptRegistry` 接入 `PermissionHandler`。
 5. **状态面板 per-tab**：面板展开/子页入 `TabStore`；`todos/task/subagent` 按 tab；`files.undo` 事件化。
 6. **选择器接线**：`ModeSelect` → `agentStore` + `modeColors`；`ModelSelect` 置顶拖拽；`ReasoningSelect` → guard。
 7. **视觉与品牌**：boot splash、空态背景、Aero 图标与 `media` 资源。
-8. **`@` 与上下文**：`restoreFileTags`、`files.listed`、per-tab `contextEnabled`。
+8. **`@` 与上下文**：`restoreFileTags`、`files.listed`、per-tab `contextEnabled` 注入。
 9. **P9 终验**：见 §5。
 
 ---
@@ -123,3 +139,4 @@
 |---|---|
 | 2026-10-28 | 建立文档；记录 P0–P7 架构主干落地 |
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
+| 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |

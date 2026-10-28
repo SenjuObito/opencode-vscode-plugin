@@ -18,7 +18,7 @@ import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
 import { applyLinkifyCapabilitiesPayload } from './utils/linkifyCapabilities';
-import { sendBridgeEvent, cardDebugLog } from './utils/bridge';
+import { sendBridgeEvent, sendWindowCommand, cardDebugLog } from './utils/bridge';
 import { installUiPreferencesBridge, requestUiPreferences } from './utils/uiPreferences';
 import { debugLog } from './utils/debug';
 import { waitForBridge } from './utils/bridgeStartup';
@@ -672,8 +672,8 @@ waitForBridge(() => {
   // right after frontend_ready so the host can answer from warm state.
   requestUiPreferences();
 
-  debugLog('[Main] Sending refresh_slash_commands request');
-  sendBridgeEvent('refresh_slash_commands');
+  debugLog('[Main] Sending commands.refresh request');
+  sendWindowCommand('commands.refresh');
 
   sendBridgeEvent('get_linkify_capabilities');
 });
