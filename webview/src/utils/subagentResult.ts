@@ -1,4 +1,4 @@
-import type { ToolResultBlock } from '../types';
+import type { SubagentStatus, TaskEvent, ToolResultBlock } from '../types';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 
 /**
@@ -91,6 +91,46 @@ export function readToolUseStatus(raw: unknown): unknown {
     return undefined;
   }
   return (toolUseResult as Record<string, unknown>).status;
+}
+
+export interface SubagentRunStateInput {
+  /** 后台运行（run_in_background）：启动确认不是终态。 */
+  isAsync: boolean;
+  /** 父级 tool_result 是否已到（同步调用的终态来源）。 */
+  hasTerminalResult: boolean;
+  /** 父级 tool_result 是否是错误。 */
+  resultIsError?: boolean;
+  /** 服务端推送的终态事件（task_notification / subagent.status）。 */
+  terminalEvent?: Pick<TaskEvent, 'status'> | null;
+}
+
+/**
+ * 子代理运行态的**唯一**推导（ported from idea `resolveSubagentRunState`）。
+ *
+ * 优先级：终态事件 → 异步未终态（除非启动就失败）→ 同步等 tool_result。
+ *
+ * 注意：子代理 transcript（`subagent.history`）不是状态来源 —— 它是某一时刻的
+ * 快照，可能比终态更旧，拿它当状态正是卡片转圈不停的根因。transcript 只喂详情视图。
+ */
+export function resolveSubagentRunState({
+  isAsync,
+  hasTerminalResult,
+  resultIsError,
+  terminalEvent,
+}: SubagentRunStateInput): SubagentStatus {
+  if (terminalEvent) {
+    return terminalEvent.status === 'failed' || terminalEvent.status === 'stopped'
+      ? 'error'
+      : 'completed';
+  }
+  if (isAsync) {
+    // 启动即失败（后台任务还没注册就报错）只有 is_error 的 tool_result，永远没有事件。
+    return resultIsError ? 'error' : 'running';
+  }
+  if (!hasTerminalResult) {
+    return 'running';
+  }
+  return resultIsError ? 'error' : 'completed';
 }
 
 export interface SpawnAgentMeta {

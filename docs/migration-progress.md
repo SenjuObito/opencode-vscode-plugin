@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A10：`task` 事件按会话过滤）
+> 最后更新：2026-10-28（P8-A11：子代理运行态统一判定）
 
 ---
 
@@ -49,7 +49,7 @@
 | 10.6 | 推理力度 | ✅ | `reasoningUtils.useReasoningEffortGuard` 成为唯一实现（档位来源 `types.getAvailableReasoningLevels`、可见性=无档位即隐藏、回落=推荐档→第一档）；`ReasoningSelect` 的内联副本已删除 |
 | 10.7 | 权限弹窗 | 🟡（归属已修） | 归属由 `SessionCallbackAdapter` 盖章（`PermissionRequest.tabId/sessionId`），`PermissionHandler` 不再靠活跃会话猜；`PromptRegistry` 已接线（`ChatInstance.attachPromptRegistry`），关 tab 时 `rejectForTab` → `rejectPrompts` 真的发 `replyPermission: deny` / `rejectQuestion`；弹窗载荷带 `tabId`。**仍缺**：webview 侧后台 tab 排队 + 角标 |
 | 10.8 | 问题弹窗 | 🟡（归属已修） | 与 10.7 同一套：提问弹窗载荷带 `tabId/sessionId`，未决项登记到 tab，关 tab 时 `rejectQuestion`；答复后 `PromptRegistry.forget` 防止重复拒绝。**仍缺**：dialog 的 `onTimeout` 与答案卡接 `questionAnswerStore` |
-| 10.9 | 状态面板三子页 | 🟡（tab 归属已通） | `task` 事件带会话归属：宿主 `SessionCallbackAdapter.onTaskEvent` 写入 `sessionId`，webview `isTaskEventForSession` 过滤别的 tab（此前依赖 idea 的 Java 侧过滤，本仓没有）；`todos` 本来按 `sessionID` 过滤。 子页已入 tab：`StatusPanel` 支持受控 `activeTab/onActiveTabChange`，`useTabBarState.statusPanelTab` 按 tab 记，`App → ChatScreen → StatusPanel` 已串通（切 tab 各自恢复展开与子页），有 2 项新测试。**仍缺**：`resolveSubagentRunState` 统一 v1/v2、`files.undo` 事件化 |
+| 10.9 | 状态面板三子页 | 🟡（tab 归属已通） | `task` 事件带会话归属：宿主 `SessionCallbackAdapter.onTaskEvent` 写入 `sessionId`，webview `isTaskEventForSession` 过滤别的 tab（此前依赖 idea 的 Java 侧过滤，本仓没有）；`todos` 本来按 `sessionID` 过滤。 子页已入 tab：`StatusPanel` 支持受控 `activeTab/onActiveTabChange`，`useTabBarState.statusPanelTab` 按 tab 记，`App → ChatScreen → StatusPanel` 已串通（切 tab 各自恢复展开与子页），有 2 项新测试。`resolveSubagentRunState` 已成为唯一状态推导（`useSubagents` 与 `AgentGroupBlock` 都委托它）。**仍缺**：`files.undo` 事件化 |
 | 10.10 | 添加附件 | 🟡（链路已通） | 宿主 `attachments/TabAttachmentStore` + `window/TabAttachmentCommandHandler`：`attachment.prepare/chunk/complete/abort` 全部接上，按 `<globalStorage>/attachments/<tabId>/` 落盘、32MB 上限、分块顺序校验、id/文件名防穿越；`session.send` 只带 `attachmentId`，发送时宿主读回内联字节；关 tab 调 `releaseTab`。**仍缺**：切 tab 恢复未发送的附件草稿（`TabAttachmentStore` 未接草稿） |
 | 10.11 | 引用文件 `@` | 🟡 | `useFileTags.restoreFileTags` 已移植并接到 imperative handle / 选择控制器（切 tab 回填草稿时不再退化成纯文本），有单测。**仍缺**：`files.listed` 语义事件未接（仍走 legacy `list_files` → `onFileListResult`） |
 | 10.12 | 文件上下文 | 🟡（宿主已接） | `context.refresh` 已注册（`src/host/window/TabContextCommandHandler.ts`），写目标 tab 的 `TabSettings.autoOpenFileEnabled/contextEnabled`。**仍缺**：发送时按 tab 注入（`OpenCodeSession.send` 仍读全局 `getAutoOpenFileEnabled`）、`context.updated` 回推 |
@@ -149,6 +149,7 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
+| 2026-10-28 | **P8-A11**：移植 `resolveSubagentRunState`（`utils/subagentResult`），`useSubagents.determineStatus` 与 `AgentGroupBlock` 都改为委托；transcript 只能作为终态事件的替代；新增 4 项测试 |
 | 2026-10-28 | **P8-A10**：`task` 事件的会话归属（宿主打标 + webview `isTaskEventForSession` 过滤），测试补 1 项宿主 + 3 项前端 |
 | 2026-10-28 | **P8-A9**：`save_json` 接通（legacy handler + 窗口级 v2 命令，`ExportHandler.saveText` 保存对话框）；§2.3 命令面缺口只剩 `files.listed` |
 | 2026-10-28 | **P8-A8**：`StatusPanel` 子页受控化（`activeTab/onActiveTabChange`），接到 `useTabBarState.statusPanelTab`（按 tab 存），App/ChatScreen 透传；新增 2 项测试（受控上报、切 tab 各自恢复） |

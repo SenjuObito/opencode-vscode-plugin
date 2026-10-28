@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ClaudeContentBlock, ToolResultBlock } from '../../types';
+import type { ClaudeContentBlock, TaskEvent, ToolResultBlock } from '../../types';
 import { normalizeToolName } from '../../utils/toolConstants';
 import { sendBridgeEvent } from '../../utils/bridge';
 import { getPersistedExpanded, setPersistedExpanded } from '../../utils/expandedState';
@@ -10,6 +10,7 @@ import {
   parseAgentToolMeta,
   parseSpawnAgentMeta,
   readToolUseStatus,
+  resolveSubagentRunState,
 } from '../../utils/subagentResult';
 import {
   useSubagentHistories,
@@ -91,7 +92,6 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
   // run_in_background is still recognized as async.
   const isAsync = isAsyncAgentInput(input, toolName, result, readToolUseStatus(toolId ? getToolResultRaw(toolId) : null));
   const taskEvent = useTaskEvent(toolId);
-  const taskFailed = taskEvent?.status === 'failed' || taskEvent?.status === 'stopped';
 
   const agentType = getAgentType(agentBlock);
   const summary = getAgentSummary(agentBlock);
@@ -105,18 +105,20 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
     ?? (input?.agentId as string | undefined);
   const agentPath = spawnMeta.agentPath;
   const history = (toolId ? histories[toolId] : undefined) ?? (agentId ? histories[agentId] : undefined);
-  const historyFailed = history?.status === 'error';
-  // A settled main turn is only the launch boundary for a background Agent. Use
-  // the live task_notification or a terminal sidechain end_turn as completion.
-  // A failed launch (validation error before the task was registered) returns an
-  // is_error tool_result and never emits a task_notification, so treat that as
-  // an error instead of staying stuck on "running".
-  const isCompleted = isAsync
-    ? (taskEvent ? !taskFailed : history?.completed === true)
-    : hasTerminalResult;
-  const isError = isAsync
-    ? (taskEvent ? taskFailed : historyFailed || result?.is_error === true)
-    : hasTerminalResult && result?.is_error === true;
+  // 状态推导只有一处：utils/subagentResult.resolveSubagentRunState。
+  // 我们的后端不一定每条后台任务都发 task_notification，所以把「子代理 transcript
+  // 已结束」降级成终态事件的**替代**（而不是独立的第二套判定），语义仍归一处。
+  const historyTerminal: Pick<TaskEvent, 'status'> | null = history?.completed
+    ? { status: history.status === 'error' ? 'failed' : 'completed' }
+    : null;
+  const runState = resolveSubagentRunState({
+    isAsync,
+    hasTerminalResult,
+    resultIsError: result?.is_error === true,
+    terminalEvent: taskEvent ?? historyTerminal,
+  });
+  const isCompleted = runState === 'completed';
+  const isError = runState === 'error';
 
   const noopToggleThinking = useCallback(() => {}, []);
 

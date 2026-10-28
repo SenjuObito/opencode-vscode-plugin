@@ -6,6 +6,7 @@ import {
   parseAgentToolMeta,
   parseSpawnAgentMeta,
   readToolUseStatus,
+  resolveSubagentRunState,
 } from './subagentResult';
 
 describe('isAsyncAgentInput', () => {
@@ -183,5 +184,42 @@ describe('parseAgentToolMeta', () => {
       toolUseResult: { totalTokens: NaN, totalDurationMs: Infinity, totalToolUseCount: '7' },
     });
     expect(parseAgentToolMeta(getter, 'tu_1')).toEqual({});
+  });
+});
+
+describe('resolveSubagentRunState', () => {
+  it('终态事件优先于一切（异步也一样）', () => {
+    expect(resolveSubagentRunState({
+      isAsync: true,
+      hasTerminalResult: true,
+      terminalEvent: { status: 'completed' },
+    })).toBe('completed');
+    expect(resolveSubagentRunState({
+      isAsync: true,
+      hasTerminalResult: true,
+      terminalEvent: { status: 'stopped' },
+    })).toBe('error');
+  });
+
+  it('异步未收到事件时保持 running（启动确认不是终态）', () => {
+    expect(resolveSubagentRunState({ isAsync: true, hasTerminalResult: true })).toBe('running');
+  });
+
+  it('异步启动即失败 → error（后台任务没注册，永远不会有事件）', () => {
+    expect(resolveSubagentRunState({
+      isAsync: true,
+      hasTerminalResult: true,
+      resultIsError: true,
+    })).toBe('error');
+  });
+
+  it('同步以 tool_result 为准', () => {
+    expect(resolveSubagentRunState({ isAsync: false, hasTerminalResult: false })).toBe('running');
+    expect(resolveSubagentRunState({ isAsync: false, hasTerminalResult: true })).toBe('completed');
+    expect(resolveSubagentRunState({
+      isAsync: false,
+      hasTerminalResult: true,
+      resultIsError: true,
+    })).toBe('error');
   });
 });

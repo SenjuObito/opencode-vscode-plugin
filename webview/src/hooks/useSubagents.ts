@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { ClaudeMessage, ClaudeRawMessage, ClaudeContentBlock, ToolResultBlock, SubagentHistoryResponse, SubagentInfo, SubagentStatus, TaskEvent, TaskEventMap } from '../types';
 import { normalizeToolInput } from '../utils/toolInputNormalization';
 import { normalizeToolName } from '../utils/toolConstants';
-import { extractResultText, isAsyncAgentInput, parseSpawnAgentMeta, readToolUseStatus } from '../utils/subagentResult';
+import { extractResultText, isAsyncAgentInput, parseSpawnAgentMeta, readToolUseStatus, resolveSubagentRunState } from '../utils/subagentResult';
 import { useTaskEvents } from '../contexts/SubagentContext';
 
 type GetToolResultRawFn = (toolUseId: string) => ClaudeRawMessage | null;
@@ -26,31 +26,19 @@ interface UseSubagentsParams {
  * Sync agents (task/agent without run_in_background) run inline: a tool_result
  * means the agent is done.
  */
+// 运行态推导只有一个实现（utils/subagentResult.resolveSubagentRunState）。
+// 这里只是把 hook 的入参适配成它的归一化形状。
 function determineStatus(
   result: ToolResultBlock | null,
   isAsync: boolean,
   taskEvent: TaskEvent | undefined,
 ): SubagentStatus {
-  if (isAsync) {
-    if (taskEvent) {
-      return taskEvent.status === 'failed' || taskEvent.status === 'stopped' ? 'error' : 'completed';
-    }
-    // A failed launch (validation error before the background task was
-    // registered) returns an is_error tool_result and never emits a
-    // task_notification - surface it as an error instead of staying stuck on
-    // "running" forever.
-    if (result?.is_error) {
-      return 'error';
-    }
-    return 'running';
-  }
-  if (!result) {
-    return 'running';
-  }
-  if (result.is_error) {
-    return 'error';
-  }
-  return 'completed';
+  return resolveSubagentRunState({
+    isAsync,
+    hasTerminalResult: result != null,
+    resultIsError: result?.is_error === true,
+    terminalEvent: taskEvent ?? null,
+  });
 }
 
 function extractResultMetadata(
