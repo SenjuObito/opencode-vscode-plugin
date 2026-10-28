@@ -358,7 +358,9 @@ export const openBrowser = (url?: string) => {
   if (!SAFE_BROWSER_PROTOCOLS.test(url)) {
     return;
   }
-  sendBridgeEvent('open_browser', url);
+  // The host implements `open_external_url`; `open_browser` is the idea
+  // plugin's spelling and reaches no handler here.
+  sendBridgeEvent('open_external_url', url);
 };
 
 export const sendToJava = (message: string, payload: any = {}) => {

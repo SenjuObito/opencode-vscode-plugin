@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryData, HistorySessionSummary } from '../../types';
 import VirtualList from './VirtualList';
-import { sendBridgeEvent } from '../../utils/bridge';
 import { copyToClipboard } from '../../utils/copyUtils';
 import { HistoryListItem, stopPropagationHandler } from './HistoryListItem';
 import { HistoryFilters } from './HistoryFilters';
 import { HistoryActions } from './HistoryActions';
 
 // Deep search timeout (milliseconds)
-const DEEP_SEARCH_TIMEOUT_MS = 30000;
 
 const ROOT_STYLE: React.CSSProperties = {
   height: '100%',
@@ -60,15 +58,13 @@ const EMPTY_HINT_STYLE: React.CSSProperties = {
 
 interface HistoryViewProps {
   historyData: HistoryData | null;
-  currentProvider?: string; // Current provider (claude or codex)
-  currentSessionId?: string | null; // Active session ID; its row must not offer conversion
   onLoadSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void; // Delete session callback
   onDeleteSessions: (sessionIds: string[]) => void; // Batch delete sessions callback
   onExportSession: (sessionId: string, title: string) => void; // Export session callback
   onToggleFavorite: (sessionId: string) => void; // Toggle favorite callback
   onUpdateTitle: (sessionId: string, newTitle: string) => void; // Update title callback
-  onConvertToCliSession: (sessionId: string) => void; // Convert sidechain session to CLI session callback
+  onRetry?: () => void; // Reload/retry loading history data
 }
 
 const getComparableTimestamp = (timestamp: string | undefined) => {
@@ -116,18 +112,16 @@ const deduplicateHistorySessions = (sessions: HistorySessionSummary[]) => {
 
 const PAGE_SIZE = 20;
 
-const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSession, onDeleteSession, onDeleteSessions, onExportSession, onToggleFavorite, onUpdateTitle, onConvertToCliSession }: HistoryViewProps) => {
+const HistoryView = ({ historyData, onLoadSession, onDeleteSession, onDeleteSessions, onExportSession, onToggleFavorite, onUpdateTitle, onRetry }: HistoryViewProps) => {
   const { t } = useTranslation();
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight || 600);
   const [displayLimit, setDisplayLimit] = useState(PAGE_SIZE);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null); // Session ID pending deletion
-  const [convertingSessionId, setConvertingSessionId] = useState<string | null>(null); // Session ID pending conversion
   const [inputValue, setInputValue] = useState(''); // Immediate value of search input
   const [searchQuery, setSearchQuery] = useState(''); // Actual search keyword (debounced)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null); // Session ID being edited
   const [editingTitle, setEditingTitle] = useState(''); // Title content being edited
-  const [isDeepSearching, setIsDeepSearching] = useState(false); // Deep search in-progress state
-  const deepSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Deep search timeout timer
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Copy status timeout timer
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null); // Track which session ID was copied
   const [copyFailedSessionId, setCopyFailedSessionId] = useState<string | null>(null); // Track which session ID copy failed
@@ -135,13 +129,22 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(() => new Set());
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
+  // 12s内没有拿到列表 = 这次加载大概率失败了（serve 未就绪 / IPC 丢失）。
+  // 给出重试入口，而不是让用户对着一个永远转圈的加载态。
+  useEffect(() => {
+    if (historyData) {
+      setLoadTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLoadTimedOut(true);
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, [historyData]);
+
   // Clean up all timeout timers on unmount
   useEffect(() => {
     return () => {
-      if (deepSearchTimeoutRef.current) {
-        clearTimeout(deepSearchTimeoutRef.current);
-        deepSearchTimeoutRef.current = null;
-      }
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
         copyTimeoutRef.current = null;
@@ -168,20 +171,6 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
   useEffect(() => {
     setDisplayLimit(PAGE_SIZE);
   }, [searchQuery, historyData?.sessions?.length]);
-
-  // When history data content updates, stop deep search state and clean up timeout timer.
-  // Depend on stable content fields so an existing history list refresh also clears the spinner.
-  useEffect(() => {
-    if (historyData) {
-      setIsDeepSearching(prev => {
-        if (prev && deepSearchTimeoutRef.current) {
-          clearTimeout(deepSearchTimeoutRef.current);
-          deepSearchTimeoutRef.current = null;
-        }
-        return false;
-      });
-    }
-  }, [historyData?.success, historyData?.total, historyData?.sessions]);
 
   // Sort and filter sessions: favorited on top (by favorite time descending), unfavorited below (original order)
   const sessions = useMemo(() => {
@@ -386,37 +375,6 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
     }
   }, [isSelectionMode, toggleSessionSelection, onLoadSession]);
 
-  const handleDeepSearch = useCallback(() => {
-    setIsDeepSearching(prev => {
-      if (prev) return prev;
-      sendBridgeEvent('deep_search_history', currentProvider || 'claude');
-
-      if (deepSearchTimeoutRef.current) {
-        clearTimeout(deepSearchTimeoutRef.current);
-      }
-
-      deepSearchTimeoutRef.current = setTimeout(() => {
-        setIsDeepSearching(false);
-        deepSearchTimeoutRef.current = null;
-      }, DEEP_SEARCH_TIMEOUT_MS);
-      return true;
-    });
-  }, [currentProvider]);
-
-  const handleConvertRequest = useCallback((sessionId: string) => {
-    setConvertingSessionId(sessionId);
-  }, []);
-
-  const confirmConvert = useCallback(() => {
-    if (convertingSessionId) {
-      onConvertToCliSession(convertingSessionId);
-      setConvertingSessionId(null);
-    }
-  }, [convertingSessionId, onConvertToCliSession]);
-
-  const cancelConvert = useCallback(() => {
-    setConvertingSessionId(null);
-  }, []);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
@@ -431,6 +389,29 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
   }, []);
 
   if (!historyData) {
+    if (loadTimedOut) {
+      return (
+        <div className="messages-container" style={CENTER_BLOCK_STYLE}>
+          <div style={EMPTY_TEXT_STYLE}>
+            <div style={EMPTY_ICON_STYLE}>⏱️</div>
+            <div style={{ marginBottom: '12px' }}>{t('history.loadTimeout', '加载历史记录超时')}</div>
+            {onRetry && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setLoadTimedOut(false);
+                  onRetry();
+                }}
+              >
+                {t('history.retry', '重试')}
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="messages-container" style={CENTER_BLOCK_STYLE}>
         <div style={EMPTY_TEXT_STYLE}>
@@ -446,7 +427,19 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       <div className="messages-container" style={CENTER_BLOCK_STYLE}>
         <div style={EMPTY_TEXT_STYLE}>
           <div style={EMPTY_ICON_STYLE}>⚠️</div>
-          <div>{historyData.error ?? t('history.loadFailed')}</div>
+          <div style={{ marginBottom: '12px' }}>{historyData.error ?? t('history.loadFailed')}</div>
+          {onRetry && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setLoadTimedOut(false);
+                onRetry();
+              }}
+            >
+              {t('history.retry', '重试')}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -492,7 +485,6 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       isSelectionMode={isSelectionMode}
       isCopied={copiedSessionId === session.sessionId}
       isCopyFailed={copyFailedSessionId === session.sessionId}
-      isActiveSession={currentSessionId === session.sessionId}
       editingTitle={editingSessionId === session.sessionId ? editingTitle : ''}
       searchQuery={searchQuery}
       t={t}
@@ -506,7 +498,6 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
       onDelete={handleDeleteRequest}
       onFavorite={handleFavoriteRequest}
       onCopySessionId={handleCopySessionId}
-      onConvertToCliSession={handleConvertRequest}
     />
   );
 
@@ -528,13 +519,11 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
             selectedCount={selectedCount}
             visibleCount={sessions.length}
             allVisibleSelected={allVisibleSelected}
-            isDeepSearching={isDeepSearching}
             t={t}
             onEnterSelectionMode={enterSelectionMode}
             onExitSelectionMode={exitSelectionMode}
             onToggleSelectAllVisible={toggleSelectAllVisible}
             onStartDeleteSelected={handleStartDeleteSelected}
-            onDeepSearch={handleDeepSearch}
           />
         </div>
         {!isSelectionMode && (
@@ -574,24 +563,6 @@ const HistoryView = ({ historyData, currentProvider, currentSessionId, onLoadSes
               </button>
               <button className="modal-btn modal-btn-danger" onClick={confirmDelete}>
                 {t('common.delete')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Convert to CLI confirmation dialog */}
-      {convertingSessionId && (
-        <div className="modal-overlay" onClick={cancelConvert} role="presentation">
-          <div className="modal-content" onClick={stopPropagationHandler} role="dialog" aria-modal="true" aria-labelledby="convert-session-title">
-            <h3 id="convert-session-title">{t('history.confirmConvert')}</h3>
-            <p>{t('history.convertConfirmMessage')}</p>
-            <div className="modal-actions">
-              <button className="modal-btn modal-btn-cancel" onClick={cancelConvert}>
-                {t('common.cancel')}
-              </button>
-              <button className="modal-btn modal-btn-primary" onClick={confirmConvert}>
-                {t('history.convertButton')}
               </button>
             </div>
           </div>

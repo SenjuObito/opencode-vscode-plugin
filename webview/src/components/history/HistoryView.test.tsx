@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HistoryData } from '../../types';
@@ -22,13 +22,12 @@ vi.mock('react-i18next', () => ({
         'history.selectSession': 'Select session',
         'history.selectSessionWithTitle': `Select ${String(options?.title ?? '')}`,
         'history.searchPlaceholder': 'Search session titles...',
-        'history.deepSearchTooltip': 'Deep Search',
+        'history.loadTimeout': 'Load history timed out',
+        'history.retry': 'Retry',
+        'history.loading': 'Loading history...',
+        'history.loadFailed': 'Failed to load history',
         'history.favoriteSession': 'Favorite session',
         'history.unfavoriteSession': 'Unfavorite session',
-        'history.convertToCliSession': 'Convert to CLI session',
-        'history.convertButton': 'Convert',
-        'history.confirmConvert': 'Convert to CLI?',
-        'history.convertConfirmMessage': 'This changes the entrypoint.',
         'common.cancel': 'Cancel',
         'common.delete': 'Delete',
       };
@@ -90,7 +89,6 @@ describe('HistoryView multi-select', () => {
         onExportSession={vi.fn()}
         onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
       />,
     );
 
@@ -116,140 +114,6 @@ describe('HistoryView multi-select', () => {
   });
 });
 
-describe('HistoryView conversion', () => {
-  it('confirms SDK session conversion without loading the row', () => {
-    const onLoadSession = vi.fn();
-    const onConvertToCliSession = vi.fn();
-
-    render(
-      <HistoryView
-        historyData={{
-          ...historyData,
-          sessions: [
-            {
-              ...historyData.sessions![0],
-              entrypoint: 'sdk-cli',
-            },
-          ],
-        }}
-        currentProvider="claude"
-        onLoadSession={onLoadSession}
-        onDeleteSession={vi.fn()}
-        onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
-        onUpdateTitle={vi.fn()}
-        onConvertToCliSession={onConvertToCliSession}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Convert to CLI session' }));
-
-    const dialog = screen.getByRole('dialog', { name: 'Convert to CLI?' });
-    expect(within(dialog).getByText('This changes the entrypoint.')).toBeTruthy();
-    expect(onLoadSession).not.toHaveBeenCalled();
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Convert' }));
-
-    expect(onConvertToCliSession).toHaveBeenCalledTimes(1);
-    expect(onConvertToCliSession).toHaveBeenCalledWith('session-one');
-    expect(onLoadSession).not.toHaveBeenCalled();
-  });
-
-  it('hides the convert button for the currently active session', () => {
-    render(
-      <HistoryView
-        historyData={{
-          ...historyData,
-          sessions: [
-            {
-              ...historyData.sessions![0],
-              entrypoint: 'sdk-cli',
-            },
-          ],
-        }}
-        currentProvider="claude"
-        currentSessionId="session-one"
-        onLoadSession={vi.fn()}
-        onDeleteSession={vi.fn()}
-        onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
-        onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: 'Convert to CLI session' })).toBeNull();
-  });
-
-  it('does not offer conversion for unknown entrypoints the backend cannot rewrite', () => {
-    render(
-      <HistoryView
-        historyData={{
-          ...historyData,
-          sessions: [
-            {
-              ...historyData.sessions![0],
-              entrypoint: 'some-future-entrypoint',
-            },
-          ],
-        }}
-        currentProvider="claude"
-        onLoadSession={vi.fn()}
-        onDeleteSession={vi.fn()}
-        onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
-        onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: 'Convert to CLI session' })).toBeNull();
-  });
-
-  it('clears deep search state when existing history data refreshes', () => {
-    const { rerender } = render(
-      <HistoryView
-        historyData={historyData}
-        currentProvider="claude"
-        onLoadSession={vi.fn()}
-        onDeleteSession={vi.fn()}
-        onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
-        onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
-      />,
-    );
-
-    const deepSearchButton = screen.getByRole('button', { name: 'Deep Search' });
-    fireEvent.click(deepSearchButton);
-
-    expect(sendBridgeEvent).toHaveBeenCalledWith('deep_search_history', 'claude');
-    expect(deepSearchButton).toHaveProperty('disabled', true);
-
-    rerender(
-      <HistoryView
-        historyData={{
-          ...historyData,
-          total: 11,
-        }}
-        currentProvider="claude"
-        onLoadSession={vi.fn()}
-        onDeleteSession={vi.fn()}
-        onDeleteSessions={vi.fn()}
-        onExportSession={vi.fn()}
-        onToggleFavorite={vi.fn()}
-        onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: 'Deep Search' })).toHaveProperty('disabled', false);
-  });
-});
 
 describe('HistoryView favorite visibility', () => {
   it('marks favorited session actions for persistent display', () => {
@@ -273,7 +137,6 @@ describe('HistoryView favorite visibility', () => {
         onExportSession={vi.fn()}
         onToggleFavorite={vi.fn()}
         onUpdateTitle={vi.fn()}
-        onConvertToCliSession={vi.fn()}
       />,
     );
 
@@ -282,5 +145,57 @@ describe('HistoryView favorite visibility', () => {
 
     expect(favoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(true);
     expect(unfavoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(false);
+  });
+});
+
+describe('HistoryView loading timeout and error retry', () => {
+  it('renders retry button when error occurs and invokes onRetry', () => {
+    const onRetry = vi.fn();
+    render(
+      <HistoryView
+        historyData={{ success: false, error: 'Custom error message' }}
+        onLoadSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onDeleteSessions={vi.fn()}
+        onExportSession={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onUpdateTitle={vi.fn()}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByText('Custom error message')).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    fireEvent.click(retryButton);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders timeout state and retry button after timeout duration', () => {
+    vi.useFakeTimers();
+    const onRetry = vi.fn();
+    render(
+      <HistoryView
+        historyData={null}
+        onLoadSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onDeleteSessions={vi.fn()}
+        onExportSession={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onUpdateTitle={vi.fn()}
+        onRetry={onRetry}
+      />,
+    );
+
+    expect(screen.getByText('Loading history...')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(13000);
+    });
+
+    expect(screen.getByText('Load history timed out')).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    fireEvent.click(retryButton);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

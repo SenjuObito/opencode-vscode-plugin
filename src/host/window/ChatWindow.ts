@@ -431,6 +431,37 @@ export class ChatWindow {
 			record.getSettings().setPermissionMode(mode);
 			record.getSession()?.state.setPermissionMode(mode);
 		});
+		// per-tab 模型选择：写到目标 tab，不影响别的 tab。
+		// `silent` 表示这是切 tab 时回放该 tab 自己的模型，不是用户的新选择——
+		// 宿主据此不清空该会话的上下文用量（否则两个不同模型的 tab 来回切，
+		// 用量环会每次归零）。
+		this.commandRouter.register('settings.model', (cmd, record) => {
+			const model = cmd.string('model');
+			if (!record || !model) {
+				return;
+			}
+			record.getSettings().setModel(model);
+			const session = record.getSession();
+			if (!session) {
+				return;
+			}
+			const previousModel = session.getState().getModel();
+			session.getState().setModel(model);
+			if (!cmd.boolean('silent') && previousModel !== model) {
+				// 上下文额度是模型自身的属性：换了模型必须重推用量，
+				// 否则用量环停在旧模型的分母上。
+				session.republishUsageAfterModelChange();
+			}
+		});
+		// per-tab 推理力度。
+		this.commandRouter.register('settings.reasoning', (cmd, record) => {
+			const effort = cmd.string('reasoningEffort');
+			if (!record || !effort) {
+				return;
+			}
+			record.getSettings().setReasoningEffort(effort);
+			record.getSession()?.getState().setReasoningEffort(effort);
+		});
 		// agent 目录：webview 的 ModeSelect 在未收到过推送时主动要一次。
 		this.commandRouter.register('agents.list', () => {
 			this.options.requestAgents?.();

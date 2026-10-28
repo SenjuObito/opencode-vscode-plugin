@@ -69,8 +69,8 @@ const entry = (name: string): FileEntry => ({
 	type: 'file',
 });
 
-describe('P8-A15: §10.11 files.list —— @ 候选按 tab 列举并事件化', () => {
-	it('按目标 tab 的 cwd 列举，结果作为 files.listed 事件回到那个 tab', async () => {
+suite('P8-A15: §10.11 files.list —— @ 候选按 tab 列举并事件化', () => {
+	test('按目标 tab 的 cwd 列举，结果作为 files.listed 事件回到那个 tab', async () => {
 		const calls: Array<{ query: string; directory: string | undefined }> = [];
 		const chatWindow = new ChatWindow({
 			settings: {} as never,
@@ -112,7 +112,7 @@ describe('P8-A15: §10.11 files.list —— @ 候选按 tab 列举并事件化',
 		assert.notStrictEqual(events[0].tabId, tabA.value);
 	});
 
-	it('列举失败时回空列表（前端不能挂到超时）', async () => {
+	test('列举失败时回空列表（前端不能挂到超时）', async () => {
 		const chatWindow = new ChatWindow({
 			settings: {} as never,
 			daemon: {} as never,

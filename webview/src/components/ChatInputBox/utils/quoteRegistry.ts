@@ -34,11 +34,27 @@ export function removeQuote(id: string): void {
  * Drop registry entries whose tokens are no longer present in the input
  * (deleted chip, cleared input, message sent). Keeps the module-level map
  * from growing unbounded over a long session.
+ *
+ * @param preservedIds ids that belong to another tab's draft. The registry is
+ *   shared by every tab, so a background tab's quotes must survive the prune
+ *   that the active tab's render pass performs.
  */
-export function pruneQuoteRegistry(activeIds: ReadonlySet<string>): void {
+export function pruneQuoteRegistry(activeIds: ReadonlySet<string>, preservedIds?: ReadonlySet<string>): void {
   for (const id of registry.keys()) {
-    if (!activeIds.has(id)) {
+    if (!activeIds.has(id) && (!preservedIds || !preservedIds.has(id))) {
       registry.delete(id);
+    }
+  }
+}
+
+/**
+ * Restore quotes into the registry (e.g. from a tab draft snapshot).
+ */
+export function restoreQuotes(quotes?: Record<string, QuoteEntry> | null): void {
+  if (!quotes) return;
+  for (const [id, entry] of Object.entries(quotes)) {
+    if (id && entry && typeof entry.text === 'string') {
+      registry.set(id, { text: entry.text });
     }
   }
 }

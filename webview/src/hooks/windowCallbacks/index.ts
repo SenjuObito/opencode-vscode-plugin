@@ -5,6 +5,6 @@
  */
 
 export * from './messageSync';
-export * from './sessionTransition';
+export * from './resetTransientState';
 export * from './settingsBootstrap';
 export { registerWindowCallbacks } from './registerCallbacks';

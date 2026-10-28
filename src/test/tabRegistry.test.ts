@@ -7,8 +7,8 @@ import { TabState } from '../host/tab/TabState';
 import { TabCommand } from '../host/tab/TabCommand';
 import { TabCommandRouter, TabCommandRouteResult } from '../host/tab/TabCommandRouter';
 
-describe('Tab models and Registry invariants', () => {
-	it('TabId validates non-empty and enforces identity', () => {
+suite('Tab models and Registry invariants', () => {
+	test('TabId validates non-empty and enforces identity', () => {
 		assert.throws(() => new TabId(''), /tabId must not be blank/);
 		assert.throws(() => new TabId('   '), /tabId must not be blank/);
 
@@ -18,7 +18,7 @@ describe('Tab models and Registry invariants', () => {
 		assert.ok(id1.equals(id2));
 	});
 
-	it('SessionId validates ses_* prefix (INV-2)', () => {
+	test('SessionId validates ses_* prefix (INV-2)', () => {
 		assert.throws(() => new SessionId('invalid_session_id'), /not a canonical opencode session id/);
 		assert.throws(() => new SessionId(''), /sessionId must not be blank/);
 
@@ -28,7 +28,7 @@ describe('Tab models and Registry invariants', () => {
 		assert.strictEqual(SessionId.tryParse('ses_abc')?.value, 'ses_abc');
 	});
 
-	it('TurnId parses numbers correctly', () => {
+	test('TurnId parses numbers correctly', () => {
 		assert.throws(() => new TurnId(NaN), /turnId must be a valid number/);
 		const turn1 = TurnId.of(1042);
 		assert.strictEqual(turn1.toNumber(), 1042);
@@ -36,7 +36,7 @@ describe('Tab models and Registry invariants', () => {
 		assert.strictEqual(TurnId.tryParse('not-a-number'), null);
 	});
 
-	it('TabRegistry handles tab lifecycle and bi-directional index (INV-3)', () => {
+	test('TabRegistry handles tab lifecycle and bi-directional index (INV-3)', () => {
 		const registry = new TabRegistry();
 		const tabA = TabId.of('tab-a');
 		const tabB = TabId.of('tab-b');
@@ -78,7 +78,7 @@ describe('Tab models and Registry invariants', () => {
 		assert.strictEqual(registry.getActiveTabId()?.value, 'tab-b');
 	});
 
-	it('TabRegistry produces accurate snapshots and supports reordering', () => {
+	test('TabRegistry produces accurate snapshots and supports reordering', () => {
 		const registry = new TabRegistry();
 		const tab1 = TabId.of('tab-1');
 		const tab2 = TabId.of('tab-2');
@@ -111,7 +111,7 @@ describe('Tab models and Registry invariants', () => {
 		assert.strictEqual(reorderedSnapshots[2].tabId, 'tab-2');
 	});
 
-	it('TabCommandRouter routes commands with actor ordering and request deduplication', async () => {
+	test('TabCommandRouter routes commands with actor ordering and request deduplication', async () => {
 		const registry = new TabRegistry();
 		const router = new TabCommandRouter(registry);
 		const tabId = TabId.of('tab-test');

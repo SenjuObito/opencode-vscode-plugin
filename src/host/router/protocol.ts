@@ -32,7 +32,6 @@ export const BridgeMessageType = {
 	// 文件与 IDE 原生操作
 	OPEN_FILE: 'open_file',
 	RESOLVE_FILE_PATH: 'resolve_file_path',
-	OPEN_BROWSER: 'open_browser',
 	SHOW_DIFF: 'show_diff',
 	SHOW_EDITABLE_DIFF: 'show_editable_diff',
 	UNDO_FILE_CHANGES: 'undo_file_changes',

@@ -8,7 +8,6 @@ import type {
 import type { ContextInfo } from '../../hooks';
 import type { TabScrollState } from '../../hooks/useScrollBehavior';
 import type { PermissionMode, ReasoningEffort } from '../ChatInputBox/types';
-import type { Attachment } from '../ChatInputBox/types';
 import type { TabType } from '../StatusPanel/types';
 import type { TabMessageStore } from '../../store/tabMessageStore';
 
@@ -62,7 +61,6 @@ export interface SessionTabData {
   activeFile?: string;
   selectedLines?: string;
   /** 未发送的附件（按 tab 保存，切 tab 时各自保留）。 */
-  pendingAttachments?: Attachment[];
   pendingPermissions?: any[];
   pendingQuestions?: any[];
   /** Plan approvals waiting for an answer in this tab. */

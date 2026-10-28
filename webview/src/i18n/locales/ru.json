@@ -24,7 +24,8 @@
     "info": "Информация",
     "seconds": "с",
     "minutes": "м",
-    "optional": "Необязательно"
+    "optional": "Необязательно",
+    "retry": "Перезагрузить"
   },
   "chat": {
     "sendMessage": "Отправить сообщение в {{provider}}",
@@ -169,7 +170,8 @@
     "shareLinkCreated": "Ссылка создана",
     "retryCopy": "Копировать снова",
     "subagentsSection": "Субагенты",
-    "filesSection": "Файлы"
+    "filesSection": "Файлы",
+    "renderError": "Ошибка отрисовки сообщения"
   },
   "settings": {
     "title": "Настройки",
@@ -753,7 +755,6 @@
     "searchPlaceholder": "Поиск по чатам...",
     "noSearchResults": "Чаты не найдены",
     "tryOtherKeywords": "Попробуйте другие ключевые слова",
-    "deepSearchTooltip": "Глубокий поиск (сбросить кэш)",
     "editTitle": "Редактировать название",
     "saveTitleButton": "Сохранить",
     "cancelEditButton": "Отмена",
@@ -762,12 +763,8 @@
     "copySessionId": "Копировать ID сессии для CLI resume",
     "sessionIdCopied": "ID сессии скопирован",
     "copyFailed": "Не удалось скопировать",
-    "convertToCliSession": "Преобразовать в сессию, распознаваемую CLI",
-    "convertButton": "Преобразовать в CLI",
     "convertSuccess": "Сессия преобразована для распознавания CLI",
     "convertFailed": "Ошибка преобразования",
-    "confirmConvert": "Преобразовать в сессию CLI?",
-    "convertConfirmMessage": "Это изменит entrypoint сессии, чтобы она отображалась в списке /resume CLI OpenCode.",
     "timeAgo": {
       "yearsAgo_one": "{{count}} год назад",
       "yearsAgo_other": "{{count}} лет назад",
@@ -791,16 +788,6 @@
       "minutesAgo_few": "{{count}} минуты назад",
       "minutesAgo_many": "{{count}} минут назад"
     },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "Недействительный ID сеанса",
-      "SESSION_ACTIVE": "Невозможно преобразовать текущий активный сеанс. Сначала начните новый сеанс, затем преобразуйте этот",
-      "SESSION_NOT_FOUND": "Файл сеанса не найден",
-      "FILE_NOT_EXIST": "Файл сеанса не существует",
-      "FILE_LOCKED": "Файл сеанса используется другим процессом",
-      "NOT_SDK_SESSION": "Этот сеанс не был создан SDK (entrypoint не sdk-cli)",
-      "ALREADY_CLI_SESSION": "Этот сеанс уже является CLI сеансом",
-      "CONVERSION_FAILED": "Не удалось выполнить преобразование, попробуйте позже"
-    },
     "entrypointLabel": {
       "sdk-cli": "SDK сеанс",
       "claude-vscode": "VS Code",
@@ -812,7 +799,9 @@
       "claude-vscode": "Этот сеанс был создан расширением VS Code и по умолчанию не отображается в CLI. Нажмите 'Преобразовать в CLI', чтобы он появился в списке /resume терминала CLI",
       "remote": "Этот сеанс был создан удаленным экземпляром OpenCode",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
-    }
+    },
+    "retry": "Повторить",
+    "loadTimeout": "Истекло время загрузки истории"
   },
   "permission": {
     "dialogTitle": "Запрос разрешения",

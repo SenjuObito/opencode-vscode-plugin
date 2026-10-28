@@ -27,7 +27,8 @@
     "gotIt": "Got it",
     "seconds": "s",
     "minutes": "m",
-    "optional": "Optional"
+    "optional": "Optional",
+    "retry": "Reload"
   },
   "chat": {
     "exportMarkdown": "Export as Markdown",
@@ -202,7 +203,8 @@
     "shareLinkCreated": "Share link created",
     "retryCopy": "Copy again",
     "subagentsSection": "Subagents",
-    "filesSection": "Files"
+    "filesSection": "Files",
+    "renderError": "Message rendering failed"
   },
   "settings": {
     "title": "Settings",
@@ -866,7 +868,6 @@
     "searchPlaceholder": "Search session titles...",
     "noSearchResults": "No matching sessions found",
     "tryOtherKeywords": "Try other search keywords",
-    "deepSearchTooltip": "Deep Search (clear cache and reload)",
     "editTitle": "Edit title",
     "saveTitleButton": "Save",
     "cancelEditButton": "Cancel",
@@ -887,22 +888,8 @@
       "remote": "This session was created by a remote OpenCode instance",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
     },
-    "convertToCliSession": "Convert to CLI-recognizable session",
-    "convertButton": "Convert to CLI",
     "convertSuccess": "Session converted, now visible in CLI /resume",
     "convertFailed": "Conversion failed",
-    "confirmConvert": "Convert to CLI Session?",
-    "convertConfirmMessage": "This will modify the session's entrypoint to make it visible in OpenCode CLI's /resume list.",
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "Invalid session ID",
-      "SESSION_ACTIVE": "Cannot convert the currently active session. Start a new session first, then convert this one",
-      "SESSION_NOT_FOUND": "Session file not found",
-      "FILE_NOT_EXIST": "Session file does not exist",
-      "FILE_LOCKED": "Session file is being accessed by another process",
-      "NOT_SDK_SESSION": "This session is not an SDK-created session (entrypoint is not sdk-cli)",
-      "ALREADY_CLI_SESSION": "This session is already a CLI session",
-      "CONVERSION_FAILED": "Conversion failed, please try again later"
-    },
     "timeAgo": {
       "yearsAgo": "years ago",
       "monthsAgo": "months ago",
@@ -910,7 +897,9 @@
       "hoursAgo": "hours ago",
       "minutesAgo": "minutes ago",
       "secondsAgo": "seconds ago"
-    }
+    },
+    "retry": "Retry",
+    "loadTimeout": "Load history timed out"
   },
   "permission": {
     "dialogTitle": "Permission Request",

@@ -1,6 +1,8 @@
 import { createElement, useState } from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
-import { useWindowCallbacks } from './useWindowCallbacks.js';
+import { useWindowCallbacks } from './useWindowCallbacks.js';
+import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
+import { seedTabStore } from '../test/seedTabStore';
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
 
@@ -89,8 +91,10 @@ describe('useWindowCallbacks integration', () => {
   });
 
   beforeEach(() => {
-    window.__sessionTransitioning = false;
-    window.__sessionTransitionToken = null;
+    // The transition guard belongs to a tab, so every case needs one.
+    seedTabStore([{ id: 'tab-active' }], 'tab-active');
+    endTransition('tab-active');
+    endTransition('tab-new');
     window.__minAcceptedUpdateSequence = 0;
     window.__prependedHistoryMessageCount = 0;
     window.__messageBaseIndex = 0;
@@ -208,21 +212,20 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== historyLoadComplete releases transition guard =====
 
-  it('historyLoadComplete releases __sessionTransitioning guard', () => {
+  it('historyLoadComplete releases the tab transition guard', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
     // Simulate: beginSessionTransition sets guard
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-1';
+    beginTransition('tab-active', 'hist-1', 'transition-1');
 
     // Simulate: Java calls historyLoadComplete on success
     act(() => {
       window.historyLoadComplete!();
     });
 
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    expect(isTabTransitioning('tab-active')).toBe(false);
+    expect(transitionTokenFor('tab-active')).toBeNull();
   });
 
   it('historyLoadComplete shows pending session transition toast', () => {
@@ -291,19 +294,20 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== setSessionId releases transition guard =====
 
-  it('setSessionId releases __sessionTransitioning guard', () => {
+  it('setSessionId releases a target-less transition guard', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-2';
+    // A new-session transition has no target: setSessionId releases it so
+    // the first deltas of the new session are accepted.
+    beginTransition('tab-active', null, 'transition-2');
 
     act(() => {
       window.setSessionId!('new-session-123');
     });
 
-    expect(window.__sessionTransitioning).toBe(false);
-    expect(window.__sessionTransitionToken).toBeNull();
+    expect(isTabTransitioning('tab-active')).toBe(false);
+    expect(transitionTokenFor('tab-active')).toBeNull();
     expect(opts.setCurrentSessionId).toHaveBeenCalledWith('new-session-123');
   });
 
@@ -393,11 +397,11 @@ describe('useWindowCallbacks integration', () => {
 
   // ===== updateMessages is blocked during transition =====
 
-  it('updateMessages is silently dropped while __sessionTransitioning is true', () => {
+  it('updateMessages is silently dropped while the tab is transitioning', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
+    beginTransition('tab-active', 'hist-1', 'transition-test');
 
     const staleMessages: ClaudeMessage[] = [
       { type: 'assistant', content: 'stale content', timestamp: new Date().toISOString() },
@@ -416,7 +420,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     // Guard is NOT set
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-active')).toBe(false);
 
     const freshMessages: ClaudeMessage[] = [
       { type: 'user', content: 'hello', timestamp: new Date().toISOString() },
@@ -736,11 +740,11 @@ describe('useWindowCallbacks integration', () => {
     expect((next[1].raw as any)?.uuid).toBe('uuid-123');
   });
 
-  it('patchMessageUuid is ignored while __sessionTransitioning is true', () => {
+  it('patchMessageUuid is ignored while the tab is transitioning', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
+    beginTransition('tab-active', 'hist-1', 'transition-test');
 
     act(() => {
       window.patchMessageUuid?.('hello', 'uuid-guarded');
@@ -753,15 +757,14 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = 'transition-status';
+    beginTransition('tab-active', 'hist-1', 'transition-status');
 
     act(() => {
       window.updateStatus!('warming runtime');
     });
 
-    expect(window.__sessionTransitioning).toBe(true);
-    expect(window.__sessionTransitionToken).toBe('transition-status');
+    expect(isTabTransitioning('tab-active')).toBe(true);
+    expect(transitionTokenFor('tab-active')).toBe('transition-status');
     expect(opts.setStatus).toHaveBeenCalledWith('warming runtime');
   });
 
@@ -924,7 +927,7 @@ describe('useWindowCallbacks integration', () => {
     renderHook(() => useWindowCallbacks(opts));
 
     // Step 1: Frontend begins session transition
-    window.__sessionTransitioning = true;
+    beginTransition('tab-active', 'hist-1', 'transition-test');
 
     // Step 2: During transition, stale messages are blocked
     act(() => {
@@ -936,7 +939,7 @@ describe('useWindowCallbacks integration', () => {
     act(() => {
       window.historyLoadComplete!();
     });
-    expect(window.__sessionTransitioning).toBe(false);
+    expect(isTabTransitioning('tab-active')).toBe(false);
 
     // Step 4: Java calls addErrorMessage
     act(() => {

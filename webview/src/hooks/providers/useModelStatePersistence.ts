@@ -1,8 +1,5 @@
 import { useEffect } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
-import {
-  OPENCODE_DEFAULT_MODEL_ID,
-} from '../../components/ChatInputBox/types';
 import type {
   PermissionMode,
   ReasoningEffort,
@@ -58,12 +55,10 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
       const pinned = readPinnedModelIds('opencode');
       const firstPinned = pinned.length > 0 ? pinned[0] : null;
 
-      let restoredOpenCodeModel = firstPinned || OPENCODE_DEFAULT_MODEL_ID;
       let restoredOpenCodePermissionMode: PermissionMode = 'build';
 
       const applyOpenCodeModel = (modelId: unknown) => {
         if (typeof modelId === 'string' && modelId.trim().length > 0) {
-          restoredOpenCodeModel = modelId;
           setSelectedOpenCodeModel(modelId);
         }
       };
@@ -104,7 +99,10 @@ export function useModelStatePersistence(options: UseModelStatePersistenceOption
             return;
           }
           sendBridgeEvent('set_provider', 'opencode');
-          sendBridgeEvent('set_model', restoredOpenCodeModel);
+          // The restored model stays frontend state only. There is no bound
+          // session at boot, so `set_model` would write to whatever session the
+          // host still points at (a background tab after a reload). The first
+          // send_message carries the model to the session it creates.
         } else {
           syncRetryCount++;
           if (syncRetryCount < MAX_SYNC_RETRIES) {

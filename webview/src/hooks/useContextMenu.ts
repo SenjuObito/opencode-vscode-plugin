@@ -88,13 +88,20 @@ export function useContextMenu() {
   return { ...state, open, close, targetFileTag: targetFileTagRef.current };
 }
 
-/** Copy saved selection text to clipboard via Java bridge */
+/**
+ * Copy saved selection text to clipboard via the host bridge.
+ *
+ * The host only implements `copy_to_clipboard` (WindowEventHandler). The
+ * idea plugin sends `write_clipboard` because its Java ClipboardHandler accepts
+ * both spellings; sending the idea spelling here would reach no handler and the
+ * copy would silently do nothing.
+ */
 export function copySelection(_savedRange: Range | null, text: string): void {
   if (!text) return;
-  sendToJava('write_clipboard', text);
+  sendToJava('copy_to_clipboard', text);
 }
 
-/** Cut saved selection text via Java bridge (for contenteditable) */
+/** Cut saved selection text via the host bridge (for contenteditable) */
 export function cutSelection(
   savedRange: Range | null,
   text: string,
@@ -102,7 +109,7 @@ export function cutSelection(
   targetFileTag?: HTMLElement | null
 ): void {
   if (!text) return;
-  sendToJava('write_clipboard', text);
+  sendToJava('copy_to_clipboard', text);
   if (targetFileTag?.isConnected && el?.contains(targetFileTag)) {
     const nextSibling = targetFileTag.nextSibling;
     const previousSibling = targetFileTag.previousSibling;

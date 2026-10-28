@@ -2,6 +2,25 @@ import type { SubagentStatus, TaskEvent, ToolResultBlock } from '../types';
 import type { GetToolResultRawFn } from '../contexts/SubagentContext';
 
 /**
+ * Read the subagent/agent type from an Agent/Task tool input.
+ *
+ * v1 (opencode `task`, Claude Code `Agent`) uses `subagent_type` / `agent_type`
+ * (snake_case and camelCase); opencode v2 renamed the tool to `subagent` and
+ * the argument to `agent`. The v2 alias is read last so v1 inputs resolve
+ * exactly as before — this is the single source of truth for the type label
+ * shared by useSubagents, TaskExecutionBlock and AgentGroupBlock.
+ */
+export function readAgentType(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const record = input as Record<string, unknown>;
+  for (const key of ['subagent_type', 'subagentType', 'agent_type', 'agentType', 'agent']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+/**
  * Extract concatenated text content from a tool_result block.
  *
  * Shared by useSubagents, AgentGroupBlock, and TaskExecutionBlock so the
@@ -27,7 +46,14 @@ export function extractResultText(result?: ToolResultBlock | null): string | und
 // terminal report is delivered solely as a main-session XML (see the ai-bridge
 // interception in runtime-lifecycle.js). Matching this text is what keeps the
 // card from flipping to "completed" the instant the ack lands.
-const ASYNC_LAUNCH_TEXT = /Async agent launched/i;
+//
+// opencode v2 has no fixed wording: a background launch comes back either as the
+// synthetic `<subagent sessionID="…" state="running">` notice or as the launch
+// ack object `{ "sessionID": "…", "status": "running" }`. Both mean "the child
+// started, not finished" and must be treated exactly like Claude's ack — keyed
+// off the state, never off the `subagent` tag alone (a completed child also
+// carries that tag).
+const ASYNC_LAUNCH_TEXT = /Async agent launched|<subagent\b[^>]*\bstate\s*=\s*["']running["']|"status"\s*:\s*"running"/i;
 
 /**
  * Whether an Agent/Task tool input launches a background (async) subagent.
@@ -64,6 +90,10 @@ export function isAsyncAgentInput(
   }
   const record = input as Record<string, unknown>;
   if (record.run_in_background === true || record.runInBackground === true) return true;
+  // opencode v2 renamed the `task` tool to `subagent` and its async switch to
+  // `background: true` (same semantics: return immediately, notify the parent
+  // when the child session finishes).
+  if (record.background === true) return true;
   return isAsyncLaunchStatus(toolUseStatus) || isAsyncLaunchText(result);
 }
 
@@ -94,23 +124,32 @@ export function readToolUseStatus(raw: unknown): unknown {
 }
 
 export interface SubagentRunStateInput {
-  /** 后台运行（run_in_background）：启动确认不是终态。 */
+  /** True when the parent result is only a launch acknowledgement (async agent). */
   isAsync: boolean;
-  /** 父级 tool_result 是否已到（同步调用的终态来源）。 */
+  /** True when a tool_result block exists for this call. */
   hasTerminalResult: boolean;
-  /** 父级 tool_result 是否是错误。 */
   resultIsError?: boolean;
-  /** 服务端推送的终态事件（task_notification / subagent.status）。 */
+  /**
+   * Canonical terminal event pushed by core (`subagent.status`), for inline and
+   * background calls alike. Absent while the run is still going, and on history
+   * replay (no events are replayed).
+   */
   terminalEvent?: Pick<TaskEvent, 'status'> | null;
 }
 
 /**
- * 子代理运行态的**唯一**推导（ported from idea `resolveSubagentRunState`）。
+ * The single status derivation for a subagent run.
  *
- * 优先级：终态事件 → 异步未终态（除非启动就失败）→ 同步等 tool_result。
+ * <p>Core publishes `subagent.status` for both launch modes, so a terminal event
+ * is always the first source. The parent tool result is the replay/bootstrap
+ * source: a reloaded session has no events, and an inline call's result is its
+ * child's final report. A launch acknowledgement is never terminal, which is
+ * why an async run stays `running` until its event arrives.</p>
  *
- * 注意：子代理 transcript（`subagent.history`）不是状态来源 —— 它是某一时刻的
- * 快照，可能比终态更旧，拿它当状态正是卡片转圈不停的根因。transcript 只喂详情视图。
+ * <p>Child transcripts (`subagent.history`) are deliberately NOT an input. A
+ * transcript snapshot is a point-in-time read that can be older than the run's
+ * terminal state; treating it as status is what pinned the card spinner. The
+ * transcript remains the detail view's data source only.</p>
  */
 export function resolveSubagentRunState({
   isAsync,
@@ -124,12 +163,11 @@ export function resolveSubagentRunState({
       : 'completed';
   }
   if (isAsync) {
-    // 启动即失败（后台任务还没注册就报错）只有 is_error 的 tool_result，永远没有事件。
+    // A failed launch (validation error before the background task was
+    // registered) returns an is_error tool_result and never emits an event.
     return resultIsError ? 'error' : 'running';
   }
-  if (!hasTerminalResult) {
-    return 'running';
-  }
+  if (!hasTerminalResult) return 'running';
   return resultIsError ? 'error' : 'completed';
 }
 

@@ -70,9 +70,9 @@ describe('bridge navigation helpers', () => {
     openBrowser('http://example.com');
     openBrowser('mailto:test@example.com');
 
-    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'open_browser:https://example.com/docs');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'open_browser:http://example.com');
-    expect(window.sendToJava).toHaveBeenNthCalledWith(3, 'open_browser:mailto:test@example.com');
+    expect(window.sendToJava).toHaveBeenNthCalledWith(1, 'open_external_url:https://example.com/docs');
+    expect(window.sendToJava).toHaveBeenNthCalledWith(2, 'open_external_url:http://example.com');
+    expect(window.sendToJava).toHaveBeenNthCalledWith(3, 'open_external_url:mailto:test@example.com');
   });
 
   it('rejects file: and javascript: protocols in openBrowser', () => {

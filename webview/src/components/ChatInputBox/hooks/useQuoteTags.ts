@@ -6,11 +6,14 @@ import {
   pruneQuoteRegistry,
   quoteTokenRegex,
   removeQuote,
+  restoreQuotes,
+  type QuoteEntry,
 } from '../utils/quoteRegistry.js';
 import {
   getVirtualCursorPosition,
   setVirtualCursorPosition,
 } from '../utils/virtualCursorUtils.js';
+import { getTabStore } from '../../../store/tabStore';
 
 interface UseQuoteTagsOptions {
   editableRef: React.RefObject<HTMLDivElement | null>;
@@ -19,6 +22,10 @@ interface UseQuoteTagsOptions {
 interface UseQuoteTagsReturn {
   /** Convert any quote tokens in the input's text nodes into inline chip elements. */
   renderQuoteTags: () => void;
+  /** Re-register quotes and convert any quote tokens into chips */
+  restoreQuoteTags: (quotes?: Record<string, QuoteEntry>) => void;
+  /** Extract quotes map currently present in input */
+  extractQuotes: () => Record<string, QuoteEntry>;
 }
 
 /**
@@ -89,7 +96,31 @@ export function useQuoteTags({ editableRef }: UseQuoteTagsOptions): UseQuoteTags
       }
     };
     el.childNodes.forEach(walk);
-    pruneQuoteRegistry(activeIds);
+
+    // The registry is shared by every tab, so a background tab's quotes must
+    // survive the prune that this (foreground) render pass performs.
+    const preservedIds = new Set<string>();
+    try {
+      const drafts = getTabStore().getDrafts() ?? [];
+      for (const draft of drafts) {
+        if (draft.quotes) {
+          for (const qId of Object.keys(draft.quotes)) {
+            preservedIds.add(qId);
+          }
+        }
+        if (draft.text && hasQuoteToken(draft.text)) {
+          const scan = quoteTokenRegex();
+          let m: RegExpExecArray | null;
+          while ((m = scan.exec(draft.text)) !== null) {
+            preservedIds.add(m[1]);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    pruneQuoteRegistry(activeIds, preservedIds);
     if (tokenTextNodes.length === 0) return;
 
     // Chip virtual length equals token length, so the saved offset stays valid.
@@ -126,5 +157,49 @@ export function useQuoteTags({ editableRef }: UseQuoteTagsOptions): UseQuoteTags
     setVirtualCursorPosition(el, savedOffset);
   }, [editableRef]);
 
-  return { renderQuoteTags };
+  const restoreQuoteTags = useCallback((quotes?: Record<string, QuoteEntry>) => {
+    if (quotes) {
+      restoreQuotes(quotes);
+    }
+    renderQuoteTags();
+  }, [renderQuoteTags]);
+
+  const extractQuotes = useCallback((): Record<string, QuoteEntry> => {
+    const el = editableRef.current;
+    if (!el) return {};
+    const ids = new Set<string>();
+    const walk = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const content = node.textContent || '';
+        if (hasQuoteToken(content)) {
+          const scan = quoteTokenRegex();
+          let m: RegExpExecArray | null;
+          while ((m = scan.exec(content)) !== null) {
+            ids.add(m[1]);
+          }
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as HTMLElement;
+        if (element.classList.contains('quote-tag')) {
+          const id = element.getAttribute('data-quote-id');
+          if (id) ids.add(id);
+          return;
+        }
+        if (!element.classList.contains('file-tag')) {
+          node.childNodes.forEach(walk);
+        }
+      }
+    };
+    el.childNodes.forEach(walk);
+    const result: Record<string, QuoteEntry> = {};
+    for (const id of ids) {
+      const entry = getQuote(id);
+      if (entry) {
+        result[id] = { text: entry.text };
+      }
+    }
+    return result;
+  }, [editableRef]);
+
+  return { renderQuoteTags, restoreQuoteTags, extractQuotes };
 }

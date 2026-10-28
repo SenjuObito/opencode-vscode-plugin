@@ -91,8 +91,8 @@ function permissionRequest(overrides: Partial<PermissionRequest> = {}): Permissi
 	};
 }
 
-describe('P8 §10.7: adapter 给权限请求盖上归属', () => {
-	it('请求自身不带 tab/session 时由 adapter 补上', () => {
+suite('P8 §10.7: adapter 给权限请求盖上归属', () => {
+	test('请求自身不带 tab/session 时由 adapter 补上', () => {
 		const seen: PermissionRequest[] = [];
 		const adapter = new SessionCallbackAdapter({
 			jsTarget: { callJavaScript: () => {} },
@@ -114,7 +114,7 @@ describe('P8 §10.7: adapter 给权限请求盖上归属', () => {
 		assert.strictEqual(seen[0].sessionId, 'ses_z');
 	});
 
-	it('task 事件也被盖上 sessionId（否则后台 tab 的子代理会混进当前面板）', () => {
+	test('task 事件也被盖上 sessionId（否则后台 tab 的子代理会混进当前面板）', () => {
 		const calls: Array<{ fn: string; args: string[] }> = [];
 		const adapter = new SessionCallbackAdapter({
 			jsTarget: { callJavaScript: (fn: string, ...args: string[]) => calls.push({ fn, args }) },
@@ -131,7 +131,7 @@ describe('P8 §10.7: adapter 给权限请求盖上归属', () => {
 		assert.strictEqual(payload.tool_use_id, 'call_q', '原有字段不能丢');
 	});
 
-	it('请求自己带了归属时以它为准', () => {
+	test('请求自己带了归属时以它为准', () => {
 		const seen: PermissionRequest[] = [];
 		const adapter = new SessionCallbackAdapter({
 			jsTarget: { callJavaScript: () => {} },
@@ -155,13 +155,22 @@ describe('P8 §10.7: adapter 给权限请求盖上归属', () => {
 	});
 });
 
-describe('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => {
-	beforeEach(() => {
-		// notifyPromptPending 会读窗口焦点
-		(vscode.window as unknown as { state?: { focused: boolean } }).state = { focused: true };
+suite('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => {
+	setup(() => {
+		// notifyPromptPending 会读窗口焦点。`vscode.window.state` 在真实 VS Code
+		// 里是只读 getter，直接赋值会抛 "only a getter" —— 用 defineProperty
+		// 覆盖底层取值。
+		Object.defineProperty(vscode.window, 'state', {
+			configurable: true,
+			get: () => ({ focused: true }),
+		});
 	});
 
-	it('权限弹窗载荷带上 tabId 与 sessionId', () => {
+	teardown(() => {
+		delete (vscode.window as unknown as Record<string, unknown>).state;
+	});
+
+	test('权限弹窗载荷带上 tabId 与 sessionId', () => {
 		const { handler, calls, registry } = makeHandler(() => 'tab-a');
 
 		handler.onPermissionRequested(permissionRequest());
@@ -175,7 +184,7 @@ describe('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => 
 		assert.strictEqual(registry.tabIdOf('call_1'), 'tab-a', '未决项必须登记到该 tab');
 	});
 
-	it('提问弹窗载荷带上 tabId，并登记到该 tab', () => {
+	test('提问弹窗载荷带上 tabId，并登记到该 tab', () => {
 		const { handler, calls, registry } = makeHandler(() => 'tab-a');
 
 		handler.onQuestionRequested({
@@ -195,7 +204,7 @@ describe('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => 
 		assert.strictEqual(registry.tabIdOf('q_1'), 'tab-a');
 	});
 
-	it('关 tab：只拒绝该 tab 的未决项，并真的 deny / rejectQuestion', () => {
+	test('关 tab：只拒绝该 tab 的未决项，并真的 deny / rejectQuestion', () => {
 		let tabOf: string | null = 'tab-a';
 		const { handler, registry, calls, daemonCalls } = makeHandler(() => tabOf);
 
@@ -238,7 +247,7 @@ describe('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => 
 		assert.deepStrictEqual(registry.rejectForTab('tab-a'), []);
 	});
 
-	it('答复之后不再算未决（否则关 tab 会 deny 一个早已答过的请求）', () => {
+	test('答复之后不再算未决（否则关 tab 会 deny 一个早已答过的请求）', () => {
 		const { handler, registry } = makeHandler(() => 'tab-a');
 
 		handler.onPermissionRequested(permissionRequest());
@@ -249,8 +258,8 @@ describe('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => 
 	});
 });
 
-describe('P8 §10.7: ChatWindow 关 tab 时上报被作废的 prompt', () => {
-	it('把 rejectForTab 的结果交给宿主会话层', async () => {
+suite('P8 §10.7: ChatWindow 关 tab 时上报被作废的 prompt', () => {
+	test('把 rejectForTab 的结果交给宿主会话层', async () => {
 		const rejectedSeen: string[][] = [];
 		const chatWindow = new ChatWindow({
 			settings: {} as never,

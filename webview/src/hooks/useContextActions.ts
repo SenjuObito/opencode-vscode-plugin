@@ -18,7 +18,7 @@ export function useContextActions() {
             text = window.getSelection()?.toString() ?? '';
           }
           if (text) {
-            sendBridgeEvent('write_clipboard', text);
+            sendBridgeEvent('copy_to_clipboard', text);
           }
           break;
         }
@@ -40,7 +40,7 @@ export function useContextActions() {
             }
           }
           if (text) {
-            sendBridgeEvent('write_clipboard', text);
+            sendBridgeEvent('copy_to_clipboard', text);
           }
           break;
         }

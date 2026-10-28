@@ -198,10 +198,15 @@ export class WindowEventHandler extends BaseMessageHandler {
 		this.callJavaScript('updateSlashCommands', JSON.stringify(commands));
 	}
 
-	/** webview 内 window.open / <a target=_blank> 被 VS Code 拦截，改由宿主 openExternal。 */
+	/**
+	 * webview 内 window.open / <a target=_blank> 被 VS Code 拦截，改由宿主 openExternal。
+	 *
+	 * 协议白名单与 webview 侧的 `SAFE_BROWSER_PROTOCOLS` 一致：http/https/mailto。
+	 * `file:` 与 `javascript:` 必须挡住 —— 前者能读本机文件，后者能在宿主上下文执行。
+	 */
 	private handleOpenExternalUrl(content: string): void {
 		const url = (content ?? '').trim();
-		if (!/^https?:\/\//i.test(url)) {
+		if (!/^(https?:\/\/|mailto:)/i.test(url)) {
 			return;
 		}
 		this.context.getFileOps().openExternal(url);

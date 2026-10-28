@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendBridgeEvent } from '../utils/bridge';
 
 export interface UseHistoryLoaderOptions {
@@ -14,12 +14,17 @@ export interface UseHistoryLoaderOptions {
  * 补投机会，结果就是「打开插件列表空白，发了条消息才刷出来」。
  * serve 由未就绪变为就绪 = 现在这次请求大概率能成功，此时补一次即可。
  */
-export function useHistoryLoader(options: UseHistoryLoaderOptions): void {
+export function useHistoryLoader(options: UseHistoryLoaderOptions): () => void {
   const { currentView, currentProvider } = options;
 
   // serve 就绪的边沿计数：false→true 时才递增（daemon 重启后再次就绪也算一次）。
   const [serveReadyTick, setServeReadyTick] = useState(0);
   const serveReadyRef = useRef(false);
+
+  /** The bridge may be late; the request is retried a bounded number of times. */
+  const MAX_HISTORY_RETRIES = 30;
+  const historyRetryCountRef = useRef(0);
+  const historyRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const applyStatus = (raw: unknown) => {
@@ -44,34 +49,53 @@ export function useHistoryLoader(options: UseHistoryLoaderOptions): void {
     return () => window.removeEventListener('updateDaemonStatus', handler as EventListener);
   }, []);
 
+  /**
+   * Ask the host for the session list.
+   *
+   * <p>The bridge may not be ready yet (the panel mounts before the host
+   * finishes wiring), so the request is retried a bounded number of times
+   * before giving up.</p>
+   */
+  const requestHistoryData = useCallback(() => {
+    if (window.sendToJava) {
+      sendBridgeEvent('load_history_data', currentProvider);
+      return;
+    }
+    if (historyRetryCountRef.current < MAX_HISTORY_RETRIES) {
+      historyRetryCountRef.current += 1;
+      historyRetryTimerRef.current = setTimeout(requestHistoryData, 100);
+      return;
+    }
+    console.warn('[Frontend] Failed to load history data: bridge not available after', MAX_HISTORY_RETRIES, 'retries');
+  }, [currentProvider]);
+
   useEffect(() => {
     if (currentView !== 'history') {
       return;
     }
 
-    let historyRetryCount = 0;
-    const MAX_HISTORY_RETRIES = 30;
-    let currentTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const requestHistoryData = () => {
-      if (window.sendToJava) {
-        sendBridgeEvent('load_history_data', currentProvider);
-      } else {
-        historyRetryCount++;
-        if (historyRetryCount < MAX_HISTORY_RETRIES) {
-          currentTimer = setTimeout(requestHistoryData, 100);
-        } else {
-          console.warn('[Frontend] Failed to load history data: bridge not available after', MAX_HISTORY_RETRIES, 'retries');
-        }
-      }
-    };
-
-    currentTimer = setTimeout(requestHistoryData, 50);
+    historyRetryCountRef.current = 0;
+    historyRetryTimerRef.current = setTimeout(requestHistoryData, 50);
 
     return () => {
-      if (currentTimer) {
-        clearTimeout(currentTimer);
+      if (historyRetryTimerRef.current) {
+        clearTimeout(historyRetryTimerRef.current);
+        historyRetryTimerRef.current = null;
       }
     };
-  }, [currentView, currentProvider, serveReadyTick]);
+  }, [currentView, currentProvider, serveReadyTick, requestHistoryData]);
+
+  /**
+   * Reload the list on demand (the history view's retry button).
+   */
+  const reloadHistory = useCallback(() => {
+    if (historyRetryTimerRef.current) {
+      clearTimeout(historyRetryTimerRef.current);
+      historyRetryTimerRef.current = null;
+    }
+    historyRetryCountRef.current = 0;
+    requestHistoryData();
+  }, [requestHistoryData]);
+
+  return reloadHistory;
 }

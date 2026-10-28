@@ -396,6 +396,16 @@ export interface ChatInputBoxHandle {
    * 只写文本不够：需要先把 displayPath → absolutePath 写回映射再重绘，否则 chip 退化成纯文本。
    */
   restoreFileTags?: (tags: FileTagInfo[]) => void;
+  /** Current attachment list (uncontrolled mode keeps it inside this component). */
+  getAttachments?: () => Attachment[];
+  /** Replace the attachment list when a tab switch restores its draft. */
+  setAttachments?: (attachments: Attachment[]) => void;
+  /** Extract quotes map currently present in input */
+  getQuotes?: () => Record<string, { text: string }>;
+  /** Re-register quotes into registry and convert any quote tokens to quote chips */
+  restoreQuoteTags?: (quotes?: Record<string, { text: string }>) => void;
+  /** Convert quote tokens in DOM to chip elements */
+  renderQuoteTags?: () => void;
 }
 
 // ============================================================

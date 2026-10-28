@@ -7,6 +7,7 @@ import type {
 } from './ChatInputBox/types';
 import { MessageAnchorRail } from './MessageAnchorRail';
 import { MessageList } from './MessageList';
+import { MessagesErrorBoundary } from './MessagesErrorBoundary';
 import { StatusNoticeBar } from './StatusNoticeBar';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
@@ -110,7 +111,6 @@ export interface ChatScreenProps {
   onModeSelect: ProviderState['handleModeSelect'];
   onModelSelect: ProviderState['handleModelSelect'];
   onReasoningChange: ProviderState['handleReasoningChange'];
-  onToggleThinking: ProviderState['handleToggleThinking'];
   onAutoOpenFileEnabledChange: ProviderState['handleAutoOpenFileEnabledChange'];
 
   // Message queue
@@ -148,7 +148,7 @@ export const ChatScreen = ({
   activeProviderConfig,
   reasoningEffort, sendShortcut, autoOpenFileEnabled,
   usagePercentage, usageUsedTokens, usageMaxTokens,
-  onModeSelect, onModelSelect, onReasoningChange, onToggleThinking,
+  onModeSelect, onModelSelect, onReasoningChange,
   onAutoOpenFileEnabledChange,
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
@@ -261,6 +261,7 @@ export const ChatScreen = ({
           <SessionIdContext.Provider value={sessionIdCtxValue}>
             <SubagentHistoryContext.Provider value={subagentHistoryCtxValue}>
               <ToolResultRawContext.Provider value={getToolResultRaw}>
+                <MessagesErrorBoundary currentSessionId={currentSessionId} t={t}>
                 <MessageList
                   ref={messageListRef}
                   messages={mergedMessages}
@@ -288,6 +289,7 @@ export const ChatScreen = ({
                   onFork={onFork}
                   forkDisabled={streamingActive}
                 />
+                </MessagesErrorBoundary>
               </ToolResultRawContext.Provider>
             </SubagentHistoryContext.Provider>
           </SessionIdContext.Provider>
@@ -346,7 +348,6 @@ export const ChatScreen = ({
           onModelSelect={onModelSelect}
           reasoningEffort={reasoningEffort}
           onReasoningChange={onReasoningChange}
-          onToggleThinking={onToggleThinking}
           sendShortcut={sendShortcut}
           activeFile={contextInfo?.file}
           selectedLines={contextInfo?.startLine !== undefined && contextInfo?.endLine !== undefined

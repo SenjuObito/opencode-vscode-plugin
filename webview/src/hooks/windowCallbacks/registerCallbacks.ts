@@ -26,7 +26,7 @@ import {
   setupDollarCommandsCallback,
   resetDollarCommandsState,
 } from '../../components/ChatInputBox/providers';
-import { buildResetTransientUiState } from './sessionTransition';
+import { buildResetTransientUiState } from './resetTransientState';
 import { startModeRequest } from './settingsBootstrap';
 import { registerMessageCallbacks } from './registerCallbacks/messageCallbacks';
 import { registerStreamingCallbacks } from './registerCallbacks/streamingCallbacks';
@@ -38,6 +38,45 @@ import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCal
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
   return deepEqual(previousMessages, nextMessages);
+}
+
+/**
+ * 把一条子代理 transcript 并进 map。
+ *
+ * 结构相同的快照直接跳过 —— 每 2 秒一次的轮询会反复回推同样的内容，
+ * 不去重就会级联重渲染并让滚动位置跳动。超限时丢掉最旧的条目。
+ */
+function applySubagentHistoryEntry(
+  prev: Record<string, SubagentHistoryResponse>,
+  result: unknown,
+  key: string,
+  maxEntries: number,
+): Record<string, SubagentHistoryResponse> {
+  const entry = result as SubagentHistoryResponse;
+  const existing = prev[key];
+  if (existing && existing.success === entry.success
+    && existing.completed === entry.completed
+    && existing.status === entry.status
+    && existing.error === entry.error
+    && existing.sessionId === entry.sessionId
+    && existing.provider === entry.provider
+    && existing.toolUseId === entry.toolUseId
+    && existing.agentId === entry.agentId
+    && existing.agentPath === entry.agentPath
+    && areSubagentMessagesEquivalent(existing.messages, entry.messages)) {
+    return prev;
+  }
+  const next: Record<string, SubagentHistoryResponse> = { ...prev, [key]: entry };
+  if (Object.keys(next).length <= maxEntries) {
+    return next;
+  }
+  // 超限：丢掉最旧的条目（先重建为删除序，再保留最近 N 条）。
+  const oldestFirst = Object.keys(next).filter((k) => k !== key);
+  const keep = new Set([...oldestFirst.slice(oldestFirst.length - (maxEntries - 1)), key]);
+  for (const k of Object.keys(next)) {
+    if (!keep.has(k)) delete next[k];
+  }
+  return next;
 }
 
 const pendingSubagentHistoryChunks = new Map<string, string[]>();
@@ -146,35 +185,8 @@ export function registerWindowCallbacks(
       const result = JSON.parse(json);
       const key = result.toolUseId || result.agentId;
       if (!key) return;
-      options.setSubagentHistories((prev) => {
-        const existing = prev[key];
-        // Skip state update when the payload is structurally identical.
-        // This prevents cascading re-renders and scroll jumps caused by
-        // periodic subagent polling (every 2 s) returning unchanged data.
-        if (existing && existing.success === result.success
-          && existing.completed === result.completed
-          && existing.status === result.status
-          && existing.error === result.error
-          && existing.sessionId === result.sessionId
-          && existing.provider === result.provider
-          && existing.toolUseId === result.toolUseId
-          && existing.agentId === result.agentId
-          && existing.agentPath === result.agentPath
-          && areSubagentMessagesEquivalent(existing.messages, result.messages)) {
-          return prev;
-        }
-        const next: Record<string, SubagentHistoryResponse> = { ...prev, [key]: result as SubagentHistoryResponse };
-        if (Object.keys(next).length <= MAX_SUBAGENT_HISTORIES) {
-          return next;
-        }
-        // 超限：丢掉最旧的条目（先重建为删除序，再保留最近 N 条）。
-        const oldestFirst = Object.keys(next).filter((k) => k !== key);
-        const keep = new Set([...oldestFirst.slice(oldestFirst.length - (MAX_SUBAGENT_HISTORIES - 1)), key]);
-        for (const k of Object.keys(next)) {
-          if (!keep.has(k)) delete next[k];
-        }
-        return next;
-      });
+      options.setSubagentHistories((prev) =>
+        applySubagentHistoryEntry(prev, result, key, MAX_SUBAGENT_HISTORIES));
     } catch {
       // Ignore malformed callback payloads; the request can be retried by reopening the Agent row.
     }

@@ -24,7 +24,8 @@
     "info": "정보",
     "seconds": "초",
     "minutes": "분",
-    "optional": "선택사항"
+    "optional": "선택사항",
+    "retry": "다시 불러오기"
   },
   "chat": {
     "sendMessage": "{{provider}}에게 메시지 보내기",
@@ -169,7 +170,8 @@
     "shareLinkCreated": "공유 링크가 생성되었습니다",
     "retryCopy": "다시 복사",
     "subagentsSection": "하위 에이전트",
-    "filesSection": "파일"
+    "filesSection": "파일",
+    "renderError": "메시지 렌더링 중 오류가 발생했습니다"
   },
   "settings": {
     "title": "설정",
@@ -781,7 +783,6 @@
     "searchPlaceholder": "세션 제목 검색...",
     "noSearchResults": "일치하는 세션을 찾을 수 없습니다",
     "tryOtherKeywords": "다른 검색어를 시도해보세요",
-    "deepSearchTooltip": "심층 검색 (캐시 비우고 다시 로드)",
     "editTitle": "제목 편집",
     "saveTitleButton": "저장",
     "cancelEditButton": "취소",
@@ -790,12 +791,8 @@
     "copySessionId": "CLI resume용 세션 ID 복사",
     "sessionIdCopied": "세션 ID 복사됨",
     "copyFailed": "복사 실패",
-    "convertToCliSession": "CLI 인식 세션으로 변환",
-    "convertButton": "CLI로 변환",
     "convertSuccess": "세션이 CLI 인식 가능으로 변환되었습니다",
     "convertFailed": "변환 실패",
-    "confirmConvert": "CLI 세션으로 변환하시겠습니까?",
-    "convertConfirmMessage": "세션의 entrypoint를 수정하여 OpenCode CLI의 /resume 목록에 표시되도록 합니다.",
     "timeAgo": {
       "yearsAgo": "년 전",
       "monthsAgo": "개월 전",
@@ -803,16 +800,6 @@
       "hoursAgo": "시간 전",
       "minutesAgo": "분 전",
       "secondsAgo": "초 전"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "잘못된 세션 ID",
-      "SESSION_ACTIVE": "현재 활성 세션은 변환할 수 없습니다. 먼저 새 세션을 시작한 후 이 세션을 변환하세요",
-      "SESSION_NOT_FOUND": "세션 파일을 찾을 수 없습니다",
-      "FILE_NOT_EXIST": "세션 파일이 존재하지 않습니다",
-      "FILE_LOCKED": "세션 파일이 다른 프로세스에서 사용 중입니다",
-      "NOT_SDK_SESSION": "이 세션은 SDK로 생성되지 않았습니다 (entrypoint가 sdk-cli가 아님)",
-      "ALREADY_CLI_SESSION": "이 세션은 이미 CLI 세션입니다",
-      "CONVERSION_FAILED": "변환 실패, 나중에 다시 시도하세요"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK 세션",
@@ -825,7 +812,9 @@
       "claude-vscode": "이 세션은 VS Code 확장에서 생성되었으며 CLI에 기본적으로 표시되지 않습니다. 터미널 CLI의 /resume 목록에 표시하려면 'CLI로 변환'을 클릭하세요",
       "remote": "이 세션은 원격 OpenCode 인스턴스에서 생성되었습니다",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
-    }
+    },
+    "retry": "다시 시도",
+    "loadTimeout": "기록 로드 시간이 초과되었습니다"
   },
   "permission": {
     "dialogTitle": "권한 요청",

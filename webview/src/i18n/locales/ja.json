@@ -24,7 +24,8 @@
     "info": "情報",
     "seconds": "秒",
     "minutes": "分",
-    "optional": "Optional"
+    "optional": "Optional",
+    "retry": "再読み込み"
   },
   "chat": {
     "sendMessage": "{{provider}}にメッセージを送信",
@@ -169,7 +170,8 @@
     "shareLinkCreated": "共有リンクを作成しました",
     "retryCopy": "再コピー",
     "subagentsSection": "サブエージェント",
-    "filesSection": "ファイル"
+    "filesSection": "ファイル",
+    "renderError": "メッセージの描画に失敗しました"
   },
   "settings": {
     "title": "設定",
@@ -746,7 +748,6 @@
     "searchPlaceholder": "セッションタイトルを検索...",
     "noSearchResults": "一致するセッションが見つかりません",
     "tryOtherKeywords": "他の検索キーワードを試してください",
-    "deepSearchTooltip": "Deep Search (clear cache and reload)",
     "editTitle": "タイトルを編集",
     "saveTitleButton": "保存",
     "cancelEditButton": "キャンセル",
@@ -755,12 +756,8 @@
     "copySessionId": "CLI resume用にセッションIDをコピー",
     "sessionIdCopied": "セッションIDをコピーしました",
     "copyFailed": "コピーに失敗しました",
-    "convertToCliSession": "CLI認識セッションに変換",
-    "convertButton": "CLIに変換",
     "convertSuccess": "セッションをCLI認識可能に変換しました",
     "convertFailed": "変換に失敗しました",
-    "confirmConvert": "CLIセッションに変換しますか？",
-    "convertConfirmMessage": "セッションのentrypointを変更し、OpenCode CLIの/resumeリストに表示されるようにします。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "ヶ月前",
@@ -768,16 +765,6 @@
       "hoursAgo": "時間前",
       "minutesAgo": "分前",
       "secondsAgo": "秒前"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "無効なセッションID",
-      "SESSION_ACTIVE": "現在アクティブなセッションは変換できません。先に新しいセッションを開始してから変換してください",
-      "SESSION_NOT_FOUND": "セッションファイルが見つかりません",
-      "FILE_NOT_EXIST": "セッションファイルが存在しません",
-      "FILE_LOCKED": "セッションファイルは別のプロセスによってアクセスされています",
-      "NOT_SDK_SESSION": "このセッションはSDKで作成されていません（entrypointがsdk-cliではありません）",
-      "ALREADY_CLI_SESSION": "このセッションはすでにCLIセッションです",
-      "CONVERSION_FAILED": "変換に失敗しました。後でもう一度お試しください"
     },
     "entrypointLabel": {
       "sdk-cli": "SDKセッション",
@@ -790,7 +777,9 @@
       "claude-vscode": "このセッションはVS Code拡張機能によって作成されており、CLIではデフォルトで表示されません。ターミナルCLIの/resumeリストに表示するには「CLIに変換」をクリックしてください",
       "remote": "このセッションはリモートのOpenCodeインスタンスによって作成されました",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
-    }
+    },
+    "retry": "再試行",
+    "loadTimeout": "履歴の読み込みがタイムアウトしました"
   },
   "permission": {
     "dialogTitle": "権限リクエスト",

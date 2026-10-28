@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { registerStreamingCallbacks } from './streamingCallbacks';
+import { endTransition } from '../tabTransition';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
 
@@ -56,7 +57,7 @@ function createHarness(initialMessages: ClaudeMessage[], turnIdCounter: number) 
 
 describe('onStreamStart bubble routing', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
+    endTransition('tab-active');
   });
 
   afterEach(() => {
@@ -198,7 +199,7 @@ describe('onStreamStart bubble routing', () => {
 
 describe('onStreamEnd finalizes dangling tool_use when the turn never streamed', () => {
   beforeEach(() => {
-    window.__sessionTransitioning = false;
+    endTransition('tab-active');
     window.__deniedToolIds = undefined;
   });
 

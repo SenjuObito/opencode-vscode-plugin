@@ -170,14 +170,6 @@ interface Window {
    */
   onTodoUpdated?: (payload: string) => void;
 
-  /**
-   * SDK-to-CLI session conversion result callback.
-   * Called by the Java backend after attempting to convert entrypoint from "sdk-cli" to "cli".
-   * Payload: { success: boolean, infoCode?: string, errorCode?: string }.
-   * infoCode carries extra context on success (e.g. ALREADY_CLI_SESSION);
-   * errorCode identifies the failure reason for i18n lookup.
-   */
-  onConversionResult?: (json: string) => void;
 
   /**
    * Add user message to chat (used for external Quick Fix feature)
@@ -770,18 +762,6 @@ interface Window {
    * Selected agent changed callback - invoked after an agent is selected
    */
 
-  /**
-   * Update Node process management snapshot.
-   * Payload: { snapshotAt, totals: { daemon, channel, orphan, all }, processes: NodeProcessInfo[] }
-   */
-  updateNodeProcesses?: (json: string) => void;
-
-  /**
-   * Result of a kill_node_process / kill_all_orphans / restart_node_daemon call.
-   * Payload: { pid?, success?, killed?, restart?, error? }
-   */
-  nodeProcessKillResult?: (json: string) => void;
-
 // ============================================================================
   // Streaming Callbacks
   // ============================================================================
@@ -832,20 +812,6 @@ interface Window {
    * Used by tool blocks to determine which tool calls had their permission denied by the user.
    */
   __deniedToolIds?: Set<string>;
-
-  /**
-   * Session transition suppression flag.
-   * Set to true during new session creation to prevent stale callbacks from writing old messages via updateMessages.
-   */
-  __sessionTransitioning?: boolean;
-
-  /**
-   * Session transition token (debug/logging only).
-   * Regenerated for each logical transition so callbacks can identify the active transition
-   * generation in logs. NOT used for guard logic — the boolean __sessionTransitioning flag
-   * is the actual guard.
-   */
-  __sessionTransitionToken?: string | null;
 
   /**
    * In-flight dedup guard for the same-session soft reload issued by

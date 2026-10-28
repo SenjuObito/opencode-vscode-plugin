@@ -93,7 +93,7 @@ describe('useContextMenu', () => {
 
     cutSelection(null, '@D:\\Code\\demo.ts#L3-L9', editable, fileTag);
 
-    expect(sendToJava).toHaveBeenCalledWith('write_clipboard', '@D:\\Code\\demo.ts#L3-L9');
+    expect(sendToJava).toHaveBeenCalledWith('copy_to_clipboard', '@D:\\Code\\demo.ts#L3-L9');
     expect(editable.querySelector('.file-tag')).toBeNull();
     expect(focusSpy).toHaveBeenCalled();
     expect(selection.removeAllRanges).toHaveBeenCalled();

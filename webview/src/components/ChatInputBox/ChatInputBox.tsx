@@ -35,7 +35,7 @@ import {
   useChatInputAttachmentsCoordinator,
   useChatInputCompletionsCoordinator,
   useChatInputSelectionController,
-  usePerTabAttachments,
+  useResetAttachmentsOnSessionChange,
   useSpaceKeyListener,
   useCompositionSafeTagRendering,
   useResizableChatInputBox,
@@ -137,13 +137,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     // SessionContext is read null-safely so this component still mounts in tests
     // without a SessionProvider.
     const sessionCtx = useContext(SessionContext);
-    // 未发送的附件按 tab 保存（§10.10）：切 tab 各自保留；同一 tab 内换会话才清空。
-    usePerTabAttachments({
-      attachments,
-      setAttachments: setInternalAttachments,
-      isControlled: externalAttachments !== undefined,
+    const clearInternalAttachments = useCallback(() => {
+      setInternalAttachments([]);
+      clearAttachmentsDraft?.();
+    }, [setInternalAttachments, clearAttachmentsDraft]);
+    useResetAttachmentsOnSessionChange({
       currentSessionId: sessionCtx?.currentSessionId ?? null,
-      clearDraft: clearAttachmentsDraft,
+      isControlled: externalAttachments !== undefined,
+      clearInternalAttachments,
     });
 
     // Input element refs and state
@@ -179,7 +180,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     });
 
     // Quote tags hook (inline quote chips)
-    const { renderQuoteTags } = useQuoteTags({ editableRef });
+    const { renderQuoteTags, restoreQuoteTags, extractQuotes } = useQuoteTags({ editableRef });
 
     // Combined tag rendering: file tags first, then quote chips.
     const renderTags = useCallback(() => {
@@ -462,7 +463,12 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       clearInput,
       hasContent,
       extractFileTags,
+      attachments,
+      setAttachments: setInternalAttachments,
       restoreFileTags,
+      getQuotes: extractQuotes,
+      restoreQuoteTags,
+      renderQuoteTags,
       inlineCompletion,
       handleInput,
       ctxMenu,

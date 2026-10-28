@@ -8,8 +8,8 @@
 import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
-import { releaseSessionTransition } from '../sessionTransition';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { endTransition, activeTabId, transitionTargetFor } from '../tabTransition';
+import { getTabStore } from '../../../store/tabStore';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
 const CUSTOM_TITLE_MAX_LENGTH = 50;
@@ -30,7 +30,14 @@ export function registerSessionCallbacks(
 
   window.setSessionId = (sessionId: string) => {
     const oldId = currentSessionIdRef.current;
-    releaseSessionTransition();
+    // Release a pending transition only when this is NOT a history load: those
+    // carry a transition target and must wait for `historyLoadComplete`. The
+    // new-session flow has no target and relies on this release so the first
+    // deltas are accepted.
+    const ownerTabId = getTabStore().findIdBySession(sessionId) ?? activeTabId();
+    if (!transitionTargetFor(ownerTabId)) {
+      endTransition(ownerTabId);
+    }
     currentSessionIdRef.current = sessionId;
     setCurrentSessionId(sessionId);
 
@@ -83,45 +90,4 @@ export function registerSessionCallbacks(
     applyHistoryTitleLocal(sessionId, title.trim());
   };
 
-  // =========================================================================
-  // SDK-to-CLI Session Conversion Result Callback
-  // =========================================================================
-
-  window.onConversionResult = (json: string) => {
-    const reloadHistory = () => {
-      const provider = options.currentProviderRef.current;
-      if (provider) {
-        sendBridgeEvent('deep_search_history', provider);
-      } else {
-        console.warn('[Frontend] Provider unavailable for conversion state reload');
-      }
-    };
-
-    try {
-      const result = JSON.parse(json);
-      if (result.success) {
-        if (result.infoCode === 'ALREADY_CLI_SESSION') {
-          addToast(tRef.current('history.conversionErrors.ALREADY_CLI_SESSION'), 'info');
-        } else {
-          addToast(tRef.current('history.convertSuccess'), 'success');
-          reloadHistory();
-        }
-        return;
-      }
-
-      const errorCode = result.errorCode;
-      let errorMessage = tRef.current('history.convertFailed');
-
-      if (errorCode && tRef.current(`history.conversionErrors.${errorCode}`)) {
-        errorMessage = tRef.current(`history.conversionErrors.${errorCode}`);
-      }
-
-      addToast(errorMessage, 'error');
-      reloadHistory();
-    } catch (error) {
-      console.error('[Frontend] Failed to parse conversion result:', error);
-      addToast(tRef.current('history.convertFailed'), 'error');
-      reloadHistory();
-    }
-  };
 }

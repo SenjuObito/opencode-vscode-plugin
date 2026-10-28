@@ -68,22 +68,22 @@ async function sendCommand(
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('P8-A18: §10.14 斜杠命令 —— 列表按 tab、未知命令回退普通消息', () => {
-	describe('命令识别', () => {
-		it('内置命令按命令处理', () => {
+suite('P8-A18: §10.14 斜杠命令 —— 列表按 tab、未知命令回退普通消息', () => {
+	suite('命令识别', () => {
+		test('内置命令按命令处理', () => {
 			assert.deepStrictEqual(parseSlashCommand('/review'), { command: 'review', arguments: '' });
 			assert.deepStrictEqual(parseSlashCommand('/compact x'), { command: 'compact', arguments: 'x' });
 			assert.deepStrictEqual(parseSlashCommand('/plan'), { command: 'plan', arguments: '' });
 		});
 
-		it('服务端公布过的自定义命令也算命令', () => {
+		test('服务端公布过的自定义命令也算命令', () => {
 			rememberAdvertisedCommands([{ name: 'deploy' }]);
 			assert.deepStrictEqual(parseSlashCommand('/deploy prod'), { command: 'deploy', arguments: 'prod' });
 			clearAdvertisedCommands();
 			assert.strictEqual(parseSlashCommand('/deploy prod'), null);
 		});
 
-		it('未知的斜杠文本按普通消息处理（不吞掉编辑器上下文）', () => {
+		test('未知的斜杠文本按普通消息处理（不吞掉编辑器上下文）', () => {
 			clearAdvertisedCommands();
 			assert.strictEqual(parseSlashCommand('/not_a_command'), null);
 			assert.strictEqual(parseSlashCommand('/Users/dev/main.go'), null);
@@ -91,8 +91,8 @@ describe('P8-A18: §10.14 斜杠命令 —— 列表按 tab、未知命令回退
 		});
 	});
 
-	describe('列表按 tab', () => {
-		it('commands.refresh 的结果投回目标 tab，不广播', async () => {
+	suite('列表按 tab', () => {
+		test('commands.refresh 的结果投回目标 tab，不广播', async () => {
 			const daemon = {
 				request(
 					_method: string,

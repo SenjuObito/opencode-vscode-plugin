@@ -10,7 +10,6 @@
 
 import type { MutableRefObject } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
-import { forceWebviewRepaint } from '../../utils/forceWebviewRepaint';
 import { activeTabId, isTabTransitioning } from './tabTransition';
 
 export interface ResetTransientUiStateOptions {
@@ -117,10 +116,5 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     if (typeof window.__cancelPendingUpdateMessages === 'function') {
       window.__cancelPendingUpdateMessages();
     }
-    // Clear JCEF native-rendering ghosting left behind by the outgoing session's
-    // overlays and input-box content after the transition unmounts/reflows them.
-    // Windowed JCEF only: on OSR the content swap is published through the Java
-    // surface fence once the new transcript commits.
-    forceWebviewRepaint('session-transition');
   };
 };

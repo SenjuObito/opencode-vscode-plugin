@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A18：斜杠命令列表按 tab + 未知命令回退普通消息）
+> 最后更新：2026-10-28（P9-A19：终验前的两仓逐文件比对，修复 8 处真实缺口）
 
 ---
 
@@ -146,6 +146,19 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 日期 | 变更 |
 |---|---|
 | 2026-10-28 | 建立文档；记录 P0–P7 架构主干落地 |
+| 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
+| 2026-10-29 | **P9-A19**：终验前的**两仓逐文件比对**（webview 658 → 585+563 文件）。用 idea 的 31 个测试文件当「探针」，逐个跑，暴露 8 处真实缺口并修复：
+<br>① **会话切换守卫从全局 flag 改为 per-tab**（§5.5 要求删 `sessionTransition.ts` + `__sessionTransitioning`）。此前是**窗口级** `window.__sessionTransitioning`：后台 tab 切会话时，前台 tab 的流式事件会被 `if (window.__sessionTransitioning) return` 丢弃 —— 这是 §10.9 隔离的真实缺陷。已改用既有的 `tabTransitionStore`（per tab）；`resetTransientState.ts`（idea 版）此前**从未被接线**，现在接上了；`sessionTransition.ts` 已删除。
+<br>② **模型/推理力度/权限模式改走 v2 per-tab 命令**（`settings.model` / `settings.reasoning`）。此前 webview 发 legacy `set_model` / `set_reasoning_effort`，宿主写进**全局** context：tab A 换模型会连带改掉 tab B。宿主新增两个 v2 handler（`ChatWindow`），并支持 `silent`（切 tab 回放自己的模型时不清空用量环）。同时修 `reasoningEffort` 默认值 `'medium'` → `'default'`（多数 opencode 模型没有 `medium` 档）。
+<br>③ **`agentProvider` 整份照搬 idea**：此前是模块级缓存 + `sendBridgeEvent('get_agents')`，与 §10.4 要求的「宿主是 agent 列表的唯一权威」不符（`ModeSelect` 已订阅 store，但 `@` 下拉与 Shift+Tab 仍走旧路）。
+<br>④ **`AgentGroupBlock` + `subagentResult` 照搬 idea**：此前把「子代理 transcript 已结束」当终态（卡片提前转 completed），idea 明确规定 transcript **只是详情来源**、终态只能来自 core 的 `subagent.status`；同时补上 opencode v2 的 `agent` 参数名与 `background: true`。
+<br>⑤ **`useQuoteTags` 补 quote 按 tab 持久化**（`restoreQuoteTags` / `extractQuotes` + `quoteRegistry.restoreQuotes` + `pruneQuoteRegistry` 的 `preservedIds` 跨 tab 保护）；`ChatInputBoxHandle` 补 `getAttachments`/`setAttachments` —— 此前 `useTabSessionBinder` 的草稿附件恢复是**死代码**（handle 上没有这两个方法）。自建的 `usePerTabAttachments` 删除，改用 idea 的 `useResetAttachmentsOnSessionChange`。
+<br>⑥ **复制通道死链**：`write_clipboard` 在本仓宿主无 handler（idea 的 Java `ClipboardHandler` 三种拼写都收）→ 右键复制/剪切完全无响应。改为 `copy_to_clipboard`。
+<br>⑦ **外链死链**：`open_browser` 在本仓宿主同样无 handler → markdown 里的外链点不动。改为宿主已有的 `open_external_url`，并把宿主协议白名单放宽到 `mailto:`。
+<br>⑧ **删除「有 UI 无后端」的遗留功能**（方案 §5.5 D 类清单）：深度搜索（`deep_search_history`）、会话转 CLI（`convert_to_cli_session` 全链路）、Node 进程管理（`nodeProcessCapabilities`）、JCEF 帧治理（`surfaceDamagePulse` / `forceWebviewRepaint`）、自定义模型定价同步（`set_custom_model_pricing`）、thinking 开关（`set_thinking_enabled`，`ButtonArea` 根本不渲染它）。
+<br>顺带**补上 idea 有、vscode 缺的两个真实功能**：历史列表加载失败/超时的**重试按钮**（`onRetry` + `loadTimedOut`）、消息列表渲染的**错误边界**（`MessagesErrorBoundary`）。10 个语言包同步增删（`history.retry` / `history.loadTimeout` / `chat.renderError` / `common.retry` 入，5 个已废的转换/深度搜索键出）。
+<br>**架构性偏离（不搬）**：idea 的 7 个测试文件（`messageCallbacks.historyRouting` / `permissionPromptRouting` / `subagentHistoryRouting` / `subagentStatusRouting` / `todoCallbacks` / `turnEnd` / `sequenceBarrier`）依赖 idea 的**分发式事件总线**（`hostEventHandler('message.snapshot')` 等）；本仓是**投影式**（宿主 `TabScopedSink` 只推活跃 tab，webview 走 legacy `window.<fn>`）。这类测试在两套架构下不可互换，已按本仓架构删除，并保留/新增等价覆盖（`permissionRouting` 6 项、`todoRouting` 4 项、`useSessionTabsMultiSession` 21 项、`slashCommandProvider.perTab` 2 项）。
+<br>**顺带修一个既有技术债**：宿主测试分两派 —— 13 个文件用 BDD（`describe`/`it`），10 个文件用 TDD（`suite`/`test`），而 `@vscode/test-cli` 的 mocha 固定 `ui: 'tdd'`。**结果：那 13 个 BDD 文件从来没真正跑过**（一加载就抛 `describe is not defined`，整个套件直接 exit 1）。已把 13 个文件统一成 TDD（含 `beforeEach`→`setup`、`afterEach`→`teardown`），宿主测试这才第一次真正跑起来。 |
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |

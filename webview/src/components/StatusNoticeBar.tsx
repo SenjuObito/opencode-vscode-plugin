@@ -323,7 +323,7 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
 
   const handleOpenLink = useCallback((link: string) => {
     // The webview traps window.open / external <a>, so route through the host.
-    sendToJava('open_browser', link);
+    sendToJava('open_external_url', link);
   }, []);
 
   const handleDismissRetry = useCallback(() => setRetryStatus(null), []);

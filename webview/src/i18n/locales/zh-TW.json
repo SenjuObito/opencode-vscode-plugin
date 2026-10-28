@@ -24,7 +24,8 @@
     "info": "資訊",
     "seconds": "秒",
     "minutes": "分",
-    "optional": "Optional"
+    "optional": "Optional",
+    "retry": "重新載入"
   },
   "chat": {
     "sendMessage": "給 {{provider}} 發送訊息",
@@ -169,7 +170,8 @@
     "shareLinkCreated": "分享連結已建立",
     "retryCopy": "重試複製",
     "subagentsSection": "子代理",
-    "filesSection": "檔案"
+    "filesSection": "檔案",
+    "renderError": "訊息渲染發生異常"
   },
   "settings": {
     "title": "設定",
@@ -749,7 +751,6 @@
     "searchPlaceholder": "搜尋會話標題...",
     "noSearchResults": "未找到相符的會話",
     "tryOtherKeywords": "嘗試其他搜尋關鍵詞",
-    "deepSearchTooltip": "Deep Search (clear cache and reload)",
     "editTitle": "編輯標題",
     "saveTitleButton": "儲存",
     "cancelEditButton": "取消",
@@ -758,12 +759,8 @@
     "copySessionId": "複製會話ID用於CLI恢復",
     "sessionIdCopied": "會話ID已複製",
     "copyFailed": "複製失敗",
-    "convertToCliSession": "轉換為 CLI 可辨識會話",
-    "convertButton": "轉為CLI",
     "convertSuccess": "會話已轉換為 CLI 可辨識",
     "convertFailed": "轉換失敗",
-    "confirmConvert": "轉換為 CLI 會話？",
-    "convertConfirmMessage": "此操作將修改會話的 entrypoint，使其在 OpenCode CLI 的 /resume 列表中顯示。",
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "個月前",
@@ -771,16 +768,6 @@
       "hoursAgo": "小時前",
       "minutesAgo": "分鐘前",
       "secondsAgo": "秒前"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "無效的會話 ID",
-      "SESSION_ACTIVE": "無法轉換當前活躍的會話，請先開啟新會話後再轉換",
-      "SESSION_NOT_FOUND": "未找到會話檔案",
-      "FILE_NOT_EXIST": "會話檔案不存在",
-      "FILE_LOCKED": "會話檔案正在被其他程序訪問",
-      "NOT_SDK_SESSION": "此會話不是 SDK 創建的會話（entrypoint 不是 sdk-cli）",
-      "ALREADY_CLI_SESSION": "此會話已經是 CLI 會話",
-      "CONVERSION_FAILED": "轉換失敗，請稍後重試"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK會話",
@@ -793,7 +780,9 @@
       "claude-vscode": "此會話由 VS Code 插件創建，CLI 默認不顯示。點擊「轉為CLI」可使其出現在終端 CLI 的 /resume 列表中",
       "remote": "此會話由遠程 OpenCode 實例創建",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
-    }
+    },
+    "retry": "重試",
+    "loadTimeout": "載入歷史記錄逾時"
   },
   "permission": {
     "dialogTitle": "權限請求",

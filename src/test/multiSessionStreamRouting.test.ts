@@ -6,8 +6,8 @@ import { TabSessionActor } from '../host/tab/TabSessionActor';
 import { PendingSend } from '../host/tab/PendingSend';
 import { OpenCodeDaemonBridge } from '../host/provider/OpenCodeDaemonBridge';
 
-describe('Multi-Session Stream Routing and Concurrency (P2)', () => {
-	it('TabSessionActor provides intra-tab serialization and cross-tab concurrency', async () => {
+suite('Multi-Session Stream Routing and Concurrency (P2)', () => {
+	test('TabSessionActor provides intra-tab serialization and cross-tab concurrency', async () => {
 		const tabA = TabId.of('tab-a');
 		const tabB = TabId.of('tab-b');
 		const actorA = new TabSessionActor(tabA);
@@ -48,7 +48,7 @@ describe('Multi-Session Stream Routing and Concurrency (P2)', () => {
 		assert.strictEqual(events[3], 'A2');
 	});
 
-	it('OpenCodeDaemonBridge routes lines strictly by session identity', () => {
+	test('OpenCodeDaemonBridge routes lines strictly by session identity', () => {
 		const bridge = new OpenCodeDaemonBridge({
 			daemonScriptPath: '/dummy/daemon.js',
 		});
@@ -85,7 +85,7 @@ describe('Multi-Session Stream Routing and Concurrency (P2)', () => {
 		assert.strictEqual(bridge.getOrphanLineCount(), 1, 'Orphan line count should increment');
 	});
 
-	it('PendingSend buffers bootstrap lines and flushes upon session registration', () => {
+	test('PendingSend buffers bootstrap lines and flushes upon session registration', () => {
 		const bridge = new OpenCodeDaemonBridge({
 			daemonScriptPath: '/dummy/daemon.js',
 		});

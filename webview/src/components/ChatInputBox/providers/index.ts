@@ -15,13 +15,11 @@ export {
 export {
   agentProvider,
   agentToDropdownItem,
-  setupAgentsCallback,
-  resetAgentsState,
   getSubagentsSync,
   getPrimaryAgentsSync,
-  subscribeAgents,
-  unsubscribeAgents,
+  getNextPrimaryMode,
   ensureAgentsLoaded,
+  forceRefreshAgents,
   subagentMentionProvider,
   subagentMentionToDropdownItem,
 } from './agentProvider';

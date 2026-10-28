@@ -186,10 +186,10 @@ const App = () => {
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     resetToPreferredModel,
     handleModeSelect, handleModelSelect,
-    handleReasoningChange, handleToggleThinking,
+    handleReasoningChange,
     handleSendShortcutChange,
     handleAutoOpenFileEnabledChange,
-  } = useModelProviderState({ addToast, t });
+  } = useModelProviderState({ addToast, t, currentSessionId, currentSessionIdRef });
 
   // ── Global drag event interception ──
   useEffect(() => {
@@ -308,7 +308,7 @@ const App = () => {
     handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
-    toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal, convertToCliSession,
+    toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal,
   } = useSessionManagement({
     messages, loading, historyData, currentSessionId, currentSessionIdRef, currentProvider,
     setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
@@ -322,7 +322,7 @@ const App = () => {
     clearToasts, addToast, t,
   });
 
-  useHistoryLoader({ currentView, currentProvider });
+  const reloadHistory = useHistoryLoader({ currentView, currentProvider });
 
   // ── Share state ──
   const [isShared, setIsShared] = useState(false);
@@ -1105,7 +1105,6 @@ const App = () => {
               onModeSelect={handleModeSelect}
               onModelSelect={handleModelSelect}
               onReasoningChange={handleReasoningChange}
-              onToggleThinking={handleToggleThinking}
               onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
@@ -1114,8 +1113,6 @@ const App = () => {
           {currentView === 'history' && (
             <HistoryView
               historyData={historyData}
-              currentProvider={currentProvider}
-              currentSessionId={currentSessionId}
               onLoadSession={(sessionId) => {
                 if (openSessionInTabRef.current) {
                   openSessionInTabRef.current(sessionId);
@@ -1128,7 +1125,7 @@ const App = () => {
               onExportSession={exportHistorySession}
               onToggleFavorite={toggleFavoriteSession}
               onUpdateTitle={updateHistoryTitle}
-              onConvertToCliSession={convertToCliSession}
+              onRetry={reloadHistory}
             />
           )}
         </>

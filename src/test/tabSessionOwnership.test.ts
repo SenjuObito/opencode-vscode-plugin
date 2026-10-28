@@ -105,8 +105,8 @@ async function sendCommand(
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
-	it('两个 tab 各持一个会话，互不相同', async () => {
+suite('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
+	test('两个 tab 各持一个会话，互不相同', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		const view = new MockChannel();
@@ -136,7 +136,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(sessionB.sent.length, 1, 'B 只收到自己那条');
 	});
 
-	it('interrupt 只打目标 tab', async () => {
+	test('interrupt 只打目标 tab', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
@@ -155,7 +155,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(sessionA.interrupts, 0, 'A 不能被 B 的中断波及');
 	});
 
-	it('`!cmd` 走 sendShell，目标 tab 的 cwd 作为工作目录', async () => {
+	test('`!cmd` 走 sendShell，目标 tab 的 cwd 作为工作目录', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
@@ -168,7 +168,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(session.sent.length, 0, '`!` 内容不能当 prompt 发出去');
 	});
 
-	it('首次发送时按需创建会话（tab 没有会话也能发）', async () => {
+	test('首次发送时按需创建会话（tab 没有会话也能发）', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
@@ -181,7 +181,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(factory.all.length, 1);
 	});
 
-	it('服务端分配 sessionId 后绑定到 tab，可按会话反查', async () => {
+	test('服务端分配 sessionId 后绑定到 tab，可按会话反查', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
@@ -196,7 +196,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(chatWindow.registry.findBySession('ses_123')?.getTabId().value, tabA.value);
 	});
 
-	it('切 tab 时回放该 tab 的快照与选择（不动另一个 tab）', async () => {
+	test('切 tab 时回放该 tab 的快照与选择（不动另一个 tab）', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		const view = new MockChannel();
@@ -218,7 +218,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.ok(fns.includes('historyLoadComplete'), '回放结束要释放过渡态');
 	});
 
-	it('切历史会话：先释放旧绑定再重绑，旧会话被释放', async () => {
+	test('切历史会话：先释放旧绑定再重绑，旧会话被释放', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
@@ -244,7 +244,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(again, attached);
 	});
 
-	it('新对话在同一个 tab 内重置绑定', async () => {
+	test('新对话在同一个 tab 内重置绑定', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
@@ -260,7 +260,7 @@ describe('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(chatWindow.registry.findBySession('ses_old'), null);
 	});
 
-	it('TabScopedSink 只放行活跃 tab，addErrorMessage 例外', () => {		let active = false;
+	test('TabScopedSink 只放行活跃 tab，addErrorMessage 例外', () => {		let active = false;
 		const forwarded: string[] = [];
 		const sink = new TabScopedSink('tab-a', () => active, {
 			callJavaScript: (fn) => forwarded.push(fn),

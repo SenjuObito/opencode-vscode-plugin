@@ -55,8 +55,8 @@ async function sendCommand(
  * 开关（context.refresh 写进 TabSettings）形同虚设。现在会话按 tab 解析：tab 显式
  * 设过就用它的，没设过才跟随全局。
  */
-describe('P8-A17: §10.12 per-tab autoOpenFileEnabled', () => {
-	it('没设过的 tab 跟随全局（undefined），设过的 tab 用自己的值', async () => {
+suite('P8-A17: §10.12 per-tab autoOpenFileEnabled', () => {
+	test('没设过的 tab 跟随全局（undefined），设过的 tab 用自己的值', async () => {
 		const resolvers = new Map<string, () => boolean | null | undefined>();
 		const chatWindow = new ChatWindow({
 			settings: {} as never,

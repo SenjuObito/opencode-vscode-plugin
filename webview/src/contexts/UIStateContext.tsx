@@ -64,7 +64,16 @@ export function UIStateProvider({ children }: { children: ReactNode }) {
   ) => {
     if (message === DEFAULT_STATUS || !message) return;
     const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message, type, action, duration: options?.duration }]);
+    setToasts((prev) => {
+      // Deduplicate: if an identical message is already showing, do not stack another copy
+      const existingIndex = prev.findIndex((t) => t.message === message && t.type === type);
+      if (existingIndex !== -1) {
+        const updated = [...prev];
+        updated[existingIndex] = { id, message, type, action, duration: options?.duration };
+        return updated;
+      }
+      return [...prev, { id, message, type, action, duration: options?.duration }];
+    });
   }, []);
 
   const dismissToast = useCallback((id: string) => {

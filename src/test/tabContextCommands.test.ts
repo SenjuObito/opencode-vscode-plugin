@@ -57,8 +57,8 @@ async function sendCommand(
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('P8-A4: 窗口级 save_json', () => {
-	it('不带 tabId 也能保存（不能被当成缺 tabId 拒掉）', async () => {
+suite('P8-A4: 窗口级 save_json', () => {
+	test('不带 tabId 也能保存（不能被当成缺 tabId 拒掉）', async () => {
 		const saved: Array<{ content: string; filename: string }> = [];
 		const chatWindow = new ChatWindow({
 			settings: {} as never,
@@ -90,9 +90,9 @@ describe('P8-A4: 窗口级 save_json', () => {
 	});
 });
 
-describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
-	describe('context.refresh', () => {
-		it('把开关写进目标 tab 的 TabSettings，且只影响目标 tab', async () => {
+suite('P8-A4: tab 级 context.refresh / commands.refresh', () => {
+	suite('context.refresh', () => {
+		test('把开关写进目标 tab 的 TabSettings，且只影响目标 tab', async () => {
 			const chatWindow = makeChatWindow({});
 			const view = new MockChannel();
 			chatWindow.registerView('sidebar', view);
@@ -120,7 +120,7 @@ describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 			assert.strictEqual(recordB.getSettings().isContextEnabled(), true);
 		});
 
-		it('缺省 enabled 时按开启处理（旧版 webview 兼容）', async () => {
+		test('缺省 enabled 时按开启处理（旧版 webview 兼容）', async () => {
 			const chatWindow = makeChatWindow({});
 			chatWindow.registerView('sidebar', new MockChannel());
 			const tabA = chatWindow.registry.getActiveTabId()!;
@@ -131,8 +131,8 @@ describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 		});
 	});
 
-	describe('commands.refresh', () => {
-		it('按目标 tab 的 cwd 请求命令列表并回推 updateSlashCommands', async () => {
+	suite('commands.refresh', () => {
+		test('按目标 tab 的 cwd 请求命令列表并回推 updateSlashCommands', async () => {
 			const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
 			const daemon = {
 				request(
@@ -179,7 +179,7 @@ describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 			}
 		});
 
-		it('daemon 失败时回推空列表，不展示幽灵命令', async () => {
+		test('daemon 失败时回推空列表，不展示幽灵命令', async () => {
 			const daemon = {
 				request(
 					_method: string,

@@ -88,7 +88,7 @@ describe('StatusNoticeBar — retry notice (regression)', () => {
     renderBar([]);
     fireEvent.click(screen.getByText('subscribe'));
 
-    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://opencode.ai/go');
+    expect(sendToJava).toHaveBeenCalledWith('open_external_url', 'https://opencode.ai/go');
   });
 
   it('stays hidden once the turn settles', () => {
@@ -306,7 +306,7 @@ describe('StatusNoticeBar — upgrade action', () => {
 
     expect(action.textContent).toBe('errorDiagnostic.opencodeQuotaExceeded.upgrade');
     fireEvent.click(action);
-    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://server/pay');
+    expect(sendToJava).toHaveBeenCalledWith('open_external_url', 'https://server/pay');
   });
 
   it('keeps the link after the turn-settle clear wipes the retry payload', () => {
@@ -324,7 +324,7 @@ describe('StatusNoticeBar — upgrade action', () => {
     const action = container.querySelector('.status-notice-action') as HTMLElement;
     expect(action).toBeTruthy();
     fireEvent.click(action);
-    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://server/pay');
+    expect(sendToJava).toHaveBeenCalledWith('open_external_url', 'https://server/pay');
   });
 
   it('falls back to the pattern link when the server pushed none', () => {
@@ -333,7 +333,7 @@ describe('StatusNoticeBar — upgrade action', () => {
 
     fireEvent.click(action);
 
-    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://opencode.ai/go');
+    expect(sendToJava).toHaveBeenCalledWith('open_external_url', 'https://opencode.ai/go');
   });
 
   it('does not carry a link captured in a previous turn', () => {
@@ -356,7 +356,7 @@ describe('StatusNoticeBar — upgrade action', () => {
     const action = container.querySelector('.status-notice-action') as HTMLElement;
     fireEvent.click(action);
 
-    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://opencode.ai/go');
+    expect(sendToJava).toHaveBeenCalledWith('open_external_url', 'https://opencode.ai/go');
   });
 
   it('does not carry a link captured in another session', () => {
@@ -367,6 +367,6 @@ describe('StatusNoticeBar — upgrade action', () => {
 
     fireEvent.click(action);
 
-    expect(sendToJava).toHaveBeenCalledWith('open_browser', 'https://opencode.ai/go');
+    expect(sendToJava).toHaveBeenCalledWith('open_external_url', 'https://opencode.ai/go');
   });
 });

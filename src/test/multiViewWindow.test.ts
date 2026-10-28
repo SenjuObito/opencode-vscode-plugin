@@ -24,9 +24,9 @@ class MockChannel implements WebviewChannel {
 	}
 }
 
-describe('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRouter)', () => {
-	describe('ViewRegistry', () => {
-		it('registers and unregisters views and handles focus tracking', () => {
+suite('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRouter)', () => {
+	suite('ViewRegistry', () => {
+		test('registers and unregisters views and handles focus tracking', () => {
 			let changedHost: string | null = null;
 			const registry = new ViewRegistry((newHost) => {
 				changedHost = newHost;
@@ -60,7 +60,7 @@ describe('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRout
 		});
 	});
 
-	describe('ChatWindow multi-view state sync and tab operations', () => {
+	suite('ChatWindow multi-view state sync and tab operations', () => {
 		const dummyOptions = {
 			settings: {} as any,
 			daemon: {} as any,
@@ -68,7 +68,7 @@ describe('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRout
 			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
 		};
 
-		it('initializes with a default tab and resyncs on view.ready', async () => {
+		test('initializes with a default tab and resyncs on view.ready', async () => {
 			const chatWindow = new ChatWindow(dummyOptions);
 			const initialActiveTab = chatWindow.registry.getActiveTabId();
 			assert.ok(initialActiveTab);
@@ -114,7 +114,7 @@ describe('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRout
 			chatWindow.eventRouter.dispose();
 		});
 
-		it('preserves tab state when views close and reopen', async () => {
+		test('preserves tab state when views close and reopen', async () => {
 			const chatWindow = new ChatWindow(dummyOptions);
 			const tabId = chatWindow.registry.getActiveTabId()!.value;
 
@@ -152,7 +152,7 @@ describe('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRout
 			chatWindow.eventRouter.dispose();
 		});
 
-		it('reorders and closes tabs correctly with fallback', async () => {
+		test('reorders and closes tabs correctly with fallback', async () => {
 			const chatWindow = new ChatWindow(dummyOptions);
 			const t1Id = chatWindow.registry.getActiveTabId()!.value;
 
@@ -186,7 +186,7 @@ describe('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRout
 			chatWindow.eventRouter.dispose();
 		});
 
-		it('validates protocol v2 and rejects invalid or duplicate commands', async () => {
+		test('validates protocol v2 and rejects invalid or duplicate commands', async () => {
 			const chatWindow = new ChatWindow(dummyOptions);
 			const ch = new MockChannel();
 			chatWindow.registerView('v1', ch);

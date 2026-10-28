@@ -27,7 +27,8 @@
     "gotIt": "知道了",
     "seconds": "秒",
     "minutes": "分",
-    "optional": "可选"
+    "optional": "可选",
+    "retry": "重新加载"
   },
   "chat": {
     "exportMarkdown": "导出为 Markdown",
@@ -202,7 +203,8 @@
     "shareLinkCreated": "分享链接已创建",
     "retryCopy": "重试复制",
     "subagentsSection": "子代理",
-    "filesSection": "文件"
+    "filesSection": "文件",
+    "renderError": "消息渲染发生异常"
   },
   "settings": {
     "title": "设置",
@@ -871,7 +873,6 @@
     "searchPlaceholder": "搜索会话标题...",
     "noSearchResults": "未找到匹配的会话",
     "tryOtherKeywords": "尝试其他搜索关键词",
-    "deepSearchTooltip": "深度搜索（清空缓存后重新加载）",
     "editTitle": "编辑标题",
     "saveTitleButton": "保存",
     "cancelEditButton": "取消",
@@ -892,22 +893,8 @@
       "remote": "此会话由远程 OpenCode 实例创建",
       "sdk": "此会话由 OpenCode 插件通过 SDK 创建。"
     },
-    "convertToCliSession": "转换为 CLI 可识别会话",
-    "convertButton": "转为CLI",
     "convertSuccess": "会话已转换，现在可在 CLI 的 /resume 中显示",
     "convertFailed": "转换失败",
-    "confirmConvert": "转换为 CLI 会话？",
-    "convertConfirmMessage": "此操作将修改会话的 entrypoint，使其在 OpenCode CLI 的 /resume 列表中显示。",
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "无效的会话 ID",
-      "SESSION_ACTIVE": "无法转换当前活跃的会话，请先开启新会话后再转换",
-      "SESSION_NOT_FOUND": "未找到会话文件",
-      "FILE_NOT_EXIST": "会话文件不存在",
-      "FILE_LOCKED": "会话文件正在被其他进程访问",
-      "NOT_SDK_SESSION": "此会话不是 SDK 创建的会话（entrypoint 不是 sdk-cli）",
-      "ALREADY_CLI_SESSION": "此会话已经是 CLI 会话",
-      "CONVERSION_FAILED": "转换失败，请稍后重试"
-    },
     "timeAgo": {
       "yearsAgo": "年前",
       "monthsAgo": "个月前",
@@ -915,7 +902,9 @@
       "hoursAgo": "小时前",
       "minutesAgo": "分钟前",
       "secondsAgo": "秒前"
-    }
+    },
+    "retry": "重试",
+    "loadTimeout": "加载历史记录超时"
   },
   "permission": {
     "dialogTitle": "权限请求",

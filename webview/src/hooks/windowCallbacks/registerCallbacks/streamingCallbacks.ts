@@ -13,6 +13,7 @@ import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence } from '../parseSequence';
 import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
+import { isTabTransitioning, activeTabId } from '../tabTransition';
 
 /**
  * Pour every tool_use_id carried by tool_result blocks inside one message's raw
@@ -202,6 +203,17 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     patchAssistantForStreaming,
   } = options;
 
+  /**
+   * The transition guard belongs to the tab that is switching.
+   *
+   * <p>This webview renders one tab at a time (the host projects only the
+   * active tab's output), so "the tab that is switching" is the active tab.
+   * A background tab starting a load must therefore not silence the
+   * foreground tab's stream — the window-wide flag this replaced did
+   * exactly that.</p>
+   */
+  const isActiveTabTransitioning = (): boolean => isTabTransitioning(activeTabId());
+
   // ── Stream stall watchdog ──
   // Tracks the last time we received any streaming activity (delta or
   // updateMessages during streaming).  A periodic check auto-recovers
@@ -232,7 +244,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.onStreamStart = (mode?: string | boolean) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     const isReplayStart = mode === 'replay' || mode === true;
     // Clear any stale pending updateMessages from previous turn.
     // This prevents onStreamEnd from using outdated snapshot data.
@@ -406,7 +418,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.onContentDelta = (delta: string) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
     streamingContentRef.current += delta;
@@ -414,7 +426,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.onThinkingDelta = (delta: string) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     ensureStreamingActive();
     window.__lastStreamActivityAt = Date.now();
     streamingThinkingRef.current += delta;
@@ -446,7 +458,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   };
 
   window.onStreamEnd = (sequence?: string | number) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
 
     // Idempotency guard: dual-path delivery (primary via flush callback +
     // fallback via Alarm) may send onStreamEnd twice for the same turn.

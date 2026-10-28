@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { ForwardedRef, MutableRefObject, RefObject } from 'react';
 import { cutSelection } from '../../../hooks/useContextMenu.js';
-import type { ChatInputBoxHandle, FileTagInfo } from '../types.js';
+import type { Attachment, ChatInputBoxHandle, FileTagInfo } from '../types.js';
 import { useChatInputImperativeHandle } from './useChatInputImperativeHandle.js';
 
 interface InlineCompletionController {
@@ -25,7 +25,17 @@ interface UseChatInputSelectionControllerOptions {
   clearInput: () => void;
   hasContent: boolean;
   extractFileTags: () => FileTagInfo[];
+  /** Current attachment list (uncontrolled mode keeps it inside the component). */
+  attachments: Attachment[];
+  /** Replace the attachment list when a tab switch restores its draft. */
+  setAttachments: (attachments: Attachment[]) => void;
   restoreFileTags: (tags: FileTagInfo[]) => void;
+  /** Extract quotes map currently present in input */
+  getQuotes?: () => Record<string, { text: string }>;
+  /** Re-register quotes and convert any quote tokens into chips */
+  restoreQuoteTags?: (quotes?: Record<string, { text: string }>) => void;
+  /** Convert quote tokens in DOM to chip elements */
+  renderQuoteTags?: () => void;
   inlineCompletion: InlineCompletionController;
   handleInput: () => void;
   ctxMenu: ContextMenuSelectionState;
@@ -44,7 +54,12 @@ export function useChatInputSelectionController({
   clearInput,
   hasContent,
   extractFileTags,
+  attachments,
+  setAttachments,
   restoreFileTags,
+  getQuotes,
+  restoreQuoteTags,
+  renderQuoteTags,
   inlineCompletion,
   handleInput,
   ctxMenu,
@@ -106,7 +121,12 @@ export function useChatInputSelectionController({
     clearInput,
     hasContent,
     extractFileTags,
+    attachments,
+    setAttachments,
     restoreFileTags,
+    getQuotes,
+    restoreQuoteTags,
+    renderQuoteTags,
   });
 
   return {

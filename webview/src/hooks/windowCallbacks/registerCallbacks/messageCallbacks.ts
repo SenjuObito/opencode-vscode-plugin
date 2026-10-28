@@ -21,7 +21,7 @@ import {
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
-import { releaseSessionTransition } from '../sessionTransition';
+import { endTransition, isTabTransitioning, activeTabId } from '../tabTransition';
 import { parseSequence } from '../parseSequence';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
@@ -80,6 +80,17 @@ export function registerMessageCallbacks(
     );
     return ensureStreamingAssistantPreserved(prevList, withoutDuplicateToolTail);
   };
+
+  /**
+   * The transition guard belongs to the tab that is switching.
+   *
+   * <p>This webview renders one tab at a time (the host projects only the
+   * active tab's output), so "the tab that is switching" is the active tab.
+   * A background tab starting a load must therefore not silence the
+   * foreground tab's stream — the window-wide flag this replaced did
+   * exactly that.</p>
+   */
+  const isActiveTabTransitioning = (): boolean => isTabTransitioning(activeTabId());
 
   // During streaming, buffer updateMessages calls and process only the latest
   // one per animation frame. This prevents JSON.parse of large payloads from
@@ -148,7 +159,7 @@ export function registerMessageCallbacks(
     // callers that bypass the entry point — addHistoryMessage / addUserMessage
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
-    if (window.__sessionTransitioning) {
+    if (isActiveTabTransitioning()) {
       return;
     }
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
@@ -396,7 +407,7 @@ export function registerMessageCallbacks(
     baseIndexArg: string | number,
     sequenceArg?: string | number,
   ) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
     if (sequence != null && sequence < minAcceptedSequence) return;
@@ -472,7 +483,7 @@ export function registerMessageCallbacks(
   window.updateMessages = (json, sequenceArg, baseIndexArg) => {
     // During session transition, ignore message updates from stale session
     // callbacks to prevent cleared messages from being restored
-    if (window.__sessionTransitioning) {
+    if (isActiveTabTransitioning()) {
       return;
     }
     const sequence = parseSequence(sequenceArg);
@@ -517,7 +528,7 @@ export function registerMessageCallbacks(
           // stale snapshot deferred during the outgoing session's streaming
           // would run down the non-streaming path (isStreamingRef was cleared
           // by beginSessionTransition) and resurrect the cleared messages.
-          if (window.__sessionTransitioning) return;
+          if (isActiveTabTransitioning()) return;
           if (latestJson) {
             processUpdateMessages(latestJson, latestSequence, latestBaseIndex);
           }
@@ -540,7 +551,7 @@ export function registerMessageCallbacks(
   // __prependedHistoryMessageCount 同步累加：基址不变的同代快照走 legacy
   // 合并路径时，靠它保留已前插的页（Codex 既有机制）。
   window.updateMessagesPrepend = (json, pageStartArg) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     if (isStreamingRef.current) return;
     let parsed: ClaudeMessage[];
     try {
@@ -712,7 +723,7 @@ export function registerMessageCallbacks(
   }
 
   window.patchMessageUuid = (content, uuid) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     if (!content || !uuid) return;
 
     setMessages((prev) => {
@@ -814,7 +825,7 @@ export function registerMessageCallbacks(
   };
 
   window.addHistoryMessage = (message: ClaudeMessage) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     setMessages((prev) => [...prev, message]);
   };
 
@@ -851,7 +862,8 @@ export function registerMessageCallbacks(
   };
 
   window.historyLoadComplete = (expectedMessageCountArg) => {
-    releaseSessionTransition();
+    // The history arrived, so the tab that was loading may write again.
+    endTransition(activeTabId());
     // Defer sessionLoading=false so the loading indicator has time to render.
     // setTimeout(0) is too fast — React 18 batches it into the same frame as
     // the message update, so the UI jumps from empty→messages with no visible
@@ -893,7 +905,7 @@ export function registerMessageCallbacks(
   }
 
   window.addUserMessage = (content: string) => {
-    if (window.__sessionTransitioning) return;
+    if (isActiveTabTransitioning()) return;
     const userMessage: ClaudeMessage = {
       type: 'user',
       content: content || '',

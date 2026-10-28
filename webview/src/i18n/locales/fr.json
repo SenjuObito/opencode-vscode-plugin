@@ -24,7 +24,8 @@
     "info": "Information",
     "seconds": "s",
     "minutes": "m",
-    "optional": "Optional"
+    "optional": "Optional",
+    "retry": "Recharger"
   },
   "chat": {
     "sendMessage": "Envoyer un message à {{provider}}",
@@ -169,7 +170,8 @@
     "shareLinkCreated": "Lien de partage créé",
     "retryCopy": "Copier à nouveau",
     "subagentsSection": "Sous-agents",
-    "filesSection": "Fichiers"
+    "filesSection": "Fichiers",
+    "renderError": "Erreur de rendu du message"
   },
   "settings": {
     "title": "Paramètres",
@@ -741,7 +743,6 @@
     "searchPlaceholder": "Rechercher titre de session...",
     "noSearchResults": "Aucune session correspondante trouvée",
     "tryOtherKeywords": "Essayez d'autres mots-clés de recherche",
-    "deepSearchTooltip": "Deep Search (clear cache and reload)",
     "editTitle": "Modifier le titre",
     "saveTitleButton": "Enregistrer",
     "cancelEditButton": "Annuler",
@@ -750,12 +751,8 @@
     "copySessionId": "Copier l'ID de session pour CLI resume",
     "sessionIdCopied": "ID de session copié",
     "copyFailed": "Échec de la copie",
-    "convertToCliSession": "Convertir en session reconnue par le CLI",
-    "convertButton": "Convertir en CLI",
     "convertSuccess": "Session convertie pour être reconnue par le CLI",
     "convertFailed": "Échec de la conversion",
-    "confirmConvert": "Convertir en session CLI ?",
-    "convertConfirmMessage": "Cela modifiera l'entrypoint de la session pour la rendre visible dans la liste /resume du CLI de OpenCode.",
     "timeAgo": {
       "yearsAgo": "il y a des années",
       "monthsAgo": "il y a des mois",
@@ -763,16 +760,6 @@
       "hoursAgo": "il y a des heures",
       "minutesAgo": "il y a des minutes",
       "secondsAgo": "il y a des secondes"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "ID de session invalide",
-      "SESSION_ACTIVE": "Impossible de convertir la session actuellement active. Démarrez d'abord une nouvelle session, puis convertissez celle-ci",
-      "SESSION_NOT_FOUND": "Fichier de session introuvable",
-      "FILE_NOT_EXIST": "Le fichier de session n'existe pas",
-      "FILE_LOCKED": "Le fichier de session est utilisé par un autre processus",
-      "NOT_SDK_SESSION": "Cette session n'a pas été créée par le SDK (entrypoint n'est pas sdk-cli)",
-      "ALREADY_CLI_SESSION": "Cette session est déjà une session CLI",
-      "CONVERSION_FAILED": "Échec de la conversion, veuillez réessayer plus tard"
     },
     "entrypointLabel": {
       "sdk-cli": "Session SDK",
@@ -785,7 +772,9 @@
       "claude-vscode": "Cette session a été créée par l'extension VS Code et n'est pas affichée dans CLI par défaut. Cliquez sur 'Convertir en CLI' pour qu'elle apparaisse dans la liste /resume du CLI du terminal",
       "remote": "Cette session a été créée par une instance distante de OpenCode",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
-    }
+    },
+    "retry": "Réessayer",
+    "loadTimeout": "Délai de chargement de l'historique dépassé"
   },
   "permission": {
     "dialogTitle": "Demande de permission",

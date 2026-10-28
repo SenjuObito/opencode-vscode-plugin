@@ -56,8 +56,11 @@ describe('useModelStatePersistence — boot sync', () => {
 
     expect(bridgeEventsFor('set_mode')).toHaveLength(0);
     expect(bridgeEventsFor('set_provider')).toHaveLength(1);
-    expect(bridgeEventsFor('set_provider')).toHaveLength(1);
-    expect(bridgeEventsFor('set_model')).toHaveLength(1);
+    // The restored model stays frontend state only: at boot there is no
+    // bound session, so a global `set_model` would write to whatever
+    // session the host still points at (a background tab after a reload).
+    // The first send carries the model to the session it creates.
+    expect(bridgeEventsFor('set_model')).toHaveLength(0);
   });
 
   it('keeps frontend boot synchronization enabled for a pre-ready startup retry', () => {
@@ -68,7 +71,7 @@ describe('useModelStatePersistence — boot sync', () => {
     vi.advanceTimersByTime(200);
 
     expect(bridgeEventsFor('set_provider')).toHaveLength(1);
-    expect(bridgeEventsFor('set_model')).toHaveLength(1);
+    expect(bridgeEventsFor('set_model')).toHaveLength(0);
   });
 
   it('does not echo the stale HTML provider or model during watchdog recovery', () => {
@@ -144,7 +147,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('treats a backend-supplied legacy provider as "no backend preference"', () => {
@@ -165,7 +168,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'opencode-default']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('keeps a saved opencode model untouched when the snapshot also carries legacy fields', () => {
@@ -181,7 +184,7 @@ describe('useModelStatePersistence — legacy snapshot migration (opencode-only 
     vi.advanceTimersByTime(200);
 
     expect(setSelectedOpenCodeModel).toHaveBeenCalledWith('anthropic/claude-sonnet-5');
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'anthropic/claude-sonnet-5']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 });
 
@@ -219,7 +222,7 @@ describe('useModelStatePersistence — OpenCode persistence', () => {
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'openai/gpt-5']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('honors a backend-supplied opencode provider via __INITIAL_TAB_PROVIDER__', () => {
@@ -232,7 +235,7 @@ describe('useModelStatePersistence — OpenCode persistence', () => {
 
     expect(setCurrentProvider).toHaveBeenCalledWith('opencode');
     expect(bridgeEventsFor('set_provider')).toEqual([['set_provider', 'opencode']]);
-    expect(bridgeEventsFor('set_model')).toEqual([['set_model', 'openai/gpt-5']]);
+    expect(bridgeEventsFor('set_model')).toEqual([]);
   });
 
   it('persists opencode model and permission selections in the snapshot', () => {

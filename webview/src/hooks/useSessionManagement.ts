@@ -4,6 +4,8 @@ import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap,
 import { sendBridgeEvent, sendInterrupt, sendNewSession, cardDebugLog } from '../utils/bridge';
 import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
+import { getTabStore } from '../store/tabStore';
+import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
 
 type ViewMode = 'chat' | 'history' | 'settings';
 
@@ -65,7 +67,6 @@ interface UseSessionManagementReturn {
   toggleFavoriteSession: (sessionId: string) => void;
   updateHistoryTitle: (sessionId: string, newTitle: string) => void;
   applyHistoryTitleLocal: (sessionId: string, newTitle: string) => void;
-  convertToCliSession: (sessionId: string) => void;
 }
 
 /**
@@ -118,9 +119,12 @@ export function useSessionManagement({
     addToast(toast.message, toast.type);
   }, [addToast, t]);
 
-  const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null) => {
-    window.__sessionTransitioning = true;
-    window.__sessionTransitionToken = createSessionTransitionToken();
+  const beginSessionTransition = useCallback((nextSessionId: string | null, nextTitle: string | null, targetTabId?: string | null) => {
+    // The guard belongs to the tab that is switching. Other tabs keep their
+    // own events flowing while this one loads its history.
+    const transitionTabId = targetTabId ?? getTabStore().getActiveTabId() ?? null;
+    const transitionToken = createSessionTransitionToken();
+    beginTransition(transitionTabId, nextSessionId, transitionToken);
     // 完整会话切换会取代任何在途的同会话软刷新，释放其去抖守卫。
     if (softReloadTimeoutRef.current !== null) {
       clearTimeout(softReloadTimeoutRef.current);
@@ -180,19 +184,18 @@ export function useSessionManagement({
     // FIX: Safety timeout to auto-release the session transition guard.
     // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
     // during webview reload, or a backend error that prevents the callback),
-    // __sessionTransitioning would remain true permanently, silently dropping ALL
+    // the tab's transition would remain active, silently dropping ALL
     // message callbacks (updateMessages, onContentDelta, onStreamStart, etc.).
     // This makes the webview appear "dead" while the backend continues working.
     if (transitionTimeoutRef.current !== null) {
       clearTimeout(transitionTimeoutRef.current);
     }
-    const token = window.__sessionTransitionToken;
+    const token = transitionToken;
     transitionTimeoutRef.current = setTimeout(() => {
       transitionTimeoutRef.current = null;
-      if (window.__sessionTransitioning && window.__sessionTransitionToken === token) {
+      const ended = endTransition(transitionTabId, token);
+      if (ended) {
         cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
-        window.__sessionTransitioning = false;
-        window.__sessionTransitionToken = null;
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
@@ -304,14 +307,14 @@ export function useSessionManagement({
         return;
       }
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
-      cardDebugLog('[SessionManagement] BEFORE: __sessionTransitioning=', window.__sessionTransitioning, 'softReload=', window.__softSessionReloadInFlight);
       // Set transition guard so backend's clearMessages (from restoreMessages)
       // won't reset sessionLoading to false before messages arrive — prevents
-      // the empty-state flash that occurs when __sessionTransitioning is false.
-      window.__sessionTransitioning = true;
-      window.__sessionTransitionToken = createSessionTransitionToken();
+      // the empty-state flash that occurs when the tab is not transitioning.
+      const softReloadTabId = getTabStore().getActiveTabId() ?? null;
+      const softReloadToken = createSessionTransitionToken();
+      beginTransition(softReloadTabId, sessionId, softReloadToken);
       window.__softSessionReloadInFlight = sessionId;
-      cardDebugLog('[SessionManagement] AFTER: __sessionTransitioning=', window.__sessionTransitioning, 'token set');
+      cardDebugLog('[SessionManagement] AFTER: tab transition started, token set');
       if (softReloadTimeoutRef.current !== null) {
         clearTimeout(softReloadTimeoutRef.current);
       }
@@ -321,10 +324,8 @@ export function useSessionManagement({
           window.__softSessionReloadInFlight = null;
         }
         // Safety: release transition guard if historyLoadComplete never arrived
-        if (window.__sessionTransitioning) {
+        if (endTransition(softReloadTabId, softReloadToken)) {
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
-          window.__sessionTransitioning = false;
-          window.__sessionTransitionToken = null;
         }
       }, 5_000);
       sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
@@ -516,28 +517,6 @@ export function useSessionManagement({
     }
   }, [historyData, setHistoryData]);
 
-  // Convert SDK-created session to CLI-recognizable session.
-  // The backend sends an onConversionResult callback with success/failure;
-  // the registered handler in sessionCallbacks shows the appropriate toast
-  // and triggers a deep-search reload on failure to restore the correct state.
-  // We optimistically change the entrypoint from 'sdk-cli' to 'cli' so the badge disappears
-  // immediately.  Functional update avoids depending on historyData directly,
-  // keeping the callback reference stable across renders.
-  const convertToCliSession = useCallback((sessionId: string) => {
-    sendBridgeEvent('convert_to_cli_session', sessionId);
-
-    // Optimistically change entrypoint while the backend works.
-    setHistoryData(prev => {
-      if (!prev?.sessions) return prev;
-      return {
-        ...prev,
-        sessions: prev.sessions.map(s =>
-          s.sessionId === sessionId ? { ...s, entrypoint: 'cli' } : s
-        ),
-      };
-    });
-  }, [setHistoryData]);
-
   return {
     showNewSessionConfirm,
     showInterruptConfirm,
@@ -556,6 +535,5 @@ export function useSessionManagement({
     toggleFavoriteSession,
     updateHistoryTitle,
     applyHistoryTitleLocal,
-    convertToCliSession,
   };
 }

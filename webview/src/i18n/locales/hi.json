@@ -24,7 +24,8 @@
     "info": "जानकारी",
     "seconds": "से",
     "minutes": "मि",
-    "optional": "Optional"
+    "optional": "Optional",
+    "retry": "पुनः लोड करें"
   },
   "chat": {
     "sendMessage": "{{provider}} को संदेश भेजें",
@@ -169,7 +170,8 @@
     "shareLinkCreated": "साझा लिंक बनाया गया",
     "retryCopy": "फिर से कॉपी करें",
     "subagentsSection": "सबएजेंट",
-    "filesSection": "फ़ाइलें"
+    "filesSection": "फ़ाइलें",
+    "renderError": "संदेश प्रतिदर्शन में त्रुटि"
   },
   "settings": {
     "title": "सेटिंग्स",
@@ -741,7 +743,6 @@
     "searchPlaceholder": "सत्र शीर्षक खोजें...",
     "noSearchResults": "कोई मिलान सत्र नहीं मिला",
     "tryOtherKeywords": "अन्य खोज कीवर्ड आज़माएं",
-    "deepSearchTooltip": "Deep Search (clear cache and reload)",
     "editTitle": "शीर्षक संपादित करें",
     "saveTitleButton": "सहेजें",
     "cancelEditButton": "रद्द करें",
@@ -750,12 +751,8 @@
     "copySessionId": "CLI resume के लिए सेशन ID कॉपी करें",
     "sessionIdCopied": "सेशन ID कॉपी किया गया",
     "copyFailed": "कॉपी विफल",
-    "convertToCliSession": "CLI पहचान सेशन में बदलें",
-    "convertButton": "CLI में बदलें",
     "convertSuccess": "सेशन CLI पहचान में बदल दिया गया",
     "convertFailed": "रूपांतरण विफल",
-    "confirmConvert": "CLI सेशन में बदलें?",
-    "convertConfirmMessage": "यह सत्र का entrypoint संशोधित करेगा ताकि यह OpenCode CLI की /resume सूची में दिखाई दे।",
     "timeAgo": {
       "yearsAgo": "साल पहले",
       "monthsAgo": "महीने पहले",
@@ -763,16 +760,6 @@
       "hoursAgo": "घंटे पहले",
       "minutesAgo": "मिनट पहले",
       "secondsAgo": "सेकंड पहले"
-    },
-    "conversionErrors": {
-      "INVALID_SESSION_ID": "अमान्य सत्र ID",
-      "SESSION_ACTIVE": "वर्तमान में सक्रिय सत्र को परिवर्तित नहीं किया जा सकता। पहले नया सत्र शुरू करें, फिर इसे परिवर्तित करें",
-      "SESSION_NOT_FOUND": "सत्र फ़ाइल नहीं मिली",
-      "FILE_NOT_EXIST": "सत्र फ़ाइल मौजूद नहीं है",
-      "FILE_LOCKED": "सत्र फ़ाइल किसी अन्य प्रक्रिया द्वारा एक्सेस की जा रही है",
-      "NOT_SDK_SESSION": "यह सत्र SDK द्वारा नहीं बनाया गया (entrypoint sdk-cli नहीं है)",
-      "ALREADY_CLI_SESSION": "यह सत्र पहले से ही CLI सत्र है",
-      "CONVERSION_FAILED": "रूपांतरण विफल, कृपया बाद में पुनः प्रयास करें"
     },
     "entrypointLabel": {
       "sdk-cli": "SDK सत्र",
@@ -785,7 +772,9 @@
       "claude-vscode": "यह सत्र VS Code एक्सटेंशन द्वारा बनाया गया था और CLI में डिफ़ॉल्ट रूप से नहीं दिखाया गया है। टर्मिनल CLI की /resume सूची में इसे दिखाने के लिए 'CLI में कनवर्ट करें' पर क्लिक करें",
       "remote": "यह सत्र OpenCode के रिमोट इंस्टेंस द्वारा बनाया गया था",
       "sdk": "This session was created by the OpenCode plugin via the SDK."
-    }
+    },
+    "retry": "पुनः प्रयास करें",
+    "loadTimeout": "इतिहास लोड करने का समय समाप्त"
   },
   "permission": {
     "dialogTitle": "अनुमति अनुरोध",

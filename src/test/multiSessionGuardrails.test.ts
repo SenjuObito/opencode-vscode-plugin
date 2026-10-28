@@ -2,11 +2,11 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('Multi-Session Architecture Guardrails', () => {
+suite('Multi-Session Architecture Guardrails', () => {
 	// Look at the source tree src/host/tab
 	const tabDir = path.resolve(__dirname, '../../src/host/tab');
 
-	it('should ensure src/host/tab directory exists and has all core modules', () => {
+	test('should ensure src/host/tab directory exists and has all core modules', () => {
 		assert.ok(fs.existsSync(tabDir), 'src/host/tab must exist');
 		const files = fs.readdirSync(tabDir);
 		const expectedModules = [
@@ -32,7 +32,7 @@ describe('Multi-Session Architecture Guardrails', () => {
 		}
 	});
 
-	it('should forbid legacy single-session commands in src/host/tab/', () => {
+	test('should forbid legacy single-session commands in src/host/tab/', () => {
 		const files = fs.readdirSync(tabDir).filter((f) => f.endsWith('.ts'));
 		for (const file of files) {
 			const content = fs.readFileSync(path.join(tabDir, file), 'utf-8');

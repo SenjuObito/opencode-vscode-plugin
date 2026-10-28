@@ -34,9 +34,9 @@ function makeTempRoot(): string {
 	return mkdtempSync(join(tmpdir(), 'oc-attach-'));
 }
 
-describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
-	describe('TabAttachmentStore', () => {
-		it('prepare → chunk → complete 后可从磁盘读回', () => {
+suite('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
+	suite('TabAttachmentStore', () => {
+		test('prepare → chunk → complete 后可从磁盘读回', () => {
 			const root = makeTempRoot();
 			try {
 				const store = new TabAttachmentStore(root);
@@ -65,7 +65,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			}
 		});
 
-		it('分块乱序被拒（offset 必须连续）', () => {
+		test('分块乱序被拒（offset 必须连续）', () => {
 			const root = makeTempRoot();
 			try {
 				const store = new TabAttachmentStore(root);
@@ -78,7 +78,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			}
 		});
 
-		it('超过 32MB 的声明直接拒绝', () => {
+		test('超过 32MB 的声明直接拒绝', () => {
 			const store = new TabAttachmentStore(makeTempRoot());
 			const failure = store.prepare('tab-a', {
 				attachmentId: 'att-3',
@@ -90,7 +90,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			assert.match(failure.reason, /32MB/);
 		});
 
-		it('附件 id 不能带路径穿越，文件名只取 basename', () => {
+		test('附件 id 不能带路径穿越，文件名只取 basename', () => {
 			const store = new TabAttachmentStore(makeTempRoot());
 			const failure = store.prepare('tab-a', {
 				attachmentId: '../escape',
@@ -103,7 +103,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			assert.strictEqual(sanitizeFileName('C:\\tmp\\a b.txt'), 'a b.txt');
 		});
 
-		it('releaseTab 清掉该 tab 的临时文件', () => {
+		test('releaseTab 清掉该 tab 的临时文件', () => {
 			const root = makeTempRoot();
 			try {
 				const store = new TabAttachmentStore(root);
@@ -121,7 +121,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			}
 		});
 
-		it('目录不可用时 prepare 明确失败（不静默丢附件）', () => {
+		test('目录不可用时 prepare 明确失败（不静默丢附件）', () => {
 			const store = new TabAttachmentStore(null);
 			const failure = store.prepare('tab-a', { attachmentId: 'a', fileName: 'a', mediaType: '', size: 1 });
 			assert.ok(failure);
@@ -129,7 +129,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 		});
 	});
 
-	describe('ChatWindow 接线', () => {
+	suite('ChatWindow 接线', () => {
 		const sent: SendMessagePayload[] = [];
 		const sessions: OpenCodeSession[] = [];
 		let root = '';
@@ -178,17 +178,17 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 		};
 
-		beforeEach(() => {
+		setup(() => {
 			root = makeTempRoot();
 			sent.length = 0;
 			sessions.length = 0;
 		});
 
-		afterEach(() => {
+		teardown(() => {
 			rmSync(root, { recursive: true, force: true });
 		});
 
-		it('发送时把 attachmentId 补成内联字节', async () => {
+		test('发送时把 attachmentId 补成内联字节', async () => {
 			const chatWindow = makeChatWindow();
 			chatWindow.registerView('sidebar', new MockChannel());
 			const tabA = chatWindow.registry.getActiveTabId()!;
@@ -217,7 +217,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			assert.strictEqual(attachment?.fileName, 'note.txt');
 		});
 
-		it('附件读不出来时整条消息不发，并给出提示', async () => {
+		test('附件读不出来时整条消息不发，并给出提示', async () => {
 			const chatWindow = makeChatWindow();
 			const view = new MockChannel();
 			chatWindow.registerView('sidebar', view);
@@ -234,7 +234,7 @@ describe('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			assert.match(error.args[0], /附件不可用/);
 		});
 
-		it('关 tab 时释放该 tab 的附件目录', async () => {
+		test('关 tab 时释放该 tab 的附件目录', async () => {
 			const chatWindow = makeChatWindow();
 			chatWindow.registerView('sidebar', new MockChannel());
 			const tabA = chatWindow.registry.getActiveTabId()!;
