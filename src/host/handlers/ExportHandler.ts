@@ -12,6 +12,7 @@ import { logError } from '../util/DiagnosticLogger';
 const SUPPORTED_TYPES = [
 	'export_session',
 	'export_session_markdown',
+	'save_json',
 ];
 
 export class ExportHandler extends BaseMessageHandler {
@@ -28,7 +29,23 @@ export class ExportHandler extends BaseMessageHandler {
 			void this.handleExportSession(content);
 			return true;
 		}
+		if (type === 'save_json') {
+			this.handleSaveJson(content);
+			return true;
+		}
 		return false;
+	}
+
+	/** legacy `save_json:{content,filename}`（webview 的导出/下载路径）。 */
+	private handleSaveJson(content: string): void {
+		try {
+			const parsed = JSON.parse(content || '{}') as Record<string, unknown>;
+			const text = typeof parsed.content === 'string' ? parsed.content : '';
+			const filename = typeof parsed.filename === 'string' ? parsed.filename : 'opencode-export.txt';
+			void this.saveText(text, filename);
+		} catch (err) {
+			logError(`[ExportHandler] save_json 解析失败: ${String(err)}`);
+		}
 	}
 
 	private async handleExportSession(content: string): Promise<void> {
@@ -150,6 +167,50 @@ export class ExportHandler extends BaseMessageHandler {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			logError(`[ExportHandler] 导出会话失败: ${errorMsg}`);
 			void vscode.window.showErrorMessage(`导出会话失败: ${errorMsg}`);
+		}
+	}
+
+	/**
+	 * 把 webview 生成的文本（会话 Markdown / JSON）落到用户选定的文件。
+	 *
+	 * webview 的 `save_json` 一直是「发出去没人接」：浏览器 fallback 在 webview 里
+	 * 也不可信（CSP + 无下载目录权限），所以导出实际是坏的。这里补上接收端。
+	 */
+	async saveText(content: string, filename: string): Promise<boolean> {
+		try {
+			const safeName = (filename || 'opencode-export.txt').replace(/[/\\?%*:|"<>]/g, '_');
+			const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri
+				? vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, safeName)
+				: vscode.Uri.file(safeName);
+
+			const fileUri = await vscode.window.showSaveDialog({
+				defaultUri,
+				filters: {
+					Markdown: ['md'],
+					JSON: ['json'],
+					'All Files': ['*'],
+				},
+				title: '保存 OpenCode 导出文件',
+			});
+			if (!fileUri) {
+				return false;
+			}
+
+			await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf-8'));
+			const action = await vscode.window.showInformationMessage(
+				`已保存: ${fileUri.fsPath.split(/[/\\]/).pop()}`,
+				'打开文件',
+			);
+			if (action === '打开文件') {
+				const doc = await vscode.workspace.openTextDocument(fileUri);
+				await vscode.window.showTextDocument(doc);
+			}
+			return true;
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			logError(`[ExportHandler] 保存文件失败: ${errorMsg}`);
+			void vscode.window.showErrorMessage(`保存文件失败: ${errorMsg}`);
+			return false;
 		}
 	}
 }

@@ -100,6 +100,8 @@ export interface ChatInstance {
 	): void;
 	/** 关 tab 时拒绝这些未决 prompt（deny / rejectQuestion）。 */
 	rejectPrompts(requestIds: string[]): void;
+	/** 把文本存到用户选定文件（v2 `save_json`）。 */
+	saveText(content: string, filename: string): Promise<boolean>;
 	dispose(): void;
 }
 
@@ -125,7 +127,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	dispatcher.registerHandler(agentHandler);
 	const historyHandler = new HistoryHandler(context);
 	dispatcher.registerHandler(historyHandler);
-	dispatcher.registerHandler(new ExportHandler(context));
+	const exportHandler = new ExportHandler(context);
+	dispatcher.registerHandler(exportHandler);
 	dispatcher.registerHandler(new FileHandler(context));
 	dispatcher.registerHandler(new McpServerHandler(context));
 	dispatcher.registerHandler(new McpMarketplaceHandler(context));
@@ -181,6 +184,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 			permissionHandler.attachPromptRegistry(registry, resolveTabId);
 		},
 		rejectPrompts: (requestIds) => permissionHandler.rejectPrompts(requestIds),
+		saveText: (content, filename) => exportHandler.saveText(content, filename),
 		dispose: () => sessionManager.dispose(),
 	};
 }

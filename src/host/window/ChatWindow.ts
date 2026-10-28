@@ -48,6 +48,8 @@ export interface ChatWindowOptions {
 	attachmentsRoot?: string | null;
 	/** 重新枚举 agent 目录（`agents.list`）：由 ChatInstance 接到 AgentHandler。 */
 	requestAgents?: () => void;
+	/** 保存导出文件（窗口级 `save_json`，不带 tab）。 */
+	saveText?: (content: string, filename: string) => void;
 	/**
 	 * 关 tab 时被作废的未决 prompt id。
 	 * 宿主必须把它们 deny / rejectQuestion 掉，否则服务端一直在等。
@@ -749,6 +751,15 @@ export class ChatWindow {
 			if (view) {
 				this.resyncView(viewId, view.channel);
 			}
+			return;
+		}
+
+		// 窗口级命令：不针对任何 tab（导出/下载），必须在 tab 路由之前处理，
+		// 否则会被当成「缺 tabId」直接拒掉。
+		if (type === 'save_json') {
+			const content = typeof command.payload.content === 'string' ? command.payload.content : '';
+			const filename = typeof command.payload.filename === 'string' ? command.payload.filename : '';
+			this.options.saveText?.(content, filename);
 			return;
 		}
 

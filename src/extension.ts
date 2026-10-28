@@ -174,6 +174,9 @@ export function activate(context: vscode.ExtensionContext) {
 		requestAgents: () => instance.refreshAgents(),
 		// 关 tab 时把它的未决权限/提问拒掉，别让服务端一直等。
 		onPromptsRejected: (requestIds) => instance.rejectPrompts(requestIds),
+		saveText: (content, filename) => {
+			void instance.saveText(content, filename);
+		},
 	});
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
 	chatWindow.bindSessionManager(instance.sessionManager);

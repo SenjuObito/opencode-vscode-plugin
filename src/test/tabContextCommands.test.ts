@@ -8,6 +8,7 @@ import { TabId } from '../host/tab/TabId';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
+	public raw: unknown[] = [];
 	public disposed = false;
 
 	public callJavaScript(functionName: string, ...args: string[]): void {
@@ -18,7 +19,9 @@ class MockChannel implements WebviewChannel {
 		return this.disposed;
 	}
 
-	public postRaw(): void {}
+	public postRaw(message: unknown): void {
+		this.raw.push(message);
+	}
 
 	public getViewCount(): number {
 		return 1;
@@ -53,6 +56,39 @@ async function sendCommand(
 	// 命令在 TabSessionActor 上排队执行，等微任务队列排空
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+describe('P8-A4: 窗口级 save_json', () => {
+	it('不带 tabId 也能保存（不能被当成缺 tabId 拒掉）', async () => {
+		const saved: Array<{ content: string; filename: string }> = [];
+		const chatWindow = new ChatWindow({
+			settings: {} as never,
+			daemon: {} as never,
+			fileOps: {} as never,
+			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
+			saveText: (content, filename) => saved.push({ content, filename }),
+		});
+		const view = new MockChannel();
+		chatWindow.registerView('sidebar', view);
+
+		await chatWindow.handleViewCommand('sidebar', {
+			v: 2,
+			type: 'save_json',
+			requestId: 'save-1',
+			tabId: null,
+			payload: { content: '# hello', filename: 'chat.md' },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		assert.deepStrictEqual(saved, [{ content: '# hello', filename: 'chat.md' }]);
+		assert.strictEqual(
+			view.raw.some((m: any) => m?.type === 'host.events'
+				&& Array.isArray(m.batch)
+				&& m.batch.some((e: any) => e.type === 'command.rejected')),
+			false,
+			'不能回 command.rejected',
+		);
+	});
+});
 
 describe('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 	describe('context.refresh', () => {

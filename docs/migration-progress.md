@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A8：状态面板子页入 tab）
+> 最后更新：2026-10-28（P8-A9：导出保存 `save_json` 接通）
 
 ---
 
@@ -95,7 +95,7 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | `settings.mode` | ✅ 已接（写 TabSettings + 目标会话状态） | per-tab 模式落宿主 |
 | `attachment.prepare/chunk/complete` | ✅ 已接（`utils/attachmentTransport.ts` → `TabAttachmentStore`） | 分块落盘，发送只带 id |
 | `agents.list` | ✅ 已接（`ChatWindow` → `AgentHandler.refresh`） | 首次打开即可拉取目录 |
-| `save_json` | `utils/exportMarkdown.ts:383/432` | 导出保存无响应 |
+| `save_json` | ✅ 已接（窗口级：`ChatWindow` 在 tab 路由前处理 → `ExportHandler.saveText`，带保存对话框与「打开文件」） | 导出/下载可用 |
 
 ---
 
@@ -149,6 +149,7 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
+| 2026-10-28 | **P8-A9**：`save_json` 接通（legacy handler + 窗口级 v2 命令，`ExportHandler.saveText` 保存对话框）；§2.3 命令面缺口只剩 `files.listed` |
 | 2026-10-28 | **P8-A8**：`StatusPanel` 子页受控化（`activeTab/onActiveTabChange`），接到 `useTabBarState.statusPanelTab`（按 tab 存），App/ChatScreen 透传；新增 2 项测试（受控上报、切 tab 各自恢复） |
 | 2026-10-28 | **P8-A7**：`SessionCallbackAdapter` 给权限/提问请求盖 `tabId+sessionId`；`PermissionHandler` 接入 `PromptRegistry`（登记归属、答复后 `forget`）；关 tab 时 `rejectPrompts` 对未决项发 `replyPermission: deny` / `rejectQuestion` 并关卡片。测试 `tabPrompts`（7 项） |
 | 2026-10-28 | **P8-A6**：`index.html` 内联首帧底色 + `#boot-splash`（`main.tsx` 首帧后移除）；`useFileTags.restoreFileTags` 移植并串到 imperative handle（新增 1 项测试，`useFileTags` 共 12 项通过）；§10.3 空态底纹（`.messages-shell.is-empty-state` + light 变体） |
