@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
 import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
+import { uploadAttachments } from '../utils/attachmentTransport';
 import { getTabStore } from '../store/tabStore';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
 import type { Attachment, ChatInputBoxHandle, PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
@@ -251,20 +252,18 @@ export function useMessageSender({
     // v2：发送带上 tab 身份，宿主按 tabId 解析目标会话（A 的输入不会落到 B）。
     // 没有活跃 tab（极早期）时退回 legacy send_message，由宿主用当前会话处理。
     const tabId = getTabStore().getActiveTabId();
-    const attachmentPayload = hasAttachments
-      ? (attachments || []).map(a => ({
-        fileName: a.fileName,
-        mediaType: a.mediaType,
-        data: a.data,
-      }))
-      : undefined;
+    // 附件先按块推给宿主落盘（大 base64 不进 session.send 这一帧），
+    // 发送只带 attachmentId，字节由宿主读出来交给会话层。
+    const uploadedAttachments = hasAttachments && tabId
+      ? uploadAttachments(tabId, attachments)
+      : [];
 
     const commandPayload: Record<string, unknown> = {
       text,
       fileTags: fileTagsInfo,
       permissionMode: effectivePermissionMode,
       ...reasoningEffortPayload,
-      ...(attachmentPayload ? { attachments: attachmentPayload } : {}),
+      ...(uploadedAttachments.length > 0 ? { attachments: uploadedAttachments } : {}),
     };
 
     if (tabId) {
@@ -272,7 +271,19 @@ export function useMessageSender({
       return;
     }
 
-    const legacyPayload = JSON.stringify(commandPayload);
+    // 无 tab 身份：退回 legacy 通道，附件只能内联。
+    const legacyPayload = JSON.stringify({
+      ...commandPayload,
+      ...(hasAttachments
+        ? {
+          attachments: (attachments || []).map(a => ({
+            fileName: a.fileName,
+            mediaType: a.mediaType,
+            data: a.data,
+          })),
+        }
+        : {}),
+    });
     if (hasAttachments) {
       sendBridgeEvent('send_message_with_attachments', legacyPayload);
     } else {

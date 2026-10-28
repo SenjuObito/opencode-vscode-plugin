@@ -85,6 +85,10 @@ export interface ChatInstance {
 	 * 所以 tab 会话与 legacy 单会话共享同一套宿主依赖。
 	 */
 	createSession(viewSink?: JsTarget): OpenCodeSession;
+	/** 把某个历史会话加载进活跃 tab（v2 `session.load`）。 */
+	loadSessionById(sessionId: string): void;
+	/** 重新向 daemon 枚举 agent 目录并推送（v2 `agents.list`）。 */
+	refreshAgents(): void;
 	dispose(): void;
 }
 
@@ -106,7 +110,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	dispatcher.registerHandler(new ContextHandler(context));
 	dispatcher.registerHandler(new WindowEventHandler(context));
 	dispatcher.registerHandler(new SkillHandler(context));
-	dispatcher.registerHandler(new AgentHandler(context));
+	const agentHandler = new AgentHandler(context);
+	dispatcher.registerHandler(agentHandler);
 	const historyHandler = new HistoryHandler(context);
 	dispatcher.registerHandler(historyHandler);
 	dispatcher.registerHandler(new ExportHandler(context));
@@ -159,6 +164,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		permissionHandler,
 		fontConfigHandler,
 		createSession: (viewSink) => sessionManager.createSessionInstance({ viewSink }),
+		loadSessionById: (sessionId) => historyHandler.loadSessionById(sessionId),
+		refreshAgents: () => agentHandler.refresh(),
 		dispose: () => sessionManager.dispose(),
 	};
 }

@@ -22,6 +22,14 @@ export interface TabSessionSendHandlerOptions {
 	replay: (record: TabRecord) => void;
 	/** 该 tab 的错误提示出口（投影 sink：后台 tab 也会作为 toast 出现）。 */
 	errorSink: (record: TabRecord) => JsTarget;
+	/**
+	 * 把「已落盘的附件」读回成内联 base64（附件链路启用时注入）。
+	 * 返回 null 表示该 id 不可用，此时上报错误而不是发一条缺附件消息。
+	 */
+	resolveAttachment?: (
+		tabId: string,
+		attachmentId: string,
+	) => { data: string; fileName: string; mediaType: string } | null;
 }
 
 export class TabSessionSendHandler {
@@ -42,6 +50,11 @@ export class TabSessionSendHandler {
 		const session = this.options.ensureSession(record);
 		if (!session) {
 			this.reportError(record, '会话尚未初始化，请重新打开面板。');
+			return;
+		}
+
+		if (!this.inlineAttachments(record, payload)) {
+			// 附件读不出来就不发：发出去只会得到一条缺图的提问。
 			return;
 		}
 
@@ -105,8 +118,39 @@ export class TabSessionSendHandler {
 		}
 	}
 
-	private reportError(record: TabRecord, message: string): void {
-		PluginFileLogger.warn('TabSessionSendHandler', `tab=${record.getTabId().value} ${message}`);
+	/**
+	 * 把只带 attachmentId 的附件补成内联 base64。
+	 *
+	 * @returns false 表示有附件读不出来，本次发送应当放弃
+	 */
+	private inlineAttachments(record: TabRecord, payload: SendMessagePayload): boolean {
+		const attachments = payload.attachments;
+		if (!Array.isArray(attachments) || attachments.length === 0) {
+			return true;
+		}
+		const resolve = this.options.resolveAttachment;
+		if (!resolve) {
+			return true;
+		}
+
+		for (const attachment of attachments) {
+			const id = attachment.attachmentId;
+			if (!id || attachment.data) {
+				continue;
+			}
+			const resolved = resolve(record.getTabId().value, id);
+			if (!resolved) {
+				this.reportError(record, `附件不可用（${attachment.fileName ?? id}），请重新添加后再发送。`);
+				return false;
+			}
+			attachment.data = resolved.data;
+			attachment.fileName = attachment.fileName ?? resolved.fileName;
+			attachment.mediaType = attachment.mediaType ?? resolved.mediaType;
+		}
+		return true;
+	}
+
+	private reportError(record: TabRecord, message: string): void {		PluginFileLogger.warn('TabSessionSendHandler', `tab=${record.getTabId().value} ${message}`);
 		this.options.errorSink(record).callJavaScript('addErrorMessage', message);
 	}
 }

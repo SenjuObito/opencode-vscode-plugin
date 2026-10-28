@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A1/A2 会话归属接线 + A3 发送路径切换；A4 已完成）
+> 最后更新：2026-10-28（P8-A5：附件链路 / session.load / settings.mode / agents.list / 模式与推理选择器）
 
 ---
 
@@ -44,13 +44,13 @@
 | 10.1 | 启动页与首帧 | ⬜ | 无 `boot-splash`；`webview/index.html` 无内联底色（注释仍写"由 Java 注入"，已失效） |
 | 10.2 | 插件图标与品牌 | ⬜ | `media/*` 未更新；webview 无 `AeroOpenCodeLogo`（idea 独有，尚未引入） |
 | 10.3 | 新会话默认背景 | ⬜ | `welcome.less` 无 `.chat-screen-shell` / `.is-empty-state`；`ChatScreen` 无空态 class |
-| 10.4 | 模式列表 | 🟡 | `store/agentStore.ts` 已引入，但 `ModeSelect` 仍用 `providers/agentProvider`；`modeColors.ts` 缺失 |
+| 10.4 | 模式列表 | ✅ | `ModeSelect` 改订阅 `store/agentStore`（`useAgents`/`selectPrimaryAgents`/`requestAgents`），只在内置 build/plan 上兜底；`utils/modeColors.ts` 已引入（含 idea 的 6 项测试），输入框描边改 `--mode-accent`，自定义 agent 的 `color` 由宿主 `AgentHandler` 透传；`agents.list` 命令已注册 |
 | 10.5 | 模型列表与置顶 | ⬜ | `ModelSelect` 无置顶拖拽排序/portal；仍为旧版点击置顶 |
-| 10.6 | 推理力度 | 🟡 | `reasoningUtils.ts` 已存在，但 `useReasoningEffortGuard` 未被 `ReasoningSelect` 使用 |
+| 10.6 | 推理力度 | ✅ | `reasoningUtils.useReasoningEffortGuard` 成为唯一实现（档位来源 `types.getAvailableReasoningLevels`、可见性=无档位即隐藏、回落=推荐档→第一档）；`ReasoningSelect` 的内联副本已删除 |
 | 10.7 | 权限弹窗 | 🟡 | `prompt/PromptRegistry.ts` 已建；`PermissionHandler.ts:78` 仍 `?? context.getSession()`；dialog 无 `tabId` |
 | 10.8 | 问题弹窗 | 🟡 | `store/questionAnswerStore.ts` 已引入，但 dialog 无 `tabId/sessionId/onTimeout`，答案卡未接 store 事件 |
 | 10.9 | 状态面板三子页 | ⬜ | `StatusPanel` 仍用组件本地 `openPopover`；undo 走 `window.onUndoFileResult`；`useSubagents` 未统一 `resolveSubagentRunState` |
-| 10.10 | 添加附件 | 🟡 | `utils/attachmentTransport.ts` 已引入但未被发送路径使用；宿主 `AttachmentHandler` 缺失 |
+| 10.10 | 添加附件 | 🟡（链路已通） | 宿主 `attachments/TabAttachmentStore` + `window/TabAttachmentCommandHandler`：`attachment.prepare/chunk/complete/abort` 全部接上，按 `<globalStorage>/attachments/<tabId>/` 落盘、32MB 上限、分块顺序校验、id/文件名防穿越；`session.send` 只带 `attachmentId`，发送时宿主读回内联字节；关 tab 调 `releaseTab`。**仍缺**：切 tab 恢复未发送的附件草稿（`TabAttachmentStore` 未接草稿） |
 | 10.11 | 引用文件 `@` | ⬜ | 无 `useFileTags.restoreFileTags`；`files.listed` 事件未接 |
 | 10.12 | 文件上下文 | 🟡（宿主已接） | `context.refresh` 已注册（`src/host/window/TabContextCommandHandler.ts`），写目标 tab 的 `TabSettings.autoOpenFileEnabled/contextEnabled`。**仍缺**：发送时按 tab 注入（`OpenCodeSession.send` 仍读全局 `getAutoOpenFileEnabled`）、`context.updated` 回推 |
 | 10.13 | bash `!` | ✅ | `session.send` 的 `!cmd` 分支在 `TabSessionSendHandler`，cwd 取目标 tab（`record.getCwd()`）；`SessionHandler` 的旧路径保留为兜底 |
@@ -77,7 +77,7 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 |---|---|
 | `context.refresh` | ✅ 已注册（`TabContextCommandHandler.refreshContext`） |
 | `commands.refresh` | ✅ 已注册（按目标 tab 的 cwd 列命令） |
-| `AttachmentHandler` | 不存在（`attachment.prepare/chunk/complete/abort` 无接收方） |
+| `AttachmentHandler` | ✅ 已注册（`TabAttachmentStore` + `TabAttachmentCommandHandler`） |
 | `PromptRegistry` 接线 | 类已存在，`PermissionHandler` 未使用 |
 | `TabSessionCommandHandler` | 存在，但 share 分组需保持休眠 |
 
@@ -91,10 +91,10 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | `session.send` | ✅ 已切（`useMessageSender` → `sendHostCommand(tabId,'session.send')`） | A2/A3 完成 |
 | `session.interrupt` | ✅ 已切（`sendInterrupt`，无 tab 身份时退回 legacy `interrupt_session`） | 关 tab 时只中断目标 |
 | `session.new` | ✅ 已切（`sendNewSession`，替代 `create_new_session`） | 在活跃 tab 内重置会话 |
-| `session.load` | `useTabSessionBinder.ts:677` | 切历史会话无宿主响应（仍缺） |
-| `settings.mode` | `useTabSessionBinder.ts:212` | per-tab 模式不落宿主（仍缺） |
-| `attachment.prepare/chunk/complete` | `utils/attachmentTransport.ts` | 附件分块链路断（发送仍内联 base64） |
-| `agents.list` | `store/agentStore.ts:104` | agent 列表只能靠旧推送 |
+| `session.load` | ✅ 已接（`ChatWindow` → `switchActiveTabSession` + `HistoryHandler.loadSessionById`） | 历史会话装进目标 tab |
+| `settings.mode` | ✅ 已接（写 TabSettings + 目标会话状态） | per-tab 模式落宿主 |
+| `attachment.prepare/chunk/complete` | ✅ 已接（`utils/attachmentTransport.ts` → `TabAttachmentStore`） | 分块落盘，发送只带 id |
+| `agents.list` | ✅ 已接（`ChatWindow` → `AgentHandler.refresh`） | 首次打开即可拉取目录 |
 | `save_json` | `utils/exportMarkdown.ts:383/432` | 导出保存无响应 |
 
 ---
@@ -119,13 +119,13 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 
 1. ~~**宿主去单会话**~~ ✅ 2026-10-28（A1/A2）：会话归 tab、`context.getSession()` 解析活跃 tab、发送/中断/新会话按 tabId 路由。
 2. ~~**补宿主命令**：`context.refresh`、`commands.refresh`；`slashCommandProvider` 改为发 `commands.refresh`。~~ ✅ 2026-10-28 完成
-3. **附件链路**：`AttachmentHandler` + `globalStorageUri/attachments/<tabId>` + 发送只带 id（webview 的 `attachmentTransport` 已在发命令，宿主仍无接收方）。
+3. ~~**附件链路**~~ ✅ 2026-10-28（A5）：`TabAttachmentStore` + 命令 handler + 发送按 id 解析。**仍缺**：未发送附件草稿的切 tab 恢复。
 4. **弹窗身份**：`PermissionDialog` / `AskUserQuestionDialog` 接 `tabId/sessionId/requestId/onTimeout`；`PromptRegistry` 接入 `PermissionHandler`。
 5. **状态面板 per-tab**：面板展开/子页入 `TabStore`；`todos/task/subagent` 按 tab；`files.undo` 事件化。
-6. **选择器接线**：`ModeSelect` → `agentStore` + `modeColors`；`ModelSelect` 置顶拖拽；`ReasoningSelect` → guard。
+6. **选择器接线**：✅ `ModeSelect` → `agentStore` + `modeColors`；✅ `ReasoningSelect` → guard。**仍缺**：`ModelSelect` 置顶拖拽排序。
 7. **视觉与品牌**：boot splash、空态背景、Aero 图标与 `media` 资源。
 8. **`@` 与上下文**：`restoreFileTags`、`files.listed`、per-tab `autoOpenFileEnabled` 注入（宿主开关已落地，`OpenCodeSession.send` 仍在读全局设置）。
-9. **`session.load`**：历史会话绑定到目标 tab（`TabSessionFactory.attachSession` 已具备能力，尚未接到命令上）。
+9. ~~**`session.load`**~~ ✅ 2026-10-28（A5）。
 10. **P9 终验**：见 §5。
 
 ---
@@ -149,4 +149,5 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
+| 2026-10-28 | **P8-A5**：附件链路（`TabAttachmentStore` 按 tab 落盘、分块顺序校验、32MB 上限、发送按 id 解内联、关 tab 释放）、`session.load`、`settings.mode`、`agents.list`；`ModeSelect` 改订阅 `agentStore`、移植 `modeColors` + `--mode-accent`、`ReasoningSelect` 接 `useReasoningEffortGuard`。测试 `tabAttachments`（9 项）、`ModeSelect`（4 项）、`modeColors`（6 项，来自 idea） |
 | 2026-10-28 | **P8-A3**：webview 发送 / 中断 / 新会话改走 v2 命令（`session.send` / `session.interrupt` / `session.new`），删除 `create_new_session` 全部 8 处与协议常量，宿主移除对应 legacy handler；新增 `useMessageSender.tabSend` 测试 |

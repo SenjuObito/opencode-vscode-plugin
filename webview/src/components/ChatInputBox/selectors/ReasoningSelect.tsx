@@ -2,9 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useTranslation } from 'react-i18next';
 import {
   REASONING_LEVELS,
-  getAvailableReasoningLevels,
   type ReasoningEffort,
 } from '../types';
+import { useReasoningEffortGuard } from '../reasoningUtils';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
 import { controlKeySymbol } from '../../../utils/platform';
 
@@ -74,25 +74,15 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     preferredAlignment: 'right',
   });
 
-  // Determine visibility: opencode：variants 已知时按档位有无判断（空列表视为不支持，隐藏选择器）。
-  const isVisible = modelVariants && modelVariants.length > 0
-    ? getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants).length > 0
-    : true;
-
-  // Build the list of available levels for the current model.
-  // opencode：按所选模型的 variants 动态取档；其他 provider 回退静态规则。
-  const availableLevels = getAvailableReasoningLevels(currentProvider, selectedModel, modelVariants);
-
-  const currentLevel = availableLevels.find(l => l.id === value) || availableLevels[availableLevels.length - 2] || availableLevels[0];
-
-  useEffect(() => {
-    if (!isVisible || availableLevels.some(level => level.id === value)) {
-      return;
-    }
-    if (currentLevel) {
-      onChange(currentLevel.id);
-    }
-  }, [availableLevels, currentLevel, isVisible, onChange, value]);
+  // 档位/可见性/回落全部走 reasoningUtils 的单一实现（§10.6）：
+  // 切模型导致当前档位不可用时，自动回落到推荐档或第一档。
+  const { isVisible, availableLevels, currentLevel } = useReasoningEffortGuard(
+    value,
+    onChange,
+    selectedModel,
+    currentProvider,
+    modelVariants,
+  );
 
   /**
    * Get translated text for reasoning level
@@ -157,7 +147,7 @@ export const ReasoningSelect = ({ value, onChange, disabled, selectedModel, curr
     }
   }, [isOpen, recalculate]);
 
-  if (!isVisible) return null;
+  if (!isVisible || !currentLevel) return null;
 
   return (
     <div style={RELATIVE_INLINE_BLOCK_STYLE}>

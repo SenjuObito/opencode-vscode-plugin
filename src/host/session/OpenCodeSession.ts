@@ -21,7 +21,13 @@ import type { ChatMessage, PermissionRequest, SessionCallback } from './types';
 /** webview send_message / send_message_with_attachments 的 payload。 */
 export interface SendMessagePayload {
 	text: string;
-	attachments?: Array<{ fileName?: string; mediaType?: string; data?: string }>;
+	attachments?: Array<{
+		/** 宿主侧已落盘的附件 id（多 tab 附件链路）；存在时不带 data。 */
+		attachmentId?: string;
+		fileName?: string;
+		mediaType?: string;
+		data?: string;
+	}>;
 	fileTags?: Array<{ displayPath?: string; absolutePath?: string }> | null;
 	permissionMode?: string;
 	reasoningEffort?: string;

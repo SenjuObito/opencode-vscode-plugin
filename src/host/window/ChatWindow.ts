@@ -11,7 +11,9 @@ import { PromptRegistry } from '../prompt/PromptRegistry';
 import { TabSessionCommandHandler } from './TabSessionCommandHandler';
 import { TabContextCommandHandler } from './TabContextCommandHandler';
 import { TabSessionSendHandler } from './TabSessionSendHandler';
+import { TabAttachmentCommandHandler } from './TabAttachmentCommandHandler';
 import { TabScopedSink } from './TabScopedSink';
+import { TabAttachmentStore } from '../attachments/TabAttachmentStore';
 import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router/HostCommand';
 import type { WebviewChannel, FileOps } from '../router/HandlerContext';
 import type { SettingsService } from '../settings/SettingsService';
@@ -19,6 +21,7 @@ import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import type { JsTarget } from '../session/SessionCallbackAdapter';
 import type { SessionManager } from '../session/SessionManager';
+import { isValidPermissionMode } from '../session/SessionState';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
@@ -36,6 +39,15 @@ export interface ChatWindowOptions {
 	configureSession?: (session: OpenCodeSession) => void;
 	/** 服务端分配了会话 id、且已绑定到 tab 时回调（历史索引 / 标题等）。 */
 	onSessionBound?: (tabId: string, sessionId: string) => void;
+	/** 把历史会话加载进 tab（`session.load`）：由 ChatInstance 接到 HistoryHandler。 */
+	loadSession?: (sessionId: string) => void;
+	/**
+	 * 附件落盘根目录（通常是 `<globalStorage>/attachments`）。
+	 * 缺省 null：附件命令仍会注册，但 prepare 会明确报「附件目录不可用」。
+	 */
+	attachmentsRoot?: string | null;
+	/** 重新枚举 agent 目录（`agents.list`）：由 ChatInstance 接到 AgentHandler。 */
+	requestAgents?: () => void;
 }
 
 /**
@@ -52,6 +64,8 @@ export class ChatWindow {
 	readonly contextCommandHandler: TabContextCommandHandler;
 	readonly sessionSendHandler: TabSessionSendHandler;
 	readonly sessionFactory: TabSessionFactory;
+	readonly attachments: TabAttachmentStore;
+	readonly attachmentCommandHandler: TabAttachmentCommandHandler;
 	readonly deduplicator = new RequestIdDeduplicator(2048);
 
 	private readonly options: ChatWindowOptions;
@@ -105,11 +119,25 @@ export class ChatWindow {
 			ensureSession: (record) => this.ensureTabSession(record),
 			replay: (record) => this.replayTab(record),
 			errorSink: (record) => this.sinkFor(record.getTabId()),
+			resolveAttachment: (tabId, attachmentId) => {
+				const resolved = this.attachments.resolve(tabId, attachmentId);
+				const data = this.attachments.readBase64(tabId, attachmentId);
+				if (!resolved || data == null) {
+					return null;
+				}
+				return { data, fileName: resolved.fileName, mediaType: resolved.mediaType };
+			},
+		});
+		this.attachments = new TabAttachmentStore(this.options.attachmentsRoot ?? null);
+		this.attachmentCommandHandler = new TabAttachmentCommandHandler({
+			store: () => this.attachments,
+			errorSink: (record) => this.sinkFor(record.getTabId()),
 		});
 
 		this.registerBuiltinTabCommands();
 		this.registerContextCommands();
 		this.registerSessionRuntimeCommands();
+		this.registerAttachmentCommands();
 		this.ensureInitialTab();
 	}
 
@@ -181,6 +209,7 @@ export class ChatWindow {
 			this.bindingUnsubs.get(tabId.value)?.();
 			this.bindingUnsubs.delete(tabId.value);
 			this.sinks.delete(tabId.value);
+			this.attachments.releaseTab(tabId.value);
 			const closed = this.registry.close(tabId);
 			if (closed) {
 				this.eventRouter.publish(
@@ -318,6 +347,58 @@ export class ChatWindow {
 				return;
 			}
 			this.sessionManager.createNewSession();
+		});
+		// 把历史会话装进目标 tab：先绑定，再交给 HistoryHandler 抓取并回放。
+		this.commandRouter.register('session.load', (cmd, record) => {
+			const sessionId = cmd.string('sessionId');
+			if (!record || !sessionId) {
+				return;
+			}
+			const session = this.switchActiveTabSession(sessionId);
+			if (!session) {
+				PluginFileLogger.warn(
+					'ChatWindow',
+					`session.load could not bind ${sessionId} to tab ${record.getTabId().value}`,
+				);
+				return;
+			}
+			if (this.options.loadSession) {
+				this.options.loadSession(sessionId);
+			} else {
+				this.replayTab(record);
+			}
+			const title = cmd.string('title');
+			if (title) {
+				record.getSettings().applyAutoTitle(title);
+			}
+		});
+		// per-tab 权限模式：webview 切模式时按会话定向写入该 tab。
+		this.commandRouter.register('settings.mode', (cmd, record) => {
+			const mode = cmd.string('mode');
+			if (!record || !mode || !isValidPermissionMode(mode)) {
+				return;
+			}
+			record.getSettings().setPermissionMode(mode);
+			record.getSession()?.state.setPermissionMode(mode);
+		});
+		// agent 目录：webview 的 ModeSelect 在未收到过推送时主动要一次。
+		this.commandRouter.register('agents.list', () => {
+			this.options.requestAgents?.();
+		});
+	}
+
+	private registerAttachmentCommands(): void {
+		this.commandRouter.register('attachment.prepare', (cmd, record) => {
+			this.attachmentCommandHandler.prepare(cmd, record);
+		});
+		this.commandRouter.register('attachment.chunk', (cmd, record) => {
+			this.attachmentCommandHandler.chunk(cmd, record);
+		});
+		this.commandRouter.register('attachment.complete', (cmd, record) => {
+			this.attachmentCommandHandler.complete(cmd, record);
+		});
+		this.commandRouter.register('attachment.abort', (cmd, record) => {
+			this.attachmentCommandHandler.abort(cmd, record);
 		});
 	}
 

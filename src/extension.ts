@@ -166,6 +166,12 @@ export function activate(context: vscode.ExtensionContext) {
 		onSessionBound: (tabId, sessionId) => {
 			logDiagnostic(`[Session] tab=${tabId} bound to session=${sessionId}`);
 		},
+		loadSession: (sessionId) => instance.loadSessionById(sessionId),
+		// 附件按 tab 落在扩展的 globalStorage 下，关 tab 时释放（临时文件不跨会话留存）。
+		attachmentsRoot: context.globalStorageUri
+			? join(context.globalStorageUri.fsPath, 'attachments')
+			: null,
+		requestAgents: () => instance.refreshAgents(),
 	});
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
 	chatWindow.bindSessionManager(instance.sessionManager);

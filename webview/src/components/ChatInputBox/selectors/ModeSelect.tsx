@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getPrimaryAgentsSync, subscribeAgents } from '../providers/agentProvider';
+import { requestAgents, selectPrimaryAgents, useAgents } from '../../../store/agentStore';
+import { FALLBACK_PRIMARY_AGENTS } from '../providers/agentProvider';
 import type { PermissionMode } from '../types';
 import { useDropdownPosition } from '../../../hooks/useDropdownPosition';
 
@@ -54,9 +55,10 @@ interface ModeSelectProps {
 /**
  * ModeSelect - Mode selector component.
  *
- * For opencode the "mode" is the selected primary agent. The list is populated
- * dynamically from `getPrimaryAgentsSync()` (mode==='primary' && !hidden).
- * Until the backend responds we fall back to the built-in build/plan agents.
+ * For opencode the "mode" is the selected primary agent. The catalogue is owned
+ * by the host (`agents.updated` → `store/agentStore`); this component reflects
+ * the last push and only falls back to the built-in build/plan pair until the
+ * first push arrives.
  */
 export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectProps) => {
   const { t } = useTranslation();
@@ -69,11 +71,15 @@ export const ModeSelect = ({ value, onChange, provider: _provider }: ModeSelectP
     preferredAlignment: 'right',
   });
 
-  // Keep local snapshot in sync with the agent cache without prop drilling.
-  const [primaryAgents, setPrimaryAgents] = useState(() => getPrimaryAgentsSync());
+  // 宿主是权威源：没有推送之前渲染内置的 build/plan 占位，推送到达后替换。
+  const { agents, loaded } = useAgents();
+  const primaryAgents = useMemo(() => {
+    const primaries = selectPrimaryAgents(agents);
+    return primaries.length > 0 ? primaries : FALLBACK_PRIMARY_AGENTS;
+  }, [agents]);
   useEffect(() => {
-    return subscribeAgents(() => setPrimaryAgents(getPrimaryAgentsSync()));
-  }, []);
+    if (!loaded) requestAgents();
+  }, [loaded]);
 
   const modeOptions = useMemo(() => {
     return primaryAgents.map(agent => {

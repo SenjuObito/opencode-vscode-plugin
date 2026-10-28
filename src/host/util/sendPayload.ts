@@ -19,6 +19,7 @@ export function normalizeSendPayload(
 
 	if (Array.isArray(raw?.attachments)) {
 		payload.attachments = (raw.attachments as Array<Record<string, unknown>>).map((a) => ({
+			attachmentId: typeof a?.attachmentId === 'string' ? a.attachmentId : undefined,
 			fileName: typeof a?.fileName === 'string' ? a.fileName : undefined,
 			mediaType: typeof a?.mediaType === 'string' ? a.mediaType : undefined,
 			data: typeof a?.data === 'string' ? a.data : undefined,

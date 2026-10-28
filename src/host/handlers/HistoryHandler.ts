@@ -62,6 +62,19 @@ export class HistoryHandler extends BaseMessageHandler {
 		return SUPPORTED_TYPES;
 	}
 
+	/**
+	 * v2 `session.load` 的入口（无 legacy 报文可解析）。
+	 *
+	 * 与 `load_session` 完全同一条实现：绑定到目标 tab 的会话由
+	 * `SessionManager` 的多 tab 解析器负责，这里只做「加载并回放」。
+	 */
+	loadSessionById(sessionId: string): void {
+		if (!sessionId) {
+			return;
+		}
+		this.handleLoadSession(JSON.stringify({ sessionId }));
+	}
+
 	handle(type: string, content: string): boolean {
 		switch (type) {
 			case 'load_history_data':

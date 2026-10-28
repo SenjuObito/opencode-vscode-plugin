@@ -81,7 +81,7 @@ describe('useMessageSender - tab-scoped send', () => {
     expect(payload.permissionMode).toBe('default');
   });
 
-  it('附件随 session.send 一起下发（仍走内联 base64，分块链路另开）', () => {
+  it('附件先分块上传，session.send 只带 attachmentId', () => {
     const { result } = renderHook(() => useMessageSender(createOptions()));
 
     act(() => {
@@ -94,10 +94,16 @@ describe('useMessageSender - tab-scoped send', () => {
     });
 
     const commands = hostCommands();
-    expect(commands).toHaveLength(1);
-    expect(commands[0].type).toBe('session.send');
-    const payload = commands[0].payload as { attachments?: Array<{ data?: string }> };
+    const types = commands.map((c) => c.type);
+    expect(types).toEqual(['attachment.prepare', 'attachment.chunk', 'attachment.complete', 'session.send']);
+    // 分块里才有字节，发送帧里没有
+    const chunk = commands[1].payload as { data?: string };
+    expect(chunk.data).toBe('aGVsbG8=');
+    const payload = commands[3].payload as {
+      attachments?: Array<{ attachmentId?: string; data?: string }>;
+    };
     expect(payload.attachments).toHaveLength(1);
-    expect(payload.attachments?.[0].data).toBe('aGVsbG8=');
+    expect(payload.attachments?.[0].attachmentId).toBe('att-1');
+    expect(payload.attachments?.[0].data).toBeUndefined();
   });
 });

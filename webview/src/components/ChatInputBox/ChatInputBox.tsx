@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -40,6 +41,8 @@ import {
   useResizableChatInputBox,
 } from './hooks/index.js';
 import { debounce } from './utils/debounce.js';
+import { getModeAccentColor } from './utils/modeColors';
+import { useAgents } from '../../store/agentStore';
 import { perfTimer } from '../../utils/debug.js';
 import { DEBOUNCE_TIMING } from '../../constants/performance.js';
 import { SessionContext } from '../../contexts/SessionContext.js';
@@ -589,13 +592,23 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       editableWrapperRef,
     });
 
+    // 非默认模式给容器描边着色：颜色来自 agent 自己的配置，内置 plan/winui-dev
+    // 只是兜底。build 不设变量，边框保持主题色（见 styles/layout.css）。
+    const { agents: agentCatalogue } = useAgents();
+    const activeAgentId = permissionMode === 'default' ? 'build' : permissionMode;
+    const activeAgentColor = agentCatalogue.find(agent => agent.id === activeAgentId)?.color;
+    const modeAccent = getModeAccentColor(permissionMode, activeAgentColor);
+    const containerWithModeAccent: CSSProperties = modeAccent
+      ? ({ ...containerStyle, '--mode-accent': modeAccent } as CSSProperties)
+      : containerStyle;
+
     return (
       <div
         className={`chat-input-box ${isResizingInputBox ? 'is-resizing' : ''}`}
         data-mode={permissionMode}
         onClick={focusInput}
         ref={containerRef}
-        style={containerStyle}
+        style={containerWithModeAccent}
         onMouseOver={handleMouseOver}
         onMouseLeave={handleMouseLeave}
       >

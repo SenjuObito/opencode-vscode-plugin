@@ -20,6 +20,8 @@ const SUPPORTED_TYPES = ['get_agents'];
 	hidden?: boolean;
 	/** SDK 自带的简短描述，优先用于下拉展示 */
 	description?: string;
+	/** agent 自己声明的强调色（`#rrggbb`），用于输入框模式描边（§10.4）。 */
+	color?: string;
 }
 
 export class AgentHandler extends BaseMessageHandler {
@@ -41,8 +43,12 @@ export class AgentHandler extends BaseMessageHandler {
 		}
 	}
 
-	private handleGetAgents(): void {
-		const daemon = this.context.getDaemon();
+	/** v2 `agents.list` 的入口：与 `get_agents` 同一条 daemon 枚举。 */
+	refresh(): void {
+		this.handleGetAgents();
+	}
+
+	private handleGetAgents(): void {		const daemon = this.context.getDaemon();
 		if (!daemon) {
 			this.pushAgents([]);
 			return;
@@ -75,6 +81,7 @@ export class AgentHandler extends BaseMessageHandler {
 						mode: typeof agent.mode === 'string' ? agent.mode : undefined,
 						hidden: typeof agent.hidden === 'boolean' ? agent.hidden : undefined,
 						description: typeof agent.description === 'string' ? agent.description : undefined,
+						color: typeof agent.color === 'string' ? agent.color : undefined,
 					} as AgentItem;
 					})
 					.filter((a): a is AgentItem => a !== null);

@@ -5,7 +5,9 @@
   display: flex;
   flex-direction: column;
   background: var(--input-bg);
-  border: 1px solid var(--input-border);
+  /* 非 build 模式由行内 `--mode-accent` 着色（plan 橙、自定义 agent 自己的颜色）；
+     build 不设该变量，保持主题边框。 */
+  border: 1px solid var(--mode-accent, var(--input-border));
   border-radius: 8px;
   overflow: visible;
   position: relative;
@@ -15,26 +17,15 @@
 
 /* Hover/focus: recolor border only (uniform 1px weight in all modes) */
 .chat-input-box:hover {
-  border-color: var(--input-focus-border);
+  border-color: var(--mode-accent, var(--input-focus-border));
 }
 
 .chat-input-box:focus-within {
-  border-color: var(--input-focus-border);
+  border-color: var(--mode-accent, var(--input-focus-border));
 }
 
 .chat-input-box.is-resizing {
-  border-color: var(--input-focus-border);
-}
-
-/* Plan mode: orange border on the container only (no shared variables,
-   so child components like context bar / attachments stay theme-colored) */
-.chat-input-box[data-mode="plan"] {
-  border-color: #e07c24;
-}
-.chat-input-box[data-mode="plan"]:hover,
-.chat-input-box[data-mode="plan"]:focus-within,
-.chat-input-box[data-mode="plan"].is-resizing {
-  border-color: #e07c24;
+  border-color: var(--mode-accent, var(--input-focus-border));
 }
 
 /* ============================================================
