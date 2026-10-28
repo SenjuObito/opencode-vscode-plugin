@@ -34,7 +34,7 @@ function getCoreTag() {
 	} catch (e) {
 		// fallback
 	}
-	return 'v0.1.0';
+	return 'v1.0.0';
 }
 
 function extractZip(zipPath, destDir) {

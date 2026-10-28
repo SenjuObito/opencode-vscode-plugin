@@ -59,8 +59,12 @@ export function activate(context: vscode.ExtensionContext) {
 		// ai-bridge 的 cli-path / serve-manager 解析器会优先使用它。
 		additionalEnv: () => {
 			const value = store.getGlobal('opencode.tuiPath');
+			const cliPath = typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+			const configDir = context.globalStorageUri?.fsPath;
 			return {
-				...(typeof value === 'string' && value.trim() !== '' ? { OPENCODE_BIN: value.trim() } : {}),
+				...(cliPath ? { OPENCODEBUDDY_CLI_PATH: cliPath, OPENCODE_BIN: cliPath } : {}),
+				OPENCODEBUDDY_NODE_BIN: process.execPath,
+				...(configDir ? { OPENCODEBUDDY_CONFIG_DIR: configDir } : {}),
 				// 生产包只保留 error 级：daemon 据此丢弃 [DEBUG] stderr 噪音
 				//（否则每条 stderr 都会被宿主桥接转发）。
 				...(process.env.NODE_ENV === 'production' ? { AI_BRIDGE_LOG_LEVEL: 'error' } : {}),

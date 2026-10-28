@@ -764,13 +764,13 @@ export class WindowEventHandler extends BaseMessageHandler {
 			}
 
 			// 1. 先发 loading 态，让状态栏保持转圈显示「正在检查...」
-			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false }));
+			this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: false, engine: daemon.getEngineStatus() }));
 
 			// 若 daemon 正在启动中或尚未存活，等待启动完成
 			if (daemon.isStarting() || !daemon.isAlive()) {
 				const started = await daemon.start();
 				if (!started || !daemon.isAlive()) {
-					this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+					this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false, engine: daemon.getEngineStatus() }));
 					return;
 				}
 			}
@@ -791,7 +791,7 @@ export class WindowEventHandler extends BaseMessageHandler {
 
 			if (!preconnectOk) {
 				// serve 启动失败或异常退出：落到「未运行」可重试态
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false, engine: daemon.getEngineStatus() }));
 				return;
 			}
 
@@ -799,10 +799,10 @@ export class WindowEventHandler extends BaseMessageHandler {
 			const modelsOk = await this.fetchAndPushModels(daemon, 'opencode');
 			if (modelsOk) {
 				// serve 真正就绪 且 模型列表成功获取分发：发最终信号让状态栏消失
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: true }));
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: true, serveReady: true, engine: daemon.getEngineStatus() }));
 			} else {
 				// 模型列表获取失败：落到「未运行」可重试态
-				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false }));
+				this.callJavaScript('updateDaemonStatus', JSON.stringify({ alive: false, serveReady: false, engine: daemon.getEngineStatus() }));
 			}
 		} finally {
 			this.sendDaemonStatusInFlight = false;

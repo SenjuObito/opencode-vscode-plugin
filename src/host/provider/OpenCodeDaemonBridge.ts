@@ -21,6 +21,7 @@ import * as path from 'path';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logError } from '../util/DiagnosticLogger';
 import { PluginFileLogger } from '../util/PluginFileLogger';
+import type { DaemonEngineStatus } from './DaemonStatus';
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -319,6 +320,7 @@ export class OpenCodeDaemonBridge {
 	private lastErrorMessage = '';
 	private startPromise: Promise<boolean> | null = null;
 	private lastServeRunning: boolean | null = null;
+	private currentEngineStatus: DaemonEngineStatus | null = null;
 
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
@@ -326,6 +328,24 @@ export class OpenCodeDaemonBridge {
 		this.lifecycleListener = options.lifecycleListener;
 		this.onLog = options.onLog;
 		this.additionalEnv = options.additionalEnv;
+	}
+
+	getEngineStatus(): DaemonEngineStatus | null {
+		return this.currentEngineStatus;
+	}
+
+	broadcastStatusSnapshot(extra?: { alive?: boolean; serveReady?: boolean }): void {
+		const alive = extra?.alive ?? this.isAlive();
+		const serveReady = extra?.serveReady ?? (this.lastServeRunning ?? false);
+		const payload = {
+			alive,
+			serveReady,
+			engine: this.currentEngineStatus,
+		};
+		WebviewBroadcaster.broadcastRaw({
+			type: 'updateDaemonStatus',
+			args: [JSON.stringify(payload)],
+		});
 	}
 
 	getLastErrorMessage(): string {
@@ -524,6 +544,8 @@ export class OpenCodeDaemonBridge {
 			setTimeout(() => this.destroyProcess(context.process), 100);
 		}
 
+		this.currentEngineStatus = null;
+		this.broadcastStatusSnapshot({ alive: false, serveReady: false });
 		this.log('Daemon stopped');
 	}
 
@@ -855,9 +877,37 @@ export class OpenCodeDaemonBridge {
 		}
 		switch (event) {
 			case 'ready': {
+				if (!this.currentEngineStatus) {
+					this.currentEngineStatus = {
+						state: typeof obj.engineMode === 'string' ? obj.engineMode : 'pending',
+						cliVersion: typeof obj.cliVersion === 'string' ? obj.cliVersion : null,
+						locked: false,
+						ts: Date.now(),
+					};
+				}
 				if (context.signalReady()) {
 					this.lifecycleListener?.onDaemonReady();
 				}
+				this.broadcastStatusSnapshot({ alive: true });
+				break;
+			}
+			case 'engine_status': {
+				this.currentEngineStatus = {
+					state: typeof obj.state === 'string' ? obj.state : undefined,
+					locked: typeof obj.locked === 'boolean' ? obj.locked : undefined,
+					blocking: typeof obj.blocking === 'boolean' ? obj.blocking : undefined,
+					cliPath: typeof obj.cliPath === 'string' ? obj.cliPath : null,
+					cliSource: typeof obj.cliSource === 'string' ? obj.cliSource : null,
+					cliVersion: typeof obj.cliVersion === 'string' ? obj.cliVersion : null,
+					probePath: typeof obj.probePath === 'string' ? obj.probePath : null,
+					httpStatus: typeof obj.httpStatus === 'number' || typeof obj.httpStatus === 'string' ? obj.httpStatus : null,
+					apiVersion: typeof obj.apiVersion === 'number' || typeof obj.apiVersion === 'string' ? obj.apiVersion : null,
+					reasonKind: typeof obj.reasonKind === 'string' ? obj.reasonKind : null,
+					reasonMessage: typeof obj.reasonMessage === 'string' ? obj.reasonMessage : null,
+					ts: typeof obj.ts === 'number' ? obj.ts : Date.now(),
+				};
+				this.log(`[engine_status] state=${this.currentEngineStatus.state}, locked=${this.currentEngineStatus.locked}, blocking=${this.currentEngineStatus.blocking}`);
+				this.broadcastStatusSnapshot();
 				break;
 			}
 			case 'startup_failed':
@@ -865,6 +915,8 @@ export class OpenCodeDaemonBridge {
 				break;
 			case 'shutdown':
 				this.log('Daemon shutting down');
+				this.currentEngineStatus = null;
+				this.broadcastStatusSnapshot({ alive: false, serveReady: false });
 				break;
 			default:
 				for (const listener of this.eventListeners) {
@@ -897,6 +949,8 @@ export class OpenCodeDaemonBridge {
 		for (const handler of failedHandlers) {
 			handler.callback.onError('Daemon process died unexpectedly');
 		}
+		this.currentEngineStatus = null;
+		this.broadcastStatusSnapshot({ alive: false, serveReady: false });
 		this.lifecycleListener?.onDaemonDied();
 
 		if (context.heartbeatTimer) {

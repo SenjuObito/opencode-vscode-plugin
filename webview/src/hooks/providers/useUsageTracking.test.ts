@@ -74,4 +74,47 @@ describe('useUsageTracking', () => {
     // 兜底：解析失败也视为状态已知，避免永久卡在 loading。
     expect(result.current.daemonStatusLoaded).toBe(true);
   });
+
+  it('updates daemonEngine snapshot when provided in status payload', () => {
+    const { result } = renderHook(() => useUsageTracking());
+
+    expect(result.current.daemonEngine).toBeNull();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({
+            alive: true,
+            serveReady: true,
+            engine: {
+              state: 'v2',
+              locked: true,
+              cliPath: '/usr/local/bin/opencode',
+              cliVersion: 'opencode v2.0.27',
+              blocking: false,
+            },
+          }),
+        })
+      );
+    });
+
+    expect(result.current.daemonEngine?.state).toBe('v2');
+    expect(result.current.daemonEngine?.locked).toBe(true);
+    expect(result.current.daemonEngine?.cliVersion).toBe('opencode v2.0.27');
+
+    // Engine reset to null on daemon shutdown
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('updateDaemonStatus', {
+          detail: JSON.stringify({
+            alive: false,
+            serveReady: false,
+            engine: null,
+          }),
+        })
+      );
+    });
+
+    expect(result.current.daemonEngine).toBeNull();
+  });
 });
