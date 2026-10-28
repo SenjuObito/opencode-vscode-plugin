@@ -97,7 +97,7 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
         }}
       >
         <span className="codicon codicon-edit" />
-        <span>{t('chat.renameSession', { defaultValue: '编辑 (Rename)' })}</span>
+        <span>{t('chat.renameSession', { defaultValue: '重命名' })}</span>
       </button>
 
       <button
@@ -121,7 +121,7 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
         }}
       >
         <span className="codicon codicon-markdown" />
-        <span>{t('chat.exportMarkdown', { defaultValue: '导出会话为 Markdown' })}</span>
+        <span>{t('chat.exportMarkdown', { defaultValue: '导出为 Markdown' })}</span>
       </button>
 
       {/*
