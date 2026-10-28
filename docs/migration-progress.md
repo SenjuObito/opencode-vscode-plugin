@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-28（P8-A12：后台 tab 的 prompt 排队 + 角标）
+> 最后更新：2026-10-28（P8-A13：插件图标与品牌资源）
 
 ---
 
@@ -42,7 +42,7 @@
 | # | 功能域 | 状态 | 代码证据 / 缺口 |
 |---|---|---|---|
 | 10.1 | 启动页与首帧 | ✅ | `index.html` 内联 `html,body,#app` 底色（跟随 `--vscode-sideBar-background`，不写死颜色）+ `#boot-splash`（SVG 标记、`prefers-reduced-motion` 下不动画）；`main.tsx` 在首帧提交后（双 rAF）移除。加载失败仍由 `ErrorBoundary` 兜底 |
-| 10.2 | 插件图标与品牌 | ⬜ | `media/*` 未更新；webview 无 `AeroOpenCodeLogo`（idea 独有，尚未引入） |
+| 10.2 | 插件图标与品牌 | ✅ | 市场图标换成 idea 的 512 Aero 标记（`media/opencode.png`）；活动栏/侧边栏/命令图标 `opencode-activity{,-dark,-light}.svg` 按 Aero 几何重画（24 viewBox、单色、evenodd 三段：外框−内腔+内核；暗色 #FFF、亮色 #424242）；`WebviewPanel.iconPath` 沿用按主题二选一；webview 移植 `components/shared/AeroOpenCodeLogo`（玻璃徽章 + 全息内核），`ProviderModelIcon` 的 opencode `colored` 分支改用它，欢迎页/空态因此与 idea 同一套标记。**顺带修**：`WelcomeScreen` 原来用内联 style 写死 `color:#555`，把 `welcome.less` 的主题色整条屏蔽了，现改为 `.welcome-screen` / `.welcome-logo-container` / `.welcome-text-container` 三个类 |
 | 10.3 | 新会话默认背景 | ✅ | 空态底纹挂在 `.messages-shell.is-empty-state`（径向极光 + 20px 点阵，含 light 变体），由 `ChatScreen` 按 `!sessionLoading && mergedMessages.length===0` 计算。**偏离方案**：方案写的是 `.chat-screen-shell`，本仓没有该壳层，改挂消息容器以避免污染历史/设置页 |
 | 10.4 | 模式列表 | ✅ | `ModeSelect` 改订阅 `store/agentStore`（`useAgents`/`selectPrimaryAgents`/`requestAgents`），只在内置 build/plan 上兜底；`utils/modeColors.ts` 已引入（含 idea 的 6 项测试），输入框描边改 `--mode-accent`，自定义 agent 的 `color` 由宿主 `AgentHandler` 透传；`agents.list` 命令已注册 |
 | 10.5 | 模型列表与置顶 | ⬜ | `ModelSelect` 无置顶拖拽排序/portal；仍为旧版点击置顶 |
@@ -149,6 +149,7 @@ session resolver（`ChatWindow.bindSessionManager`），`getSession()` 解析到
 | 2026-10-28 | **更正**：P8/P9 此前误标完成；补 14 项功能域核查（对应方案 §10），列出 21 处 `getSession()` 与缺失的宿主命令 |
 | 2026-10-28 | **P8-A4**：新增 `util/SlashCommandCatalog.ts`（命令列举单一实现）与 `window/TabContextCommandHandler.ts`；`ChatWindow` 注册 `context.refresh` / `commands.refresh`；移除 `WindowEventHandler` 的 `refresh_slash_commands`；webview 改发 `commands.refresh`。补 §2.3 命令面缺口清单与 A1 前置条件 |
 | 2026-10-28 | **P8-A1/A2**：`ChatWindow` 接线 `TabSessionFactory`（每 tab 一个会话）+ `TabScopedSink` 投影 + 切 tab 快照回放；`SessionManager` 注入 resolver/lookup/replacer；`ChatInstance` 合并为全窗口单例（`BroadcastWebviewChannel`）；新增 `session.send` / `session.interrupt` / `session.new` 命令。测试 `tabSessionOwnership`（7 项） |
+| 2026-10-28 | **P8-A13**：§10.2 图标与品牌——`media/opencode.png` 取 idea 512 图标；`opencode-activity*.svg` 按 pluginIcon 几何重画为单色版；移植 `AeroOpenCodeLogo` 并接到 `ProviderModelIcon` 的 opencode 彩色分支；`WelcomeScreen` 去掉写死的 `#555` 内联色。测试 `ProviderModelIcon` 补 2 项（彩色走徽章、单色走 lobehub） |
 | 2026-10-28 | **P8-A12**：`utils/pendingPromptQueue`（按 tab 入队/出队/宿主关闭时摘除）+ `permissionCallbacks` 路由（非活跃 tab 不弹窗）+ `App` 切 tab 冲刷；角标沿用 tab 的 `pendingPermissions/pendingQuestions`。测试 4 项 |
 | 2026-10-28 | **P8-A11**：移植 `resolveSubagentRunState`（`utils/subagentResult`），`useSubagents.determineStatus` 与 `AgentGroupBlock` 都改为委托；transcript 只能作为终态事件的替代；新增 4 项测试 |
 | 2026-10-28 | **P8-A10**：`task` 事件的会话归属（宿主打标 + webview `isTaskEventForSession` 过滤），测试补 1 项宿主 + 3 项前端 |

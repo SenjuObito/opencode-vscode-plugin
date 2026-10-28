@@ -1,3 +1,12 @@
-<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path fill="currentColor" fill-rule="evenodd" d="M16 6H8v12h8V6zm4 16H4V2h16v20z"/>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    OpenCode Buddy — Aero 标记的单色版（活动栏 / 侧边栏入口 / 命令图标）。
+
+    几何取自 idea 的 META-INF/pluginIcon.svg（512）按比例缩到 24 viewBox：
+      外框 14x17.5 r1.64 · 内腔 7x10.5 r0.77 · 内核 7x7 r0.77。
+    三段写在一个 path 里用 fill-rule=evenodd：外框(1) − 内腔(2) + 内核(3)，
+    净效果是「圆角外框 + 下半实心核」。只用单色，颜色交给 VS Code 按主题着色 ——
+    彩色渐变核只能用在 webview 内，不能当活动栏图标（会被着色成糊块）。
+  -->
+  <path fill="currentColor" fill-rule="evenodd" d="M6.64 3.25H17.36A1.64 1.64 0 0 1 19 4.89V19.11A1.64 1.64 0 0 1 17.36 20.75H6.64A1.64 1.64 0 0 1 5 19.11V4.89A1.64 1.64 0 0 1 6.64 3.25ZM9.27 6.75H14.73A0.77 0.77 0 0 1 15.5 7.52V16.48A0.77 0.77 0 0 1 14.73 17.25H9.27A0.77 0.77 0 0 1 8.5 16.48V7.52A0.77 0.77 0 0 1 9.27 6.75ZM9.27 10.25H14.73A0.77 0.77 0 0 1 15.5 11.02V16.48A0.77 0.77 0 0 1 14.73 17.25H9.27A0.77 0.77 0 0 1 8.5 16.48V11.02A0.77 0.77 0 0 1 9.27 10.25Z"/>
 </svg>

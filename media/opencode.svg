@@ -1,3 +1,20 @@
-<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path fill="#1A1A1A" fill-rule="evenodd" d="M16 6H8v12h8V6zm4 16H4V2h16v20z"/>
+<svg width="128" height="128" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 彩色 Aero 标记（128，用于文档/网页里可以吃渐变的地方）。
+       与 512 的 pluginIcon 同一套形状与配色：石板底 + 钛白外框 + 全息内核。 -->
+  <defs>
+    <linearGradient id="ob-core" x1="9" y1="10.5" x2="15" y2="17.25" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+    <linearGradient id="ob-edge" x1="5" y1="3.25" x2="19" y2="20.75" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+  <rect width="24" height="24" rx="5.25" fill="#0d0f16"/>
+  <rect x="5" y="3.25" width="14" height="17.5" rx="1.64" fill="#f8fafc"/>
+  <rect x="5.09" y="3.34" width="13.82" height="17.32" rx="1.55" stroke="url(#ob-edge)" stroke-width="0.18"/>
+  <rect x="8.5" y="6.75" width="7" height="10.5" rx="0.77" fill="#08090e"/>
+  <rect x="8.5" y="10.25" width="7" height="7" rx="0.77" fill="url(#ob-core)"/>
 </svg>

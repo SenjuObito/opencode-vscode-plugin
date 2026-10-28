@@ -4,18 +4,11 @@ import type { TFunction } from 'i18next';
 import { BlinkingLogo } from '../BlinkingLogo';
 import { AnimatedText } from '../AnimatedText';
 
-const ROOT_STYLE: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  height: '100%',
-  color: '#555',
-  gap: '16px',
-};
-
-const LOGO_WRAPPER_STYLE: React.CSSProperties = { position: 'relative', display: 'inline-block' };
-
+/*
+ * 布局交给 welcome.less（.welcome-screen / .welcome-logo-container /
+ * .welcome-text-container）。之前用内联 style 且写死 color:#555，
+ * 等于把样式表里的主题色整个屏蔽掉了。
+ */
 export interface WelcomeScreenProps {
   /** Runtime CLI provider (opencode); welcome logo follows the CLI */
   currentProvider: string;
@@ -34,11 +27,11 @@ export const WelcomeScreen = memo(function WelcomeScreen({
   };
 
   return (
-    <div style={ROOT_STYLE}>
-      <div style={LOGO_WRAPPER_STYLE}>
+    <div className="welcome-screen">
+      <div className="welcome-logo-container">
         <BlinkingLogo provider={currentProvider} />
       </div>
-      <div>
+      <div className="welcome-text-container">
         <AnimatedText text={t('chat.sendMessage', { provider: providerLabels[currentProvider] ?? currentProvider })} />
       </div>
     </div>
