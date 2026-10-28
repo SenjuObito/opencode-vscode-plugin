@@ -13,7 +13,7 @@
 import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
-import { parseTaskNotification } from '../../utils/taskEventParser';
+import { isTaskEventForSession, parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
 import type { SubagentHistoryResponse } from '../../types/subagent';
 import {
@@ -155,18 +155,20 @@ export function registerWindowCallbacks(
   // this, the StatusPanel cannot tell a launched async agent from a finished
   // one, and the completion summary never surfaces.
   //
-  // Cross-session safety is enforced by three layers, so this handler does
-  // not re-check sessionId (which is not part of the taskEvent payload):
-  //   1. Java ClaudeChatWindow.titleEventListener drops events whose sessionId
-  //      does not match the active session.
-  //   2. beginSessionTransition (useSessionManagement) clears taskEvents on
-  //      session switch, so stale entries from the prior session cannot linger.
-  //   3. tool_use_ids are globally unique, so even a delayed event can only
-  //      update the agent it was emitted for, never mislabel another.
+  // 跨会话安全：
+  //   1. 宿主（SessionCallbackAdapter.onTaskEvent）会把会话 id 写进载荷；
+  //      这里按它丢弃别的 tab 的事件 —— 多 tab 后一个 webview 只有一份面板状态，
+  //      不筛就会把后台 tab 的子代理完成通知写进当前 tab 的列表。
+  //   2. beginSessionTransition（useSessionManagement）切会话时清空 taskEvents。
+  //   3. tool_use_id 全局唯一，迟到的同会话事件只会更新它自己的条目。
   window.onTaskEvent = (eventJson: string) => {
     try {
       if (!options.setTaskEvents) return;
-      const taskEvent = parseTaskNotification(JSON.parse(eventJson));
+      const parsed = JSON.parse(eventJson) as unknown;
+      if (!isTaskEventForSession(parsed, options.currentSessionIdRef.current)) {
+        return;
+      }
+      const taskEvent = parseTaskNotification(parsed);
       if (!taskEvent) return;
       const { toolUseId } = taskEvent;
       options.setTaskEvents((prev) => {

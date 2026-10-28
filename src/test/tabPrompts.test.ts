@@ -114,6 +114,23 @@ describe('P8 §10.7: adapter 给权限请求盖上归属', () => {
 		assert.strictEqual(seen[0].sessionId, 'ses_z');
 	});
 
+	it('task 事件也被盖上 sessionId（否则后台 tab 的子代理会混进当前面板）', () => {
+		const calls: Array<{ fn: string; args: string[] }> = [];
+		const adapter = new SessionCallbackAdapter({
+			jsTarget: { callJavaScript: (fn: string, ...args: string[]) => calls.push({ fn, args }) },
+			model: () => null,
+		});
+		adapter.setSessionId('ses_z');
+
+		adapter.onTaskEvent(JSON.stringify({ subtype: 'task_notification', tool_use_id: 'call_q', status: 'completed' }));
+
+		const event = calls.find((c) => c.fn === 'onTaskEvent');
+		assert.ok(event);
+		const payload = JSON.parse(event.args[0]) as Record<string, unknown>;
+		assert.strictEqual(payload.sessionId, 'ses_z');
+		assert.strictEqual(payload.tool_use_id, 'call_q', '原有字段不能丢');
+	});
+
 	it('请求自己带了归属时以它为准', () => {
 		const seen: PermissionRequest[] = [];
 		const adapter = new SessionCallbackAdapter({

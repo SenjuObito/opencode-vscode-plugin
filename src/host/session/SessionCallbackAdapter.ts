@@ -355,7 +355,21 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive() || !eventJson || eventJson.trim() === '') {
 			return;
 		}
-		this.jsTarget.callJavaScript('onTaskEvent', eventJson);
+		// 补会话归属：多 tab 后同一个 webview 只有一份面板状态，后台 tab 的
+		// task 事件若不打标就会混进活跃 tab 的子代理列表（idea 侧由 Java 过滤，
+		// 本仓没有那层，只能在源头打标 + 前端过滤）。
+		let payload = eventJson;
+		if (this.sessionId) {
+			try {
+				const parsed = JSON.parse(eventJson) as Record<string, unknown>;
+				if (parsed && typeof parsed === 'object' && !('sessionId' in parsed)) {
+					payload = JSON.stringify({ ...parsed, sessionId: this.sessionId });
+				}
+			} catch {
+				// 非 JSON 载荷原样转发，前端会自行丢弃
+			}
+		}
+		this.jsTarget.callJavaScript('onTaskEvent', payload);
 	}
 
 	onRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {

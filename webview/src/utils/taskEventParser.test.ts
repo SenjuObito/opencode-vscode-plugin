@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTaskNotification } from './taskEventParser';
+import { isTaskEventForSession, parseTaskNotification } from './taskEventParser';
 
 describe('parseTaskNotification', () => {
   it('parses a complete task_notification with usage', () => {
@@ -114,5 +114,22 @@ describe('parseTaskNotification', () => {
       output_file: '',
     });
     expect(ev?.outputFilePath).toBeUndefined();
+  });
+});
+
+describe('isTaskEventForSession', () => {
+  it('宿主打了 sessionId 时只放行同一会话', () => {
+    expect(isTaskEventForSession({ sessionId: 'ses_a' }, 'ses_a')).toBe(true);
+    expect(isTaskEventForSession({ sessionId: 'ses_b' }, 'ses_a')).toBe(false);
+  });
+
+  it('没有 sessionId 的旧载荷一律放行', () => {
+    expect(isTaskEventForSession({ subtype: 'task_notification' }, 'ses_a')).toBe(true);
+    expect(isTaskEventForSession(null, 'ses_a')).toBe(true);
+  });
+
+  it('当前会话还不知道时，带 id 的事件按不匹配处理', () => {
+    expect(isTaskEventForSession({ sessionId: 'ses_a' }, null)).toBe(false);
+    expect(isTaskEventForSession({ sessionId: '' }, null)).toBe(true);
   });
 });

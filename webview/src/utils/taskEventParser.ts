@@ -27,6 +27,19 @@ function isTaskEventStatus(value: unknown): value is TaskEvent['status'] {
   return typeof value === 'string' && (TASK_EVENT_STATUSES as readonly string[]).includes(value);
 }
 
+/**
+ * 这个 task 事件是否属于当前会话。
+ *
+ * 宿主会把自己的 sessionId 写进载荷；没有该字段的是旧后端/旧缓存，一律放行
+ * （宁可在单会话里正常显示，也不要在多 tab 下把别人的完成通知写进来）。
+ */
+export function isTaskEventForSession(raw: unknown, currentSessionId: string | null): boolean {
+  if (!raw || typeof raw !== 'object') return true;
+  const owner = (raw as Record<string, unknown>).sessionId;
+  if (typeof owner !== 'string' || owner === '') return true;
+  return owner === currentSessionId;
+}
+
 export function parseTaskNotification(raw: unknown): TaskEvent | null {
   if (!raw || typeof raw !== 'object') return null;
   const ev = raw as Record<string, unknown>;
