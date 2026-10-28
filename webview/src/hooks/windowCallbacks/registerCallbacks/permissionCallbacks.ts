@@ -9,6 +9,55 @@
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { cardDebugLog } from '../../../utils/bridge';
 import { setQuestionAnswer } from '../../../store/questionAnswerStore';
+import { getTabStore } from '../../../store/tabStore';
+import { drainPromptsForTab, enqueuePrompt, removeQueuedPrompt, type QueuedPromptKind } from '../../../utils/pendingPromptQueue';
+
+/**
+ * 后台 tab 的 prompt 先排队，切过去再弹。
+ *
+ * 记住最近一次注册的回调：切 tab 时由 `flushQueuedPrompts` 调回来，
+ * 而它不在 React 树里（由 App 的 effect 触发）。
+ */
+let activeHandlers: {
+  permission: ((request: Record<string, unknown>) => void) | null;
+  question: ((request: Record<string, unknown>) => void) | null;
+  plan: ((request: Record<string, unknown>) => void) | null;
+} = { permission: null, question: null, plan: null };
+
+/** 该请求是否属于别的 tab（属于就先排队，别打断当前对话）。 */
+function shouldDefer(request: Record<string, unknown>): boolean {
+  const tabId = typeof request.tabId === 'string' ? request.tabId : '';
+  if (!tabId) {
+    return false;
+  }
+  const activeTabId = getTabStore().getActiveTabId();
+  return !!activeTabId && tabId !== activeTabId;
+}
+
+function routePrompt(
+  kind: QueuedPromptKind,
+  request: Record<string, unknown>,
+  open: ((request: never) => void) | ((request: Record<string, unknown>) => void) | null | undefined,
+): void {
+  if (shouldDefer(request) && open) {
+    cardDebugLog(`[PCard][webview] deferring ${kind} to tab ${String(request.tabId)}`);
+    enqueuePrompt({ kind, tabId: String(request.tabId), request });
+    return;
+  }
+  (open as ((request: Record<string, unknown>) => void) | undefined)?.(request);
+}
+
+/** 切到某个 tab 时把排队中的 prompt 弹出来（App 在 activeTabId 变化时调用）。 */
+export function flushQueuedPrompts(tabId: string | null | undefined): void {
+  for (const prompt of drainPromptsForTab(tabId)) {
+    const handler = activeHandlers[prompt.kind];
+    try {
+      handler?.(prompt.request);
+    } catch {
+      // 单个卡片失败不影响其余排队项
+    }
+  }
+}
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -52,11 +101,20 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     invalidatePermissionCard?.(channelId ?? '');
   };
 
+  // 排队项来自 JSON，只能以 Record 传递；具体形状由各自的 open* 负责校验，
+  // 所以这里做一次显式收窄（否则每个 handler 都要在队列里保留自己的强类型）。
+  type RequestOpener = (request: Record<string, unknown>) => void;
+  activeHandlers = {
+    permission: (openPermissionDialog as unknown as RequestOpener) ?? null,
+    question: (openAskUserQuestionDialog as unknown as RequestOpener) ?? null,
+    plan: (openPlanApprovalDialog as unknown as RequestOpener) ?? null,
+  };
+
   window.showPermissionDialog = (json) => {
     try {
       const request = JSON.parse(json);
       console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName}`);
-      openPermissionDialog(request);
+      routePrompt('permission', request, openPermissionDialog);
     } catch (error) {
       console.error('[Frontend] Failed to parse permission request:', error);
     }
@@ -69,10 +127,14 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // the orphaned dialog, and the user appears to "lose" all further prompts
   // until they reload the tab — see issue #1360.
   window.forceClosePermissionDialog = (channelId) => {
+    // 服务端已关闭（答复/超时/关 tab）：队列里的同一请求也必须摘掉，
+    // 否则切回该 tab 会弹出一张失效的卡片。
+    removeQueuedPrompt('permission', String(channelId ?? ''));
     forceClosePermissionDialog(channelId ?? null);
   };
 
   window.forceCloseAskUserQuestionDialog = (requestId) => {
+    removeQueuedPrompt('question', String(requestId ?? ''));
     forceCloseAskUserQuestionDialog(requestId ?? null);
   };
 
@@ -95,7 +157,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     try {
       const request = JSON.parse(json);
       cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0}`);
-      openAskUserQuestionDialog(request);
+      routePrompt('question', request, openAskUserQuestionDialog);
     } catch (error) {
       console.error('[Frontend] Failed to parse ask user question request:', error);
     }
@@ -127,7 +189,7 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   window.showPlanApprovalDialog = (json) => {
     try {
       const request = JSON.parse(json);
-      openPlanApprovalDialog(request);
+      routePrompt('plan', request, openPlanApprovalDialog);
     } catch (error) {
       console.error('[Frontend] Failed to parse plan approval request:', error);
     }
