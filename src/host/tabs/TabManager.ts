@@ -4,18 +4,19 @@
  * 用户点击 VS Code 编辑器上的 OpenCode Buddy 按钮时，直接新建一个独立的对话标签页（WebviewPanel）。
  * 标签页使用标准的 'OpenCode Buddy' 原生标题，无需自增序号。
  *
- * 核心机制：
- * 1. 每个 WebviewPanel 拥有独立的 ChatInstance（包含独立 OpenCodeSession、SingleWebviewChannel 与 handlers）。
- * 2. 独立消息隔离，各个标签页可同时向 daemon 发起提问，并发流式输出，互不干扰。
- * 3. 通过 WebviewBroadcaster 接入全局配置广播，任何标签页修改设置，所有标签页实时同步生效。
+ * 核心机制（P8-A1 后）：
+ * 1. **单实例多视图**：所有 WebviewPanel（以及左右侧边栏）共享同一个 ChatInstance 与
+ *    ChatWindow；会话归 tab 所有（`TabRegistry`），不再「一个面板一个 ChatInstance」。
+ * 2. 面板只是视图：同一个 tab 列表在所有视图里一致，切换 tab 由宿主回放快照。
+ * 3. 通过 WebviewBroadcaster 接入全局配置广播，任何面板修改设置，所有面板实时同步生效。
  * 4. 设置 retainContextWhenHidden: true，切至后台时保持流式渲染与 DOM 状态。
- * 5. 面板关闭时（onDidDispose）彻底释放资源。
+ * 5. 面板关闭时（onDidDispose）只注销该视图，不销毁共享实例。
  */
 import * as vscode from 'vscode';
 import { WebviewChannel } from '../router/HandlerContext';
 import { SettingsService } from '../settings/SettingsService';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
-import { ChatInstance, createChatInstance, ChatInstanceDeps } from '../session/ChatInstance';
+import { ChatInstance, ChatInstanceDeps } from '../session/ChatInstance';
 import { BridgeMessage } from '../types';
 import { buildWebviewHtml, parseWirePayload, readWebviewHtml } from '../webview/OpenCodeViewProvider';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
@@ -34,6 +35,8 @@ export interface TabManagerOptions {
 	readonly fileOps: ChatInstanceDeps['fileOps'];
 	readonly fallbackWorkingDirectoryResolver: () => string | null;
 	readonly chatWindow: ChatWindow;
+	/** 全窗口共享的聊天实例（handlers / 会话层）；面板不再各自创建。 */
+	readonly instance: ChatInstance;
 	readonly editorContextTracker?: EditorContextTracker;
 	readonly onLog?: (message: string) => void;
 }
@@ -71,7 +74,6 @@ interface TabEntry {
 	tabId: string;
 	panel: vscode.WebviewPanel;
 	channel: SingleWebviewChannel;
-	instance: ChatInstance;
 	unregisterBroadcaster: () => void;
 }
 
@@ -107,7 +109,6 @@ export class TabManager {
 		this.options.chatWindow.unregisterView(tabId);
 		tab.unregisterBroadcaster();
 		tab.channel.dispose();
-		tab.instance.dispose();
 		this.tabs.delete(tabId);
 		this.options.onLog?.(`[TabManager] closed tab ${tabId}`);
 	}
@@ -119,7 +120,7 @@ export class TabManager {
 	}
 
 	private spawnTab(tabId: string): TabEntry {
-		const { extensionUri, settings, daemon, fileOps, fallbackWorkingDirectoryResolver, editorContextTracker } = this.options;
+		const { extensionUri, settings } = this.options;
 		const panel = vscode.window.createWebviewPanel(
 			TAB_VIEW_TYPE,
 			DEFAULT_TAB_TITLE,
@@ -147,14 +148,7 @@ export class TabManager {
 			this.options.chatWindow.viewRegistry.setFocused(tabId, e.webviewPanel.active);
 		});
 
-		const instance = createChatInstance({
-			channel,
-			settings,
-			daemon,
-			fileOps,
-			fallbackWorkingDirectoryResolver,
-			editorContextTracker,
-		});
+		const instance = this.options.instance;
 
 		if (this.htmlCache === null) {
 			this.htmlCache = readWebviewHtml(extensionUri);
@@ -199,6 +193,6 @@ export class TabManager {
 		panel.onDidDispose(() => this.closeTab(tabId));
 
 		this.options.onLog?.(`[TabManager] opened new chat tab (${tabId})`);
-		return { tabId, panel, channel, instance, unregisterBroadcaster };
+		return { tabId, panel, channel, unregisterBroadcaster };
 	}
 }

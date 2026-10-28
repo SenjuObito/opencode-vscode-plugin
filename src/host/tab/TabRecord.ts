@@ -122,6 +122,24 @@ export class TabRecord {
 		this.coalescer = coalescer;
 	}
 
+	/**
+	 * 登记一个尚未拿到服务端会话 id 的会话（首次发送前的 CREATING 态）。
+	 *
+	 * 与 `setSessionResources` 的区别：这里不假装有一个 SessionId —— 之前为了复用
+	 * 该方法传过 `null as unknown as SessionId`，把「未绑定」写成了「绑定到空」，
+	 * 是真实的类型谎言。会话 id 由 `TabRegistry.bind` 在服务端分配后写入。
+	 */
+	attachPendingSession(
+		session: OpenCodeSession | null,
+		adapter: SessionCallbackAdapter | null,
+		coalescer: StreamMessageCoalescer | null,
+	): void {
+		this.sessionId = null;
+		this.session = session;
+		this.adapter = adapter;
+		this.coalescer = coalescer;
+	}
+
 	get epoch(): number {
 		return this._epoch;
 	}

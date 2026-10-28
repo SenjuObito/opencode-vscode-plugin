@@ -4,15 +4,22 @@ import { TabRecord } from '../tab/TabRecord';
 import { TabState } from '../tab/TabState';
 import { TabEvent } from '../tab/TabEvent';
 import { TabCommand, TabCommandRouter, TabCommandRouteResult } from '../tab';
+import { TabSessionFactory } from '../tab/TabSessionFactory';
 import { ViewRegistry, ViewRecord } from './ViewRegistry';
 import { TabEventRouter } from './TabEventRouter';
 import { PromptRegistry } from '../prompt/PromptRegistry';
 import { TabSessionCommandHandler } from './TabSessionCommandHandler';
 import { TabContextCommandHandler } from './TabContextCommandHandler';
+import { TabSessionSendHandler } from './TabSessionSendHandler';
+import { TabScopedSink } from './TabScopedSink';
 import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router/HostCommand';
 import type { WebviewChannel, FileOps } from '../router/HandlerContext';
 import type { SettingsService } from '../settings/SettingsService';
 import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
+import type { OpenCodeSession } from '../session/OpenCodeSession';
+import type { JsTarget } from '../session/SessionCallbackAdapter';
+import type { SessionManager } from '../session/SessionManager';
+import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
 export interface ChatWindowOptions {
@@ -20,6 +27,15 @@ export interface ChatWindowOptions {
 	daemon: OpenCodeDaemonBridge;
 	fileOps: FileOps;
 	fallbackWorkingDirectoryResolver: () => string | null;
+	/**
+	 * 为一个 tab 创建会话（输出经 `viewSink` 归属到该 tab）。
+	 * 缺省不创建会话——单会话/单测路径保持原样，`TabRecord.getSession()` 为 null。
+	 */
+	createSession?: (viewSink: JsTarget) => OpenCodeSession | null;
+	/** 会话新建后的初始化（从持久化设置回灌 model / mode / effort）。 */
+	configureSession?: (session: OpenCodeSession) => void;
+	/** 服务端分配了会话 id、且已绑定到 tab 时回调（历史索引 / 标题等）。 */
+	onSessionBound?: (tabId: string, sessionId: string) => void;
 }
 
 /**
@@ -34,14 +50,23 @@ export class ChatWindow {
 	readonly commandRouter: TabCommandRouter;
 	readonly sessionCommandHandler: TabSessionCommandHandler;
 	readonly contextCommandHandler: TabContextCommandHandler;
+	readonly sessionSendHandler: TabSessionSendHandler;
+	readonly sessionFactory: TabSessionFactory;
 	readonly deduplicator = new RequestIdDeduplicator(2048);
 
+	private readonly options: ChatWindowOptions;
 	private readonly settings: SettingsService;
 	private readonly daemon: OpenCodeDaemonBridge;
 	private readonly fileOps: FileOps;
 	private readonly fallbackWorkingDirectoryResolver: () => string | null;
+	/** 每个 tab 的输出投影 sink（按 tabId 复用，保证同一个 tab 只有一份计数）。 */
+	private readonly sinks = new Map<string, TabScopedSink>();
+	/** 会话 id 分配监听器的注销函数（关闭 tab 时清理）。 */
+	private readonly bindingUnsubs = new Map<string, () => void>();
+	private sessionManager: SessionManager | null = null;
 
 	constructor(options: ChatWindowOptions) {
+		this.options = options;
 		this.settings = options.settings;
 		this.daemon = options.daemon;
 		this.fileOps = options.fileOps;
@@ -75,8 +100,20 @@ export class ChatWindow {
 
 		this.contextCommandHandler = new TabContextCommandHandler(() => this.daemon);
 
+		this.sessionFactory = new TabSessionFactory(this.registry, {
+			newSession: (cwd, tabId) => this.createSessionForTab(cwd, tabId),
+			adapterOf: (session) => session.getAdapter() ?? null,
+			coalescerOf: (session) => session.getAdapter().getCoalescer() ?? null,
+		});
+		this.sessionSendHandler = new TabSessionSendHandler({
+			ensureSession: (record) => this.ensureTabSession(record),
+			replay: (record) => this.replayTab(record),
+			errorSink: (record) => this.sinkFor(record.getTabId()),
+		});
+
 		this.registerBuiltinTabCommands();
 		this.registerContextCommands();
+		this.registerSessionRuntimeCommands();
 		this.ensureInitialTab();
 	}
 
@@ -116,6 +153,8 @@ export class ChatWindow {
 					payload: { tabId: tabId.value },
 				}),
 			);
+			// 新 tab 是空的：回放（无会话）会把视图清成空态，与旧 create_new_session 等价。
+			this.replayTab(record);
 		});
 
 		// tab.activate
@@ -132,12 +171,20 @@ export class ChatWindow {
 					payload: { tabId: tabId.value },
 				}),
 			);
+			// 宿主状态权威：后台 tab 的流式输出被投影丢弃，切回时补一份快照。
+			const record = this.registry.get(tabId);
+			if (record) {
+				this.replayTab(record);
+			}
 		});
 
 		// tab.close
 		this.commandRouter.register('tab.close', (command) => {
 			const tabId = command.tabId;
 			this.promptRegistry.rejectForTab(tabId.value);
+			this.bindingUnsubs.get(tabId.value)?.();
+			this.bindingUnsubs.delete(tabId.value);
+			this.sinks.delete(tabId.value);
 			const closed = this.registry.close(tabId);
 			if (closed) {
 				this.eventRouter.publish(
@@ -260,6 +307,232 @@ export class ChatWindow {
 		});
 	}
 
+	private registerSessionRuntimeCommands(): void {
+		// 发送 / 中断都按 tab 解析目标会话：B 的操作绝不落到 A 身上。
+		this.commandRouter.register('session.send', (cmd, record) => {
+			this.sessionSendHandler.send(cmd, record);
+		});
+		this.commandRouter.register('session.interrupt', (cmd, record) => {
+			this.sessionSendHandler.interrupt(cmd, record);
+		});
+	}
+
+	/**
+	 * 接管会话层：让 `context.getSession()` / `sessionManager.getActiveSession()`
+	 * 解析到**活跃 tab 自己的会话**，并让新对话 / 切历史落在活跃 tab 上。
+	 *
+	 * 注入了 resolver 之后 SessionManager 内部那个本地实例只作为兜底存在。
+	 */
+	bindSessionManager(sessionManager: SessionManager): void {
+		this.sessionManager = sessionManager;
+		sessionManager.setSessionResolver(() => this.ensureActiveTabSession());
+		sessionManager.setSessionLookup((sessionId) => {
+			const record = this.registry.findBySession(sessionId);
+			return record?.getSession() ?? null;
+		});
+		sessionManager.setActiveSessionReplacer((sessionId) => this.replaceActiveTabSession(sessionId));
+	}
+
+	/** 该 tab 的输出投影：只有活跃 tab 的调用会被放行到所有视图。 */
+	sinkFor(tabId: TabId): TabScopedSink {
+		const key = tabId.value;
+		const existing = this.sinks.get(key);
+		if (existing) {
+			return existing;
+		}
+		const sink = new TabScopedSink(
+			key,
+			() => this.registry.getActiveTabId()?.value === key,
+			{
+				callJavaScript: (fn, ...args) => this.broadcast(fn, ...args),
+			},
+		);
+		this.sinks.set(key, sink);
+		return sink;
+	}
+
+	/** 广播到所有存活视图（全局瞬时提示等非状态事件）。 */
+	private broadcast(functionName: string, ...args: string[]): void {
+		for (const channel of this.viewRegistry.allChannels()) {
+			if (!channel.isDisposed()) {
+				channel.callJavaScript(functionName, ...args);
+			}
+		}
+	}
+
+	private createSessionForTab(cwd: string, tabId: TabId): OpenCodeSession | null {
+		const create = this.options.createSession;
+		if (!create) {
+			return null;
+		}
+		const session = create(this.sinkFor(tabId));
+		if (!session) {
+			return null;
+		}
+		if (cwd) {
+			session.state.setCwd(cwd);
+		}
+		this.options.configureSession?.(session);
+		this.watchSessionBinding(tabId, session);
+		return session;
+	}
+
+	/**
+	 * 等服务端分配会话 id 后把 binding 写进 registry。
+	 *
+	 * 首次发送前 tab 处于「有会话、无 id」的 CREATING 态；id 由 opencode 在
+	 * 第一轮 prompt 建立会话后下发，此时才成为可寻址的 canonical session。
+	 */
+	private watchSessionBinding(tabId: TabId, session: OpenCodeSession): void {
+		this.bindingUnsubs.get(tabId.value)?.();
+
+		const assigned = session.state.getSessionId();
+		if (assigned) {
+			this.bindTabSession(tabId, session, assigned);
+			return;
+		}
+
+		const off = session.state.onSessionIdAssigned((sessionId) => {
+			this.bindTabSession(tabId, session, sessionId);
+		});
+		this.bindingUnsubs.set(tabId.value, off);
+	}
+
+	private bindTabSession(tabId: TabId, session: OpenCodeSession, sessionId: string): void {
+		const record = this.registry.get(tabId);
+		if (!record || record.isClosed() || record.getSession() !== session) {
+			return;
+		}
+		if (record.getSessionIdString() === sessionId) {
+			return;
+		}
+		try {
+			this.registry.bind(
+				tabId,
+				sessionId,
+				session,
+				record.getAdapter() ?? session.getAdapter(),
+				record.getCoalescer() ?? session.getAdapter().getCoalescer(),
+			);
+			this.options.onSessionBound?.(tabId.value, sessionId);
+		} catch (err) {
+			PluginFileLogger.warn(
+				'ChatWindow',
+				`failed to bind session ${sessionId} to tab ${tabId.value}: ${String(err)}`,
+			);
+		}
+	}
+
+	/** 拿到（必要时创建）某个 tab 的会话。 */
+	ensureTabSession(record: TabRecord): OpenCodeSession | null {
+		const existing = record.getSession();
+		if (existing) {
+			return existing;
+		}
+		if (!this.options.createSession) {
+			return null;
+		}
+		const cwd = record.getCwd() || this.fallbackWorkingDirectoryResolver() || '';
+		const prepared = this.sessionFactory.prepare(record.getTabId(), cwd);
+		return prepared.session;
+	}
+
+	/** 活跃 tab 的会话；没有 tab 或未装配会话工厂时返回 null（调动方回退单会话语义）。 */
+	ensureActiveTabSession(): OpenCodeSession | null {
+		const tabId = this.registry.getActiveTabId();
+		if (!tabId) {
+			return null;
+		}
+		const record = this.registry.get(tabId);
+		return record ? this.ensureTabSession(record) : null;
+	}
+
+	/**
+	 * 把某个 tab 的状态回放到视图（切 tab / 视图重建）。
+	 *
+	 * 后台 tab 的流式输出在 `TabScopedSink` 被丢弃，宿主状态才是权威：这里用该
+	 * tab 自己的 coalescer 冲刷一份快照，并补齐身份、loading、revert 与终态信号。
+	 */
+	replayTab(record: TabRecord): void {
+		const sink = this.sinkFor(record.getTabId());
+		const session = record.getSession();
+
+		if (!session) {
+			sink.callJavaScript('clearMessages', '0');
+			sink.callJavaScript('setSessionId', '');
+			sink.callJavaScript('showLoading', 'false');
+			sink.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert: false }));
+			sink.callJavaScript('historyLoadComplete');
+			return;
+		}
+
+		const state = session.state;
+		const coalescer = record.getCoalescer() ?? session.getAdapter().getCoalescer();
+		const barrier = coalescer.resetStreamState();
+		sink.callJavaScript('clearMessages', String(barrier));
+		coalescer.enqueue(state.getMessages(), state.getWindowBaseIndex());
+		coalescer.flush();
+
+		sink.callJavaScript('setSessionId', state.getSessionId() ?? '');
+		// 按 tab 的模型 / 权限模式 / 推理力度：切回该 tab 时选择器必须回到它自己的值，
+		// 否则 A 的选择会被 B 覆盖（§10.4/§10.5/§10.6 的「A/B 独立」判据）。
+		sink.callJavaScript('applyBackendTabState', JSON.stringify({
+			model: state.getModel(),
+			permissionMode: state.getPermissionMode(),
+			reasoningEffort: state.getReasoningEffort(),
+		}));
+		const turnStart = state.getActiveTurnStartTime();
+		sink.callJavaScript(
+			'showLoading',
+			state.isLoading() ? 'true' : 'false',
+			...(turnStart ? [String(turnStart)] : []),
+		);
+		const revert = state.getRevertState();
+		sink.callJavaScript(
+			'onRevertStateUpdate',
+			JSON.stringify(revert ? { hasRevert: true, messageId: revert.messageID } : { hasRevert: false }),
+		);
+		sink.callJavaScript('historyLoadComplete');
+	}
+
+	/** 在活跃 tab 内换会话（新对话 / 切历史）。 */
+	private replaceActiveTabSession(sessionId: string | null): OpenCodeSession | null {
+		const tabId = this.registry.getActiveTabId();
+		if (!tabId) {
+			return null;
+		}
+		const record = this.registry.get(tabId);
+		if (!record || !this.options.createSession) {
+			return null;
+		}
+
+		const previous = record.getSession();
+		const cwd = record.getCwd() || this.fallbackWorkingDirectoryResolver() || '';
+
+		if (sessionId) {
+			try {
+				const attached = this.sessionFactory.attachSession(tabId, sessionId, cwd);
+				previous?.dispose();
+				return attached.getSession();
+			} catch (err) {
+				PluginFileLogger.warn('ChatWindow', `attach session failed: ${String(err)}`);
+				return null;
+			}
+		}
+
+		// 新对话：先解除绑定（旧 sessionId 不能再反查到本 tab），再挂一个全新会话。
+		this.bindingUnsubs.get(tabId.value)?.();
+		this.bindingUnsubs.delete(tabId.value);
+		this.registry.release(tabId);
+		const created = this.createSessionForTab(cwd, tabId);
+		if (!created) {
+			return null;
+		}
+		record.attachPendingSession(created, created.getAdapter(), created.getAdapter().getCoalescer());
+		previous?.dispose();
+		return created;
+	}
+
 	registerView(viewId: string, channel: WebviewChannel): ViewRecord {		const record = this.viewRegistry.register(viewId, channel);
 		this.resyncView(viewId, channel);
 		return record;
@@ -294,6 +567,14 @@ export class ChatWindow {
 				},
 			],
 		});
+
+		// 视图重建后只有 tab 列表、没有消息：把活跃 tab 的状态补一遍，
+		// 否则侧边栏隐藏再显示会得到「tab 在、内容是空」的状态。
+		const active = this.registry.getActiveTabId();
+		const record = active ? this.registry.get(active) : null;
+		if (record) {
+			this.replayTab(record);
+		}
 	}
 
 	rejectCommand(viewId: string, tabId: string, requestId: string, code: CommandRejectCode, message: string): void {

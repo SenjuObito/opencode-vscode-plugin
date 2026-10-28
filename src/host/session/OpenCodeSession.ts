@@ -10,7 +10,7 @@ import { SessionState, createMessage, normalizePermissionMode } from './SessionS
 import { CallbackHandler } from './CallbackHandler';
 import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
-import { SessionCallbackAdapter } from './SessionCallbackAdapter';
+import { SessionCallbackAdapter, JsTarget } from './SessionCallbackAdapter';
 import { MessageType } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
@@ -40,6 +40,15 @@ export interface OpenCodeSessionOptions {
 	onTurnCompleted?: (info: TurnCompletedInfo) => void;
 	/** 发送时解析当前编辑器上下文（'@path#L1-L2'），cc-gui EditorContextCollector 等价物。 */
 	editorSelectionResolver?: () => string | null;
+	/**
+	 * 本会话的所有 webview 输出目标。
+	 *
+	 * 单会话时代输出直接走 `context.callJavaScript`（等于广播到所有面板）。
+	 * 多 tab 后每个 tab 的输出必须带上自己的归属：`ChatWindow` 会传入一个
+	 * 按活跃 tab 投影的 sink，后台 tab 的输出被丢弃、切回时用宿主状态回放。
+	 * 缺省仍退回 `context.callJavaScript`（单会话/测试路径）。
+	 */
+	viewSink?: JsTarget;
 }
 
 export type TurnCompletedStatus = 'completed' | 'aborted' | 'error';
@@ -64,6 +73,8 @@ export class OpenCodeSession {
 	private readonly permissionClosedHandler?: (kind: 'question' | 'permission', content: string) => void;
 	private readonly onTurnCompleted?: (info: TurnCompletedInfo) => void;
 	private readonly editorSelectionResolver?: () => string | null;
+	/** 本会话的输出目标（按 tab 归属），缺省广播到 context。 */
+	private readonly view: JsTarget;
 
 	// 单轮流式状态（由 MarkerParser 维护）
 	private streamCtx: MarkerStreamContext = {
@@ -83,13 +94,14 @@ export class OpenCodeSession {
 		this.permissionClosedHandler = options.permissionClosedHandler;
 		this.onTurnCompleted = options.onTurnCompleted;
 		this.editorSelectionResolver = options.editorSelectionResolver;
+		this.view = options.viewSink ?? {
+			callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
+		};
 
 		this.callbackHandler = new CallbackHandler();
 		this.messageHandler = new MessageHandler(this.state, this.callbackHandler);
 		this.adapter = new SessionCallbackAdapter({
-			jsTarget: {
-				callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
-			},
+			jsTarget: this.view,
 			model: () => this.state.getModel(),
 			windowBaseIndex: () => this.state.getWindowBaseIndex(),
 			streamEndCallback: () => this.onTurnEnded(),
@@ -120,7 +132,7 @@ export class OpenCodeSession {
 	}
 
 	private callView(functionName: string, ...args: string[]): void {
-		this.context.callJavaScript(functionName, ...args);
+		this.view.callJavaScript(functionName, ...args);
 	}
 
 

@@ -15,10 +15,13 @@ import { FileOps } from './host/router/HandlerContext.js';
 import { OpenCodeDaemonBridge } from './host/provider/OpenCodeDaemonBridge.js';
 import { MementoSettingsStore, SettingsService } from './host/settings/SettingsService.js';
 import { WebviewBroadcaster } from './host/router/WebviewBroadcaster.js';
+import { BroadcastWebviewChannel } from './host/webview/BroadcastWebviewChannel.js';
 import { TabManager } from './host/tabs/TabManager.js';
 import { EditorContextTracker } from './host/context/EditorContextTracker.js';
 import { logDiagnostic, logError, setDiagnosticVerbose } from './host/util/DiagnosticLogger.js';
 import { ChatWindow } from './host/window/ChatWindow.js';
+import { createChatInstance, seedSessionFromPersistedSelection } from './host/session/ChatInstance.js';
+import { TabHandler } from './host/handlers/TabHandler.js';
 
 export function activate(context: vscode.ExtensionContext) {
 	// ── 0a. 生产包 console 降级：只保留 error 级 ─────────────────────────────
@@ -141,13 +144,31 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// ── 5b. 全局唯一 ChatWindow（单实例多视图单例）─────────────────────────
+	// ── 5b. 全局单例：一个 ChatInstance + 一个 ChatWindow（单实例多视图）────────
+	// 会话归 tab 所有：所有视图（左右侧边栏 + 编辑器 panel）共享同一个实例，
+	// 每个 tab 的会话输出经 TabScopedSink 投影到「当前活跃 tab」。
+	const instance = createChatInstance({
+		channel: new BroadcastWebviewChannel(),
+		settings,
+		daemon,
+		fileOps,
+		fallbackWorkingDirectoryResolver,
+		editorContextTracker,
+	});
+
 	const chatWindow = new ChatWindow({
 		settings,
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
+		createSession: (viewSink) => instance.createSession(viewSink),
+		configureSession: (session) => seedSessionFromPersistedSelection(settings, session),
+		onSessionBound: (tabId, sessionId) => {
+			logDiagnostic(`[Session] tab=${tabId} bound to session=${sessionId}`);
+		},
 	});
+	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
+	chatWindow.bindSessionManager(instance.sessionManager);
 
 	// ── 6. 多标签页管理（openChat → 新原生编辑器 tab 作为 View 注册）──────────
 	const tabManager = new TabManager({
@@ -157,10 +178,13 @@ export function activate(context: vscode.ExtensionContext) {
 		fileOps,
 		fallbackWorkingDirectoryResolver,
 		chatWindow,
+		instance,
 		editorContextTracker,
 		onLog: (message) => logDiagnostic(message),
 	});
 	context.subscriptions.push({ dispose: () => tabManager.disposeAll() });
+	// legacy `create_new_tab`（视图内"新建对话"按钮）在共享 dispatcher 上注册一次。
+	instance.dispatcher.registerHandler(new TabHandler(instance.context, tabManager));
 
 	// ── 7. 双侧边栏 provider（单实例多视图镜像，共享 TabRegistry 与会话）─────
 	const leftProvider = new OpenCodeViewProvider({
@@ -171,6 +195,7 @@ export function activate(context: vscode.ExtensionContext) {
 		fileOps,
 		fallbackWorkingDirectoryResolver,
 		chatWindow,
+		instance,
 		editorContextTracker,
 		tabManager,
 		getUiPreferences: () => settings.getUiPreferences(),
@@ -183,6 +208,7 @@ export function activate(context: vscode.ExtensionContext) {
 		fileOps,
 		fallbackWorkingDirectoryResolver,
 		chatWindow,
+		instance,
 		editorContextTracker,
 		tabManager,
 		getUiPreferences: () => settings.getUiPreferences(),
@@ -202,6 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
 			dispose: () => {
 				leftProvider.dispose();
 				rightProvider.dispose();
+				instance.dispose();
 			},
 		},
 	);

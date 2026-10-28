@@ -17,8 +17,7 @@ import { DEFAULT_UI_PREFERENCES, type UiPreferences, type SettingsService } from
 import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import type { EditorContextTracker } from '../context/EditorContextTracker';
 import type { TabManager } from '../tabs/TabManager';
-import { createChatInstance, type ChatInstance } from '../session/ChatInstance';
-import { TabHandler } from '../handlers/TabHandler';
+import type { ChatInstance } from '../session/ChatInstance';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import type { ChatWindow } from '../window/ChatWindow';
 
@@ -80,6 +79,8 @@ export interface OpenCodeViewProviderOptions {
 	readonly fileOps: FileOps;
 	readonly fallbackWorkingDirectoryResolver: () => string | null;
 	readonly chatWindow: ChatWindow;
+	/** 全窗口共享的聊天实例（handlers / 会话层）；视图不再各自创建。 */
+	readonly instance: ChatInstance;
 	readonly editorContextTracker?: EditorContextTracker;
 	readonly tabManager?: TabManager;
 	readonly getUiPreferences?: () => UiPreferences;
@@ -149,18 +150,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 			?? (() => ({ ...DEFAULT_UI_PREFERENCES }));
 		this.onReady = options.onReady;
 
-		this.instance = createChatInstance({
-			channel: this.channel,
-			settings: options.settings,
-			daemon: options.daemon,
-			fileOps: options.fileOps,
-			fallbackWorkingDirectoryResolver: options.fallbackWorkingDirectoryResolver,
-			editorContextTracker: options.editorContextTracker,
-		});
-
-		if (options.tabManager) {
-			this.instance.dispatcher.registerHandler(new TabHandler(this.instance.context, options.tabManager));
-		}
+		// 单实例多视图：handlers 与会话层是全局的，视图只负责渲染与转发消息。
+		this.instance = options.instance;
 	}
 
 	resolveWebviewView(
@@ -236,7 +227,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 		this.chatWindow.unregisterView(this.host);
 		this.unregisterBroadcaster();
 		this.channel.dispose();
-		this.instance.dispose();
+		// 共享实例的生命周期归 extension 所有：视图销毁只注销自己。
 	}
 }
 

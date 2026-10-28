@@ -65,6 +65,16 @@ export class SessionCallbackAdapter implements SessionCallback {
 		return this.sessionId;
 	}
 
+	/**
+	 * 本 adapter 自持的合并器。
+	 *
+	 * 多 tab 装配需要把它登记到 `TabRecord`（切 tab 回放时直接用它冲刷快照，
+	 * 从而复用同一套序列号/窗口语义），因此必须暴露。
+	 */
+	getCoalescer(): StreamMessageCoalescer {
+		return this.streamCoalescer;
+	}
+
 	constructor(options: SessionCallbackAdapterOptions) {
 		this.jsTarget = options.jsTarget;
 		this.permissionHandler = options.permissionHandler;

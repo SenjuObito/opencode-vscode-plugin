@@ -6,10 +6,20 @@ import type { OpenCodeSession } from '../session/OpenCodeSession';
 import type { SessionCallbackAdapter } from '../session/SessionCallbackAdapter';
 import type { StreamMessageCoalescer } from '../session/StreamMessageCoalescer';
 
+/**
+ * 会话资源的提供方。
+ *
+ * 会话自持 adapter / coalescer（`OpenCodeSession` 构造时就建好两者，输出走该会话
+ * 自己的 viewSink），工厂只需要「造一个会话」+「问它要这两个资源」。早期版本按
+ * tabId 另外 new adapter，等于让同一个会话存在两套输出目标。
+ */
 export interface TabSessionHost {
-	newSession(cwd: string): OpenCodeSession;
-	newCoalescer(tabId: TabId): StreamMessageCoalescer;
-	newAdapter(tabId: TabId, coalescer: StreamMessageCoalescer): SessionCallbackAdapter;
+	/** 创建一个该 tab 专属的会话（输出经 viewSink 投影到该 tab）。 */
+	newSession(cwd: string, tabId: TabId): OpenCodeSession | null;
+	/** 会话自持的回调适配器（登记进 TabRecord）。 */
+	adapterOf(session: OpenCodeSession): SessionCallbackAdapter | null;
+	/** 会话自持的流合并器（切 tab 回放时用它冲刷快照）。 */
+	coalescerOf(session: OpenCodeSession): StreamMessageCoalescer | null;
 }
 
 export interface PreparedTabSession {
@@ -39,19 +49,19 @@ export class TabSessionFactory {
 			return { tab: record, session: existing, created: false };
 		}
 
-		const session = this.host.newSession(cwd);
+		const session = this.host.newSession(cwd, tabId);
 		if (!session) {
 			return { tab: record, session: null, created: false };
 		}
 		if (configurer) {
 			configurer(session);
 		}
-		const coalescer = this.host.newCoalescer(tabId);
-		const adapter = this.host.newAdapter(tabId, coalescer);
+		const adapter = this.host.adapterOf(session);
+		const coalescer = this.host.coalescerOf(session);
 		if (adapter) {
-			session.setCallback(adapter);
+			adapter.setTabId(tabId.value);
 		}
-		record.setSessionResources(null as unknown as SessionId, session, adapter, coalescer);
+		record.attachPendingSession(session, adapter, coalescer);
 		this.registry.markCreating(tabId);
 		return { tab: record, session, created: true };
 	}
@@ -77,8 +87,8 @@ export class TabSessionFactory {
 			throw new Error(`tab ${tabId.value} is already bound to ${current.value}`);
 		}
 
-		const effectiveAdapter = adapter || record.getAdapter();
-		const effectiveCoalescer = coalescer || record.getCoalescer();
+		const effectiveAdapter = adapter || this.host.adapterOf(session) || record.getAdapter();
+		const effectiveCoalescer = coalescer || this.host.coalescerOf(session) || record.getCoalescer();
 		if (effectiveAdapter) {
 			effectiveAdapter.setTabId(tabId.value);
 			effectiveAdapter.setSessionId(canonicalSessionId);
@@ -95,7 +105,8 @@ export class TabSessionFactory {
 	}
 
 	/**
-	 * Bind a known canonical session (e.g. from fork) to a tab.
+	 * Bind a known canonical session (history / fork) to a tab, creating the
+	 * session when the tab has none yet.
 	 */
 	attachSession(
 		tabId: TabId,
@@ -110,14 +121,17 @@ export class TabSessionFactory {
 			throw new Error(`tab ${tabId.value} is already bound to ${current.value}`);
 		}
 
-		const session = record.getSession() || this.host.newSession(cwd);
+		const session = record.getSession() || this.host.newSession(cwd, tabId);
+		if (!session) {
+			throw new Error(`no session available for tab ${tabId.value}`);
+		}
 		session.getState().setSessionId(canonicalSessionId);
 		if (configurer) {
 			configurer(session);
 		}
 
-		const coalescer = record.getCoalescer() || this.host.newCoalescer(tabId);
-		const adapter = record.getAdapter() || this.host.newAdapter(tabId, coalescer);
+		const coalescer = record.getCoalescer() || this.host.coalescerOf(session);
+		const adapter = record.getAdapter() || this.host.adapterOf(session);
 
 		if (adapter) {
 			adapter.setTabId(tabId.value);

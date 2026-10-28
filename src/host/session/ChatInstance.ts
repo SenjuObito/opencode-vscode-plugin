@@ -12,13 +12,17 @@ import { SettingsService } from '../settings/SettingsService';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { OpenCodeSession, TurnCompletedInfo } from './OpenCodeSession';
 import { SessionManager } from './SessionManager';
+import type { JsTarget } from './SessionCallbackAdapter';
 import { NotificationService } from '../notifications/NotificationService';
 
 /**
  * 启动时把 workspaceState 里持久化的模型 / 权限模式 / 推理力度回灌
  * SessionState——frontend_ready 经 applyBackendTabState 推给 webview 恢复。
+ *
+ * 多 tab 装配下同样用于每个新 tab 的初始会话：新 tab 继承上次的选择，
+ * 之后各 tab 的改动互不影响。
  */
-function seedSessionFromPersistedSelection(settings: SettingsService, session: OpenCodeSession): void {
+export function seedSessionFromPersistedSelection(settings: SettingsService, session: OpenCodeSession): void {
 	const pinned = settings.getPinnedModels()['opencode'];
 	const firstPinned = Array.isArray(pinned) && pinned.length > 0 ? pinned[0] : null;
 	const lastModel = settings.getLastSelectedModel();
@@ -74,6 +78,13 @@ export interface ChatInstance {
 	historyHandler: HistoryHandler;
 	permissionHandler: PermissionHandler;
 	fontConfigHandler: FontConfigHandler;
+	/**
+	 * 创建一个会话实例（多 tab：每个 tab 一个），输出经 `viewSink` 归属到该 tab。
+	 *
+	 * 依赖（daemon / 权限回调 / 回合完成回调 / 编辑器选区解析）全部来自本实例，
+	 * 所以 tab 会话与 legacy 单会话共享同一套宿主依赖。
+	 */
+	createSession(viewSink?: JsTarget): OpenCodeSession;
 	dispose(): void;
 }
 
@@ -122,9 +133,12 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		permissionClosedHandler: (kind, content) => permissionHandler.onPromptClosed(kind, content),
 		editorSelectionResolver: () => deps.editorContextTracker?.getCurrentSelectionInfo() ?? null,
 		onTurnCompleted: (info: TurnCompletedInfo) => {
-			const active = sessionManager.getActiveSession();
+			// 回合可能发生在后台 tab：model 要取**完成该回合的会话**，
+			// 不能取「当前活跃会话」（会把 B 的模型记到 A 的历史条目上）。
+			const completed = sessionManager.findSession(info.sessionId);
+			const model = (completed ?? sessionManager.getActiveSession()).state.getModel() ?? undefined;
 			if (info.sessionId) {
-				historyHandler.recordSession(info.sessionId, info.title, info.messageCount, active.state.getModel() ?? undefined);
+				historyHandler.recordSession(info.sessionId, info.title, info.messageCount, model);
 			}
 			notificationService.onTurnCompleted(info);
 		},
@@ -144,6 +158,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		historyHandler,
 		permissionHandler,
 		fontConfigHandler,
+		createSession: (viewSink) => sessionManager.createSessionInstance({ viewSink }),
 		dispose: () => sessionManager.dispose(),
 	};
 }

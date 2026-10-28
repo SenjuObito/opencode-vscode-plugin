@@ -7,6 +7,7 @@ import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { isValidPermissionMode } from '../session/SessionState';
 import type { SendMessagePayload } from '../session/OpenCodeSession';
+import { normalizeSendPayload } from '../util/sendPayload';
 import { join as pathJoin, dirname, isAbsolute } from 'path';
 import { homedir } from 'os';
 
@@ -88,30 +89,7 @@ export class SessionHandler extends BaseMessageHandler {
 	private parsePayload(content: string): SendMessagePayload | null {
 		try {
 			const parsed = JSON.parse(content) as Record<string, unknown>;
-			const text = typeof parsed?.text === 'string' ? parsed.text : content;
-			const payload: SendMessagePayload = { text };
-			if (Array.isArray(parsed?.attachments)) {
-				payload.attachments = (parsed.attachments as Array<Record<string, unknown>>).map((a) => ({
-					fileName: typeof a?.fileName === 'string' ? a.fileName : undefined,
-					mediaType: typeof a?.mediaType === 'string' ? a.mediaType : undefined,
-					data: typeof a?.data === 'string' ? a.data : undefined,
-				}));
-			}
-			if (Array.isArray(parsed?.fileTags)) {
-				payload.fileTags = (parsed.fileTags as Array<Record<string, unknown>>)
-					.filter((t) => t && typeof t === 'object')
-					.map((t) => ({
-						displayPath: typeof t.displayPath === 'string' ? t.displayPath : undefined,
-						absolutePath: typeof t.absolutePath === 'string' ? t.absolutePath : undefined,
-					}));
-			}
-			if (typeof parsed?.permissionMode === 'string' && isValidPermissionMode(parsed.permissionMode)) {
-				payload.permissionMode = parsed.permissionMode;
-			}
-			if (typeof parsed?.reasoningEffort === 'string') {
-				payload.reasoningEffort = parsed.reasoningEffort;
-			}
-			return payload;
+			return normalizeSendPayload(parsed, content);
 		} catch {
 			return { text: content };
 		}

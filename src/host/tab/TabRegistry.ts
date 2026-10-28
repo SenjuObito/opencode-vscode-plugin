@@ -114,8 +114,28 @@ export class TabRegistry {
 		this.sessionIndex.set(sessionId.value, tabId);
 	}
 
-	markLoadingHistory(tabId: TabId): void {
-		const record = this.require(tabId);
+	/**
+	 * 解除 tab 与会话的绑定，**保留 tab**。
+	 *
+	 * 用于「在同一个 tab 里开新对话」：tab 的界面与位置不变，但它不再拥有任何
+	 * 服务端会话，`sessionIndex` 同步释放（否则旧 sessionId 会继续反查到本 tab）。
+	 */
+	release(tabId: TabId): void {
+		const record = this.tabs.get(tabId.value);
+		if (!record) {
+			return;
+		}
+		const sessionId = record.getSessionId();
+		if (sessionId) {
+			this.sessionIndex.delete(sessionId.value);
+		}
+		record.attachPendingSession(null, null, null);
+		if (!record.isClosed()) {
+			record.setState(TabState.NEW);
+		}
+	}
+
+	markLoadingHistory(tabId: TabId): void {		const record = this.require(tabId);
 		if (record.isStreaming()) {
 			throw new Error(`cannot replace a streaming tab: ${tabId.value}`);
 		}
