@@ -22,6 +22,9 @@ import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logError } from '../util/DiagnosticLogger';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 import type { DaemonEngineStatus } from './DaemonStatus';
+import { PendingSend, type SessionLineSink } from '../tab';
+
+export type { SessionLineSink };
 
 const DAEMON_START_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
@@ -322,6 +325,12 @@ export class OpenCodeDaemonBridge {
 	private lastServeRunning: boolean | null = null;
 	private currentEngineStatus: DaemonEngineStatus | null = null;
 
+	private readonly sessionSinks = new Map<string, SessionLineSink>();
+	private readonly pendingSends = new Map<string, PendingSend>();
+	private readonly pendingSendBySession = new Map<string, PendingSend>();
+	private readonly sessionOrphans = new Map<string, { lines: string[]; timestamp: number }>();
+	private orphanLineCount = 0;
+
 	constructor(options: OpenCodeDaemonBridgeOptions) {
 		this.daemonScriptPath = options.daemonScriptPath;
 		this.cwd = options.cwd ?? path.dirname(options.daemonScriptPath);
@@ -346,6 +355,75 @@ export class OpenCodeDaemonBridge {
 			type: 'updateDaemonStatus',
 			args: [JSON.stringify(payload)],
 		});
+	}
+
+	registerSessionSink(sessionId: string, sink: SessionLineSink): void {
+		if (!sessionId || !sink) {
+			return;
+		}
+		this.sessionSinks.set(sessionId, sink);
+		const pendingSend = this.pendingSendBySession.get(sessionId);
+		if (pendingSend) {
+			this.pendingSendBySession.delete(sessionId);
+			pendingSend.attach((line) => sink.onLine(line));
+		}
+		const orphan = this.sessionOrphans.get(sessionId);
+		if (orphan) {
+			this.sessionOrphans.delete(sessionId);
+			for (const line of orphan.lines) {
+				this.deliver(sink, line);
+			}
+		}
+	}
+
+	unregisterSessionSink(sessionId: string): void {
+		if (!sessionId) {
+			return;
+		}
+		this.sessionSinks.delete(sessionId);
+		this.sessionOrphans.delete(sessionId);
+		const pending = this.pendingSendBySession.get(sessionId);
+		if (pending) {
+			this.pendingSendBySession.delete(sessionId);
+			this.pendingSends.delete(pending.requestId);
+			pending.complete();
+		}
+	}
+
+	registerPendingSend(pending: PendingSend): void {
+		if (!pending) {
+			return;
+		}
+		this.pendingSends.set(pending.requestId, pending);
+		const context = this.daemonContext;
+		pending.setTimeoutAction(() => {
+			if (!this.pendingSends.delete(pending.requestId)) {
+				return;
+			}
+			const sessionId = pending.sessionId;
+			if (sessionId) {
+				this.pendingSendBySession.delete(sessionId);
+			}
+			const handler = context && context.isActive ? context.pendingRequests.get(pending.requestId) : null;
+			if (handler) {
+				handler.callback.onError('no [SESSION_ID] within 30s');
+			}
+			this.log(`[DaemonBridge] Pending send ${pending.requestId} timed out`);
+		});
+	}
+
+	unregisterPendingSend(pending: PendingSend): void {
+		if (!pending) {
+			return;
+		}
+		this.pendingSends.delete(pending.requestId);
+		if (pending.sessionId) {
+			this.pendingSendBySession.delete(pending.sessionId);
+		}
+	}
+
+	getOrphanLineCount(): number {
+		return this.orphanLineCount;
 	}
 
 	getLastErrorMessage(): string {
@@ -833,34 +911,130 @@ export class OpenCodeDaemonBridge {
 			return;
 		}
 
-		const id = obj.id as string | undefined;
-		if (!id || id.startsWith('hb-')) {
+		const session = typeof obj.session === 'string' && obj.session.trim().length > 0 ? obj.session.trim() : null;
+		const id = typeof obj.id === 'string' && obj.id.trim().length > 0 ? obj.id.trim() : null;
+
+		if (id && id.startsWith('hb-')) {
 			return;
 		}
 
-		const pending = context.pendingRequests.get(id);
-		if (!pending) {
-			return;
-		}
-
-		if (obj.done !== undefined) {
-			const success = obj.success === true;
-			if (!success && typeof obj.error === 'string') {
-				pending.callback.onError(obj.error);
+		if (obj.done !== undefined && id) {
+			const pending = context.pendingRequests.get(id);
+			if (pending) {
+				const success = obj.success === true;
+				if (!success && typeof obj.error === 'string') {
+					pending.callback.onError(obj.error);
+				}
+				pending.callback.onComplete(success);
+				context.removeRequest(id);
 			}
-			pending.callback.onComplete(success);
-			context.removeRequest(id);
 			return;
 		}
 
 		if (typeof obj.line === 'string') {
-			pending.callback.onLine(obj.line);
+			this.deliverDataLine(session, id, obj.line, context);
 			return;
 		}
 
 		if (typeof obj.stderr === 'string') {
-			this.log(`[daemon:stderr] ${obj.stderr}`);
-			pending.callback.onStderr?.(obj.stderr);
+			this.deliverStderr(session, id, obj.stderr, context);
+		}
+	}
+
+	private deliverDataLine(
+		session: string | null,
+		id: string | null,
+		line: string,
+		context: DaemonGeneration,
+	): void {
+		if (session) {
+			const sink = this.sessionSinks.get(session);
+			if (sink) {
+				if (id) {
+					const pending = this.pendingSends.get(id);
+					if (pending) {
+						pending.bindSession(session);
+					}
+				}
+				this.deliver(sink, line);
+				return;
+			}
+			const pending = this.pendingSendBySession.get(session);
+			if (pending) {
+				pending.onLine(line);
+				return;
+			}
+		}
+
+		if (id) {
+			const pending = this.pendingSends.get(id);
+			if (pending) {
+				const markerSession = PendingSend.sessionIdOf(line);
+				if (markerSession) {
+					this.pendingSendBySession.set(markerSession, pending);
+				}
+				pending.onLine(line);
+				return;
+			}
+
+			const handler = context ? context.pendingRequests.get(id) : null;
+			if (handler && (!session || line.startsWith('[SESSION_ID]'))) {
+				handler.callback.onLine(line);
+				return;
+			}
+		}
+
+		this.bufferOrphanLine(session, line);
+	}
+
+	private deliver(sink: SessionLineSink, line: string): void {
+		try {
+			sink.onLine(line);
+		} catch (err) {
+			this.log(`Session sink failed on line: ${String(err)}`);
+		}
+	}
+
+	private deliverStderr(
+		session: string | null,
+		id: string | null,
+		stderr: string,
+		context: DaemonGeneration | null,
+	): void {
+		this.log(`[daemon:stderr${session ? ` session=${session}` : ''}] ${stderr}`);
+		if (session) {
+			const sink = this.sessionSinks.get(session);
+			if (sink && sink.onStderr) {
+				sink.onStderr(stderr);
+				return;
+			}
+		}
+		if (id) {
+			const handler = context ? context.pendingRequests.get(id) : null;
+			if (handler) {
+				handler.callback.onStderr?.(stderr);
+			}
+		}
+	}
+
+	private bufferOrphanLine(session: string | null, line: string): void {
+		this.orphanLineCount++;
+		if (!session) {
+			return;
+		}
+		let record = this.sessionOrphans.get(session);
+		if (!record) {
+			if (this.sessionOrphans.size >= 64) {
+				const oldest = this.sessionOrphans.keys().next().value;
+				if (oldest !== undefined) {
+					this.sessionOrphans.delete(oldest);
+				}
+			}
+			record = { lines: [], timestamp: Date.now() };
+			this.sessionOrphans.set(session, record);
+		}
+		if (record.lines.length < 64) {
+			record.lines.push(line);
 		}
 	}
 
