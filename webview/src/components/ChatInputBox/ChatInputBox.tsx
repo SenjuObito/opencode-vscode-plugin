@@ -35,7 +35,7 @@ import {
   useChatInputAttachmentsCoordinator,
   useChatInputCompletionsCoordinator,
   useChatInputSelectionController,
-  useResetAttachmentsOnSessionChange,
+  usePerTabAttachments,
   useSpaceKeyListener,
   useCompositionSafeTagRendering,
   useResizableChatInputBox,
@@ -137,14 +137,13 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     // SessionContext is read null-safely so this component still mounts in tests
     // without a SessionProvider.
     const sessionCtx = useContext(SessionContext);
-    const clearInternalAttachments = useCallback(() => {
-      setInternalAttachments([]);
-      clearAttachmentsDraft?.();
-    }, [setInternalAttachments, clearAttachmentsDraft]);
-    useResetAttachmentsOnSessionChange({
-      currentSessionId: sessionCtx?.currentSessionId ?? null,
+    // 未发送的附件按 tab 保存（§10.10）：切 tab 各自保留；同一 tab 内换会话才清空。
+    usePerTabAttachments({
+      attachments,
+      setAttachments: setInternalAttachments,
       isControlled: externalAttachments !== undefined,
-      clearInternalAttachments,
+      currentSessionId: sessionCtx?.currentSessionId ?? null,
+      clearDraft: clearAttachmentsDraft,
     });
 
     // Input element refs and state

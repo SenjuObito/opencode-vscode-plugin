@@ -15,7 +15,10 @@ import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
 import { isTaskEventForSession, parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
+import { normalizeTodoStatus } from '../../utils/todoShared';
+import { getTabStore } from '../../store/tabStore';
 import type { SubagentHistoryResponse } from '../../types/subagent';
+import type { TodoItem } from '../../types';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -54,6 +57,35 @@ function appendSubagentHistoryChunk(transferId: string, chunk: string, isFinal: 
     if (oldestTransferId) pendingSubagentHistoryChunks.delete(oldestTransferId);
   }
   pendingSubagentHistoryChunks.set(transferId, chunks);
+}
+
+/**
+ * 把 opencode 的 todo 条目归一化成前端的 TodoItem（与 idea 同形）。
+ *
+ * 服务端的字段名不统一（content / step / title / text / subject / description），
+ * 状态也要归一（done → completed、running → in_progress、cancelled → completed）。
+ */
+function normalizeTodoItems(raw: unknown): TodoItem[] | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+  return raw
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+    .map((item, index) => {
+      const content = item.content || item.step || item.title || item.text || item.subject || item.description || '';
+      return {
+        id: item.id != null ? String(item.id) : String(index),
+        content: typeof content === 'string' ? content.trim() : String(content),
+        status: normalizeTodoStatus(item.status),
+        ...(Array.isArray(item.blockedBy)
+          ? {
+              blockedBy: item.blockedBy
+                .map((id: unknown) => (id != null ? String(id) : null))
+                .filter((id: unknown): id is string => id !== null),
+            }
+          : {}),
+      } as TodoItem;
+    });
 }
 
 export function registerWindowCallbacks(
@@ -203,13 +235,33 @@ export function registerWindowCallbacks(
       cardDebugLog('[onTodoUpdated] received payload length:', payload?.length);
       const { sessionID, todos } = JSON.parse(payload);
       cardDebugLog('[onTodoUpdated] parsed sessionID:', sessionID, 'currentSessionId:', options.currentSessionIdRef.current, 'todos count:', todos?.length);
-      if (sessionID !== options.currentSessionIdRef.current) {
+
+      const normalizedTodos = normalizeTodoItems(todos);
+      if (!normalizedTodos) {
+        cardDebugLog('[onTodoUpdated] SKIPPED: todos is not an array');
+        return;
+      }
+
+      // 归属：宿主给的 sessionID 反查 tab。查得到就写进**那个 tab**（后台 tab 的
+      // 待办不该被丢弃，否则切回去时列表是空的）；查不到才按旧规则丢弃。
+      const tabStore = getTabStore();
+      const ownerTabId = sessionID ? tabStore.findIdBySession(sessionID) : null;
+      const activeTabId = tabStore.getActiveTabId();
+
+      if (ownerTabId && ownerTabId !== activeTabId) {
+        cardDebugLog('[onTodoUpdated] writing to background tab', ownerTabId, normalizedTodos.length, 'todos');
+        tabStore.updateTab(ownerTabId, (tab) => ({ ...tab, sseTodos: normalizedTodos }));
+        return;
+      }
+
+      if (sessionID && sessionID !== options.currentSessionIdRef.current) {
         cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch');
         return;
       }
+
       if (options.setSseTodos) {
-        cardDebugLog('[onTodoUpdated] calling setSseTodos with', todos?.length, 'todos');
-        options.setSseTodos(todos);
+        cardDebugLog('[onTodoUpdated] calling setSseTodos with', normalizedTodos.length, 'todos');
+        options.setSseTodos(normalizedTodos);
       } else {
         cardDebugLog('[onTodoUpdated] SKIPPED: setSseTodos is undefined');
       }
