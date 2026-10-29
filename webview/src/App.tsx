@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
@@ -7,6 +7,10 @@ import { createTabId, getTabStore } from './store/tabStore';
 import { registerHostEvents, unregisterHostEvents } from './utils/hostEventRegistry';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
+import { useCliModels } from './hooks/providers/useCliModels';
+import { getFirstPreferredModelId } from './components/ChatInputBox/modelSelectUtils';
+import { resolveProviderModels } from './components/ChatInputBox/resolveProviderModels';
+import { getRecommendedReasoningEffort } from './components/ChatInputBox/types';
 import {
   useScrollBehavior,
   useSessionManagement,
@@ -206,7 +210,6 @@ const App = () => {
     setReasoningEffort,
     setSendShortcut, setAutoOpenFileEnabled,
     setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
-    resetToPreferredModel,
     handleModeSelect, handleModelSelect,
     handleReasoningChange,
     handleSendShortcutChange,
@@ -321,6 +324,53 @@ const App = () => {
       return changed ? next : prev;
     });
   }, [messages, setTaskEvents]);
+
+  const { cliModels, cliDefaultModel, cliCatalogHasEntries } = useCliModels(currentProvider);
+
+  const availableModels = useMemo(() => {
+    return resolveProviderModels({
+      provider: currentProvider,
+      cliModels,
+      cliCatalogHasEntries,
+    });
+  }, [currentProvider, cliModels, cliCatalogHasEntries]);
+
+  /**
+   * A user-chosen model carries its own variant catalog. Carry the previous
+   * model's effort over only when it is still meaningful; otherwise use the
+   * new model's recommended level. In particular this prevents a `none`
+   * variant from surviving a model switch and becoming the visible default.
+   * A tab restore (`silent`) keeps that tab's saved effort.
+   */
+  const handleModelSelectWithEffort = useCallback((modelId: string, options?: { silent?: boolean }) => {
+    const modelChanged = modelId !== selectedModel;
+    handleModelSelect(modelId, options);
+    if (options?.silent || !modelChanged) return;
+
+    const modelInfo = availableModels.find((model) => model.id === modelId);
+    const recommended = getRecommendedReasoningEffort(modelInfo?.variants);
+    if (recommended && recommended !== reasoningEffort) {
+      handleReasoningChange(recommended);
+    }
+  }, [handleModelSelect, handleReasoningChange, availableModels, selectedModel, reasoningEffort]);
+
+  const resetToPreferredModel = useCallback(() => {
+    const preferredId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel);
+    if (preferredId) {
+      handleModelSelectWithEffort(preferredId);
+    }
+  }, [currentProvider, availableModels, cliDefaultModel, handleModelSelectWithEffort]);
+
+  // When models catalog arrives on initial load in a new session, immediately select the preferred model.
+  const hasAutoSelectedOnStartupRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedOnStartupRef.current) return;
+    if (!cliCatalogHasEntries || !cliModels.length) return;
+    if (currentSessionId === null && messages.length === 0) {
+      hasAutoSelectedOnStartupRef.current = true;
+      resetToPreferredModel();
+    }
+  }, [cliCatalogHasEntries, cliModels, currentSessionId, messages.length, resetToPreferredModel]);
 
   // ── Session management ──
   const {
@@ -1049,7 +1099,7 @@ const App = () => {
     permissionMode,
     setPermissionMode,
     selectedModel,
-    setSelectedModel: handleModelSelect,
+    setSelectedModel: handleModelSelectWithEffort,
     reasoningEffort,
     setReasoningEffort: handleReasoningChange,
     contextInfo,
@@ -1062,6 +1112,8 @@ const App = () => {
     setUsageUsedTokens,
     usageMaxTokens,
     setUsageMaxTokens,
+    availableModels,
+    currentProvider,
     isShared,
     setCurrentView,
     chatInputRef,
@@ -1199,7 +1251,7 @@ const App = () => {
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
               onModeSelect={handleModeSelect}
-              onModelSelect={handleModelSelect}
+              onModelSelect={handleModelSelectWithEffort}
               onReasoningChange={handleReasoningChange}
               onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}
               messageQueue={messageQueue}

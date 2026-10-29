@@ -347,7 +347,7 @@ export class OpenCodeSession {
 		});
 	}
 
-	private processLine(line: string): void {
+	processLine(line: string): void {
 		processOutputLine(line, this.messageHandler, this.streamCtx);
 	}
 

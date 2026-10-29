@@ -186,7 +186,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
       setSelectedModel?.(defaultModel);
     }
     setPermissionMode?.('default');
-    setReasoningEffort?.('default');
+    setReasoningEffort?.(defaultEffort);
 
     setLoadingStartTime?.(null);
     window.__turnStartedAt = undefined;
@@ -428,7 +428,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
       setSelectedModel?.(defaultModel);
     }
     setPermissionMode?.('default');
-    setReasoningEffort?.('default');
+    setReasoningEffort?.(defaultEffort);
     setLoadingStartTime?.(null);
     window.__turnStartedAt = undefined;
     setUsagePercentage?.(0);

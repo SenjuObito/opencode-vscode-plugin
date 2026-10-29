@@ -719,7 +719,6 @@ export class ChatWindow {
 		const assigned = session.state.getSessionId();
 		if (assigned) {
 			this.bindTabSession(tabId, session, assigned);
-			return;
 		}
 
 		const off = session.state.onSessionIdAssigned((sessionId) => {
@@ -728,23 +727,62 @@ export class ChatWindow {
 		this.bindingUnsubs.set(tabId.value, off);
 	}
 
+	private bindSessionSink(sessionId: string, session: OpenCodeSession): void {
+		if (!sessionId || !session || !this.options.daemon) {
+			return;
+		}
+		this.options.daemon.registerSessionSink(sessionId, {
+			onLine: (line) => session.processLine(line),
+		});
+	}
+
+	private unbindSessionSink(sessionId: string): void {
+		if (!sessionId || !this.options.daemon) {
+			return;
+		}
+		this.options.daemon.unregisterSessionSink(sessionId);
+	}
+
 	private bindTabSession(tabId: TabId, session: OpenCodeSession, sessionId: string): void {
 		const record = this.registry.get(tabId);
 		if (!record || record.isClosed() || record.getSession() !== session) {
 			return;
 		}
-		if (record.getSessionIdString() === sessionId) {
+		const boundAdapter = record.getAdapter() ?? session.getAdapter();
+		const boundCoalescer = record.getCoalescer() ?? session.getAdapter().getCoalescer();
+
+		if (boundAdapter) {
+			boundAdapter.setSessionId(sessionId);
+			// 关键：stamp tabId，确保后续所有 session 事件（content.delta 等）都包含 tabId 走命名路由
+			boundAdapter.setTabId(tabId.value);
+		}
+		if (boundCoalescer) {
+			boundCoalescer.setSessionId(sessionId);
+			boundCoalescer.setTabId(tabId.value);
+		}
+
+		const previousSessionId = record.getSessionIdString();
+		if (previousSessionId && previousSessionId !== sessionId) {
+			this.unbindSessionSink(previousSessionId);
+			this.registry.release(tabId);
+		}
+
+		if (previousSessionId === sessionId) {
 			return;
 		}
+
 		try {
 			this.registry.bind(
 				tabId,
 				sessionId,
 				session,
-				record.getAdapter() ?? session.getAdapter(),
-				record.getCoalescer() ?? session.getAdapter().getCoalescer(),
+				boundAdapter,
+				boundCoalescer,
 			);
+			this.bindSessionSink(sessionId, session);
 			this.options.onSessionBound?.(tabId.value, sessionId);
+			// 同步通知前端当前 tab 的 sessionId（如目录不匹配重置或新会话生成）
+			this.publishRecordEvent(record, 'session.bound', { sessionId });
 		} catch (err) {
 			PluginFileLogger.warn(
 				'ChatWindow',

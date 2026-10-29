@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A27：以 IDEA 蓝图彻底消除状态源与事件流架构断层，移除过时胶水代码，修复 7 项核心交互缺陷；双端全量单测通过）
+> 最后更新：2026-10-29（P9-A28：基于日志与 IDEA 源码闭环修复发送消息卡 loading 与推荐推理力度联动，打通 sessionSink 与 tabId 命名流；双端全量测试 100% 通过）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `ea954a3`。
@@ -132,7 +132,16 @@
 
 | 日期 | 变更 |
 |---|---|
-| 2026-10-29 | **P9-A27（本轮）**：**基于 IDEA 蓝图彻底消除状态源与事件流架构断层，修复 7 项核心交互缺陷**：
+| 2026-10-29 | **P9-A28（本轮）**：**修复发送消息无 AI 返回与新建会话推荐推理力度未生效，打通全链路 SessionSink 与命名数据面**：
+1. **彻底解决发送消息后一直 loading 无 AI 消息返回问题**：
+   - **重绑定与解除绑定机制闭环**：当 daemon 检测到目录不匹配或在同一 tab 切换会话时，`ChatWindow.bindTabSession` 对发生变更的 sessionId 自动执行 `registry.release(tabId)`，彻底消除 `already bound to` 异常阻断，并在重绑时向前端广播 `session.bound` 命名事件；
+   - **`SessionCallbackAdapter` 缺失 Tab 身份修复**：对齐 IDEA `OpencodeBuddyChatWindow.java`，在 session 绑定时立即为 `boundAdapter` 和 `boundCoalescer` 注入 `setSessionId` 与 `setTabId(tabId.value)`，使流式增量（`content.delta` 等）精准按 G8 命名事件路由至对应 tab，杜绝被判定为无 tab 身份而丢弃；
+   - **`registerSessionSink` 接入**：在 `ChatWindow` 中补充 `bindSessionSink` / `unbindSessionSink`，将 session 的 streamRouter 挂载至 `OpenCodeDaemonBridge`，保证无论是否为当前请求匹配行均能完整回传。
+2. **彻底解决新建会话后推理力度未采用模型推荐默认选项问题**：
+   - **参数透传对齐**：修复 `App.tsx` 调用 `useSessionTabs` 漏传 `availableModels` 和 `currentProvider` 的缺陷，并在 `useTabLifecycle.ts` 新建会话时，使用对应模型的 `getRecommendedReasoningEffort(selectedModelInfo?.variants)` 精准计算推荐力度并设置，替代原本硬编码的 `'default'`；
+   - **模型与推理联动机制对齐**：在 `App.tsx` 实现并接入 `handleModelSelectWithEffort`，在切换模型、重置首选模型（`resetToPreferredModel`）以及新建 tab 时，全流程联动更新推荐推理力度。
+3. **双端验证全绿**：宿主 **121 passing**、Webview 178 个测试文件 **1491 项单测全部通过**，双端全量编译打包 **0 error 0 warning**。 |
+| 2026-10-29 | **P9-A27**：**基于 IDEA 蓝图彻底消除状态源与事件流架构断层，修复 7 项核心交互缺陷**：
 1. **数据源彻底统一**：以 `opencode-idea-gui` 为权威蓝图重构 `MessagesContext.tsx`，彻底废除 15 个脱离 tab 的独立 `useState`，改为通过 `tabStore.getActiveTab`（`useSyncExternalStore`）作为唯一事实源，统一驱动 `turnActive: isTabTurnActive(activeTab)`、`loading`、`streamingActive` 等。
 2. **终端流式与事件结算对齐**：宿主 `SessionCallbackAdapter` 补齐 `turn.settled`；前端 `streamingCallbacks` 接入权威终端结算，解决发送消息后偶发无限 loading 的问题。
 3. **消除装配胶水与传参偏离**：
