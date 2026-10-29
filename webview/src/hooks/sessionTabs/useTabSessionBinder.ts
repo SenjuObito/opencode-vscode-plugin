@@ -430,21 +430,32 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       for (const tab of tabsRef.current) {
         if (tab.id === currentActive.id) continue;
+        const existing = promptStore.get(tab.id);
         promptStore.set(tab.id, {
-          permissions: tab.pendingPermissions ?? [],
-          questions: tab.pendingQuestions ?? [],
-          plans: tab.pendingPlans ?? [],
+          permissions: (tab.pendingPermissions && tab.pendingPermissions.length > 0)
+            ? tab.pendingPermissions
+            : (existing?.permissions ?? []),
+          questions: (tab.pendingQuestions && tab.pendingQuestions.length > 0)
+            ? tab.pendingQuestions
+            : (existing?.questions ?? []),
+          plans: (tab.pendingPlans && tab.pendingPlans.length > 0)
+            ? tab.pendingPlans
+            : (existing?.plans ?? []),
         });
       }
+
       if (window.__dialogStore) {
         const dialogSnap = window.__dialogStore.getSnapshot();
         promptStore.set(currentActive.id, {
           permissions: dialogSnap.permissions,
           questions: dialogSnap.questions,
-          plans: currentActive.pendingPlans ?? [],
+          plans: dialogSnap.plans ?? currentActive.pendingPlans ?? [],
         });
         currentActive.pendingPermissions = dialogSnap.permissions;
         currentActive.pendingQuestions = dialogSnap.questions;
+        if (dialogSnap.plans) {
+          currentActive.pendingPlans = dialogSnap.plans;
+        }
       }
     }
   }, [
@@ -555,10 +566,19 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       if (window.__dialogStore) {
         const targetPrompts = promptStore.get(targetTab.id);
+        const resolvedPermissions = (targetPrompts?.permissions && targetPrompts.permissions.length > 0)
+          ? targetPrompts.permissions
+          : (targetTab.pendingPermissions ?? []);
+        const resolvedQuestions = (targetPrompts?.questions && targetPrompts.questions.length > 0)
+          ? targetPrompts.questions
+          : (targetTab.pendingQuestions ?? []);
+        const resolvedPlans = (targetPrompts?.plans && targetPrompts.plans.length > 0)
+          ? targetPrompts.plans
+          : (targetTab.pendingPlans ?? []);
         window.__dialogStore.restore(
-          targetPrompts?.permissions ?? targetTab.pendingPermissions ?? [],
-          targetPrompts?.questions ?? targetTab.pendingQuestions ?? [],
-          targetPrompts?.plans ?? targetTab.pendingPlans ?? [],
+          resolvedPermissions,
+          resolvedQuestions,
+          resolvedPlans,
         );
       }
     },

@@ -8,85 +8,11 @@
 
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { cardDebugLog } from '../../../utils/bridge';
-import { setQuestionAnswer } from '../../../store/questionAnswerStore';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
+import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
+import type { HostEventPayload } from '../../../utils/hostEventTypes';
 import { getTabStore } from '../../../store/tabStore';
-import type { SessionTabData } from '../../../components/ChatHeader/types';
-
-/**
- * 后台 tab 的 prompt 怎么处理（§10.7 / 10.8，与 idea 同一套机制）。
- *
- * 请求**直接挂在那个 tab 的记录上**（`pendingPermissions` / `pendingQuestions` /
- * `pendingPlans`），不另建队列：
- *   - 角标直接读 tab 记录（`SessionTabBar` 本来就这么渲染）；
- *   - 切 tab 时由 `useTabLifecycle` 调 `window.__dialogStore.restore(...)` 接管。
- *
- * 之前这里放了一个模块级 Map 队列，副本和 tab 记录各存一份，导致两个偏差：
- * tab 已关时请求永远没人取（服务端干等）、force-close 清不掉角标。
- */
-
-/** 请求属于哪个 tab：宿主盖章的 tabId 优先，sessionId 只在已绑定时可反查。 */
-function owningTabId(tabId: unknown, sessionId: unknown): string | null {
-  if (typeof tabId === 'string' && tabId) {
-    return tabId;
-  }
-  if (typeof sessionId === 'string' && sessionId) {
-    return getTabStore().findIdBySession(sessionId);
-  }
-  return null;
-}
-
-type PendingField = 'pendingPermissions' | 'pendingQuestions' | 'pendingPlans';
-
-/**
- * 把请求挂到它的 tab 上，等切过去再弹。
- *
- * @returns true = 已挂上（调用方直接 return）；false = 找不到那个 tab
- *          （已关闭 / 视图重载），调用方必须**当场弹出**——丢一张等于服务端
- *          永远等一个没人能答的 prompt。
- */
-function parkPromptOnTab(
-  owner: string | null,
-  field: PendingField,
-  idKey: 'channelId' | 'requestId',
-  request: Record<string, unknown>,
-): boolean {
-  if (!owner) {
-    return false;
-  }
-  const id = String(request?.[idKey] ?? '');
-  return getTabStore().updateTab(owner, (tab) => {
-    const record = tab as unknown as Record<string, unknown>;
-    const list = (record[field] as Record<string, unknown>[] | undefined) ?? [];
-    if (list.some((item) => String(item?.[idKey] ?? '') === id)) {
-      return;
-    }
-    record[field] = [...list, request];
-  });
-}
-
-/** 这个请求是不是同一个 webview 正在显示的那个 tab 的。 */
-function isForActiveTab(owner: string | null, sessionId: unknown): boolean {
-  if (owner) {
-    return getTabStore().isActiveTab(owner);
-  }
-  // 没有任何归属可用（极早期 / 窗口级）：当作当前窗口的，直接弹。
-  return !sessionId;
-}
-
-/** 关掉某个 id 的请求后，把残留在任意 tab 上的同一份摘掉（否则角标不灭）。 */
-function clearParkedPrompt(field: PendingField, idKey: 'channelId' | 'requestId', id: string): void {
-  if (!id) {
-    return;
-  }
-  getTabStore().updateAllTabs((tab: SessionTabData) => {
-    const record = tab as unknown as Record<string, unknown>;
-    const list = record[field] as Record<string, unknown>[] | undefined;
-    if (!list || list.length === 0) {
-      return;
-    }
-    record[field] = list.filter((item) => String(item?.[idKey] ?? '') !== id);
-  });
-}
+import { owningTabIdForSession } from '../tabTransition';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -98,55 +24,64 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     forceCloseAskUserQuestionDialog,
     forceClosePlanApprovalDialog,
     invalidateQuestionCard,
-    invalidatePermissionCard,
   } = options;
 
   // Host-side failures (e.g. opencode.replyQuestion / replyPermission errors
   // surfaced by PermissionHandler, or daemon startup errors) land here as a user-visible toast.
-  window.showToast = (message) => {
+  const showToast = (message: unknown) => {
     cardDebugLog(`[PCard][webview] showToast: ${message}`);
     addToast(String(message ?? ''), 'error');
   };
 
-  if (Array.isArray(window.__pendingToasts) && window.__pendingToasts.length > 0) {
-    for (const msg of window.__pendingToasts) {
-      cardDebugLog(`[PCard][webview] draining pending showToast: ${msg}`);
-      addToast(String(msg ?? ''), 'error');
-    }
-    delete window.__pendingToasts;
-  }
-
   // A question reply failed server-side — flip the optimistic "answered"
   // record back to an honest skipped state.
-  window.invalidateQuestionCard = (requestId) => {
+  const handleInvalidateQuestionCard = (requestId: string) => {
     cardDebugLog(`[PCard][webview] invalidateQuestionCard called: requestId=${requestId}`);
+    if (requestId) {
+      removeQuestionAnswerByRequestId(requestId);
+    }
     invalidateQuestionCard?.(requestId ?? '');
   };
 
   // A permission reply failed server-side — flip the optimistic
   // approved/denied record back to a denied state.
-  window.invalidatePermissionCard = (channelId) => {
-    cardDebugLog(`[PCard][webview] invalidatePermissionCard called: channelId=${channelId}`);
-    invalidatePermissionCard?.(channelId ?? '');
-  };
-
-  window.showPermissionDialog = (json) => {
+  const showPermissionDialog = (payload: HostEventPayload | undefined) => {
     try {
-      const request = JSON.parse(json);
-      if (!request?.channelId) {
-        // 没有身份就无从答复：丢掉既不会误路由，也不会污染别人的卡片。
+      const request = payload as any;
+      if (!request || !request.channelId) {
+        // A prompt without an identity cannot be answered: dropping it is the
+        // only behaviour that can neither mis-route nor corrupt.
         cardDebugLog('[PCard][webview] dropping a permission prompt without an id');
         return;
       }
-      console.log(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} tabId=${request.tabId}`);
-      const owner = owningTabId(request.tabId, request.sessionId);
-      if (!isForActiveTab(owner, request.sessionId)) {
-        if (parkPromptOnTab(owner, 'pendingPermissions', 'channelId', request)) {
-          cardDebugLog(`[PCard][webview] parked permission ${request.channelId} on tab ${owner}`);
+      cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId} tabId=${request.tabId}`);
+      const targetSessionId = request.sessionId;
+      const tabStore = getTabStore();
+      // The host stamps the owning tab: routing by tab id is exact, routing by
+      // session id only finds the tab when it happens to be bound already.
+      const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
+
+      const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+      const isCurrentActive = ownerTabId
+        ? tabStore.isActiveTab(ownerTabId)
+        : !targetSessionId;
+
+      if (!isCurrentActive && (targetTabId || targetSessionId)) {
+        const enqueue = (t: any) => {
+          const list = t.pendingPermissions || [];
+          if (!list.some((r: any) => r.channelId === request.channelId)) {
+            t.pendingPermissions = [...list, request];
+          }
+        };
+        const stored = ownerTabId ? tabStore.updateTab(ownerTabId, enqueue) : false;
+        if (stored) {
           return;
         }
-        cardDebugLog(`[PCard][webview] owner tab not found for ${String(request.tabId ?? request.sessionId)}; showing in the active window`);
+        cardDebugLog(
+          `[PCard][webview] background tab not found for ${targetTabId || targetSessionId}; showing permission prompt in the active window instead of dropping it`
+        );
       }
+
       openPermissionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse permission request:', error);
@@ -159,51 +94,68 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   // openRefs stay true, every subsequent show*Dialog enqueues silently behind
   // the orphaned dialog, and the user appears to "lose" all further prompts
   // until they reload the tab — see issue #1360.
-  window.forceClosePermissionDialog = (channelId) => {
-    // 服务端已关闭（答复/超时/关 tab）：tab 上挂着的同一请求也要摘掉，
-    // 否则切回该 tab 会弹出一张失效的卡片，角标也一直亮着。
-    const id = String(channelId ?? '');
-    forceClosePermissionDialog(id || null);
-    clearParkedPrompt('pendingPermissions', 'channelId', id);
-  };
-
-  window.forceCloseAskUserQuestionDialog = (requestId) => {
-    const id = String(requestId ?? '');
-    forceCloseAskUserQuestionDialog(id || null);
-    clearParkedPrompt('pendingQuestions', 'requestId', id);
-  };
-
-  window.forceClosePlanApprovalDialog = (requestId) => {
-    forceClosePlanApprovalDialog(requestId ?? null);
-  };
-
-  if (
-    Array.isArray(window.__pendingPermissionDialogRequests) &&
-    window.__pendingPermissionDialogRequests.length > 0
-  ) {
-    const pending = window.__pendingPermissionDialogRequests.slice();
-    window.__pendingPermissionDialogRequests = [];
-    for (const payload of pending) {
-      window.showPermissionDialog?.(payload);
+  const handleForceClosePermissionDialog = (payload: HostEventPayload) => {
+    const channelId = String(payload?.requestId ?? '');
+    forceClosePermissionDialog(channelId || null);
+    if (channelId) {
+      getTabStore().updateAllTabs((t) => {
+        if (t.pendingPermissions) {
+          t.pendingPermissions = t.pendingPermissions.filter((r: any) => r.channelId !== channelId);
+        }
+      });
     }
-  }
+  };
 
-  window.showAskUserQuestionDialog = (json) => {
+  const handleForceCloseAskUserQuestionDialog = (payload: HostEventPayload) => {
+    const requestId = String(payload?.requestId ?? '');
+    forceCloseAskUserQuestionDialog(requestId || null);
+    if (requestId) {
+      getTabStore().updateAllTabs((t) => {
+        if (t.pendingQuestions) {
+          t.pendingQuestions = t.pendingQuestions.filter((r: any) => r.requestId !== requestId);
+        }
+      });
+    }
+  };
+
+  const handleForceClosePlanApprovalDialog = (payload: HostEventPayload) => {
+    const requestId = String(payload?.requestId ?? '');
+    forceClosePlanApprovalDialog(requestId || null);
+  };
+
+  const showAskUserQuestionDialog = (payload: HostEventPayload | undefined) => {
     try {
-      const request = JSON.parse(json);
-      if (!request?.requestId) {
+      const request = payload as any;
+      if (!request || !request.requestId) {
         cardDebugLog('[QCard][webview] dropping a question without an id');
         return;
       }
-      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} tabId=${request.tabId}`);
-      const owner = owningTabId(request.tabId, request.sessionId);
-      if (!isForActiveTab(owner, request.sessionId)) {
-        if (parkPromptOnTab(owner, 'pendingQuestions', 'requestId', request)) {
-          cardDebugLog(`[QCard][webview] parked question ${request.requestId} on tab ${owner}`);
+      cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId} tabId=${request.tabId}`);
+      const targetSessionId = request.sessionId;
+      const tabStore = getTabStore();
+      const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
+
+      const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
+      const isCurrentActive = ownerTabId
+        ? tabStore.isActiveTab(ownerTabId)
+        : !targetSessionId;
+
+      if (!isCurrentActive && (targetTabId || targetSessionId)) {
+        const enqueue = (t: any) => {
+          const list = t.pendingQuestions || [];
+          if (!list.some((r: any) => r.requestId === request.requestId)) {
+            t.pendingQuestions = [...list, request];
+          }
+        };
+        const stored = ownerTabId ? tabStore.updateTab(ownerTabId, enqueue) : false;
+        if (stored) {
           return;
         }
-        cardDebugLog(`[QCard][webview] owner tab not found for ${String(request.tabId ?? request.sessionId)}; showing in the active window`);
+        cardDebugLog(
+          `[QCard][webview] background tab not found for ${targetTabId || targetSessionId}; showing question prompt in active window`
+        );
       }
+
       openAskUserQuestionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse ask user question request:', error);
@@ -211,10 +163,10 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
   };
 
   // Host sends complete Q&A data after the user answers.
-  window.onQuestionAnswered = (json) => {
+  const onQuestionAnswered = (json: string) => {
     try {
-      const data = JSON.parse(json);
-      console.log(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
+      const data = typeof json === 'string' ? JSON.parse(json) : json;
+      cardDebugLog(`[PCard][webview] onQuestionAnswered callId="${data.callId}" requestId="${data.requestId}" questions=${data.questions?.length ?? 0} answers=`, data.answers);
       cardDebugLog(`[QCard][webview] onQuestionAnswered callId=${data.callId} requestId=${data.requestId}`);
       setQuestionAnswer(data);
     } catch (error) {
@@ -222,29 +174,27 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  if (
-    Array.isArray(window.__pendingAskUserQuestionDialogRequests) &&
-    window.__pendingAskUserQuestionDialogRequests.length > 0
-  ) {
-    const pending = window.__pendingAskUserQuestionDialogRequests.slice();
-    window.__pendingAskUserQuestionDialogRequests = [];
-    for (const payload of pending) {
-      window.showAskUserQuestionDialog?.(payload);
-    }
-  }
-
-  window.showPlanApprovalDialog = (json) => {
+  const showPlanApprovalDialog = (payload: HostEventPayload | undefined) => {
     try {
-      const request = JSON.parse(json);
-      if (!request?.requestId) {
+      const request = payload as any;
+      if (!request || !request.requestId) {
         cardDebugLog('[PlanApproval][webview] dropping a plan approval without an id');
         return;
       }
-      const owner = owningTabId(request.tabId, request.sessionId);
-      if (owner && !getTabStore().isActiveTab(owner)) {
-        // 后台 tab 的计划确认不该抢前台：挂到它的记录上，切过去再弹。
-        if (parkPromptOnTab(owner, 'pendingPlans', 'requestId', request)) {
-          cardDebugLog('[PlanApproval][webview] parked on tab', owner);
+      const targetTabId = typeof request.tabId === 'string' ? request.tabId : null;
+      const tabStore = getTabStore();
+      const ownerTabId = targetTabId ?? owningTabIdForSession(request.sessionId);
+      if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
+        // A background tab's plan approval waits in that tab's queue instead of
+        // stealing the foreground.
+        const stored = tabStore.updateTab(ownerTabId, (t: any) => {
+          const list = t.pendingPlans || [];
+          if (!list.some((r: any) => r.requestId === request.requestId)) {
+            t.pendingPlans = [...list, request];
+          }
+        });
+        if (stored) {
+          cardDebugLog('[PlanApproval][webview] queued the approval in tab', targetTabId);
           return;
         }
       }
@@ -254,14 +204,51 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     }
   };
 
-  if (
-    Array.isArray(window.__pendingPlanApprovalDialogRequests) &&
-    window.__pendingPlanApprovalDialogRequests.length > 0
-  ) {
-    const pending = window.__pendingPlanApprovalDialogRequests.slice();
-    window.__pendingPlanApprovalDialogRequests = [];
-    for (const payload of pending) {
-      window.showPlanApprovalDialog?.(payload);
+  // The semantic catalog is the routing table.
+  registerHostEvents({
+    'prompt.question.closed': handleForceCloseAskUserQuestionDialog,
+    'prompt.closed': handleForceClosePermissionDialog,
+    'prompt.plan.closed': handleForceClosePlanApprovalDialog,
+    'question.requested': showAskUserQuestionDialog,
+    'permission.requested': showPermissionDialog,
+    'plan.requested': showPlanApprovalDialog,
+    'question.answered': onQuestionAnswered,
+    'question.invalidated': handleInvalidateQuestionCard,
+    'toast.error': showToast,
+  });
+
+  // Backward compatibility aliases for tests and legacy callers:
+  window.showPermissionDialog = (raw: any) => {
+    try {
+      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      showPermissionDialog(payload);
+    } catch {
+      // ignore
     }
-  }
+  };
+  window.showAskUserQuestionDialog = (raw: any) => {
+    try {
+      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      showAskUserQuestionDialog(payload);
+    } catch {
+      // ignore
+    }
+  };
+  window.showPlanApprovalDialog = (raw: any) => {
+    try {
+      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      showPlanApprovalDialog(payload);
+    } catch {
+      // ignore
+    }
+  };
+  window.forceClosePermissionDialog = (id: any) => {
+    handleForceClosePermissionDialog({ requestId: id });
+  };
+  window.forceCloseAskUserQuestionDialog = (id: any) => {
+    handleForceCloseAskUserQuestionDialog({ requestId: id });
+  };
+  window.forceClosePlanApprovalDialog = (id: any) => {
+    handleForceClosePlanApprovalDialog({ requestId: id });
+  };
 }

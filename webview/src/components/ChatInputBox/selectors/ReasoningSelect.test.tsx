@@ -82,4 +82,71 @@ describe('ReasoningSelect', () => {
     const button = screen.getByRole('button');
     expect(button).toHaveProperty('disabled', true);
   });
+
+  it('hides the selector when modelVariants is empty', () => {
+    const { container } = render(
+      <ReasoningSelect
+        value="default"
+        onChange={vi.fn()}
+        currentProvider="opencode"
+        selectedModel="xiaomi/mimo-v2.5-free"
+        modelVariants={[]}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('hides the selector and resets effort to default when switching to a model without variants', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ReasoningSelect
+        value="high"
+        onChange={onChange}
+        currentProvider="opencode"
+        selectedModel="xiaomi/mimo-v2.5-free"
+        modelVariants={[]}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(onChange).toHaveBeenCalledWith('default');
+  });
+
+  it('hides the selector for mimo models even when modelVariants is undefined', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ReasoningSelect
+        value="high"
+        onChange={onChange}
+        currentProvider="opencode"
+        selectedModel="mimo-v2.5-pro"
+        modelVariants={undefined}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(onChange).toHaveBeenCalledWith('default');
+  });
+
+  it('capitalizes reasoning effort label and displays recommended badge', () => {
+    render(
+      <ReasoningSelect
+        value="low"
+        onChange={vi.fn()}
+        currentProvider="opencode"
+        selectedModel="custom-model"
+        modelVariants={['low', 'high']}
+      />,
+    );
+
+    const button = screen.getByRole('button');
+    expect(button.textContent).toContain('Low');
+    fireEvent.click(button);
+
+    // Dropdown contains options with capitalized label and (Recommended)
+    expect(screen.getByText('(Recommended)')).toBeTruthy();
+    expect(screen.getByText('High')).toBeTruthy();
+  });
 });

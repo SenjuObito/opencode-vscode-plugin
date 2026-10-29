@@ -7,7 +7,6 @@ import type { ContextUsageData } from '../components/ContextUsageDialog';
 import { sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { getTabStore } from '../store/tabStore';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
-import { useSession } from '../contexts/SessionContext';
 import { isPromptHost, subscribePromptHost } from '../utils/viewIdentity';
 
 interface UseDialogManagementOptions {
@@ -87,20 +86,6 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   const currentAskUserQuestionRequestRef = useRef<AskUserQuestionRequest | null>(null);
   const pendingAskUserQuestionRequestsRef = useRef<AskUserQuestionRequest[]>([]);
 
-  // Dialogs are session-scoped: a session switch invalidates every pending request.
-  const { currentSessionId } = useSession();
-  const lastSessionIdRef = useRef(currentSessionId);
-  useEffect(() => {
-    if (currentSessionId === lastSessionIdRef.current) return;
-    lastSessionIdRef.current = currentSessionId;
-    setPendingPermissionRequests([]);
-    setCurrentPermissionRequest(null);
-    setPermissionDialogOpen(false);
-    setPendingAskUserQuestionRequests([]);
-    setCurrentAskUserQuestionRequest(null);
-    setAskUserQuestionDialogOpen(false);
-  }, [currentSessionId]);
-
   // PlanApproval dialog state
   const [planApprovalDialogOpen, setPlanApprovalDialogOpen] = useState(false);
   const [currentPlanApprovalRequest, setCurrentPlanApprovalRequest] = useState<PlanApprovalRequest | null>(null);
@@ -110,12 +95,8 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   /**
    * 把未决弹窗暴露给 tab 层（`useTabLifecycle` 切 tab 时调 `restore`）。
    *
-   * 移植自 idea `useDialogManagement.ts` 的同名块。之前本仓只在 `useTabLifecycle`
-   * 里调 `window.__dialogStore?.restore(...)`，却没人给它赋值 —— 那条路径一直是
-   * 死的，后台 tab 的 prompt 只能靠另建的队列顶着。
-   *
-   * `restore` 的语义是**整体替换**：切到没有未决请求的 tab 时，这里必须把当前
-   * 卡片清掉，否则会把上一个 tab 的权限卡带到新 tab 上。
+   * 移植自 idea `useDialogManagement.ts` 的同名块。
+   * `restore` 的语义是整体替换：切到目标 tab 时，恢复该 tab 的未决卡片。
    */
   useEffect(() => {
     window.__dialogStore = {
@@ -126,29 +107,22 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         questions: currentAskUserQuestionRequestRef.current
           ? [currentAskUserQuestionRequestRef.current, ...pendingAskUserQuestionRequestsRef.current]
           : [...pendingAskUserQuestionRequestsRef.current],
+        plans: currentPlanApprovalRequestRef.current
+          ? [currentPlanApprovalRequestRef.current, ...pendingPlanApprovalRequestsRef.current]
+          : [...pendingPlanApprovalRequestsRef.current],
       }),
       restore: (
         permissions: PermissionRequest[],
         questions: AskUserQuestionRequest[],
         plans: PlanApprovalRequest[] = [],
       ) => {
-        const canOpen = isPromptHost();
         if (permissions && permissions.length > 0) {
-          if (canOpen) {
-            currentPermissionRequestRef.current = permissions[0];
-            setCurrentPermissionRequest(permissions[0]);
-            pendingPermissionRequestsRef.current = permissions.slice(1);
-            setPendingPermissionRequests(permissions.slice(1));
-            permissionDialogOpenRef.current = true;
-            setPermissionDialogOpen(true);
-          } else {
-            currentPermissionRequestRef.current = null;
-            setCurrentPermissionRequest(null);
-            pendingPermissionRequestsRef.current = [...permissions];
-            setPendingPermissionRequests([...permissions]);
-            permissionDialogOpenRef.current = false;
-            setPermissionDialogOpen(false);
-          }
+          currentPermissionRequestRef.current = permissions[0];
+          setCurrentPermissionRequest(permissions[0]);
+          pendingPermissionRequestsRef.current = permissions.slice(1);
+          setPendingPermissionRequests(permissions.slice(1));
+          permissionDialogOpenRef.current = true;
+          setPermissionDialogOpen(true);
         } else {
           currentPermissionRequestRef.current = null;
           setCurrentPermissionRequest(null);
@@ -159,18 +133,10 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         }
 
         if (plans && plans.length > 0) {
-          if (canOpen) {
-            currentPlanApprovalRequestRef.current = plans[0];
-            setCurrentPlanApprovalRequest(plans[0]);
-            planApprovalDialogOpenRef.current = true;
-            setPlanApprovalDialogOpen(true);
-          } else {
-            currentPlanApprovalRequestRef.current = null;
-            setCurrentPlanApprovalRequest(null);
-            pendingPlanApprovalRequestsRef.current = [...plans];
-            planApprovalDialogOpenRef.current = false;
-            setPlanApprovalDialogOpen(false);
-          }
+          currentPlanApprovalRequestRef.current = plans[0];
+          setCurrentPlanApprovalRequest(plans[0]);
+          planApprovalDialogOpenRef.current = true;
+          setPlanApprovalDialogOpen(true);
         } else {
           currentPlanApprovalRequestRef.current = null;
           setCurrentPlanApprovalRequest(null);
@@ -179,21 +145,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         }
 
         if (questions && questions.length > 0) {
-          if (canOpen) {
-            currentAskUserQuestionRequestRef.current = questions[0];
-            setCurrentAskUserQuestionRequest(questions[0]);
-            pendingAskUserQuestionRequestsRef.current = questions.slice(1);
-            setPendingAskUserQuestionRequests(questions.slice(1));
-            askUserQuestionDialogOpenRef.current = true;
-            setAskUserQuestionDialogOpen(true);
-          } else {
-            currentAskUserQuestionRequestRef.current = null;
-            setCurrentAskUserQuestionRequest(null);
-            pendingAskUserQuestionRequestsRef.current = [...questions];
-            setPendingAskUserQuestionRequests([...questions]);
-            askUserQuestionDialogOpenRef.current = false;
-            setAskUserQuestionDialogOpen(false);
-          }
+          currentAskUserQuestionRequestRef.current = questions[0];
+          setCurrentAskUserQuestionRequest(questions[0]);
+          pendingAskUserQuestionRequestsRef.current = questions.slice(1);
+          setPendingAskUserQuestionRequests(questions.slice(1));
+          askUserQuestionDialogOpenRef.current = true;
+          setAskUserQuestionDialogOpen(true);
         } else {
           currentAskUserQuestionRequestRef.current = null;
           setCurrentAskUserQuestionRequest(null);
@@ -325,47 +282,6 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       openPlanApprovalDialog(next);
     }
   }, [promptHost, planApprovalDialogOpen, currentPlanApprovalRequest, openPlanApprovalDialog]);
-
-  // Prompt-host election changed: the losing view closes its modal and puts
-  // the request back into its queue. The promotion itself is handled by the
-  // auto-promote effects below, which now also depend on `promptHost`.
-  useEffect(() => {
-    if (promptHost) {
-      return;
-    }
-    const activePermission = currentPermissionRequestRef.current;
-    if (activePermission) {
-      pendingPermissionRequestsRef.current = [
-        activePermission,
-        ...pendingPermissionRequestsRef.current,
-      ];
-      setPendingPermissionRequests([...pendingPermissionRequestsRef.current]);
-      currentPermissionRequestRef.current = null;
-      setCurrentPermissionRequest(null);
-      setPermissionDialogOpen(false);
-    }
-    const activeQuestion = currentAskUserQuestionRequestRef.current;
-    if (activeQuestion) {
-      pendingAskUserQuestionRequestsRef.current = [
-        activeQuestion,
-        ...pendingAskUserQuestionRequestsRef.current,
-      ];
-      setPendingAskUserQuestionRequests([...pendingAskUserQuestionRequestsRef.current]);
-      currentAskUserQuestionRequestRef.current = null;
-      setCurrentAskUserQuestionRequest(null);
-      setAskUserQuestionDialogOpen(false);
-    }
-    const activePlan = currentPlanApprovalRequestRef.current;
-    if (activePlan) {
-      pendingPlanApprovalRequestsRef.current = [
-        activePlan,
-        ...pendingPlanApprovalRequestsRef.current,
-      ];
-      currentPlanApprovalRequestRef.current = null;
-      setCurrentPlanApprovalRequest(null);
-      setPlanApprovalDialogOpen(false);
-    }
-  }, [promptHost]);
 
   // Force-close helpers — invoked by the backend safety-net handlers when the
   // host has already resolved the pending request and we must tear the WebView

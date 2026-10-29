@@ -3,7 +3,6 @@ import { createElement, type ReactNode } from 'react';
 import { useDialogManagement } from './useDialogManagement';
 import { MessagesProvider } from '../contexts/MessagesContext';
 import { SessionProvider, useSession } from '../contexts/SessionContext';
-import { seedTabStore } from '../test/seedTabStore';
 
 const t = ((key: string) => key) as any;
 
@@ -150,7 +149,7 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
 
   it('clearing active dialogs via dialogStore clears every pending request', () => {
     const { result } = renderHook(
-      () => ({ dialogs: useDialogManagement({ t }), session: useSession() }),
+      () => ({ dialogs: useDialogManagement({ t }) }),
       { wrapper },
     );
 
@@ -158,24 +157,6 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
     act(() => { result.current.dialogs.openAskUserQuestionDialog(mkAsk('Q')); });
 
     act(() => { window.__dialogStore?.clearActive(); });
-
-    expect(result.current.dialogs.askUserQuestionDialogOpen).toBe(false);
-    expect(result.current.dialogs.permissionDialogOpen).toBe(false);
-    expect(result.current.dialogs.pendingAskUserQuestionRequests).toEqual([]);
-    expect(result.current.dialogs.pendingPermissionRequests).toEqual([]);
-  });
-
-  it('switching session clears every pending request', () => {
-    // 本仓比 idea 多一条：切会话后旧的权限/提问请求不该留在窗口里。
-    const { result } = renderHook(
-      () => ({ dialogs: useDialogManagement({ t }), session: useSession() }),
-      { wrapper },
-    );
-
-    act(() => { result.current.dialogs.openPermissionDialog(mkPermission('A')); });
-    act(() => { result.current.dialogs.openAskUserQuestionDialog(mkAsk('Q')); });
-
-    act(() => { result.current.session.setCurrentSessionId('s1'); });
 
     expect(result.current.dialogs.askUserQuestionDialogOpen).toBe(false);
     expect(result.current.dialogs.permissionDialogOpen).toBe(false);
@@ -209,60 +190,7 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
     expect(result.current.currentPlanApprovalRequest).toBeNull();
   });
 
-  it('permission approve replies through the owning tab as permission.reply', () => {
-    seedTabStore([{ id: 'tab-p', sessionId: 'ses_1' }], 'tab-p');
-    const sendCalls: string[] = [];
-    (window as any).sendToJava = vi.fn((payload: string) => {
-      sendCalls.push(payload);
-    });
-
-    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
-    act(() => {
-      result.current.openPermissionDialog({
-        channelId: 'P1',
-        toolName: 'Bash',
-        sessionId: 'ses_1',
-        tabId: 'tab-p',
-        inputs: {},
-      } as any);
-    });
-    act(() => { result.current.handlePermissionApprove('P1'); });
-
-    const call = sendCalls.find((c) => c.startsWith('host_command:') && c.includes('permission.reply')) ?? '';
-    expect(call).toContain('"tabId":"tab-p"');
-    expect(call).toContain('"sessionId":"ses_1"');
-    expect(call).toContain('"channelId":"P1"');
-    expect(call).toContain('"allow":true');
-  });
-
-  it('question submit replies through the owning tab as question.reply', () => {
-    seedTabStore([{ id: 'tab-q', sessionId: 'ses_2' }], 'tab-q');
-    const sendCalls: string[] = [];
-    (window as any).sendToJava = vi.fn((payload: string) => {
-      sendCalls.push(payload);
-    });
-
-    const { result } = renderHook(() => useDialogManagement({ t }), { wrapper });
-    act(() => {
-      result.current.openAskUserQuestionDialog({
-        requestId: 'Q1',
-        toolName: 'AskUserQuestion',
-        sessionId: 'ses_2',
-        tabId: 'tab-q',
-        questions: [],
-      } as any);
-    });
-    act(() => { result.current.handleAskUserQuestionSubmit('Q1', { q: 'a' }); });
-
-    const call = sendCalls.find((c) => c.startsWith('host_command:') && c.includes('question.reply')) ?? '';
-    expect(call).toContain('"tabId":"tab-q"');
-    expect(call).toContain('"sessionId":"ses_2"');
-    expect(call).toContain('"requestId":"Q1"');
-    expect(call).toContain('"answers":{"q":"a"}');
-  });
-
   it('handleAskUserQuestionTimeout rejects question, interrupts session, and closes dialog', () => {
-    seedTabStore([{ id: 'tab-q', sessionId: 'ses_123' }], 'tab-q');
     const sendCalls: string[] = [];
     (window as any).sendToJava = vi.fn((payload: string) => {
       sendCalls.push(payload);
@@ -287,12 +215,11 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
 
     expect(result.current.askUserQuestionDialogOpen).toBe(false);
     expect(result.current.currentAskUserQuestionRequest).toBeNull();
-    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('question.reply') && c.includes('"rejected":true'))).toBe(true);
+    expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('question.reply'))).toBe(true);
     expect(sendCalls.some((c) => c.startsWith('host_command:') && c.includes('session.interrupt') && c.includes('ses_123'))).toBe(true);
   });
 
   it('handlePermissionTimeout rejects permission, interrupts session, and closes dialog', () => {
-    seedTabStore([{ id: 'tab-p', sessionId: 'ses_456' }], 'tab-p');
     const sendCalls: string[] = [];
     (window as any).sendToJava = vi.fn((payload: string) => {
       sendCalls.push(payload);

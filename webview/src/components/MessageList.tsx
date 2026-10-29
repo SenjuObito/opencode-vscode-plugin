@@ -226,7 +226,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const { displayMessages, revertedMessages } = useMemo(() => {
     if (!revertBoundaryId) return { displayMessages: messages, revertedMessages: [] as ClaudeMessage[] };
     let idx = messages.findIndex((m) => messageMatchesId(m, revertBoundaryId));
-    if (idx < 0) {
+    if (idx < 0 && revertBoundaryId === 'latest') {
       for (let i = messages.length - 1; i >= 0; i--) {
         if (isHumanUserMessage(messages[i])) {
           idx = i;

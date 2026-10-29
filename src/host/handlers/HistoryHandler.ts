@@ -442,6 +442,7 @@ export class HistoryHandler extends BaseMessageHandler {
 						JSON.stringify({
 							hasRevert: !!revertState,
 							messageId: revertState?.messageID || null,
+							sessionId,
 						}),
 					);
 					resolve();

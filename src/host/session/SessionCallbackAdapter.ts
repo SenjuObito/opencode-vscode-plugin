@@ -237,6 +237,9 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (!sessionId || !title) {
 			return;
 		}
+		if (!this.sessionId) {
+			this.sessionId = sessionId;
+		}
 		// Titles are addressed by session, not by adapter liveness: a tab switch
 		// must not lose the title that arrives during the switch.
 		this.emit('tab.title.changed', { title, sessionId }, () => {

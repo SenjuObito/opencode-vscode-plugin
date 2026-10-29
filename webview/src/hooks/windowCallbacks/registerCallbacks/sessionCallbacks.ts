@@ -135,11 +135,26 @@ export function registerSessionCallbacks(
     }
   };
 
-  const updateSessionTitle = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
-    const rawTitle = typeof payload === 'string' ? payload : (payload?.title ?? '');
-    const title = String(rawTitle ?? '');
-    const sessionId = env?.sessionId ?? (typeof payload === 'object' ? (payload?.sessionId as string | undefined) : undefined) ?? '';
-    const tabId = env?.tabId ?? (typeof payload === 'object' ? (payload?.tabId as string | undefined) : undefined);
+  const updateSessionTitle = (
+    payloadOrSessionId: HostEventPayload | string | undefined,
+    envOrTitle?: HostEventEnvelope | string,
+  ) => {
+    let title = '';
+    let sessionId = '';
+    let tabId: string | undefined;
+
+    if (typeof payloadOrSessionId === 'string' && typeof envOrTitle === 'string') {
+      sessionId = payloadOrSessionId;
+      title = envOrTitle;
+    } else if (typeof payloadOrSessionId === 'object' && payloadOrSessionId !== null) {
+      title = String(payloadOrSessionId.title ?? '');
+      sessionId = (typeof envOrTitle === 'object' ? envOrTitle?.sessionId : undefined) ?? String(payloadOrSessionId.sessionId ?? '');
+      tabId = typeof envOrTitle === 'object' ? envOrTitle?.tabId : (payloadOrSessionId.tabId as string | undefined);
+    } else if (typeof payloadOrSessionId === 'string') {
+      title = payloadOrSessionId;
+      sessionId = typeof envOrTitle === 'object' ? (envOrTitle?.sessionId ?? '') : '';
+      tabId = typeof envOrTitle === 'object' ? envOrTitle?.tabId : undefined;
+    }
     if (!title || !title.trim() || !sessionId) return;
     const cleanTitle = title.trim();
     if (isEnginePlaceholderTitle(cleanTitle)) return;

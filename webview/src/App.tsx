@@ -36,6 +36,7 @@ import {
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
 import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
+import { parseRevertStateEvent } from './utils/revertStateEvent';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
 import type { SessionTabData } from './components/ChatHeader/types';
@@ -478,25 +479,67 @@ const App = () => {
     return undefined;
   }, []);
 
+  const extractPromptText = useCallback((message: ClaudeMessage | null | undefined): string => {
+    if (!message) return '';
+    let target = message;
+    const id = getMessageId(message);
+    if (!target.content && messages.length > 0) {
+      if (id && id !== 'latest') {
+        target = messages.find((m) => getMessageId(m) === id) || target;
+      } else {
+        target = [...messages].reverse().find((m) => m.type === 'user' && !m.content?.includes('[tool_result]')) || target;
+      }
+    }
+    let text = target.content || '';
+    if (!text && target.raw) {
+      const raw = target.raw as Record<string, unknown>;
+      if (typeof raw === 'string') {
+        text = raw;
+      } else if (typeof raw.content === 'string') {
+        text = raw.content;
+      } else if (Array.isArray(raw.content)) {
+        text = (raw.content as any[])
+          .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+          .map((b) => b.text)
+          .join('\n');
+      } else if (raw.message && typeof raw.message === 'object') {
+        const inner = raw.message as Record<string, unknown>;
+        if (typeof inner.content === 'string') {
+          text = inner.content;
+        }
+      }
+    }
+    return text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  }, [messages, getMessageId]);
+
   /**
    * Send the revert/unrevert bridge event. Caller must have settled any
    * busy-session confirmation beforehand (see pendingRevert flow).
    */
   const dispatchRevert = useCallback((message: ClaudeMessage) => {
     const id = getMessageId(message);
+    const sid = currentSessionIdRef.current;
+
+    // 回填被撤销消息的 prompt 到输入框供用户编辑
+    const promptText = extractPromptText(message);
+    if (promptText && chatInputRef.current?.setValue) {
+      chatInputRef.current.setValue(promptText);
+      chatInputRef.current.focus?.();
+    }
+
     if (!id) {
       // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
       console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
-      sendSessionCommand('session.revert', currentSessionIdRef.current, { messageId: 'latest' });
-      applyRevertState(true);
+      sendSessionCommand('session.revert', sid, { messageId: 'latest' });
+      applyRevertState(true, 'latest');
       return;
     }
     console.debug('[App] undo: reverting to message', id);
-    sendSessionCommand('session.revert', currentSessionIdRef.current, { messageId: id });
+    sendSessionCommand('session.revert', sid, { messageId: id });
     // Optimistic: boundary is the undone user message; the host's
     // onRevertStateUpdate push carries the authoritative pointer.
     applyRevertState(true, id);
-  }, [applyRevertState, getMessageId, currentSessionIdRef]);
+  }, [applyRevertState, getMessageId, extractPromptText, currentSessionIdRef]);
 
   /** Pending "interrupt then undo/redo" confirmation (busy session). */
   const [pendingRevert, setPendingRevert] = useState<
@@ -517,9 +560,13 @@ const App = () => {
       setPendingRevert({ op: 'redo' });
       return;
     }
-    sendSessionCommand('session.unrevert', currentSessionIdRef.current);
+    const sid = currentSessionIdRef.current;
+    sendSessionCommand('session.unrevert', sid, {});
     applyRevertState(false);
-  }, [applyRevertState, streamingActive, currentSessionIdRef]);
+    if (sid) {
+      loadHistorySession(sid);
+    }
+  }, [applyRevertState, streamingActive, currentSessionIdRef, loadHistorySession]);
 
   // Confirm/cancel handlers live below, after `interruptSession` (useMessageSender)
   // exists — see handleConfirmInterruptRevert.
@@ -642,44 +689,77 @@ const App = () => {
         loadHistorySession(sessionId);
       }
     };
-    window.onRevertStateUpdate = (json: string) => {
+    const handleRevertStateEvent = (...args: unknown[]) => {
       try {
-        const payload = JSON.parse(json) as { hasRevert?: boolean; messageId?: string | null };
-        console.debug('[App] onRevertStateUpdate', payload);
-        const next = !!payload.hasRevert;
-        const nextId = payload.messageId ?? null;
+        const parsed = parseRevertStateEvent(args);
+        if (!parsed) return;
+        const { hasRevert, messageId, sessionId: wireSessionId } = parsed;
+        console.debug('[App] revert.changed', { wireSessionId, hasRevert, messageId });
+        const store = getTabStore();
+        if (wireSessionId && store.size() > 0 && !store.isActiveSession(wireSessionId)) {
+          store.updateBackgroundTab(wireSessionId, (tab) => {
+            tab.revertBoundaryId = hasRevert ? messageId : null;
+          });
+          return;
+        }
         const prevHasRevert = hasRevertStateRef.current;
         const prevId = revertBoundaryIdRef.current;
-        const changed = next !== prevHasRevert || nextId !== prevId;
-        applyRevertState(next, nextId);
+        const changed = hasRevert !== prevHasRevert || messageId !== prevId;
+        const activeTabId = store.getActiveTabId();
+        if (activeTabId) {
+          store.updateTab(activeTabId, (tab) => {
+            tab.revertBoundaryId = hasRevert ? messageId : null;
+          });
+        }
+        applyRevertState(hasRevert, messageId);
 
-        const sessionId = currentSessionIdRef.current;
-        const currentKey = `${sessionId}:${next}:${nextId}`;
-        if (changed || (next && lastLoadedRevertStateRef.current !== currentKey)) {
+        const targetSessionId = wireSessionId || currentSessionIdRef.current;
+        const currentKey = `${targetSessionId}:${hasRevert}:${messageId}`;
+        if (changed || (hasRevert && lastLoadedRevertStateRef.current !== currentKey)) {
           lastLoadedRevertStateRef.current = currentKey;
-          if (sessionId) {
-            loadHistorySession(sessionId);
+          if (targetSessionId) {
+            loadHistorySession(targetSessionId);
           }
         }
+      } catch (err) {
+        console.warn('[App] malformed revert.changed payload', err, args);
+      }
+    };
+
+    const handleMessagesRemovedEvent = (...args: unknown[]) => {
+      try {
+        const first = args[0];
+        const second = args[1];
+        const hasTwo = typeof second !== 'undefined';
+        const targetSessionId = hasTwo && typeof first === 'string' ? first : null;
+        const rawIds = hasTwo ? second : first;
+        const parsed = typeof rawIds === 'string' ? JSON.parse(rawIds) : rawIds;
+        if (!Array.isArray(parsed) || parsed.length === 0) return;
+        const ids = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+        if (ids.length === 0) return;
+        console.debug('[App] message.removed', targetSessionId, ids);
+        const store = getTabStore();
+        if (targetSessionId && store.size() > 0 && !store.isActiveSession(targetSessionId)) {
+          store.updateBackgroundTab(targetSessionId, (tab) => {
+            tab.messages = applyMessagesRemoved(tab.messages ?? [], ids);
+          });
+          return;
+        }
+        setMessages((prev) => applyMessagesRemoved(prev, ids));
       } catch {
         // ignore malformed payloads
       }
+    };
+
+    window.onRevertStateUpdate = (json: string) => {
+      handleRevertStateEvent(json);
     };
     // 服务端权威删除：opencode 在下一次 prompt 时把 revert 点之后的消息真正删掉，
     // 并逐条广播 message.removed；宿主镜像删除后转发到这里。先把自己列表里的这些
     // 消息剔除，使随后到达的 updateMessages 快照与 prev 等长 —— 否则
     // preserveLatestMessagesOnShrink 会把它当成「暂时收缩」，把刚删的消息抢救回来。
     window.onMessagesRemoved = (json: string) => {
-      try {
-        const parsed = JSON.parse(json) as unknown;
-        if (!Array.isArray(parsed) || parsed.length === 0) return;
-        const ids = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
-        if (ids.length === 0) return;
-        console.debug('[App] onMessagesRemoved', ids);
-        setMessages((prev) => applyMessagesRemoved(prev, ids));
-      } catch {
-        // ignore malformed payloads
-      }
+      handleMessagesRemovedEvent(json);
     };
     window.onCompactSuccess = (targetSessionId?: string) => {
       if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
@@ -747,6 +827,8 @@ const App = () => {
           error: String(payload.error ?? ''),
         }));
       },
+      'revert.changed': handleRevertStateEvent,
+      'message.removed': handleMessagesRemovedEvent,
       'session.compact.done': (payload: Record<string, unknown>) => {
         window.onCompactSuccess?.(String(payload.data ?? payload.sessionId ?? ''));
       },
@@ -761,6 +843,8 @@ const App = () => {
         'session.share.done', 'session.share.failed',
         'session.unshare.done', 'session.unshare.failed',
         'session.revert.failed',
+        'revert.changed',
+        'message.removed',
         'session.compact.done', 'session.compact.failed',
       ]);
       delete window.onForkSuccess;
@@ -894,7 +978,15 @@ const App = () => {
       }
     }
     if (idx >= 0) {
-      setMessages(messages.slice(0, idx));
+      const remainingMessages = messages.slice(0, idx);
+      setMessages(remainingMessages);
+      const activeTabId = getTabStore().getActiveTabId();
+      if (activeTabId) {
+        getTabStore().updateTab(activeTabId, (tab) => {
+          tab.messages = remainingMessages;
+          tab.revertBoundaryId = null;
+        });
+      }
     }
     applyRevertState(false);
   }, [messages, getMessageId, applyRevertState, setMessages]);
@@ -955,14 +1047,14 @@ const App = () => {
     }
   }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
 
-  // Reset revert / share / compact-confirm state on session switch
+  // Reset share / compact-confirm state on session switch
+  // 切换会话时不再抹杀 revert 状态，因为各 Tab 拥有自己独立的 revertBoundaryId
   useEffect(() => {
-    applyRevertState(false);
     resetShareState();
     handleCancelCompact();
     setIsCompacting(false);
     setCompactingStartTime(null);
-  }, [applyRevertState, resetShareState, currentSessionId, handleCancelCompact, setIsCompacting, setCompactingStartTime]);
+  }, [resetShareState, currentSessionId, handleCancelCompact, setIsCompacting, setCompactingStartTime]);
 
   // handleSubmit with queue support (new session and local commands bypass loading check)
   const handleSubmit = useCallback((

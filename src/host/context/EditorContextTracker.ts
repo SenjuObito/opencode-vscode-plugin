@@ -42,13 +42,6 @@ export class EditorContextTracker {
 			return;
 		}
 		try {
-			// 与 cc-gui 一致：关闭「自动打开文件」设置时清空 ContextBar。
-			const projectPath = this.settings.getPrimaryWorkspaceRoot();
-			if (projectPath && !this.settings.getAutoOpenFileEnabled(projectPath)) {
-				this.clear();
-				return;
-			}
-
 			// 优先获取 activeTextEditor；如果当前焦点在 webview（activeTextEditor 为 undefined），
 			// 尝试从 visibleTextEditors 中寻找可见的文件编辑器；若都不可见但已有 lastInfo 则保持，否则才清空。
 			let editor = vscode.window.activeTextEditor;

@@ -415,12 +415,7 @@ export class SettingsHandler extends BaseMessageHandler {
 			const json = JSON.parse(content) as Record<string, unknown>;
 			const enabled = json?.autoOpenFileEnabled === true;
 			this.settings().setAutoOpenFileEnabled(projectPath, enabled);
-			// 同步清空编辑器上下文缓存：tracker 的 lastInfo 只在编辑器事件时重算，
-			// 若不在此处清除，关闭后立即发送仍会把过期的 @file 注入消息。
-			if (!enabled) {
-				this.context.clearEditorContext();
-			} else {
-				// 启用时立即推送当前编辑器上下文，否则需等到下一次文件切换才显示。
+			if (enabled) {
 				this.context.pushEditorContext();
 			}
 			this.pushJson('updateAutoOpenFileEnabled', { autoOpenFileEnabled: enabled }, true);

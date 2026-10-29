@@ -229,11 +229,7 @@ export const sendInterrupt = (
     ?? ownerTabId
     ?? tabStore.getActiveTabId()
     ?? '';
-  if (!tabId) {
-    // 没有任何 tab 能承载中断（§5.5：legacy interrupt_session 兜底已删除）。
-    cardDebugLog('[Bridge] dropped interrupt: no tab owns the session');
-    return false;
-  }
+  // The interrupt is a command like every other: it names the tab it stops.
   return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
 };
 

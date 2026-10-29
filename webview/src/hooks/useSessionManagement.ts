@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendBridgeEvent, sendInterrupt, sendNewSession, cardDebugLog } from '../utils/bridge';
-import { clearAllPersistedExpanded } from '../utils/expandedState';
+import { sendHostCommand, sendSessionCommand, sendInterrupt, sendWindowCommand, cardDebugLog } from '../utils/bridge';
 import { getTabStore } from '../store/tabStore';
-import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
+import { beginTransition, endTransition, isTabTransitioning } from './windowCallbacks/tabTransition';
+import { clearAllPersistedExpanded } from '../utils/expandedState';
 
 type ViewMode = 'chat' | 'history' | 'settings';
 
@@ -33,15 +33,15 @@ interface UseSessionManagementOptions {
   setIsThinking: (thinking: boolean) => void;
   setStreamingActive: (active: boolean) => void;
   setSessionLoading: (loading: boolean) => void;
-  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
-  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
   /** Clears async subagent task events so stale completions cannot leak across sessions. */
   setTaskEvents?: React.Dispatch<React.SetStateAction<TaskEventMap>>;
   /** Clears SSE todos so stale todo lists cannot leak across sessions. */
   setSseTodos?: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
   /** Clears polled sidechain histories so stale transcripts cannot leak across sessions. */
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
-  /** Resets selected model to first preferred (pinned) model for new session. */
+  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
+  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
+  /** Resets model selection to preferred first model on new session. */
   onResetToPreferredModel?: () => void;
   clearToasts: () => void;
   addToast: (message: string, type?: ToastType) => void;
@@ -56,7 +56,7 @@ interface UseSessionManagementReturn {
   forceCreateNewSessionWithProvider: (providerId: string) => void;
   handleConfirmInterrupt: () => void;
   handleCancelInterrupt: () => void;
-  loadHistorySession: (sessionId: string) => void;
+  loadHistorySession: (sessionId: string, targetTabId?: string | null) => void;
   deleteHistorySession: (sessionId: string) => void;
   deleteHistorySessions: (sessionIds: string[]) => void;
   exportHistorySession: (sessionId: string, title: string) => void;
@@ -69,7 +69,7 @@ interface UseSessionManagementReturn {
  * Hook for managing session operations (create, load, delete, export, etc.)
  */
 export function useSessionManagement({
-  messages,
+  messages: _messages,
   loading,
   historyData,
   currentSessionId,
@@ -88,17 +88,18 @@ export function useSessionManagement({
   setIsThinking,
   setStreamingActive,
   setSessionLoading,
-  setIsCompacting,
-  setCompactingStartTime,
   setTaskEvents,
   setSseTodos,
   setSubagentHistories,
+  setIsCompacting,
+  setCompactingStartTime,
   onResetToPreferredModel,
   clearToasts,
   addToast,
   t,
 }: UseSessionManagementOptions): UseSessionManagementReturn {
   const [showInterruptConfirm, setShowInterruptConfirm] = useState(false);
+  const pendingActionRef = useRef<'newSession' | null>(null);
   const suppressNextStatusToastRef = useRef(false);
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const softReloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,9 +142,6 @@ export function useSessionManagement({
       setIsCompacting?.(false);
       setCompactingStartTime?.(null);
     }
-    // Also explicitly reset compacting in all paths during session transition
-    setIsCompacting?.(false);
-    setCompactingStartTime?.(null);
     setMessages([]);
     if (nextSessionId !== null) {
       setSessionLoading(true);
@@ -174,6 +172,9 @@ export function useSessionManagement({
     setUsageUsedTokens(undefined);
     setUsageMaxTokens(undefined);
 
+    if (nextSessionId === null) {
+      onResetToPreferredModel?.();
+    }
 
     // FIX: Safety timeout to auto-release the session transition guard.
     // If the backend's historyLoadComplete signal is lost (e.g., JCEF IPC failure
@@ -193,71 +194,103 @@ export function useSessionManagement({
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
-  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSubagentHistories]);
+  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
+
+  /**
+   * Open a fresh, unbound tab.
+   *
+   * The host no longer creates a session here. A tab exists before its
+   * opencode session; the first send binds both. This prevents the old
+   * random-UUID "new session" that the UI could never match.
+   */
+  const openNewSessionTab = useCallback(() => {
+    const createTab = (window as Window & { __openNewSessionTab?: () => void }).__openNewSessionTab;
+    if (typeof createTab === 'function') {
+      createTab();
+      return;
+    }
+    // Startup/test fallback: clear the view. The first send still creates the
+    // real session through its tab id.
+    beginSessionTransition(null, null);
+  }, [beginSessionTransition]);
 
   // Create new session
   const createNewSession = useCallback(() => {
-    // If AI is responding, the previous session must be interrupted first;
-    // show the interrupt confirmation dialog.
     if (loading) {
+      pendingActionRef.current = 'newSession';
       setShowInterruptConfirm(true);
-      return;
+    } else {
+      openNewSessionTab();
     }
-    // No second confirmation (§5.5): a new session is one click. The interrupt
-    // confirmation above stays because it guards an in-flight turn.
-    onResetToPreferredModel?.();
-    beginSessionTransition(null, null);
-    sendNewSession();
-  }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
+  }, [loading, openNewSessionTab]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
   const forceCreateNewSession = useCallback(() => {
     if (loading) {
       sendInterrupt();
     }
-    onResetToPreferredModel?.();
-    beginSessionTransition(null, null);
-    sendNewSession();
-  }, [beginSessionTransition, loading, onResetToPreferredModel]);
+    openNewSessionTab();
+  }, [loading, openNewSessionTab]);
 
   const forceCreateNewSessionWithProvider = useCallback((providerId: string) => {
     if (loading) {
       sendInterrupt();
     }
-    onResetToPreferredModel?.();
-    beginSessionTransition(null, null);
-    sendBridgeEvent('set_provider', providerId);
-    sendNewSession();
-  }, [beginSessionTransition, loading, onResetToPreferredModel]);
+    // The provider selection travels with the tab's next send; do not create a
+    // host session here.
+    sendWindowCommand('settings.provider', { provider: providerId });
+    openNewSessionTab();
+  }, [loading, openNewSessionTab]);
 
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
     sendInterrupt();
-    onResetToPreferredModel?.();
-    beginSessionTransition(null, null);
-    sendNewSession();
-  }, [beginSessionTransition, onResetToPreferredModel]);
+    openNewSessionTab();
+    pendingActionRef.current = null;
+  }, [openNewSessionTab]);
 
   // Cancel interrupt
   const handleCancelInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
+    pendingActionRef.current = null;
   }, []);
 
   // Load history session
   // 会话级模型/模式/推理力度的恢复不在此处做（历史快照的行内值从不更新，
   // 用它恢复会覆盖用户刚切换的选择）。跨会话加载时由宿主从 daemon
   // session.get 读 opencode 权威状态后经 onSessionStateRestored 推送恢复。
-  const loadHistorySession = useCallback((sessionId: string) => {
+  /**
+   * Bind a history session to a tab, or soft-reload the active one.
+   *
+   * <p>{@code targetTabId} is the tab the caller prepared for the session (a
+   * restored history tab, a fork landing, an empty draft being promoted). With
+   * it, the session comparison below must not run: the caller has already
+   * pointed {@code currentSessionId} at the incoming session, so a "same
+   * session" check would send only a soft reload and never bind the tab — the
+   * fork appeared with an empty transcript and a stuck loading state.</p>
+   */
+  const loadHistorySession = useCallback((sessionId: string, targetTabId?: string | null) => {
     const session = historyDataRef.current?.sessions?.find(s => s.sessionId === sessionId);
-    cardDebugLog('[SessionManagement] loadHistorySession called, sessionId:', sessionId, 'currentSessionId:', currentSessionId, 'isSameSession:', sessionId === currentSessionId);
+    const activeSessionId = currentSessionIdRef?.current ?? currentSessionId;
+    cardDebugLog('[SessionManagement] loadHistorySession called, sessionId:', sessionId, 'targetTabId:', targetTabId, 'currentSessionId:', activeSessionId, 'isSameSession:', sessionId === activeSessionId);
+
+    if (targetTabId) {
+      // A named tab is authoritative: bind this session to it and let the
+      // host hydrate that tab. The transition guard is scoped to the tab.
+      beginSessionTransition(sessionId, session?.title ?? null, targetTabId);
+      window.__softSessionReloadInFlight = null;
+      sendHostCommand(targetTabId, 'session.load', { sessionId, title: session?.title }, sessionId);
+      setCurrentView('chat');
+      return;
+    }
 
     // Re-opening the very session already active: don't interrupt the in-flight
     // turn or wipe the view - just ask the backend to soft-reload the transcript
     // from the server. The backend sessionLoadCallback detects the same-session
     // case and routes through reloadActiveSessionMessages (reusing the
     // session_updated reload path, never interrupting).
-    if (sessionId === currentSessionId) {
+    if (sessionId === activeSessionId) {
       // 去抖守卫：同会话软刷新已在途时不重复发送。宿主每次恢复消息后都会推送
       // onRevertStateUpdate 等事件，任何来源的重复触发都会形成
       // load_session → 恢复消息 → 事件 → load_session 的死循环（表现为消息
@@ -268,6 +301,7 @@ export function useSessionManagement({
         return;
       }
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
+      cardDebugLog('[SessionManagement] BEFORE: tab transition=', isTabTransitioning(getTabStore().getActiveTabId()), 'softReload=', window.__softSessionReloadInFlight);
       // Set transition guard so backend's clearMessages (from restoreMessages)
       // won't reset sessionLoading to false before messages arrive — prevents
       // the empty-state flash that occurs when the tab is not transitioning.
@@ -289,23 +323,37 @@ export function useSessionManagement({
           cardDebugLog('[SessionManagement] Same-session soft reload guard timed out — auto-releasing');
         }
       }, 5_000);
-      sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
+      sendHostCommand(getTabStore().getActiveTabId() ?? '', 'session.load', { sessionId, title: session?.title }, sessionId);
       setCurrentView('chat');
       return;
     }
 
-    // Switching to a different session: let host SessionManager handle
-    // background preservation or lifecycle transition. Never interrupt blindly.
+    // Switching to a different session: in multi-session architecture,
+    // do not interrupt the in-flight background turn.
     cardDebugLog('[SessionManagement] different session, calling beginSessionTransition');
+    // Rebind the active tab to the incoming session BEFORE the transition.
+    //
+    // The outgoing session may still be streaming. `isActiveSession` resolves
+    // against `currentSessionIdRef`, but `updateBackgroundTab` matches on
+    // `tab.sessionId` — leaving the old binding in place would make the
+    // outgoing session's deltas land in the tab that now displays the new one,
+    // interleaving two conversations. Rebinding releases the old session, whose
+    // late deltas then fall through to the logged orphan path instead of
+    // corrupting the visible transcript.
+    const activeTabId = getTabStore().getActiveTabId();
+    if (activeTabId) {
+      getTabStore().updateTabSessionId(activeTabId, sessionId);
+    }
     beginSessionTransition(sessionId, session?.title ?? null);
-    sendBridgeEvent('load_session', JSON.stringify({ sessionId }));
+    // The command names the session; the tab is the tab that shows it.
+    sendHostCommand(activeTabId ?? '', 'session.load', { sessionId, title: session?.title }, sessionId);
     setCurrentView('chat');
-  }, [beginSessionTransition, setCurrentView, currentSessionId]);
+  }, [beginSessionTransition, setCurrentView, currentSessionId, currentSessionIdRef]);
 
   // Delete history session
   const deleteHistorySession = useCallback((sessionId: string) => {
     // Send delete request to Java backend
-    sendBridgeEvent('delete_session', sessionId);
+    sendWindowCommand('history.delete', { sessionId });
     let startedSessionTransition = false;
 
     // Immediately update frontend state, remove session from history list
@@ -327,23 +375,29 @@ export function useSessionManagement({
         };
       });
 
+      // Close open tab associated with deleted session
+      getTabStore().closeTabBySessionId(sessionId);
+
       // If deleted session is current session, clear messages and reset state
       if (sessionId === currentSessionId) {
         // [FIX] Send interrupt signal if AI is responding
         if (loading) {
           sendInterrupt();
         }
-        onResetToPreferredModel?.();
-        beginSessionTransition(null, null);
-        startedSessionTransition = true;
-        // Set flag to suppress next updateStatus toast
-        suppressNextStatusToastRef.current = true;
-        sendNewSession();
+        if (getTabStore().size() === 0) {
+          beginSessionTransition(null, null);
+          startedSessionTransition = true;
+          // Set flag to suppress next updateStatus toast
+          suppressNextStatusToastRef.current = true;
+          openNewSessionTab();
+        } else {
+          startedSessionTransition = true;
+        }
       }
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, onResetToPreferredModel]);
+  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, openNewSessionTab]);
 
   // Batch delete history sessions
   const deleteHistorySessions = useCallback((sessionIds: string[]) => {
@@ -352,7 +406,7 @@ export function useSessionManagement({
       return;
     }
 
-    sendBridgeEvent('delete_sessions', JSON.stringify(uniqueSessionIds));
+    sendWindowCommand('history.deleteMany', { sessionIds: uniqueSessionIds });
     let startedSessionTransition = false;
 
     if (historyData && historyData.sessions) {
@@ -375,36 +429,43 @@ export function useSessionManagement({
         };
       });
 
+      // Close open tab(s) associated with deleted session(s)
+      for (const sid of uniqueSessionIds) {
+        getTabStore().closeTabBySessionId(sid);
+      }
+
       if (currentSessionId && deletedSessionIds.has(currentSessionId)) {
         if (loading) {
           sendInterrupt();
         }
-        onResetToPreferredModel?.();
-        beginSessionTransition(null, null);
-        startedSessionTransition = true;
-        suppressNextStatusToastRef.current = true;
-        sendNewSession();
+        if (getTabStore().size() === 0) {
+          beginSessionTransition(null, null);
+          startedSessionTransition = true;
+          suppressNextStatusToastRef.current = true;
+          openNewSessionTab();
+        } else {
+          startedSessionTransition = true;
+        }
       }
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast, onResetToPreferredModel]);
+  }, [historyData, currentSessionId, loading, setHistoryData, beginSessionTransition, showSessionDeletedToast, openNewSessionTab]);
 
   // Export history session
   const exportHistorySession = useCallback((sessionId: string, title: string) => {
     const session = historyDataRef.current?.sessions?.find(s => s.sessionId === sessionId);
-    const exportData = JSON.stringify({
+    sendWindowCommand('history.export', {
       sessionId,
       title,
       provider: session?.provider || currentProvider || 'opencode',
     });
-    sendBridgeEvent('export_session', exportData);
   }, [currentProvider]);
 
   // Toggle favorite status
   const toggleFavoriteSession = useCallback((sessionId: string) => {
     // Send favorite toggle request to backend
-    sendBridgeEvent('toggle_favorite', sessionId);
+    sendWindowCommand('history.favorite', { sessionId });
 
     // Immediately update frontend state
     if (historyData && historyData.sessions) {
@@ -437,9 +498,8 @@ export function useSessionManagement({
 
   // Update session title
   const updateHistoryTitle = useCallback((sessionId: string, newTitle: string) => {
-    // Send update title request to backend
-    const updateData = JSON.stringify({ sessionId, customTitle: newTitle });
-    sendBridgeEvent('update_title', updateData);
+    // The rename is a command: it names the session it renames.
+    sendSessionCommand('session.rename', sessionId, { customTitle: newTitle });
 
     // Immediately update frontend state
     if (historyData && historyData.sessions) {

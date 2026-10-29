@@ -745,11 +745,12 @@ export class ChatWindow {
 
 	private bindTabSession(tabId: TabId, session: OpenCodeSession, sessionId: string): void {
 		const record = this.registry.get(tabId);
-		if (!record || record.isClosed() || record.getSession() !== session) {
+		if (!record || record.isClosed()) {
 			return;
 		}
-		const boundAdapter = record.getAdapter() ?? session.getAdapter();
-		const boundCoalescer = record.getCoalescer() ?? session.getAdapter().getCoalescer();
+		const boundSession = record.getSession() ?? session;
+		const boundAdapter = record.getAdapter() ?? boundSession.getAdapter();
+		const boundCoalescer = record.getCoalescer() ?? boundSession.getAdapter().getCoalescer();
 
 		if (boundAdapter) {
 			boundAdapter.setSessionId(sessionId);
@@ -775,11 +776,11 @@ export class ChatWindow {
 			this.registry.bind(
 				tabId,
 				sessionId,
-				session,
+				boundSession,
 				boundAdapter,
 				boundCoalescer,
 			);
-			this.bindSessionSink(sessionId, session);
+			this.bindSessionSink(sessionId, boundSession);
 			this.options.onSessionBound?.(tabId.value, sessionId);
 			// 同步通知前端当前 tab 的 sessionId（如目录不匹配重置或新会话生成）
 			this.publishRecordEvent(record, 'session.bound', { sessionId });

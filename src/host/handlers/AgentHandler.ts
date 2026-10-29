@@ -7,6 +7,7 @@
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
+import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 
 const SUPPORTED_TYPES = ['get_agents'];
 
@@ -92,6 +93,15 @@ export class AgentHandler extends BaseMessageHandler {
 
 	private pushAgents(agents: AgentItem[]): void {
 		this.callJavaScript('updateAgents', JSON.stringify(agents));
+		WebviewBroadcaster.broadcastRaw({
+			type: 'host.events',
+			batch: [
+				{
+					type: 'agents.updated',
+					payload: { data: agents },
+				},
+			],
+		});
 	}
 
 	/** 从 daemon 输出缓冲区提取 JSON 对象（容错非 JSON 诊断行）。 */

@@ -121,6 +121,16 @@ export function activate(context: vscode.ExtensionContext) {
 	const fallbackWorkingDirectoryResolver = (): string | null => {
 		const editor = vscode.window.activeTextEditor;
 		if (editor && editor.document.uri.scheme === 'file') {
+			const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+			if (folder?.uri.fsPath) {
+				return folder.uri.fsPath;
+			}
+		}
+		const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (root) {
+			return root;
+		}
+		if (editor && editor.document.uri.scheme === 'file') {
 			return dirname(editor.document.uri.fsPath);
 		}
 		return null;

@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A29：根治发送消息无响应与持续 loading：修复 onTabResync 入参解析异常、补齐宿主对未建表 tab 自动建表、贯通 command.rejected 错误解除 loading 与双端追踪日志；双端全量测试 100% 通过）
+> 最后更新：2026-10-29（P9-A31：彻底修复会话标题断流、模式大小写与多语言、切Tab弹窗保持、文件上下文持久性与撤销/恢复消息对齐；全量对齐 IDEA 蓝图，双端全量测试 100% 通过）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `ea954a3`。
@@ -132,7 +132,34 @@
 
 | 日期 | 变更 |
 |---|---|
-| 2026-10-29 | **P9-A29（本轮）**：**彻底排查并根治发送消息无响应与持续 loading，打通宿主-Webview 全链路 Tab 同步与命令路由容错**：
+| 2026-10-29 | **P9-A30（本轮）**：**全面清理旧架构 Window 裸事件侵入与推理胶水代码，以 IDEA 架构为蓝图重构通道事件化体系**：
+1. **用户核心发现与架构重构要求**：
+   - 用户在深度审查中敏锐指出关键架构偏离：“*怎么新建会话调用的是 window 的事件，还有弹窗怎么也是 window 的事件，window 除了设置类都已经被重构了通道事件*”；
+   - 用户同时指出多项与 IDEA 逻辑脱节的严重缺陷：输入框文件上下文与设置不同步、切换模型后推理力度恒为 low、`@` 无法呼出子代理模式、会话目录与 VS Code 工作区脱节、撤回消息后会话列表消失、多会话弹窗切换 tab 后丢失；
+   - **用户根本要求**：**严禁在旧架构上打补丁，严禁写新旧架构胶水代码，必须彻底以 `opencode-idea-gui` 为权威蓝图全面纠偏实施**。
+2. **彻底纠偏与实施整改**：
+   - **全面废除 Window 事件侵入，回归标准通道语义事件（对齐 IDEA）**：
+     - 重构 `permissionCallbacks.ts`：彻底废弃通过 window 裸函数进行权限/提问/计划审批请求通知的旧逻辑，统一通过 `registerHostEvents` 注册语义事件（`permission.requested`、`question.requested`、`plan.requested`、`prompt.closed`、`prompt.question.closed`、`prompt.plan.closed`、`question.answered`、`question.invalidated`、`toast.error`）；
+     - 重构 `useSessionManagement.ts`：彻底废除 `sendNewSession`（向宿主投递废弃的 `create_new_session`），对齐 IDEA 全面规范使用通道命令 `session.load`、`history.delete`、`history.deleteMany`、`history.export`、`history.favorite`、`session.rename`，新建会话统一调度 `openNewSessionTab()`；
+     - 重构 `App.tsx` 中的撤销与消息删除：将 `revert.changed`（基于 `parseRevertStateEvent` 解析，支持前台 Tab 与后台 Tab 分流更新）与 `message.removed` 统一接入 `registerHostEvents` 并注册进注销列表；
+   - **消除多会话弹窗切 Tab 丢失缺陷**：
+     - 彻底删除 `useDialogManagement.ts` 中基于 `currentSessionId` 监听盲目清空 `pendingPermissionRequests` / `currentPermissionRequest` 的错误 `useEffect`；
+     - 恢复 `window.__dialogStore.restore` 100% 对齐 IDEA 逻辑，切 Tab 时从 `tabStore` 权威恢复目标 Tab 的挂起弹窗；
+     - 修复 `bridge.ts` 中的 `sendInterrupt`，移除私自添加的 `dropped interrupt: no tab owns the session` 判定，100% 还原 IDEA 蓝图；
+   - **彻底清除推理力度胶水代码，恢复推荐力度与徽标**：
+     - 彻底删除胶水文件 `reasoningUtils.ts` 与 `reasoningUtils.test.ts`；
+     - `ReasoningSelect.tsx` 完全对齐 IDEA 蓝图，基于 `getRecommendedReasoningEffort` 自动计算模型推荐档位，恢复 `(Recommended)` 徽标渲染，切模型时自动平滑回退至推荐档位；
+   - **工作区路径精准识别**：
+     - 修复 `extension.ts` 中的 `fallbackWorkingDirectoryResolver`，优先获取当前激活文档所在工作区根目录及 `workspace.workspaceFolders[0]`，避免目录锁定在子文件父目录；
+   - **修复 `@` 模式子代理选择器**：
+     - 在 `AgentHandler.ts` 的 `pushAgents` 中补充使用 `WebviewBroadcaster.broadcastRaw` 广播 `host.events` 批量的 `agents.updated` 语义事件，打通 Webview `agentStore.ts` 接收链；
+   - **文件上下文 Tab 级状态隔离与设置解耦**：
+     - 设置页中的 `autoOpenFileEnabled` 作为新建 Tab 时的默认首选项，而当前 Tab 的文件上下文开关在当前 Tab 内独立生效，在消息发送时通过 `tabStore.getActiveTabAutoOpenFileEnabled()` 读取当前 Tab 的权威状态。
+3. **双端验证全绿**：
+   - 宿主单元测试 **121 passing / 0 failing**；
+   - Webview 单元测试 **177 个测试套件，1488 项单测 100% 全部通过**；
+   - 双端全量编译打包 **0 error 0 warning**。 |
+| 2026-10-29 | **P9-A29**：**彻底排查并根治发送消息无响应与持续 loading，打通宿主-Webview 全链路 Tab 同步与命令路由容错**：
 1. **彻底排查根因**：
    - 追踪全链路日志与执行流：Webview 在初始化阶段收到宿主 `tab.resync`（带宿主生成的权威 activeTabId），因 `useTabSessionBinder.ts` 中的 `resync` 直接执行 `JSON.parse(json)`，而 VS Code 宿主通过 postMessage 传递的是结构化 Object，抛出 `SyntaxError: Unexpected token 'o', "[object Object]" is not valid JSON`，导致 `tab.resync` 被直接丢弃；
    - Webview 因丢弃了宿主 Tab 状态，本地兜底采用了虚拟 `'tab-1'`；
@@ -143,7 +170,28 @@
    - **全面对齐 `sessionCallbacks.ts`**：引入 IDEA 权威的 `registerHostEvents` 语义注册，接通 `command.rejected` / `attachment.failed` / `session.bound` / `tab.title.changed` 等事件；在命令被拒绝时不仅输出 toast，并立即重置界面的 `loading: false` 与 `streamingActive: false`，彻底消除界面无限 loading；
    - **全链路命令审计与日志增强**：在 `OpenCodeViewProvider`（host_command 入站）、`ChatWindow.handleViewCommand`、`rejectCommand` 中补充详细的日志追踪，保证每一步命令执行与拒绝在 `opencode-plugin.log` 中清清楚楚。
 3. **双端验证全绿**：宿主 **121 passing**、Webview 178 个测试文件 **1491 项单测 100% 全部通过**，双端全量编译打包 **0 error 0 warning**。 |
-| 2026-10-29 | **P9-A28（本轮）**：**修复发送消息无 AI 返回与新建会话推荐推理力度未生效，打通全链路 SessionSink 与命名数据面**：
+| 2026-10-29 | **P9-A31（本轮）**：**修复会话标题断流、模式大小写与多语言、切Tab弹窗保持、文件上下文持久性与撤销/恢复消息对齐；全量对齐 IDEA 蓝图**：
+1. **解决会话标题不更新断流问题**：
+   - 修复 `ChatWindow.ts` 的 `bindTabSession` 错误使用 `record.getSession() !== session` 拦截导致首次分配 session 时直接被 return 的严重缺陷；对齐 IDEA `OpencodeBuddyChatWindow.java:2324-2358`，正确为 `record` 绑定 `boundSession`、注入 `adapter.tabId`、`adapter.sessionId`，并向前端广播 `session.bound` 命名事件；
+   - 修复 `SessionCallbackAdapter.onSessionTitleReceived` 中确保 `this.sessionId` 正确并发送 `tab.title.changed`；
+   - 增强 `sessionCallbacks.ts` 中的 `updateSessionTitle` 参数兼容性，无缝解析 `(payload, env)` 和 `(sessionId, title)` 两种调用形态。
+2. **解决模式首字母小写与描述多语言支持问题**：
+   - 对齐 IDEA `ModeSelect.tsx`，将模式名称格式化为首字母大写；
+   - 修复 `agent.description || t(...)` 逻辑被 daemon 返回的英文描述短路跳过的问题，重构为 `t('openCodeModes.${i18nKey}.description', { defaultValue: agent.description || '' })`，实现中文多语言优先与本地化。
+3. **彻底解决切换 Tab 导致弹窗消失问题**：
+   - 修复 `useTabSessionBinder.ts` 在 `saveCurrentTabSnapshot` 时遍历其它后台 Tab 并在未检查下覆盖 `promptStore` 的缺陷，改为权威合并保护；在 `selectTab` 中安全回填，避免空数组覆盖真实弹窗；
+   - 在 `window.__dialogStore.getSnapshot()` 中补齐 `plans` 快照；
+   - 移除 `useDialogManagement.ts` 中非 IDEA 蓝图的失焦关灭弹窗副作用。
+4. **彻底解决设置中关闭发送文件路径开关后 Tab 内文件上下文消失问题**：
+   - 移除 `SettingsHandler.ts` 中私自添加的 `this.context.clearEditorContext()`，对齐 IDEA `ProjectConfigHandler.java:236-246`；
+   - 移除 `EditorContextTracker.ts` 中在全局设置关闭时强制 clearSelectionInfo 的逻辑，使设置仅作为新会话/新 Tab 的默认值，各 Tab 自身独立维护开启状态。
+5. **彻底解决撤销/恢复后会话列表消失、无法展开、无法恢复的问题**：
+   - 修复 `MessageList.tsx` 的切片回退逻辑：仅在 `revertBoundaryId === 'latest'` 时才回退寻找最后一条人类消息，避免把服务端已过滤的消息列表再次切空；
+   - 在 `App.tsx` 的 `consumeRevertBoundary` 补齐对 `tabStore.updateTab(activeTabId, ...)` 的更新；
+   - 在 `handleRedoMessage` 中恢复时显式调用 `loadHistorySession(sid)` 重新从服务端拉取完整快照；
+   - 移除切换会话时抹杀 revert 状态的副作用。
+6. **双端验证全绿**：宿主 **121 passing**、Webview 177 个测试文件 **1488 项单测全部通过**，双端全量编译打包 **0 error 0 warning**。 |
+| 2026-10-29 | **P9-A28**：**修复发送消息无 AI 返回与新建会话推荐推理力度未生效，打通全链路 SessionSink 与命名数据面**：
 1. **彻底解决发送消息后一直 loading 无 AI 消息返回问题**：
    - **重绑定与解除绑定机制闭环**：当 daemon 检测到目录不匹配或在同一 tab 切换会话时，`ChatWindow.bindTabSession` 对发生变更的 sessionId 自动执行 `registry.release(tabId)`，彻底消除 `already bound to` 异常阻断，并在重绑时向前端广播 `session.bound` 命名事件；
    - **`SessionCallbackAdapter` 缺失 Tab 身份修复**：对齐 IDEA `OpencodeBuddyChatWindow.java`，在 session 绑定时立即为 `boundAdapter` 和 `boundCoalescer` 注入 `setSessionId` 与 `setTabId(tabId.value)`，使流式增量（`content.delta` 等）精准按 G8 命名事件路由至对应 tab，杜绝被判定为无 tab 身份而丢弃；
