@@ -150,11 +150,6 @@ const App = () => {
   const isFirstMountRef = useRef(true);
   const chatInputRef = useRef<ChatInputBoxHandle>(null);
 
-  // StatusPanel collapse state — kept in App.tsx because forceStatusUpdate is
-  // intentionally local: a tiny re-render trigger paired with userCollapsedRef.
-  const userCollapsedRef = useRef(false);
-  const [, forceStatusUpdate] = useState(0);
-
   // Message anchor node registry for anchor rail navigation
   const messageNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [anchorCollapsedCount, setAnchorCollapsedCount] = useState(0);
@@ -792,6 +787,8 @@ const App = () => {
     handleModeSelect,
     openContextUsageDialog,
     closeContextUsageDialog,
+    currentSessionId,
+    currentSessionIdRef,
   });
 
   // ── "Interrupt then undo/redo" confirmation handlers (busy session) ──
@@ -1012,9 +1009,11 @@ const App = () => {
     reorderTabs,
     openSessionInTab,
     activeTabAutoOpenFileEnabled,
+    setActiveTabAutoOpenFileEnabled,
     statusPanelExpanded,
     statusPanelTab,
     setStatusPanelTab,
+    toggleStatusPanel,
   } = useSessionTabs({
     currentSessionId,
     currentSessionIdRef,
@@ -1139,7 +1138,6 @@ const App = () => {
           onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
           permissionDialogTimeoutSeconds={permissionDialogTimeoutSeconds}
           onPermissionDialogTimeoutChange={setPermissionDialogTimeoutSeconds}
-          daemonEngine={daemonEngine}
         />
       ) : (
         <>
@@ -1167,7 +1165,6 @@ const App = () => {
               messagesEndRef={messagesEndRef}
               inputAreaRef={inputAreaRef}
               messageNodeMapRef={messageNodeMapRef}
-              userCollapsedRef={userCollapsedRef}
               messageListRef={messageListRef}
               isAutoScrollingRef={isAutoScrollingRef}
               anchorCollapsedCount={anchorCollapsedCount}
@@ -1176,7 +1173,7 @@ const App = () => {
               statusPanelExpanded={statusPanelExpanded}
               statusPanelTab={statusPanelTab}
               onStatusPanelTabChange={setStatusPanelTab}
-              forceStatusUpdate={forceStatusUpdate}
+              onToggleStatusPanel={toggleStatusPanel}
               onUndoFile={handleUndoFile}
               onDiscardAll={onDiscardAll}
               onKeepAll={handleKeepAll}
@@ -1197,14 +1194,14 @@ const App = () => {
               activeProviderConfig={activeProviderConfig}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}
-              autoOpenFileEnabled={activeTabAutoOpenFileEnabled ?? autoOpenFileEnabled}
+              autoOpenFileEnabled={activeTabAutoOpenFileEnabled}
               usagePercentage={usagePercentage}
               usageUsedTokens={usageUsedTokens}
               usageMaxTokens={usageMaxTokens}
               onModeSelect={handleModeSelect}
               onModelSelect={handleModelSelect}
               onReasoningChange={handleReasoningChange}
-              onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
+              onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}
               messageQueue={messageQueue}
               onRemoveFromQueue={dequeueMessage}
             />
@@ -1213,8 +1210,15 @@ const App = () => {
             <HistoryView
               historyData={historyData}
               onLoadSession={(sessionId) => {
+                const session = historyData?.sessions?.find(s => s.sessionId === sessionId);
                 if (openSessionInTabRef.current) {
-                  openSessionInTabRef.current(sessionId);
+                  openSessionInTabRef.current(
+                    sessionId,
+                    session?.title,
+                    session?.model,
+                    session?.agent || (session as any)?.mode,
+                    (session as any)?.reasoningEffort,
+                  );
                 } else {
                   loadHistorySession(sessionId);
                 }

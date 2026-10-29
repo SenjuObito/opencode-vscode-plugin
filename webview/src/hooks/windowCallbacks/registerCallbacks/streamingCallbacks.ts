@@ -491,12 +491,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       return;
     }
     if (handlingMode === 'skip') {
-      // No active stream to finalize (refs already cleared by a prior
-      // onStreamEnd, OR the turn never streamed — a non-streaming turn or one
-      // that failed before [STREAM_START]). Either way, still mark any dangling
-      // tool_use as denied: on an errored/aborted turn the tool_result never
-      // arrives, and without this the last tool card spins forever. Idempotent
-      // (a no-op when everything is already resolved or already denied).
       finalizeUnresolvedToolUses();
       return;
     }
@@ -952,6 +946,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         tab.isThinking = false;
       })) return;
       window.onStreamEnd?.(reason ? JSON.stringify({ reason }) : sequence as number);
+    },
+    'turn.settled': (_payload: unknown, env?: HostEventEnvelope) => {
+      if (updateBackgroundTab(env, (tab) => {
+        tab.streamingActive = false;
+        tab.loading = false;
+        tab.isThinking = false;
+      })) return;
+      clearStallWatchdog();
+      setStreamingActive(false);
+      setLoading(false);
+      setLoadingStartTime(null);
+      setIsThinking(false);
+      finalizeUnresolvedToolUses();
     },
     'session.loading': (payload: unknown, env?: HostEventEnvelope) => {
       const data = payloadOf(payload);

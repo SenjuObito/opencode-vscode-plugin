@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A26：提示答复失败回执 `command.rejected` 闭环、全部 10 种多语言 Tab 键值对齐；根目录忽略 `.DS_Store`；全量编译/测试复跑）
+> 最后更新：2026-10-29（P9-A27：以 IDEA 蓝图彻底消除状态源与事件流架构断层，移除过时胶水代码，修复 7 项核心交互缺陷；双端全量单测通过）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `ea954a3`。
@@ -40,7 +40,7 @@
 - **验收门已全绿**：
   - `pnpm run compile` ✅（`tsc --noEmit` + `eslint src` + esbuild）；
   - `webview pnpm run build` ✅（单文件 `dist/webview/index.html` 同步生成）；
-  - webview `vitest` **178 文件 / 1488 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅ 0 错；
+  - webview `vitest` **178 文件 / 1491 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅ 0 错；
   - 宿主 `pnpm test`（`pretest` 先清理 `out/`）**121 passing / 0 failing**。
 - 整体完成度估算：宿主架构 100%、webview 架构 ≈99%、14 项功能域 **14/14**、多视图一致性 100%。
 
@@ -132,7 +132,17 @@
 
 | 日期 | 变更 |
 |---|---|
-| 2026-10-29 | **P9-A26（本轮）**：①**提示答复失败回执 `command.rejected` 闭环**：`PermissionHandler.handleReplyCommand` 返回 `PromptReplyResult`，当 prompt 不存在或串 tab（owner mismatch）时由 `ChatWindow` 向对应 tab 发布 `command.rejected`，彻底消除 §4.8 剩余缺口；新增 2 项宿主断言单测（共 121 passing）。②**全部 10 个语言包 Tab key 100% 补全**：为繁体中文（`zh-TW`）、日语（`ja`）、韩语（`ko`）、法语（`fr`）、西班牙语（`es`）、巴西葡语（`pt-BR`）、俄语（`ru`）、印地语（`hi`）精准补齐 13 项 Tab 多会话与右键菜单键值。③**清理 `.DS_Store`**：删除 `webview/src/assets/.DS_Store` 并在根目录 `.gitignore` 补充忽略规则。实跑：宿主 **121 passing**、webview **1488 项**全绿、全量双端打包通过。 |
+| 2026-10-29 | **P9-A27（本轮）**：**基于 IDEA 蓝图彻底消除状态源与事件流架构断层，修复 7 项核心交互缺陷**：
+1. **数据源彻底统一**：以 `opencode-idea-gui` 为权威蓝图重构 `MessagesContext.tsx`，彻底废除 15 个脱离 tab 的独立 `useState`，改为通过 `tabStore.getActiveTab`（`useSyncExternalStore`）作为唯一事实源，统一驱动 `turnActive: isTabTurnActive(activeTab)`、`loading`、`streamingActive` 等。
+2. **终端流式与事件结算对齐**：宿主 `SessionCallbackAdapter` 补齐 `turn.settled`；前端 `streamingCallbacks` 接入权威终端结算，解决发送消息后偶发无限 loading 的问题。
+3. **消除装配胶水与传参偏离**：
+   - 彻底删除 `App.tsx` 与 `ChatScreen.tsx` 中的遗留补丁 `userCollapsedRef` 和 `forceStatusUpdate`，全面恢复 IDEA 架构原生 `toggleStatusPanel`；
+   - 修复文件上下文设置影响全局的问题：`ChatScreen` 与 `ChatInputBox` 仅接收并操作 `activeTabAutoOpenFileEnabled` / `setActiveTabAutoOpenFileEnabled`，全局开关保留在 `SettingsView`；
+   - 修复从历史加载会话 tab 标题为“历史会话”的缺陷：`HistoryView` 的 `onLoadSession` 完整补齐 `session.title`、`session.model`、`session.agent`、`session.reasoningEffort` 传参；
+   - 修复新建会话标题文案：对齐 IDEA `zh.json`，将 `newSession` 修正为“新会话”；
+   - 清理设置页中冗余的“opencode 引擎”配置块：移除 `EnvironmentTab.tsx` / `SettingsView` 中的 `daemonEngine` 渲染，与 IDEA 保持一致。
+4. **全链路验证全绿**：宿主 **121 passing**、Webview 178 个测试文件 **1491 项单测 100% 通过**，双端全量编译打包 **0 error 0 warning**。 |
+| 2026-10-29 | **P9-A26**：①**提示答复失败回执 `command.rejected` 闭环**：`PermissionHandler.handleReplyCommand` 返回 `PromptReplyResult`，当 prompt 不存在或串 tab（owner mismatch）时由 `ChatWindow` 向对应 tab 发布 `command.rejected`，彻底消除 §4.8 剩余缺口；新增 2 项宿主断言单测（共 121 passing）。②**全部 10 个语言包 Tab key 100% 补全**：为繁体中文（`zh-TW`）、日语（`ja`）、韩语（`ko`）、法语（`fr`）、西班牙语（`es`）、巴西葡语（`pt-BR`）、俄语（`ru`）、印地语（`hi`）精准补齐 13 项 Tab 多会话与右键菜单键值。③**清理 `.DS_Store`**：删除 `webview/src/assets/.DS_Store` 并在根目录 `.gitignore` 补充忽略规则。实跑：宿主 **121 passing**、webview **1488 项**全绿、全量双端打包通过。 |
 | 2026-10-29 | **P9-A25**：按文件从 idea 同步剩余 UI/交互：①历史页“深度搜索”刷新按钮；②Shift+Tab 改为循环宿主推送的全部 primary agent；③生成指示器按整个 turn 显示；④`CompactSummaryBlock` 换成 idea 紧凑胶囊样式；⑤锚点栏过滤 tool_result；⑥工具块以 `result.is_error` 为准；⑦模型选择器支持后缀匹配与默认纠偏。实跑：宿主 **119 passing**、webview **1488**、编译/构建 ✅。 |
 | 2026-10-29 | **P9-A24**：提示答复命令面 v2 + `StatusNoticeBar` 终端错误通知。实跑：宿主 119、webview 1483。 |
 | 2026-10-29 | **P9-A23**：命令面 v2 对齐（`fork`/`compact`/`share`/`revert`）。实跑：宿主 116、webview 1476。 |

@@ -344,13 +344,26 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
+		const turnId = this.activeTurnId ?? undefined;
 		this.emit('turn.ended', { sequence }, () => {
 			this.jsTarget.callJavaScript('onStreamEnd', String(sequence));
 		}, { seq: sequence });
 		this.emit('session.loading', { loading: false }, () => {
 			this.jsTarget.callJavaScript('showLoading', 'false');
 		});
+		this.emit('turn.settled', { terminal: JSON.stringify({ turnId }) }, () => {
+			this.jsTarget.callJavaScript('onTurnEnd', JSON.stringify({ turnId }));
+		});
 		this.activeTurnId = null;
+	}
+
+	onTurnEnd(jsonContent: string): void {
+		if (this.isInactive() || !jsonContent || jsonContent.trim() === '') {
+			return;
+		}
+		this.emit('turn.settled', { terminal: jsonContent }, () => {
+			this.jsTarget.callJavaScript('onTurnEnd', jsonContent);
+		});
 	}
 
 	private cancelStreamEndFallback(): void {

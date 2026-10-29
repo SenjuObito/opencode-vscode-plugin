@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent, sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
 import { uploadAttachments } from '../utils/attachmentTransport';
 import { getTabStore } from '../store/tabStore';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
@@ -60,6 +60,9 @@ export interface UseMessageSenderOptions {
   handleModeSelect?: (mode: PermissionMode) => void;
   openContextUsageDialog: (requestId?: string | null, loading?: boolean) => void;
   closeContextUsageDialog: (requestId?: string | null) => boolean;
+  currentSessionId?: string | null;
+  currentSessionIdRef?: RefObject<string | null>;
+  autoOpenFileEnabled?: boolean;
 }
 
 /**
@@ -93,6 +96,9 @@ export function useMessageSender({
   handleModeSelect,
   openContextUsageDialog,
   closeContextUsageDialog,
+  currentSessionId,
+  currentSessionIdRef,
+  autoOpenFileEnabled,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -248,33 +254,56 @@ export function useMessageSender({
     });
 
     const reasoningEffortPayload = { reasoningEffort };
+    const modelPayload = selectedModel ? { model: selectedModel } : {};
 
-    // v2：发送带上 tab 身份，宿主按 tabId 解析目标会话（A 的输入不会落到 B）。
-    // 没有活跃 tab（极早期）时退回 legacy send_message，由宿主用当前会话处理。
-    const tabId = getTabStore().getActiveTabId();
-    // 附件先按块推给宿主落盘（大 base64 不进 session.send 这一帧），
-    // 发送只带 attachmentId，字节由宿主读出来交给会话层。
-    const uploadedAttachments = hasAttachments && tabId
-      ? uploadAttachments(tabId, attachments)
-      : [];
+    const activeTabId = getTabStore().getActiveTabId() ?? null;
+    const targetSessionId = currentSessionIdRef
+      ? (currentSessionIdRef.current ?? undefined)
+      : (currentSessionId ?? undefined);
+    const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
+      ? autoOpenFileEnabled
+      : (getTabStore().getActiveTabAutoOpenFileEnabled() ?? false);
 
-    const commandPayload: Record<string, unknown> = {
-      text,
-      fileTags: fileTagsInfo,
-      permissionMode: effectivePermissionMode,
-      ...reasoningEffortPayload,
-      ...(uploadedAttachments.length > 0 ? { attachments: uploadedAttachments } : {}),
-    };
-
-    if (tabId) {
-      sendHostCommand(tabId, 'session.send', commandPayload);
+    if (!activeTabId) {
+      console.error('[Frontend] refusing to send: no active tab id');
+      addToast(t('chat.sendFailedNoTab', { defaultValue: '发送失败：找不到当前标签页' }), 'error');
       return;
     }
 
-    // 没有 tab 身份就不发（§5.5：legacy send_message 兜底已删除）。
-    // 正常启动时 useTabBarState 会同步建好第一个 tab，这里只在极端早期出现。
-    cardDebugLog('[MessageSender] dropped send: no active tab');
-  }, [currentProvider, selectedModel, reasoningEffort]);
+    if (hasAttachments) {
+      try {
+        const uploaded = uploadAttachments(activeTabId, attachments);
+        sendHostCommand(activeTabId, 'session.send', {
+          text,
+          attachments: uploaded,
+          fileTags: fileTagsInfo,
+          permissionMode: effectivePermissionMode,
+          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
+          ...modelPayload,
+          ...reasoningEffortPayload,
+        }, targetSessionId);
+      } catch (error) {
+        console.error('[Frontend] Failed to serialize attachments payload', error);
+        sendHostCommand(activeTabId, 'session.send', {
+          text,
+          fileTags: fileTagsInfo,
+          permissionMode: effectivePermissionMode,
+          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
+          ...modelPayload,
+          ...reasoningEffortPayload,
+        }, targetSessionId);
+      }
+    } else {
+      sendHostCommand(activeTabId, 'session.send', {
+        text,
+        fileTags: fileTagsInfo,
+        permissionMode: effectivePermissionMode,
+        autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
+        ...modelPayload,
+        ...reasoningEffortPayload,
+      }, targetSessionId);
+    }
+  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, autoOpenFileEnabled, addToast, t]);
 
   /**
    * Execute message sending (from queue or directly)
@@ -436,13 +465,20 @@ export function useMessageSender({
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
 
-    sendInterrupt();
+    const tabStore = getTabStore();
+    const tabId = tabStore.getActiveTabId();
+    const targetSessionId = tabStore.getActiveTab().sessionId
+      ?? (currentSessionIdRef ? currentSessionIdRef.current : currentSessionId)
+      ?? undefined;
+    sendInterrupt({ tabId, sessionId: targetSessionId ?? null });
   }, [
     isStreamingRef,
     streamingContentRef,
     streamingThinkingRef,
     contentUpdateTimeoutRef,
     thinkingUpdateTimeoutRef,
+    currentSessionId,
+    currentSessionIdRef,
   ]);
 
   return {

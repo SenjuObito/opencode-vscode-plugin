@@ -14,7 +14,6 @@ import OtherSettingsSection from './OtherSettingsSection';
 import { SkillsSettingsSection } from '../skills';
 import SettingsDialogs from './SettingsDialogs';
 import { setCompactConfirmEnabled as persistCompactConfirmEnabled } from '../../utils/skipCompactConfirm';
-import type { DaemonEngineStatus } from '../../hooks/providers/useUsageTracking';
 
 // Import custom hooks
 import {
@@ -40,7 +39,6 @@ interface SettingsViewProps {
   // Permission dialog timeout configuration (passed from App.tsx for state sync)
   permissionDialogTimeoutSeconds?: number;
   onPermissionDialogTimeoutChange?: (seconds: number) => void;
-  daemonEngine?: DaemonEngineStatus | null;
 }
 
 const SettingsView = ({
@@ -53,7 +51,6 @@ const SettingsView = ({
   onAutoOpenFileEnabledChange: onAutoOpenFileEnabledChangeProp,
   permissionDialogTimeoutSeconds: permissionDialogTimeoutSecondsProp,
   onPermissionDialogTimeoutChange: onPermissionDialogTimeoutChangeProp,
-  daemonEngine,
 }: SettingsViewProps) => {
   // Page state: tabs, toasts, sidebar collapse, alert dialog
   const {
@@ -275,7 +272,6 @@ const SettingsView = ({
               onWorkingDirectoryChange={setWorkingDirectory}
               onSaveWorkingDirectory={handleSaveWorkingDirectory}
               savingWorkingDirectory={savingWorkingDirectory}
-              daemonEngine={daemonEngine}
               editorFontConfig={editorFontConfig}
               uiFontConfig={uiFontConfig}
               codeFontConfig={codeFontConfig}

@@ -6,7 +6,6 @@ import type { UiFontConfig, CodeFontConfig } from '../hooks/useSettingsBasicActi
 import AppearanceTab from './AppearanceTab';
 import BehaviorTab from './BehaviorTab';
 import EnvironmentTab from './EnvironmentTab';
-import type { DaemonEngineStatus } from '../../../hooks/providers/useUsageTracking';
 
 type BasicTab = 'appearance' | 'behavior' | 'environment';
 
@@ -29,7 +28,6 @@ interface BasicConfigSectionProps {
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
   savingWorkingDirectory?: boolean;
-  daemonEngine?: DaemonEngineStatus | null;
   editorFontConfig?: {
     fontFamily: string;
     fontSize: number;
@@ -197,7 +195,6 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onWorkingDirectoryChange={props.onWorkingDirectoryChange}
           onSaveWorkingDirectory={props.onSaveWorkingDirectory}
           savingWorkingDirectory={props.savingWorkingDirectory}
-          daemonEngine={props.daemonEngine}
         />
       )}
     </div>

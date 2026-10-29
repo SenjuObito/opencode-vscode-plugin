@@ -59,7 +59,6 @@ export interface ChatScreenProps {
   messagesEndRef: RefObject<HTMLDivElement | null>;
   inputAreaRef: RefObject<HTMLDivElement | null>;
   messageNodeMapRef: RefObject<Map<string, HTMLDivElement>>;
-  userCollapsedRef: RefObject<boolean>;
   /** Imperative handle exposing `revealAll()` to the in-page search panel. */
   messageListRef: RefObject<MessageListRevealHandle | null>;
   /** Cooperate with useScrollBehavior to avoid pausing auto-follow during search scrolls. */
@@ -75,7 +74,7 @@ export interface ChatScreenProps {
   /** 当前 tab 展开的状态面板子页（受控；切 tab 各自恢复） */
   statusPanelTab?: TabType | null;
   onStatusPanelTabChange?: (tab: TabType | null) => void;
-  forceStatusUpdate: React.Dispatch<React.SetStateAction<number>>;
+  onToggleStatusPanel: () => void;
   onUndoFile: FileChangeMgmt['handleUndoFile'];
   onDiscardAll: () => void;
   onKeepAll: FileChangeMgmt['handleKeepAll'];
@@ -132,9 +131,9 @@ export const ChatScreen = ({
   subagents, globalTodos, filteredFileChanges,
   subagentHistoryCtxValue, sessionIdCtxValue,
   chatInputRef, messagesContainerRef, messagesEndRef, inputAreaRef,
-  messageNodeMapRef, userCollapsedRef, messageListRef, isAutoScrollingRef,
+  messageNodeMapRef, messageListRef, isAutoScrollingRef,
   anchorCollapsedCount, setAnchorCollapsedCount, onMessageNodeRef,
-  statusPanelExpanded, statusPanelTab, onStatusPanelTabChange, forceStatusUpdate,
+  statusPanelExpanded, statusPanelTab, onStatusPanelTabChange, onToggleStatusPanel,
   onUndoFile, onDiscardAll, onKeepAll,
   onSubmit, onInterrupt,
   onNavigateToProviderSettings,
@@ -356,8 +355,8 @@ export const ChatScreen = ({
           reasoningEffort={reasoningEffort}
           onReasoningChange={onReasoningChange}
           sendShortcut={sendShortcut}
-          activeFile={contextInfo?.file}
-          selectedLines={contextInfo?.startLine !== undefined && contextInfo?.endLine !== undefined
+          activeFile={autoOpenFileEnabled ? contextInfo?.file : undefined}
+          selectedLines={autoOpenFileEnabled && contextInfo?.startLine !== undefined && contextInfo?.endLine !== undefined
             ? (contextInfo.startLine === contextInfo.endLine
                 ? `L${contextInfo.startLine}`
                 : `L${contextInfo.startLine}-${contextInfo.endLine}`)
@@ -367,10 +366,7 @@ export const ChatScreen = ({
             setAddModelDialogOpen(true);
           }}
           statusPanelExpanded={statusPanelExpanded}
-          onToggleStatusPanel={() => {
-            userCollapsedRef.current = !userCollapsedRef.current;
-            forceStatusUpdate((c) => c + 1);
-          }}
+          onToggleStatusPanel={onToggleStatusPanel}
           addToast={addToast}
           messageQueue={messageQueue}
           onRemoveFromQueue={onRemoveFromQueue}

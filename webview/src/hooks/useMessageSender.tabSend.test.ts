@@ -11,6 +11,7 @@ vi.mock('../store/tabStore', () => ({
   getTabStore: () => ({
     getActiveTabId: () => 'tab-alpha',
     findIdBySession: () => null,
+    getActiveTabAutoOpenFileEnabled: () => false,
   }),
 }));
 
