@@ -10,7 +10,7 @@
     "add": "新增",
     "back": "返回",
     "close": "關閉",
-    "newSession": "新會話",
+    "newSession": "新建會話",
     "newTab": "新增分頁",
     "dontAskAgain": "不再詢問",
     "history": "歷史記錄",
@@ -25,7 +25,9 @@
     "seconds": "秒",
     "minutes": "分",
     "optional": "Optional",
-    "retry": "重新載入"
+    "retry": "重新載入",
+    "pendingApproval": "等待操作",
+    "moreSessions": "更多會話"
   },
   "chat": {
     "sendMessage": "給 {{provider}} 發送訊息",
@@ -166,7 +168,17 @@
     "retryCopy": "重試複製",
     "subagentsSection": "子代理",
     "filesSection": "檔案",
-    "renderError": "訊息渲染發生異常"
+    "renderError": "訊息渲染發生異常",
+    "renameSession": "重新命名",
+    "forkSession": "Fork 會話",
+    "exportMarkdown": "匯出為 Markdown",
+    "closeOtherTabs": "關閉其他分頁",
+    "closeTabsToRight": "關閉右側分頁",
+    "closeTabsToLeft": "關閉左側分頁",
+    "closeAllTabs": "關閉所有分頁",
+    "tabBusy": "正在生成",
+    "tabWaiting": "有請求等待處理",
+    "sendFailedNoTab": "發送失敗：找不到目前分頁"
   },
   "settings": {
     "title": "設定",

@@ -10,7 +10,7 @@
     "add": "추가",
     "back": "뒤로",
     "close": "닫기",
-    "newSession": "새 세션",
+    "newSession": "새 대화",
     "newTab": "새 탭",
     "dontAskAgain": "다시 묻지 않음",
     "history": "히스토리",
@@ -25,7 +25,9 @@
     "seconds": "초",
     "minutes": "분",
     "optional": "선택사항",
-    "retry": "다시 불러오기"
+    "retry": "다시 불러오기",
+    "pendingApproval": "승인 대기 중",
+    "moreSessions": "추가 세션"
   },
   "chat": {
     "sendMessage": "{{provider}}에게 메시지 보내기",
@@ -166,7 +168,17 @@
     "retryCopy": "다시 복사",
     "subagentsSection": "하위 에이전트",
     "filesSection": "파일",
-    "renderError": "메시지 렌더링 중 오류가 발생했습니다"
+    "renderError": "메시지 렌더링 중 오류가 발생했습니다",
+    "renameSession": "이름 바꾸기",
+    "forkSession": "세션 포크",
+    "exportMarkdown": "Markdown으로 내보내기",
+    "closeOtherTabs": "다른 탭 닫기",
+    "closeTabsToRight": "오른쪽 탭 닫기",
+    "closeTabsToLeft": "왼쪽 탭 닫기",
+    "closeAllTabs": "모든 탭 닫기",
+    "tabBusy": "생성 중",
+    "tabWaiting": "처리 대기 중인 요청",
+    "sendFailedNoTab": "전송 실패: 현재 탭을 찾을 수 없음"
   },
   "settings": {
     "title": "설정",

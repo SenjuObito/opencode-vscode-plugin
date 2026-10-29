@@ -10,7 +10,7 @@
     "add": "Adicionar",
     "back": "Voltar",
     "close": "Fechar",
-    "newSession": "Nova Sessão",
+    "newSession": "Nova conversa",
     "newTab": "Nova aba",
     "dontAskAgain": "Não perguntar novamente",
     "history": "Histórico",
@@ -25,7 +25,9 @@
     "seconds": "s",
     "minutes": "m",
     "optional": "Opcional",
-    "retry": "Recarregar"
+    "retry": "Recarregar",
+    "pendingApproval": "Aguardando ação",
+    "moreSessions": "Mais sessões"
   },
   "chat": {
     "sendMessage": "Enviar mensagem para {{provider}}",
@@ -166,7 +168,17 @@
     "retryCopy": "Copiar novamente",
     "subagentsSection": "Subagentes",
     "filesSection": "Arquivos",
-    "renderError": "Falha ao renderizar a mensagem"
+    "renderError": "Falha ao renderizar a mensagem",
+    "renameSession": "Renomear",
+    "forkSession": "Bifurcar sessão",
+    "exportMarkdown": "Exportar como Markdown",
+    "closeOtherTabs": "Fechar outras abas",
+    "closeTabsToRight": "Fechar abas à direita",
+    "closeTabsToLeft": "Fechar abas à esquerda",
+    "closeAllTabs": "Fechar todas as abas",
+    "tabBusy": "Gerando",
+    "tabWaiting": "Ação necessária",
+    "sendFailedNoTab": "Falha ao enviar: nenhuma aba encontrada"
   },
   "settings": {
     "title": "Configurações",

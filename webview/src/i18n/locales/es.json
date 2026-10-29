@@ -10,7 +10,7 @@
     "add": "Añadir",
     "back": "Volver",
     "close": "Cerrar",
-    "newSession": "Nueva sesión",
+    "newSession": "Nueva conversación",
     "newTab": "Nueva pestaña",
     "dontAskAgain": "No volver a preguntar",
     "history": "Historial",
@@ -25,7 +25,9 @@
     "seconds": "s",
     "minutes": "m",
     "optional": "Optional",
-    "retry": "Recargar"
+    "retry": "Recargar",
+    "pendingApproval": "Pendiente de acción",
+    "moreSessions": "Más sesiones"
   },
   "chat": {
     "sendMessage": "Enviar mensaje a {{provider}}",
@@ -166,7 +168,17 @@
     "retryCopy": "Copiar de nuevo",
     "subagentsSection": "Subagentes",
     "filesSection": "Archivos",
-    "renderError": "Error al renderizar el mensaje"
+    "renderError": "Error al renderizar el mensaje",
+    "renameSession": "Renombrar",
+    "forkSession": "Bifurcar sesión",
+    "exportMarkdown": "Exportar a Markdown",
+    "closeOtherTabs": "Cerrar otras pestañas",
+    "closeTabsToRight": "Cerrar pestañas a la derecha",
+    "closeTabsToLeft": "Cerrar pestañas a la izquierda",
+    "closeAllTabs": "Cerrar todas las pestañas",
+    "tabBusy": "Generando",
+    "tabWaiting": "Acción requerida",
+    "sendFailedNoTab": "Error al enviar: no hay pestaña activa"
   },
   "settings": {
     "title": "Configuración",

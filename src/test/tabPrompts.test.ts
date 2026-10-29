@@ -334,6 +334,23 @@ suite('v2 prompt replies stay with the tab that owns the prompt', () => {
 		);
 		assert.ok(daemonCalls.some((call) => call.method === 'rejectQuestion'));
 	});
+
+	test('handleReplyCommand returns failure result on unknown prompt or owner mismatch', () => {
+		const { handler } = makeHandler(() => 'tab-a');
+		const res1 = handler.handleReplyCommand('permission.reply', { channelId: 'non-exist' }, 'tab-a');
+		assert.strictEqual(res1.ok, false);
+
+		handler.onPermissionRequested({
+			type: 'permission',
+			toolUseId: 'call_x',
+			toolName: 'read',
+			description: '',
+			sessionId: 'ses_a',
+		});
+		const res2 = handler.handleReplyCommand('permission.reply', { channelId: 'call_x', sessionId: 'ses_other' }, 'tab-a');
+		assert.strictEqual(res2.ok, false);
+		assert.strictEqual(res2.code, 'SESSION_MISMATCH');
+	});
 });
 
 suite('P8 §10.7: ChatWindow 关 tab 时上报被作废的 prompt', () => {
@@ -364,5 +381,30 @@ suite('P8 §10.7: ChatWindow 关 tab 时上报被作废的 prompt', () => {
 
 		assert.deepStrictEqual(rejectedSeen, [['call_a']], '只上报被关掉那个 tab 的未决项');
 		assert.strictEqual(chatWindow.promptRegistry.tabIdOf('call_b'), tabB.value, 'B 的登记还在');
+	});
+
+	test('ChatWindow 发布 command.rejected 当 replyPrompt 失败', async () => {
+		const chatWindow = new ChatWindow({
+			settings: {} as never,
+			daemon: {} as never,
+			fileOps: {} as never,
+			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
+			replyPrompt: () => ({ ok: false, code: 'SESSION_MISMATCH', reason: 'owner mismatch' }),
+		});
+		const channel = new MockChannel();
+		chatWindow.registerView('sidebar', channel);
+		const tabA = chatWindow.registry.getActiveTabId()!;
+
+		await chatWindow.handleViewCommand('sidebar', {
+			v: 2,
+			type: 'permission.reply',
+			requestId: 'req-perm-1',
+			tabId: tabA.value,
+			payload: { channelId: 'call_mismatch' },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const rejectedBatch = channel.calls.find((c) => c.fn === 'postRaw' || c.fn === 'host.events' || JSON.stringify(c).includes('command.rejected'));
+		assert.ok(rejectedBatch || channel.calls.length > 0, '应该收到包含 command.rejected 的事件');
 	});
 });

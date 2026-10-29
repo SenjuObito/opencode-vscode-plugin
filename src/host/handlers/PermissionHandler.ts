@@ -12,6 +12,13 @@ import { NotificationService } from '../notifications/NotificationService';
 import type { PromptRegistry } from '../prompt/PromptRegistry';
 import { logDiagnostic } from '../util/DiagnosticLogger';
 import { PluginFileLogger } from '../util/PluginFileLogger';
+import { CommandRejectCode } from '../router/HostCommand';
+
+export interface PromptReplyResult {
+	ok: boolean;
+	code?: CommandRejectCode | string;
+	reason?: string;
+}
 
 const SUPPORTED_TYPES = ['permission_decision', 'ask_user_question_response', 'ask_user_question_reject', 'plan_approval_response'];
 
@@ -104,40 +111,41 @@ export class PermissionHandler extends BaseMessageHandler {
 	 * 命令已经由 ChatWindow 路由到目标 tab；这里再核对 pending 的 tab/session
 	 * 归属。过期对话框、另一个 tab 的迟到答复都不会落到当前会话。
 	 */
-	handleReplyCommand(type: string, payload: Record<string, unknown>, tabId: string | null): void {
+	handleReplyCommand(type: string, payload: Record<string, unknown>, tabId: string | null): PromptReplyResult {
 		const requestId = type === 'permission.reply'
 			? this.stringField(payload.channelId)
 			: this.stringField(payload.requestId);
 		if (!requestId) {
-			return;
+			return { ok: false, code: CommandRejectCode.INVALID_PAYLOAD, reason: `${type} missing requestId or channelId` };
 		}
 		if (type === 'plan.reply') {
 			// opencode 没有 plan approval；保留关闭对话框的语义。
 			this.prompts?.forget(requestId);
 			this.forceCloseFrontendDialog('forceClosePlanApprovalDialog');
-			return;
+			return { ok: true };
 		}
 		const pending = type === 'permission.reply'
 			? this.pendingPermissions.get(requestId)
 			: this.pendingQuestions.get(requestId);
 		if (!pending) {
 			PluginFileLogger.warn('PermissionHandler', `${type} for unknown prompt ${requestId}`);
-			return;
+			return { ok: false, code: CommandRejectCode.INVALID_PAYLOAD, reason: `${type} for unknown prompt ${requestId}` };
 		}
 		const replySessionId = this.stringField(payload.sessionId) || null;
 		if (!this.replyMatchesOwner(requestId, replySessionId, tabId, pending.sessionId)) {
 			PluginFileLogger.warn('PermissionHandler', `${type} refused: owner mismatch for ${requestId}`);
-			return;
+			return { ok: false, code: CommandRejectCode.SESSION_MISMATCH, reason: `${type} refused: owner mismatch for ${requestId}` };
 		}
 		if (type === 'permission.reply') {
 			this.handlePermissionDecision(JSON.stringify(payload));
-			return;
+			return { ok: true };
 		}
 		if (payload.rejected === true) {
 			this.handleAskUserQuestionReject(JSON.stringify(payload));
-			return;
+			return { ok: true };
 		}
 		this.handleAskUserQuestionResponse(JSON.stringify(payload));
+		return { ok: true };
 	}
 
 	private stringField(value: unknown): string {

@@ -10,7 +10,7 @@
     "add": "追加",
     "back": "戻る",
     "close": "閉じる",
-    "newSession": "新規セッション",
+    "newSession": "新しいチャット",
     "newTab": "新規タブ",
     "dontAskAgain": "次回から表示しない",
     "history": "履歴",
@@ -25,7 +25,9 @@
     "seconds": "秒",
     "minutes": "分",
     "optional": "Optional",
-    "retry": "再読み込み"
+    "retry": "再読み込み",
+    "pendingApproval": "確認待ち",
+    "moreSessions": "その他のセッション"
   },
   "chat": {
     "sendMessage": "{{provider}}にメッセージを送信",
@@ -166,7 +168,17 @@
     "retryCopy": "再コピー",
     "subagentsSection": "サブエージェント",
     "filesSection": "ファイル",
-    "renderError": "メッセージの描画に失敗しました"
+    "renderError": "メッセージの描画に失敗しました",
+    "renameSession": "名前を変更",
+    "forkSession": "セッションをフォーク",
+    "exportMarkdown": "Markdownとしてエクスポート",
+    "closeOtherTabs": "他のタブを閉じる",
+    "closeTabsToRight": "右側のタブを閉じる",
+    "closeTabsToLeft": "左側のタブを閉じる",
+    "closeAllTabs": "すべてのタブを閉じる",
+    "tabBusy": "生成中",
+    "tabWaiting": "対応が必要なリクエスト",
+    "sendFailedNoTab": "送信失敗：現在のタブが見つかりません"
   },
   "settings": {
     "title": "設定",

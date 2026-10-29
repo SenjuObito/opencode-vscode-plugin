@@ -10,7 +10,7 @@
     "add": "जोड़ें",
     "back": "वापस",
     "close": "बंद करें",
-    "newSession": "नया सत्र",
+    "newSession": "नई बातचीत",
     "newTab": "नया टैब",
     "dontAskAgain": "फिर से न पूछें",
     "history": "इतिहास",
@@ -25,7 +25,9 @@
     "seconds": "से",
     "minutes": "मि",
     "optional": "Optional",
-    "retry": "पुनः लोड करें"
+    "retry": "पुनः लोड करें",
+    "pendingApproval": "कार्रवाई की प्रतीक्षा",
+    "moreSessions": "अधिक सत्र"
   },
   "chat": {
     "sendMessage": "{{provider}} को संदेश भेजें",
@@ -166,7 +168,17 @@
     "retryCopy": "फिर से कॉपी करें",
     "subagentsSection": "सबएजेंट",
     "filesSection": "फ़ाइलें",
-    "renderError": "संदेश प्रतिदर्शन में त्रुटि"
+    "renderError": "संदेश प्रतिदर्शन में त्रुटि",
+    "renameSession": "नाम बदलें",
+    "forkSession": "सत्र कांटा",
+    "exportMarkdown": "Markdown के रूप में निर्यात करें",
+    "closeOtherTabs": "अन्य टैब बंद करें",
+    "closeTabsToRight": "दाईं ओर के टैब बंद करें",
+    "closeTabsToLeft": "बाईं ओर के टैब बंद करें",
+    "closeAllTabs": "सभी टैब बंद करें",
+    "tabBusy": "उत्पन्न हो रहा है",
+    "tabWaiting": "कार्रवाई आवश्यक",
+    "sendFailedNoTab": "भेजना विफल: कोई टैब नहीं मिला"
   },
   "settings": {
     "title": "सेटिंग्स",

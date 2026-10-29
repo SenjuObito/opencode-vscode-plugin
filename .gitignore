@@ -7,3 +7,4 @@ node_modules
 .claude/
 AGENTS.md
 CLAUDE.md
+.DS_Store

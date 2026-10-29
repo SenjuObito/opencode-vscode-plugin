@@ -10,7 +10,7 @@
     "add": "Добавить",
     "back": "Назад",
     "close": "Закрыть",
-    "newSession": "Новый сеанс",
+    "newSession": "Новый чат",
     "newTab": "Новая вкладка",
     "dontAskAgain": "Больше не спрашивать",
     "history": "История",
@@ -25,7 +25,9 @@
     "seconds": "с",
     "minutes": "м",
     "optional": "Необязательно",
-    "retry": "Перезагрузить"
+    "retry": "Перезагрузить",
+    "pendingApproval": "Ожидание действия",
+    "moreSessions": "Больше сессий"
   },
   "chat": {
     "sendMessage": "Отправить сообщение в {{provider}}",
@@ -166,7 +168,17 @@
     "retryCopy": "Копировать снова",
     "subagentsSection": "Субагенты",
     "filesSection": "Файлы",
-    "renderError": "Ошибка отрисовки сообщения"
+    "renderError": "Ошибка отрисовки сообщения",
+    "renameSession": "Переименовать",
+    "forkSession": "Ответвить сессию",
+    "exportMarkdown": "Экспортировать в Markdown",
+    "closeOtherTabs": "Закрыть другие вкладки",
+    "closeTabsToRight": "Закрыть вкладки справа",
+    "closeTabsToLeft": "Закрыть вкладки слева",
+    "closeAllTabs": "Закрыть все вкладки",
+    "tabBusy": "Генерация",
+    "tabWaiting": "Требуется действие",
+    "sendFailedNoTab": "Ошибка отправки: вкладка не найдена"
   },
   "settings": {
     "title": "Настройки",

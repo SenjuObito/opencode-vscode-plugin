@@ -10,7 +10,7 @@
     "add": "Ajouter",
     "back": "Retour",
     "close": "Fermer",
-    "newSession": "Nouvelle session",
+    "newSession": "Nouvelle conversation",
     "newTab": "Nouvel onglet",
     "dontAskAgain": "Ne plus demander",
     "history": "Historique",
@@ -25,7 +25,9 @@
     "seconds": "s",
     "minutes": "m",
     "optional": "Optional",
-    "retry": "Recharger"
+    "retry": "Recharger",
+    "pendingApproval": "En attente d'action",
+    "moreSessions": "Plus de sessions"
   },
   "chat": {
     "sendMessage": "Envoyer un message à {{provider}}",
@@ -166,7 +168,17 @@
     "retryCopy": "Copier à nouveau",
     "subagentsSection": "Sous-agents",
     "filesSection": "Fichiers",
-    "renderError": "Erreur de rendu du message"
+    "renderError": "Erreur de rendu du message",
+    "renameSession": "Renommer",
+    "forkSession": "Dupliquer la session",
+    "exportMarkdown": "Exporter en Markdown",
+    "closeOtherTabs": "Fermer les autres onglets",
+    "closeTabsToRight": "Fermer les onglets à droite",
+    "closeTabsToLeft": "Fermer les onglets à gauche",
+    "closeAllTabs": "Fermer tous les onglets",
+    "tabBusy": "Génération en cours",
+    "tabWaiting": "Action requise",
+    "sendFailedNoTab": "Échec de l'envoi : aucun onglet actif"
   },
   "settings": {
     "title": "Paramètres",

@@ -84,7 +84,7 @@ export interface ChatWindowOptions {
 	/** 读取子代理 transcript（`subagent.history`，按会话归属）。 */
 	loadSubagentHistory?: (payload: string) => void;
 	/** v2 提示答复：`permission.reply` / `question.reply` / `plan.reply`。 */
-	replyPrompt?: (type: string, payload: Record<string, unknown>, tabId: string) => void;
+	replyPrompt?: (type: string, payload: Record<string, unknown>, tabId: string) => { ok: boolean; code?: string; reason?: string } | void;
 	/**
 	 * 列举候选文件（v2 `files.list`）：由 ChatInstance 接到 FileHandler。
 	 * 目录由宿主按目标 tab 的 cwd 给出。
@@ -545,10 +545,24 @@ export class ChatWindow {
 		});
 		// 未决提示的答复必须回到发起它的 tab/session（idea 的 permission.reply /
 		// question.reply / plan.reply）。ChatWindow 先把命令路由到目标 tab，
-		// PermissionHandler 再核对 pending 的归属，过期或串 tab 的答复直接丢弃。
+		// PermissionHandler 再核对 pending 的归属，过期或串 tab 的答复发 command.rejected。
 		for (const type of ['permission.reply', 'question.reply', 'plan.reply']) {
-			this.commandRouter.register(type, (cmd) => {
-				this.options.replyPrompt?.(type, cmd.payload, cmd.tabId.value);
+			this.commandRouter.register(type, (cmd, record) => {
+				const result = this.options.replyPrompt?.(type, cmd.payload, cmd.tabId.value);
+				if (result && typeof result === 'object' && result.ok === false) {
+					record?.getEventSink()(new TabEvent({
+						type: 'command.rejected',
+						tabId: cmd.tabId.value,
+						epoch: record.epoch,
+						payload: {
+							tabId: cmd.tabId.value,
+							requestId: cmd.requestId,
+							code: result.code ?? CommandRejectCode.INVALID_PAYLOAD,
+							message: result.reason ?? `${type} rejected`,
+						},
+						legacy: false,
+					}));
+				}
 			});
 		}
 	}
