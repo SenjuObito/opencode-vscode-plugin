@@ -9,13 +9,12 @@
  */
 import { TabCommand } from '../tab/TabCommand';
 import { TabRecord } from '../tab/TabRecord';
-import type { JsTarget } from '../session/SessionCallbackAdapter';
 import type { TabAttachmentStore, AttachmentFailure } from '../attachments/TabAttachmentStore';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
 export interface TabAttachmentCommandHandlerOptions {
 	store: () => TabAttachmentStore;
-	errorSink: (record: TabRecord) => JsTarget;
+	reportError: (record: TabRecord, message: string) => void;
 }
 
 export class TabAttachmentCommandHandler {
@@ -76,6 +75,6 @@ export class TabAttachmentCommandHandler {
 			'TabAttachmentCommandHandler',
 			`tab=${record.getTabId().value} attachment=${failure.attachmentId} ${failure.reason}`,
 		);
-		this.options.errorSink(record).callJavaScript('addErrorMessage', `附件上传失败：${failure.reason}`);
+		this.options.reportError(record, `附件上传失败：${failure.reason}`);
 	}
 }

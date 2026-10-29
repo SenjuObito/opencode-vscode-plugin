@@ -6,6 +6,7 @@ import { useSessionTabs } from './useSessionTabs';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeMessage } from '../types';
 import { getTabStore, resetTabStore } from '../store/tabStore';
+import { dispatchHostEnvelope } from '../utils/hostDispatcher';
 
 const bridgeMocks = vi.hoisted(() => ({
   sendBridgeEvent: vi.fn(),
@@ -292,7 +293,77 @@ describe('useSessionTabs - multi-session attribution', () => {
     expect(active.status).toBe('running');
     expect(restore).toHaveBeenCalledWith([{ channelId: 'per-bg' }], [], []);
   });
+
+  it('follows a host tab.activated broadcast without echoing tab.activate', () => {
+    const { result } = renderTabs({ currentSessionId: 'ses_a' });
+    act(() => {
+      store().updateTabSessionId('tab-1', 'ses_a');
+    });
+    const tab1Id = result.current.activeTabId;
+    act(() => {
+      result.current.createTab();
+    });
+    expect(result.current.activeTabId).not.toBe(tab1Id);
+
+    bridgeMocks.sendTabCommand.mockClear();
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'tab.activated',
+        tabId: tab1Id,
+        epoch: 0,
+        payload: { tabId: tab1Id },
+      });
+    });
+
+    expect(result.current.activeTabId).toBe(tab1Id);
+    // Host-driven activation must not echo `tab.activate` back (loop).
+    expect(bridgeMocks.sendTabCommand).not.toHaveBeenCalledWith(tab1Id, 'tab.activate', {});
+  });
+
+  it('applies a remote draft and ignores its own echo', () => {
+    const setValue = vi.fn();
+    const { result } = renderTabs({
+      currentSessionId: 'ses_a',
+      chatInputRef: {
+        current: {
+          setValue,
+          setAttachments: vi.fn(),
+          restoreFileTags: vi.fn(),
+          restoreQuoteTags: vi.fn(),
+        },
+      },
+    });
+    const tabId = result.current.activeTabId;
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'tab.draft.changed',
+        tabId,
+        epoch: 0,
+        payload: { tabId, draft: 'from another view', sourceViewId: 'other-view' },
+      });
+    });
+    expect(setValue).toHaveBeenCalledWith('from another view');
+
+    // The sender's own echo must not rewrite the input (caret jump).
+    window.__VIEW_ID__ = 'view-a';
+    setValue.mockClear();
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'tab.draft.changed',
+        tabId,
+        epoch: 0,
+        payload: { tabId, draft: 'echo', sourceViewId: 'view-a' },
+      });
+    });
+    expect(setValue).not.toHaveBeenCalled();
+    delete window.__VIEW_ID__;
+  });
 });
+
 
 describe('useSessionTabs - history session loading', () => {
   const mockT = ((key: string, opts?: any) => opts?.defaultValue || key) as any;

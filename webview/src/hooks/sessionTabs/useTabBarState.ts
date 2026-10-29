@@ -215,14 +215,16 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         prev.map((t) => (t.id === tabId ? { ...t, title: newTitle, isCustomTitle: true } : t))
       );
       sendHostCommand(tabId, 'tab.title.set', { title: newTitle });
-      if (tabId === activeTabIdRef.current) {
-        setCustomSessionTitle(newTitle);
-      }
       // The tab owns its session id; the view's `currentSessionId` is only a
       // projection and may still point at the tab the user just left.
       const target = tabsRef.current.find((t) => t.id === tabId);
       if (target?.sessionId) {
+        // 服务端标题：历史列表 / 其他设备也看到同一标题（§7.8）。
+        sendHostCommand(tabId, 'session.rename', { title: newTitle }, target.sessionId);
         updateHistoryTitle(target.sessionId, newTitle);
+      }
+      if (tabId === activeTabIdRef.current) {
+        setCustomSessionTitle(newTitle);
       }
     },
     [setTabs, setCustomSessionTitle, updateHistoryTitle]
@@ -263,15 +265,20 @@ export function useTabBarState(options: UseTabBarStateOptions) {
 
   const reorderTabs = useCallback((sourceIndex: number, targetIndex: number) => {
     if (sourceIndex === targetIndex) return;
-    setTabs((prev) => {
-      if (sourceIndex < 0 || sourceIndex >= prev.length || targetIndex < 0 || targetIndex >= prev.length) {
-        return prev;
-      }
-      const next = [...prev];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
-      return next;
-    });
+    const prev = tabsRef.current;
+    if (sourceIndex < 0 || sourceIndex >= prev.length || targetIndex < 0 || targetIndex >= prev.length) {
+      return;
+    }
+    const next = [...prev];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    tabsRef.current = next;
+    setTabs(next);
+    // 顺序是窗口级状态：宿主保存后广播 `tab.reordered`，其他视图照此重排。
+    const envelopeTabId = activeTabIdRef.current || next[0]?.id;
+    if (envelopeTabId) {
+      sendHostCommand(envelopeTabId, 'tab.reorder', { tabIds: next.map((tab) => tab.id) });
+    }
   }, [setTabs]);
 
   return {

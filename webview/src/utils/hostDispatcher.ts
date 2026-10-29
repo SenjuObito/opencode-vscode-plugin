@@ -23,7 +23,8 @@ interface HostEnvelope {
   type?: string;
   tabId?: string;
   epoch?: number;
-  payload?: { args?: unknown[] } | unknown[];
+  /** Positional args, or a named payload object (`TabEvent`). */
+  payload?: { args?: unknown[] } | unknown[] | Record<string, unknown>;
 }
 
 const MAX_PENDING_HOST_EVENTS = 2_000;

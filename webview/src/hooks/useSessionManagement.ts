@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
 import { sendBridgeEvent, sendInterrupt, sendNewSession, cardDebugLog } from '../utils/bridge';
-import { getSkipNewSessionConfirm } from '../utils/skipNewSessionConfirm';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
 import { getTabStore } from '../store/tabStore';
 import { beginTransition, endTransition } from './windowCallbacks/tabTransition';
@@ -50,14 +49,11 @@ interface UseSessionManagementOptions {
 }
 
 interface UseSessionManagementReturn {
-  showNewSessionConfirm: boolean;
   showInterruptConfirm: boolean;
   suppressNextStatusToastRef: React.MutableRefObject<boolean>;
   createNewSession: () => void;
   forceCreateNewSession: () => void;
   forceCreateNewSessionWithProvider: (providerId: string) => void;
-  handleConfirmNewSession: () => void;
-  handleCancelNewSession: () => void;
   handleConfirmInterrupt: () => void;
   handleCancelInterrupt: () => void;
   loadHistorySession: (sessionId: string) => void;
@@ -102,9 +98,7 @@ export function useSessionManagement({
   addToast,
   t,
 }: UseSessionManagementOptions): UseSessionManagementReturn {
-  const [showNewSessionConfirm, setShowNewSessionConfirm] = useState(false);
   const [showInterruptConfirm, setShowInterruptConfirm] = useState(false);
-  const pendingActionRef = useRef<'newSession' | null>(null);
   const suppressNextStatusToastRef = useRef(false);
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const softReloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -206,27 +200,14 @@ export function useSessionManagement({
     // If AI is responding, the previous session must be interrupted first;
     // show the interrupt confirmation dialog.
     if (loading) {
-      pendingActionRef.current = 'newSession';
       setShowInterruptConfirm(true);
-    } else if (messages.length > 0) {
-      // If the user previously ticked "don't ask again", skip the dialog and
-      // proceed directly. Preference is read fresh each call so the setting
-      // page toggle takes effect immediately.
-      if (getSkipNewSessionConfirm()) {
-        onResetToPreferredModel?.();
-        beginSessionTransition(null, null);
-        sendNewSession();
-        return;
-      }
-      // If there are messages but not loading, show new session confirmation
-      pendingActionRef.current = 'newSession';
-      setShowNewSessionConfirm(true);
-    } else {
-      // If empty and not loading, directly create new session
-      onResetToPreferredModel?.();
-      beginSessionTransition(null, null);
-      sendNewSession();
+      return;
     }
+    // No second confirmation (§5.5): a new session is one click. The interrupt
+    // confirmation above stays because it guards an in-flight turn.
+    onResetToPreferredModel?.();
+    beginSessionTransition(null, null);
+    sendNewSession();
   }, [beginSessionTransition, messages.length, loading, onResetToPreferredModel]);
 
   // Force create new session (no confirmation, used by /clear /new /reset commands)
@@ -249,24 +230,6 @@ export function useSessionManagement({
     sendNewSession();
   }, [beginSessionTransition, loading, onResetToPreferredModel]);
 
-  // Confirm new session
-  const handleConfirmNewSession = useCallback(() => {
-    setShowNewSessionConfirm(false);
-    if (loading) {
-      sendInterrupt();
-    }
-    onResetToPreferredModel?.();
-    beginSessionTransition(null, null);
-    sendNewSession();
-    pendingActionRef.current = null;
-  }, [beginSessionTransition, loading, onResetToPreferredModel]);
-
-  // Cancel new session
-  const handleCancelNewSession = useCallback(() => {
-    setShowNewSessionConfirm(false);
-    pendingActionRef.current = null;
-  }, []);
-
   // Confirm interrupt
   const handleConfirmInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
@@ -274,13 +237,11 @@ export function useSessionManagement({
     onResetToPreferredModel?.();
     beginSessionTransition(null, null);
     sendNewSession();
-    pendingActionRef.current = null;
   }, [beginSessionTransition, onResetToPreferredModel]);
 
   // Cancel interrupt
   const handleCancelInterrupt = useCallback(() => {
     setShowInterruptConfirm(false);
-    pendingActionRef.current = null;
   }, []);
 
   // Load history session
@@ -518,14 +479,11 @@ export function useSessionManagement({
   }, [historyData, setHistoryData]);
 
   return {
-    showNewSessionConfirm,
     showInterruptConfirm,
     suppressNextStatusToastRef,
     createNewSession,
     forceCreateNewSession,
     forceCreateNewSessionWithProvider,
-    handleConfirmNewSession,
-    handleCancelNewSession,
     handleConfirmInterrupt,
     handleCancelInterrupt,
     loadHistorySession,

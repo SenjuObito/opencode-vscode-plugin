@@ -54,6 +54,9 @@ describe('useChatInputSelectionController', () => {
         clearInput: vi.fn(),
         hasContent: false,
         extractFileTags: () => [],
+        attachments: [],
+        setAttachments: vi.fn(),
+        restoreFileTags: vi.fn(),
         inlineCompletion: {
           applySuggestion: () => 'full suggestion',
         },

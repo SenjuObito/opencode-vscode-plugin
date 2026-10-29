@@ -30,7 +30,6 @@
   "chat": {
     "sendMessage": "{{provider}}에게 메시지 보내기",
     "createNewSession": "새 세션 만들기",
-    "confirmNewSession": "현재 세션에 메시지가 있습니다. 새 세션을 만드시겠습니까?",
     "confirmInterrupt": "대화가 진행 중입니다. 새 세션을 만들면 중단됩니다. 계속하시겠습니까?",
     "requestInterrupted": "사용자가 요청을 중단했습니다",
     "uploadedFiles": "업로드된 파일: {{files}}",
@@ -108,8 +107,6 @@
     "undoTooltip": "이 메시지 실행 취소",
     "redoTooltip": "이 메시지 다시 실행",
     "forkTooltip": "새 세션으로 포크",
-    "shareTooltip": "세션 공유",
-    "unshareTooltip": "세션 공유 해제",
     "shareSuccess": "링크가 클립보드에 복사되었습니다",
     "attachmentFile": "[첨부파일: {{fileName}}]",
     "unknownFile": "알 수 없는 파일",
@@ -151,8 +148,6 @@
     },
     "shareFailed": "복사에 실패하여 공유가 완료되지 않았습니다",
     "shareDisabledHint": "공유 기능이 opencode.json에서 비활성화되었거나(\"share\": \"disabled\") opencode 로그인이 필요할 수 있습니다. 설정을 확인 후 다시 시도하세요",
-    "sharePendingTooltip": "공유 중…",
-    "copyShareLinkTooltip": "공유 링크 복사",
     "revertPlaceholderTitle": "이 메시지와 이후의 답변이 취소되었습니다",
     "revertPlaceholderCount": "{{count}}개의 메시지가 취소되었습니다",
     "revertExpand": "보기",
@@ -369,12 +364,6 @@
         "custom": "사용자 지정",
         "reset": "초기화",
         "hint": "내 메시지의 배경색을 사용자 지정합니다. 비워두면 테마 기본값을 따릅니다."
-      },
-      "newSessionConfirm": {
-        "label": "새 세션 생성 확인",
-        "enabled": "활성화",
-        "disabled": "비활성화",
-        "hint": "비활성화하면 메시지가 있는 세션에서 새로 만들기를 선택할 때 확인 대화 상자 없이 바로 새 세션을 만듭니다."
       },
       "compactConfirm": {
         "label": "세션 압축 시 확인",

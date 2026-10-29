@@ -14,6 +14,7 @@ import type { JsTarget } from '../host/session/SessionCallbackAdapter';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
+	public raw: Array<Record<string, unknown>> = [];
 
 	public callJavaScript(functionName: string, ...args: string[]): void {
 		this.calls.push({ fn: functionName, args });
@@ -23,7 +24,7 @@ class MockChannel implements WebviewChannel {
 		return false;
 	}
 
-	public postRaw(): void {}
+	public postRaw(message: unknown): void { this.raw.push(message as Record<string, unknown>); }
 
 	public getViewCount(): number {
 		return 1;
@@ -229,9 +230,13 @@ suite('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 			});
 
 			assert.strictEqual(sent.length, 0, '缺附件不能发出去');
-			const error = view.calls.find((c) => c.fn === 'addErrorMessage');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const error = view.raw
+				.filter((message) => message.type === 'host.events')
+				.flatMap((message) => (message.batch as Array<Record<string, unknown>>) ?? [])
+				.find((event) => event.type === 'message.error');
 			assert.ok(error, '必须提示用户');
-			assert.match(error.args[0], /附件不可用/);
+			assert.match(String((error.payload as Record<string, unknown>).message), /附件不可用/);
 		});
 
 		test('关 tab 时释放该 tab 的附件目录', async () => {

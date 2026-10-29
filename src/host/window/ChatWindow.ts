@@ -2,7 +2,7 @@ import { TabRegistry } from '../tab/TabRegistry';
 import { TabId } from '../tab/TabId';
 import { TabRecord } from '../tab/TabRecord';
 import { TabState } from '../tab/TabState';
-import { TabEvent } from '../tab/TabEvent';
+import { TabEvent, TabEventSink } from '../tab/TabEvent';
 import { TabCommand, TabCommandRouter, TabCommandRouteResult } from '../tab';
 import { TabSessionFactory } from '../tab/TabSessionFactory';
 import { ViewRegistry, ViewRecord } from './ViewRegistry';
@@ -13,7 +13,6 @@ import { TabContextCommandHandler } from './TabContextCommandHandler';
 import { TabFileCommandHandler } from './TabFileCommandHandler';
 import { TabSessionSendHandler } from './TabSessionSendHandler';
 import { TabAttachmentCommandHandler } from './TabAttachmentCommandHandler';
-import { TabScopedSink } from './TabScopedSink';
 import { TabAttachmentStore } from '../attachments/TabAttachmentStore';
 import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router/HostCommand';
 import type { WebviewChannel, FileOps } from '../router/HandlerContext';
@@ -27,6 +26,14 @@ import { isValidPermissionMode } from '../session/SessionState';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
+/**
+ * 允许不带 tabId 的窗口级命令。
+ *
+ * <p>方案 §4.4 / INV-4：缺 tabId 的**tab 级**命令必须拒绝，不能回落到活跃 tab；
+ * 只有真正与 tab 无关的命令（设置目录、命令列表、活跃 tab 内新建会话）例外。</p>
+ */
+const WINDOW_SCOPED_COMMANDS = new Set(['agents.list', 'commands.refresh', 'session.new']);
+
 export interface ChatWindowOptions {
 	settings: SettingsService;
 	daemon: OpenCodeDaemonBridge;
@@ -39,6 +46,8 @@ export interface ChatWindowOptions {
 	createSession?: (
 		viewSink: JsTarget,
 		autoOpenFileEnabledResolver?: () => boolean | null | undefined,
+		contextEnabledResolver?: () => boolean,
+		eventSink?: TabEventSink,
 	) => OpenCodeSession | null;
 	/** 会话新建后的初始化（从持久化设置回灌 model / mode / effort）。 */
 	configureSession?: (session: OpenCodeSession) => void;
@@ -55,6 +64,8 @@ export interface ChatWindowOptions {
 	requestAgents?: () => void;
 	/** 保存导出文件（窗口级 `save_json`，不带 tab）。 */
 	saveText?: (content: string, filename: string) => void;
+	/** 读取子代理 transcript（`subagent.history`，按会话归属）。 */
+	loadSubagentHistory?: (payload: string) => void;
 	/**
 	 * 列举候选文件（v2 `files.list`）：由 ChatInstance 接到 FileHandler。
 	 * 目录由宿主按目标 tab 的 cwd 给出。
@@ -89,11 +100,11 @@ export class ChatWindow {
 	private readonly options: ChatWindowOptions;
 	private readonly daemon: OpenCodeDaemonBridge;
 	private readonly fallbackWorkingDirectoryResolver: () => string | null;
-	/** 每个 tab 的输出投影 sink（按 tabId 复用，保证同一个 tab 只有一份计数）。 */
-	private readonly sinks = new Map<string, TabScopedSink>();
 	/** 会话 id 分配监听器的注销函数（关闭 tab 时清理）。 */
 	private readonly bindingUnsubs = new Map<string, () => void>();
 	private sessionManager: SessionManager | null = null;
+	/** INV-7：缺失 tab 身份而被丢弃的命令/事件计数（诊断用）。 */
+	private unattributedCount = 0;
 
 	constructor(options: ChatWindowOptions) {
 		this.options = options;
@@ -113,7 +124,13 @@ export class ChatWindow {
 			);
 		});
 		this.eventRouter = new TabEventRouter(this.viewRegistry);
-		this.registry.setEventSink((event) => this.eventRouter.publish(event));
+		this.registry.setEventSink((event) => {
+			// The producing session does not know the tab binding generation;
+			// stamp the current one at the single publish choke point so a late
+			// event from before a rebind is rejected by the webview.
+			const record = this.registry.get(TabId.of(event.tabId));
+			this.eventRouter.publish(record ? event.withEpoch(record.getEpoch()) : event);
+		});
 
 		this.commandRouter = new TabCommandRouter(this.registry);
 		this.sessionCommandHandler = new TabSessionCommandHandler({
@@ -156,7 +173,7 @@ export class ChatWindow {
 		this.sessionSendHandler = new TabSessionSendHandler({
 			ensureSession: (record) => this.ensureTabSession(record),
 			replay: (record) => this.replayTab(record),
-			errorSink: (record) => this.sinkFor(record.getTabId()),
+			reportError: (record, message) => this.publishTabError(record, message),
 			resolveAttachment: (tabId, attachmentId) => {
 				const resolved = this.attachments.resolve(tabId, attachmentId);
 				const data = this.attachments.readBase64(tabId, attachmentId);
@@ -169,7 +186,7 @@ export class ChatWindow {
 		this.attachments = new TabAttachmentStore(this.options.attachmentsRoot ?? null);
 		this.attachmentCommandHandler = new TabAttachmentCommandHandler({
 			store: () => this.attachments,
-			errorSink: (record) => this.sinkFor(record.getTabId()),
+			reportError: (record, message) => this.publishTabError(record, message),
 		});
 
 		this.registerBuiltinTabCommands();
@@ -216,7 +233,9 @@ export class ChatWindow {
 				}),
 			);
 			// 新 tab 是空的：回放（无会话）会把视图清成空态，与旧 create_new_session 等价。
-			this.replayTab(record);
+			// 用 setTimeout 让 v2 批次先 drain：否则 legacy 回放会先于 tab.activated
+			// 到达其他视图，消息会写进切换前的 tab。
+			setTimeout(() => this.replayTab(record), 0);
 		});
 
 		// tab.activate
@@ -234,9 +253,10 @@ export class ChatWindow {
 				}),
 			);
 			// 宿主状态权威：后台 tab 的流式输出被投影丢弃，切回时补一份快照。
+			// 延后一拍，确保 tab.activated 先于消息快照到达（多视图切换顺序）。
 			const record = this.registry.get(tabId);
 			if (record) {
-				this.replayTab(record);
+				setTimeout(() => this.replayTab(record), 0);
 			}
 		});
 
@@ -253,7 +273,6 @@ export class ChatWindow {
 			}
 			this.bindingUnsubs.get(tabId.value)?.();
 			this.bindingUnsubs.delete(tabId.value);
-			this.sinks.delete(tabId.value);
 			this.attachments.releaseTab(tabId.value);
 			const closed = this.registry.close(tabId);
 			if (closed) {
@@ -286,6 +305,7 @@ export class ChatWindow {
 							payload: { tabId: next.getTabId().value },
 						}),
 					);
+					setTimeout(() => this.replayTab(next), 0);
 				} else {
 					const active = this.registry.getActiveTabId();
 					if (active) {
@@ -298,6 +318,10 @@ export class ChatWindow {
 								payload: { tabId: active.value },
 							}),
 						);
+						const nextRecord = this.registry.get(active);
+						if (nextRecord) {
+							setTimeout(() => this.replayTab(nextRecord), 0);
+						}
 					}
 				}
 			}
@@ -351,7 +375,14 @@ export class ChatWindow {
 						type: 'tab.draft.changed',
 						tabId: command.tabId.value,
 						epoch: record.epoch,
-						payload: { tabId: command.tabId.value, draft },
+						payload: {
+							tabId: command.tabId.value,
+							draft,
+							// 回显来源视图：发送方忽略自己的回声，避免光标跳动。
+							sourceViewId: typeof command.payload.sourceViewId === 'string'
+								? command.payload.sourceViewId
+								: '',
+						},
 					}),
 				);
 			}
@@ -364,6 +395,33 @@ export class ChatWindow {
 		this.commandRouter.register('session.compact', (cmd) => this.sessionCommandHandler.compact(cmd));
 		this.commandRouter.register('session.share', (cmd) => this.sessionCommandHandler.share(cmd));
 		this.commandRouter.register('session.unshare', (cmd) => this.sessionCommandHandler.unshare(cmd));
+
+		// session.rename：tab 重命名同步服务端标题（§7.8）。本地标题由 tab.title.set
+		// 立即生效；这里只把同一份标题写回 opencode，历史列表/其他设备才能看到。
+		this.commandRouter.register('session.rename', (command) => {
+			const record = this.registry.get(command.tabId);
+			const title = command.string('title')?.trim();
+			const sessionId = record?.getSessionIdString();
+			if (!record || !title || !sessionId) {
+				return;
+			}
+			record.getSettings().applyUserTitle(title);
+			this.daemon.request(
+				'opencode.updateSessionTitle',
+				{
+					sessionId,
+					title,
+					directory: record.getCwd() || undefined,
+				},
+				{ onLine: () => {}, onError: () => {}, onComplete: () => {} },
+			);
+		});
+
+		// subagent.history：按 tab 读取子代理 transcript（A20 修：此前只有 legacy
+		// `load_subagent_session`，A19 移植的 AgentGroupBlock 发的 v2 命令无人接收）。
+		this.commandRouter.register('subagent.history', (command) => {
+			this.options.loadSubagentHistory?.(JSON.stringify(command.payload));
+		});
 	}
 
 	private registerContextCommands(): void {
@@ -531,22 +589,36 @@ export class ChatWindow {
 		);
 	}
 
-	/** 该 tab 的输出投影：只有活跃 tab 的调用会被放行到所有视图。 */
-	sinkFor(tabId: TabId): TabScopedSink {
-		const key = tabId.value;
-		const existing = this.sinks.get(key);
-		if (existing) {
-			return existing;
-		}
-		const sink = new TabScopedSink(
-			key,
-			() => this.registry.getActiveTabId()?.value === key,
-			{
-				callJavaScript: (fn, ...args) => this.broadcast(fn, ...args),
-			},
-		);
-		this.sinks.set(key, sink);
-		return sink;
+
+	/** Publish a named event owned by one tab (used by replay / lifecycle paths). */
+	private publishRecordEvent(record: TabRecord, type: string, payload: Record<string, unknown>): void {
+		record.getEventSink()(new TabEvent({
+			type,
+			tabId: record.getTabId().value,
+			epoch: 0,
+			sessionId: record.getSessionIdString(),
+			payload,
+			legacy: false,
+		}));
+	}
+
+	/** `message.error` is global UI (a toast), so every view shows it once. */
+	private publishTabError(record: TabRecord, message: string): void {
+		this.publishRecordEvent(record, 'message.error', { message });
+	}
+
+	/**
+	 * Legacy target for the session's `window.<fn>` fallback.
+	 *
+	 * <p>Tab sessions always get a named event sink, so this target is never used
+	 * for their data; it remains for single-session callers and for a handler
+	 * that has not been migrated yet. There is deliberately no active-tab
+	 * filtering here: dropping a background tab's event was the bug.</p>
+	 */
+	private createLegacyTarget(): JsTarget {
+		return {
+			callJavaScript: (fn, ...args) => this.broadcast(fn, ...args),
+		};
 	}
 
 	/** 广播到所有存活视图（全局瞬时提示等非状态事件）。 */
@@ -563,12 +635,26 @@ export class ChatWindow {
 		if (!create) {
 			return null;
 		}
-		const session = create(this.sinkFor(tabId), () => {
-			// per-tab 的「自动打开文件」开关（§10.12）：tab 自己设过就用它的，
-			// 没设过（undefined）才回落到全局项目设置。
-			const record = this.registry.get(tabId);
-			return record ? record.getSettings().getAutoOpenFileOverride() : undefined;
-		});
+		const session = create(
+			this.createLegacyTarget(),
+			() => {
+				// per-tab 的「自动打开文件」开关（§10.12）：tab 自己设过就用它的，
+				// 没设过（undefined）才回落到全局项目设置。
+				const record = this.registry.get(tabId);
+				return record ? record.getSettings().getAutoOpenFileOverride() : undefined;
+			},
+			() => {
+				// 上下文注入开关：默认开；关闭后发送不再带活动文件/选区。
+				const record = this.registry.get(tabId);
+				return record ? record.getSettings().isContextEnabled() : true;
+			},
+			(event) => {
+				// Named data plane: every session event is addressed to this tab
+				// and goes through the per-tab lane scheduler.
+				const record = this.registry.get(tabId);
+				record?.getEventSink()(event);
+			},
+		);
 		if (!session) {
 			return null;
 		}
@@ -650,52 +736,81 @@ export class ChatWindow {
 		return record ? this.ensureTabSession(record) : null;
 	}
 
+	/** INV-7：缺失身份被丢弃的次数（诊断面板/日志使用）。 */
+	getUnattributedCount(): number {
+		return this.unattributedCount;
+	}
+
+	/**
+	 * daemon 意外退出/重启：所有进行中的 turn 都不可能再完成。
+	 *
+	 * <p>宿主会话状态先归零（replay 时不会再把 loading 带回来），活跃视图再收一次
+	 * `onStreamEnd`，让前端立刻清掉流式指示；后台 tab 切回时由 replayTab 回放。</p>
+	 */
+	handleDaemonDied(): void {
+		for (const record of this.registry.liveTabs()) {
+			const session = record.getSession();
+			if (!session) {
+				continue;
+			}
+			session.state.setLoading(false);
+			session.state.setBusy(false);
+		}
+		// Settle every tab, not just the one on screen: a background turn also
+		// dies with the daemon, and its record must not keep a spinner forever.
+		for (const record of this.registry.liveTabs()) {
+			if (!record.getSession()) {
+				continue;
+			}
+			this.publishRecordEvent(record, 'turn.ended', { reason: 'daemon_restart' });
+		}
+	}
+
 	/**
 	 * 把某个 tab 的状态回放到视图（切 tab / 视图重建）。
 	 *
-	 * 后台 tab 的流式输出在 `TabScopedSink` 被丢弃，宿主状态才是权威：这里用该
-	 * tab 自己的 coalescer 冲刷一份快照，并补齐身份、loading、revert 与终态信号。
+	 * 切 tab / 视图重建时，用该 tab 自己的 coalescer 冲刷一份快照，并补齐身份、
+	 * loading、revert 与终态信号。全程命名事件，其他视图只会更新自己的 tab 记录。
 	 */
 	replayTab(record: TabRecord): void {
-		const sink = this.sinkFor(record.getTabId());
 		const session = record.getSession();
 
 		if (!session) {
-			sink.callJavaScript('clearMessages', '0');
-			sink.callJavaScript('setSessionId', '');
-			sink.callJavaScript('showLoading', 'false');
-			sink.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert: false }));
-			sink.callJavaScript('historyLoadComplete');
+			this.publishRecordEvent(record, 'session.cleared', { barrier: 0 });
+			this.publishRecordEvent(record, 'session.bound', { sessionId: '' });
+			this.publishRecordEvent(record, 'session.loading', { loading: false });
+			this.publishRecordEvent(record, 'revert.changed', { state: JSON.stringify({ hasRevert: false }) });
+			this.publishRecordEvent(record, 'session.loaded', {});
 			return;
 		}
 
 		const state = session.state;
 		const coalescer = record.getCoalescer() ?? session.getAdapter().getCoalescer();
 		const barrier = coalescer.resetStreamState();
-		sink.callJavaScript('clearMessages', String(barrier));
+		this.publishRecordEvent(record, 'session.cleared', { barrier });
 		coalescer.enqueue(state.getMessages(), state.getWindowBaseIndex());
 		coalescer.flush();
 
-		sink.callJavaScript('setSessionId', state.getSessionId() ?? '');
+		this.publishRecordEvent(record, 'session.bound', { sessionId: state.getSessionId() ?? '' });
 		// 按 tab 的模型 / 权限模式 / 推理力度：切回该 tab 时选择器必须回到它自己的值，
 		// 否则 A 的选择会被 B 覆盖（§10.4/§10.5/§10.6 的「A/B 独立」判据）。
-		sink.callJavaScript('applyBackendTabState', JSON.stringify({
-			model: state.getModel(),
-			permissionMode: state.getPermissionMode(),
-			reasoningEffort: state.getReasoningEffort(),
-		}));
+		this.publishRecordEvent(record, 'tab.state', {
+			state: JSON.stringify({
+				model: state.getModel(),
+				permissionMode: state.getPermissionMode(),
+				reasoningEffort: state.getReasoningEffort(),
+			}),
+		});
 		const turnStart = state.getActiveTurnStartTime();
-		sink.callJavaScript(
-			'showLoading',
-			state.isLoading() ? 'true' : 'false',
-			...(turnStart ? [String(turnStart)] : []),
-		);
+		this.publishRecordEvent(record, 'session.loading', {
+			loading: state.isLoading(),
+			turnStartTime: turnStart ?? null,
+		});
 		const revert = state.getRevertState();
-		sink.callJavaScript(
-			'onRevertStateUpdate',
-			JSON.stringify(revert ? { hasRevert: true, messageId: revert.messageID } : { hasRevert: false }),
-		);
-		sink.callJavaScript('historyLoadComplete');
+		this.publishRecordEvent(record, 'revert.changed', {
+			state: JSON.stringify(revert ? { hasRevert: true, messageId: revert.messageID } : { hasRevert: false }),
+		});
+		this.publishRecordEvent(record, 'session.loaded', {});
 	}
 
 	/**
@@ -841,6 +956,23 @@ export class ChatWindow {
 			if (view) {
 				this.resyncView(viewId, view.channel);
 			}
+			// 视图重新挂载后目录可能已经变化（设置页新增 agent / 配置热载）。
+			this.options.requestAgents?.();
+			return;
+		}
+
+		// 视图切换（chat / history / settings）：宿主只做广播，页面状态由各视图自持。
+		if (type === 'view.navigate') {
+			const view = typeof command.payload.view === 'string' ? command.payload.view : '';
+			if (!view) {return;}
+			this.eventRouter.publish(
+				new TabEvent({
+					type: 'view.navigate',
+					tabId: this.registry.getActiveTabId()?.value || '',
+					epoch: 0,
+					payload: { view, sourceViewId: viewId },
+				}),
+			);
 			return;
 		}
 
@@ -881,14 +1013,17 @@ export class ChatWindow {
 				return;
 			}
 
-			const targetTabId = command.tabId ?? this.registry.getActiveTabId();
+			const targetTabId = command.tabId ?? (
+				WINDOW_SCOPED_COMMANDS.has(type) ? this.registry.getActiveTabId() : null
+			);
 			if (!targetTabId) {
+				this.unattributedCount += 1;
 				this.rejectCommand(
 					viewId,
 					'',
 					command.requestId,
 					CommandRejectCode.MISSING_TAB_ID,
-					`Command ${type} requires a target tab, but no tabId was provided and no active tab exists`,
+					`Command ${type} requires a target tab`,
 				);
 				return;
 			}

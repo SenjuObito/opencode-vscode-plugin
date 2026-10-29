@@ -11,7 +11,6 @@
 import { TabCommand } from '../tab/TabCommand';
 import { TabRecord } from '../tab/TabRecord';
 import type { OpenCodeSession, SendMessagePayload } from '../session/OpenCodeSession';
-import type { JsTarget } from '../session/SessionCallbackAdapter';
 import { normalizeSendPayload } from '../util/sendPayload';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
@@ -20,8 +19,8 @@ export interface TabSessionSendHandlerOptions {
 	ensureSession: (record: TabRecord) => OpenCodeSession | null;
 	/** 把该 tab 的宿主状态回放到视图（发送前对齐 cwd/model 等选择）。 */
 	replay: (record: TabRecord) => void;
-	/** 该 tab 的错误提示出口（投影 sink：后台 tab 也会作为 toast 出现）。 */
-	errorSink: (record: TabRecord) => JsTarget;
+	/** 该 tab 的错误提示出口（命名事件：后台 tab 也会作为 toast 出现）。 */
+	reportError: (record: TabRecord, message: string) => void;
 	/**
 	 * 把「已落盘的附件」读回成内联 base64（附件链路启用时注入）。
 	 * 返回 null 表示该 id 不可用，此时上报错误而不是发一条缺附件消息。
@@ -151,7 +150,7 @@ export class TabSessionSendHandler {
 	}
 
 	private reportError(record: TabRecord, message: string): void {		PluginFileLogger.warn('TabSessionSendHandler', `tab=${record.getTabId().value} ${message}`);
-		this.options.errorSink(record).callJavaScript('addErrorMessage', message);
+		this.options.reportError(record, message);
 	}
 }
 

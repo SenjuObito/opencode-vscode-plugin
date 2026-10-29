@@ -5,7 +5,7 @@
  *
  * Sync: a CustomEvent is dispatched after a successful write so that any open
  * settings page (or any other listener) can react in real time. This mirrors
- * the existing pattern used by `skipNewSessionConfirm` (see utils/skipNewSessionConfirm.ts).
+ * the same localStorage + CustomEvent pattern used by the other UI toggles.
  *
  * Two semantically-equivalent API pairs are exported:
  *   - getSkipCompactConfirm / setSkipCompactConfirm  (raw, "skip" semantics)

@@ -1,4 +1,4 @@
-import { isJavaFqcnCandidate, normalizeFileNavigationTarget, parseFileLinkTarget } from './linkify';
+import { normalizeFileNavigationTarget, parseFileLinkTarget } from './linkify';
 import type { BridgeMessageType } from '../types/protocol';
 import { getTabStore } from '../store/tabStore';
 
@@ -148,15 +148,6 @@ const isValidOpenFileTarget = (filePath: string): boolean => {
   return !CONTROL_CHAR_REGEX.test(filePath) && !CONTROL_CHAR_REGEX.test(decodedPath);
 };
 
-const isValidFqcn = (className: string): boolean => {
-  const trimmed = className?.trim();
-  if (!trimmed || CONTROL_CHAR_REGEX.test(trimmed)) {
-    return false;
-  }
-
-  return isJavaFqcnCandidate(trimmed);
-};
-
 const callBridge = (payload: string) => {
   const fn = window.sendToJava;
   if (typeof fn !== 'function') {
@@ -238,10 +229,10 @@ export const sendInterrupt = (
     ?? ownerTabId
     ?? tabStore.getActiveTabId()
     ?? '';
-  if (!tabId && !options.sessionId) {
-    // 没有任何身份可定位（tab 已被关闭/极早期）：退回窗口级中断，
-    // 宿主侧 legacy handler 会中断当前的活跃会话。
-    return sendBridgeEvent('interrupt_session');
+  if (!tabId) {
+    // 没有任何 tab 能承载中断（§5.5：legacy interrupt_session 兜底已删除）。
+    cardDebugLog('[Bridge] dropped interrupt: no tab owns the session');
+    return false;
   }
   return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
 };
@@ -337,15 +328,6 @@ export const openFile = (filePath?: string, lineStart?: number, lineEnd?: number
       : `${pathOnly}:${resolvedLineStart}`;
   }
   sendBridgeEvent('open_file', path);
-};
-
-export const openClass = (className?: string) => {
-  const trimmed = className?.trim();
-  if (!trimmed || !isValidFqcn(trimmed)) {
-    return;
-  }
-
-  sendBridgeEvent('open_class', trimmed);
 };
 
 export const openBrowser = (url?: string) => {

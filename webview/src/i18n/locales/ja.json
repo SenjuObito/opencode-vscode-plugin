@@ -30,7 +30,6 @@
   "chat": {
     "sendMessage": "{{provider}}にメッセージを送信",
     "createNewSession": "新規セッションを作成",
-    "confirmNewSession": "現在のセッションにメッセージがあります。新規セッションを作成してもよろしいですか?",
     "confirmInterrupt": "会話が進行中です。新規セッションを作成すると中断されます。続行しますか?",
     "requestInterrupted": "ユーザーによってリクエストが中断されました",
     "uploadedFiles": "アップロードされたファイル: {{files}}",
@@ -108,8 +107,6 @@
     "undoTooltip": "このメッセージを元に戻す",
     "redoTooltip": "このメッセージをやり直す",
     "forkTooltip": "新しいセッションにフォーク",
-    "shareTooltip": "セッションを共有",
-    "unshareTooltip": "セッションの共有を解除",
     "shareSuccess": "リンクをクリップボードにコピーしました",
     "attachmentFile": "[添付ファイル: {{fileName}}]",
     "unknownFile": "Unknown file",
@@ -151,8 +148,6 @@
     },
     "shareFailed": "コピーに失敗しました。共有されませんでした",
     "shareDisabledHint": "共有機能がopencode.jsonで無効化されているか（\"share\": \"disabled\"）、opencodeアカウントのログインが必要です。設定を確認して再試行してください",
-    "sharePendingTooltip": "共有中…",
-    "copyShareLinkTooltip": "共有リンクをコピー",
     "revertPlaceholderTitle": "このメッセージと以降の返信を取り消しました",
     "revertPlaceholderCount": "{{count}} 件のメッセージを取り消しました",
     "revertExpand": "表示",
@@ -369,12 +364,6 @@
         "custom": "カスタム",
         "reset": "デフォルトに戻す",
         "hint": "メッセージの背景色をカスタマイズします。空欄の場合はテーマのデフォルト色に従います。"
-      },
-      "newSessionConfirm": {
-        "label": "新規セッション作成の確認",
-        "enabled": "有効",
-        "disabled": "無効",
-        "hint": "無効にすると、メッセージが存在するセッションで新規作成を選択した際、確認ダイアログを表示せず直接新規セッションを作成します。"
       },
       "compactConfirm": {
         "label": "セッション圧縮時の確認",

@@ -51,6 +51,9 @@ describe('useChatInputImperativeHandle', () => {
         clearInput,
         hasContent: false,
         extractFileTags: () => [],
+        attachments: [],
+        setAttachments: vi.fn(),
+        restoreFileTags: vi.fn(),
       })
     );
 

@@ -4,7 +4,7 @@ import { memo, useMemo, useState, useRef, useEffect, useLayoutEffect, useCallbac
 import { useTranslation } from 'react-i18next';
 import katex from 'katex';
 import markedKatex from 'marked-katex-extension';
-import { openBrowser, openClass, openFile } from '../utils/bridge';
+import { openBrowser, openFile } from '../utils/bridge';
 import {
   captureRangeOffsets,
   restoreRangeOffsets,
@@ -552,6 +552,59 @@ function renderLatexPreviewHtml(source: string): string | null {
  * both during streaming (per memoized block) and after — so streaming output
  * and final output are identical by construction.
  */
+
+/**
+ * Parsed-HTML cache.
+ *
+ * <p>Parsing Markdown is the expensive part of rendering a message: `marked`,
+ * DOMPurify and a `DOMParser` round-trip for every block. A finished block's
+ * source never changes, but its component can still be re-mounted (tab switch,
+ * windowed list, history reload), which throws away the `useMemo` value and
+ * re-parses the same text. The cache is keyed by everything that affects the
+ * output and is capped so it cannot grow with the session.</p>
+ */
+const HTML_CACHE_LIMIT = 300;
+const htmlCache = new Map<string, string>();
+
+/** Drop cached HTML (tests, tab close). */
+export function clearMarkdownHtmlCache(): void {
+  htmlCache.clear();
+}
+
+function renderCachedMarkdownHtml(
+  content: string,
+  isStreamingTail: boolean,
+  linkifyCapabilities: LinkifyCapabilities,
+  copySuccessText: string,
+  copyCodeTitle: string,
+): string {
+  // A streaming tail changes every frame; caching it would only evict the
+  // finished blocks that are worth keeping.
+  if (isStreamingTail) {
+    return renderFullMarkdownHtml(content, linkifyCapabilities, copySuccessText, copyCodeTitle);
+  }
+  const key = [
+    copySuccessText,
+    copyCodeTitle,
+    linkifyCapabilities.classNavigationEnabled ? '1' : '0',
+    content,
+  ].join('\u0000');
+  const hit = htmlCache.get(key);
+  if (hit !== undefined) {
+    // Refresh insertion order so the hot entries survive eviction.
+    htmlCache.delete(key);
+    htmlCache.set(key, hit);
+    return hit;
+  }
+  const html = renderFullMarkdownHtml(content, linkifyCapabilities, copySuccessText, copyCodeTitle);
+  htmlCache.set(key, html);
+  if (htmlCache.size > HTML_CACHE_LIMIT) {
+    const oldest = htmlCache.keys().next().value;
+    if (oldest !== undefined) htmlCache.delete(oldest);
+  }
+  return html;
+}
+
 function renderFullMarkdownHtml(
   content: string,
   linkifyCapabilities: LinkifyCapabilities,
@@ -687,12 +740,13 @@ const BlockSection = memo(function BlockSection({
 }: BlockSectionProps) {
   const html = useMemo(
     () =>
-      renderFullMarkdownHtml(
+      renderCachedMarkdownHtml(
         // The tail block may end mid-fence or mid-backtick while tokens are
         // still arriving — temporarily close the structure so marked can parse
         // it. Once the real closing token arrives the source itself contains
         // it, makeStreamSafe becomes a no-op, and the HTML string is unchanged.
         isStreamingTail ? makeStreamSafe(source) : source,
+        isStreamingTail,
         linkifyCapabilities,
         copySuccessText,
         copyCodeTitle,
@@ -984,8 +1038,8 @@ const MarkdownBlock = ({ content = '', isStreaming = false }: MarkdownBlockProps
       return;
     }
 
+    // VS Code has no Java class navigation (`open_class` was IDEA-only).
     if (linkType === 'class') {
-      openClass(href);
       return;
     }
 

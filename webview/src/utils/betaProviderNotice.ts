@@ -2,7 +2,7 @@
  * First-time Beta notice for experimental CLI providers (Grok / Kimi / OpenCode / PI).
  *
  * Shown once per machine when the user first clicks any beta provider entry.
- * Storage: localStorage (same pattern as skipNewSessionConfirm).
+ * Storage: localStorage.
  */
 
 export const BETA_PROVIDER_NOTICE_KEY = 'beta-cli-providers-notice-seen';

@@ -35,7 +35,6 @@ export interface UiPreferences {
 	diffTheme: string;
 	diffExpandedByDefault: boolean;
 	historyCompletionEnabled: boolean;
-	skipNewSessionConfirm: boolean;
 	detailedOutputEnabled: boolean;
 }
 
@@ -48,7 +47,6 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 	diffTheme: 'follow',
 	diffExpandedByDefault: false,
 	historyCompletionEnabled: true,
-	skipNewSessionConfirm: false,
 	detailedOutputEnabled: false,
 };
 
@@ -280,7 +278,6 @@ export class SettingsService {
 			diffTheme,
 			diffExpandedByDefault: bool(raw.diffExpandedByDefault, DEFAULT_UI_PREFERENCES.diffExpandedByDefault),
 			historyCompletionEnabled: bool(raw.historyCompletionEnabled, DEFAULT_UI_PREFERENCES.historyCompletionEnabled),
-			skipNewSessionConfirm: bool(raw.skipNewSessionConfirm, DEFAULT_UI_PREFERENCES.skipNewSessionConfirm),
 			detailedOutputEnabled: bool(raw.detailedOutputEnabled, DEFAULT_UI_PREFERENCES.detailedOutputEnabled),
 		};
 	}

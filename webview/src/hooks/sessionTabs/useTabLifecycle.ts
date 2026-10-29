@@ -3,8 +3,6 @@ import type { SessionTabData } from '../../components/ChatHeader/types';
 import { createTabId } from '../../store/tabStore';
 import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
-import type { TabStatusStore } from '../../store/tabStatusStore';
-import { statusSnapshotOf } from '../../store/tabStatusStore';
 import type { TabPromptStore } from '../../store/tabPromptStore';
 import { getFirstPreferredModelId, resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
 import { getRecommendedReasoningEffort } from '../../components/ChatInputBox/types';
@@ -55,10 +53,9 @@ export interface UseTabLifecycleOptions extends Pick<
 > {
   tabBar: ReturnType<typeof useTabBarState>;
   draftStore: TabDraftStore;
-  statusStore: TabStatusStore;
   promptStore: TabPromptStore;
   saveCurrentTabSnapshot: () => void;
-  selectTab: (tabId: string) => void;
+  selectTab: (tabId: string, options?: { fromHost?: boolean }) => void;
   syncHostActiveTabTo: (tabId: string | null | undefined) => void;
   syncPermissionModeTo: (sessionId: string | null | undefined, mode: string) => void;
 }
@@ -100,7 +97,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     currentSessionIdRef,
     tabBar,
     draftStore,
-    statusStore,
     promptStore,
     saveCurrentTabSnapshot,
     selectTab,
@@ -267,7 +263,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     clearTransition(tabId);
     clearTabMergeCache(tabId);
     draftStore.delete(tabId);
-    statusStore.delete(tabId);
     promptStore.delete(tabId);
   }, [
     tabsRef,
@@ -277,7 +272,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     clearTransition,
     clearTabMergeCache,
     draftStore,
-    statusStore,
     promptStore,
   ]);
 
@@ -292,27 +286,25 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setCustomSessionTitle(nextActive.title || null);
     setMessages(nextActive.messages || []);
     restoreScrollState?.(nextActive.scrollState ?? null);
-    statusStore.set(nextActive.id, statusSnapshotOf(nextActive));
     promptStore.set(nextActive.id, {
       permissions: nextActive.pendingPermissions ?? [],
       questions: nextActive.pendingQuestions ?? [],
       plans: nextActive.pendingPlans ?? [],
     });
-    const nextStatus = statusStore.get(nextActive.id);
-    if (nextStatus?.streamingActive ?? nextActive.streamingActive) {
+    if (nextActive.streamingActive) {
       setTabRuntimeStreaming?.(nextActive.id, true);
     }
-    setLoading?.(nextStatus?.loading ?? nextActive.loading ?? false);
-    setStreamingActive?.(nextStatus?.streamingActive ?? nextActive.streamingActive ?? false);
-    setIsThinking?.(nextStatus?.isThinking ?? nextActive.isThinking ?? false);
-    setStatus?.(nextStatus?.status ?? nextActive.status ?? '');
-    setRevertBoundaryId?.(nextStatus ? nextStatus.revertBoundaryId : (nextActive.revertBoundaryId ?? null));
-    setIsCompacting?.(nextActive.isCompacting ?? nextStatus?.isCompacting ?? false);
-    setCompactingStartTime?.(nextActive.compactingStartTime ?? nextStatus?.compactingStartTime ?? null);
-    setTaskEvents?.(nextStatus?.taskEvents ?? nextActive.taskEvents ?? {});
-    setSseTodos?.(nextStatus ? nextStatus.sseTodos : (nextActive.sseTodos ?? null));
-    setSubagentHistories?.(nextStatus?.subagentHistories ?? nextActive.subagentHistories ?? {});
-    setFilteredFileChanges?.(nextStatus?.filteredFileChanges ?? nextActive.filteredFileChanges ?? []);
+    setLoading?.(nextActive.loading ?? false);
+    setStreamingActive?.(nextActive.streamingActive ?? false);
+    setIsThinking?.(nextActive.isThinking ?? false);
+    setStatus?.(nextActive.status ?? '');
+    setRevertBoundaryId?.(nextActive.revertBoundaryId ?? null);
+    setIsCompacting?.(nextActive.isCompacting ?? false);
+    setCompactingStartTime?.(nextActive.compactingStartTime ?? null);
+    setTaskEvents?.(nextActive.taskEvents ?? {});
+    setSseTodos?.(nextActive.sseTodos ?? null);
+    setSubagentHistories?.(nextActive.subagentHistories ?? {});
+    setFilteredFileChanges?.(nextActive.filteredFileChanges ?? []);
 
     const nextMode = nextActive.permissionMode || 'default';
     setPermissionMode?.(nextMode);
@@ -334,13 +326,13 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
       setContextInfo?.(nextActive.contextInfo);
     }
 
-    const nextTurnStartedAt = nextStatus ? nextStatus.turnStartedAt : (nextActive.turnStartedAt ?? null);
+    const nextTurnStartedAt = nextActive.turnStartedAt ?? null;
     setLoadingStartTime?.(nextTurnStartedAt);
     window.__turnStartedAt = nextTurnStartedAt ?? undefined;
 
-    setUsagePercentage?.(nextStatus?.usagePercentage ?? nextActive.usagePercentage ?? 0);
-    setUsageUsedTokens?.(nextStatus ? nextStatus.usageUsedTokens : nextActive.usageUsedTokens);
-    setUsageMaxTokens?.(nextStatus ? nextStatus.usageMaxTokens : nextActive.usageMaxTokens);
+    setUsagePercentage?.(nextActive.usagePercentage ?? 0);
+    setUsageUsedTokens?.(nextActive.usageUsedTokens);
+    setUsageMaxTokens?.(nextActive.usageMaxTokens);
 
     setSessionLoading?.(false);
 
@@ -361,7 +353,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setCustomSessionTitle,
     setMessages,
     restoreScrollState,
-    statusStore,
     promptStore,
     setTabRuntimeStreaming,
     setLoading,

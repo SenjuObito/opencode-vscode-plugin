@@ -33,6 +33,7 @@ import { useSession } from '../contexts/SessionContext';
 import { matchErrorPattern, type DiagnosticPattern } from '../utils/errorMatcher';
 import type { ClaudeMessage } from '../types';
 import { sendToJava } from '../utils/bridge';
+import type { DaemonEngineStatus } from '../hooks/providers/useUsageTracking';
 import './StatusNoticeBar.less';
 
 /** Server-provided call to action (e.g. subscribe to opencode Go). */
@@ -176,6 +177,9 @@ interface TerminalNotice {
 export interface StatusNoticeBarProps {
   messages: ClaudeMessage[];
   getMessageText: (message: ClaudeMessage) => string;
+  /** daemon 引擎探测结果（§8.3）：unknown/blocking 时给出可操作告警。 */
+  engine?: DaemonEngineStatus | null;
+  onRetryEngine?: () => void;
 }
 
 interface NoticeBarProps {
@@ -185,8 +189,8 @@ interface NoticeBarProps {
   message?: string;
   meta?: ReactNode;
   action: { label: string; tooltip?: string; onClick: () => void } | null;
-  onDismiss: () => void;
-  dismissLabel: string;
+  onDismiss?: () => void;
+  dismissLabel?: string;
 }
 
 const NoticeBar = ({
@@ -220,19 +224,26 @@ const NoticeBar = ({
         {action.label}
       </button>
     )}
-    <button
-      type="button"
-      className="status-notice-dismiss"
-      aria-label={dismissLabel}
-      title={dismissLabel}
-      onClick={onDismiss}
-    >
-      <span className="codicon codicon-close" />
-    </button>
+    {onDismiss && (
+      <button
+        type="button"
+        className="status-notice-dismiss"
+        aria-label={dismissLabel}
+        title={dismissLabel}
+        onClick={onDismiss}
+      >
+        <span className="codicon codicon-close" />
+      </button>
+    )}
   </div>
 );
 
-export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarProps) => {
+export const StatusNoticeBar = ({
+  messages,
+  getMessageText,
+  engine = null,
+  onRetryEngine,
+}: StatusNoticeBarProps) => {
   const { t } = useTranslation();
   const { loading, streamingActive, sessionLoading } = useMessages();
   const { currentSessionId } = useSession();
@@ -370,6 +381,22 @@ export const StatusNoticeBar = ({ messages, getMessageText }: StatusNoticeBarPro
     turnActive &&
     payload !== null &&
     !(payload.sessionID && currentSessionId && payload.sessionID !== currentSessionId);
+
+  const engineBlocked = !!engine && (engine.blocking === true || engine.state === 'unknown');
+  if (engineBlocked) {
+    const meta = [engine.cliVersion, engine.cliSource, engine.apiVersion ? `API ${engine.apiVersion}` : null]
+      .filter((part): part is string => !!part && String(part).trim().length > 0);
+    return (
+      <NoticeBar
+        variant="error"
+        icon="codicon-debug-disconnect"
+        title={t('engineNotice.title')}
+        message={engine.reasonMessage?.trim() || t('engineNotice.message')}
+        meta={meta.length > 0 ? <span>{meta.join(' · ')}</span> : undefined}
+        action={onRetryEngine ? { label: t('engineNotice.retry'), onClick: onRetryEngine } : null}
+      />
+    );
+  }
 
   if (retryVisible && payload) {
     const message = payload.message?.trim();

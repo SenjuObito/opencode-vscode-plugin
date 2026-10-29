@@ -23,7 +23,7 @@ describe('mentionProvider', () => {
       { name: 'App.tsx', path: 'src/App.tsx', type: 'file', absolutePath: '/proj/src/App.tsx' },
     ]);
     vi.spyOn(agentProviderModule, 'subagentMentionProvider').mockResolvedValue([
-      { name: 'coder', description: 'Coding Assistant' },
+      { name: 'coder', label: 'coder', description: 'Coding Assistant' },
     ]);
 
     const controller = new AbortController();

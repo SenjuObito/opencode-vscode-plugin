@@ -50,4 +50,29 @@ suite('Multi-Session Architecture Guardrails', () => {
 			);
 		}
 	});
+
+	test('should keep prompt attribution free of active-session fallbacks', () => {
+		const permissionHandler = path.resolve(
+			__dirname,
+			'../../src/host/handlers/PermissionHandler.ts',
+		);
+		const content = fs.readFileSync(permissionHandler, 'utf-8');
+		assert.ok(
+			!content.includes('getSession()?.state.getSessionId()'),
+			'PermissionHandler must not borrow the active session for a prompt',
+		);
+	});
+
+	test('should keep the webview off legacy window-level sends', () => {
+		const bridge = path.resolve(__dirname, '../../webview/src/utils/bridge.ts');
+		const content = fs.readFileSync(bridge, 'utf-8');
+		assert.ok(
+			!content.includes("'send_message'"),
+			'bridge must not fall back to legacy send_message',
+		);
+		assert.ok(
+			!content.includes("'interrupt_session'"),
+			'bridge must not fall back to legacy interrupt_session',
+		);
+	});
 });

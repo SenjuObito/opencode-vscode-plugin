@@ -18,6 +18,7 @@ import type {
 import { ChatInputBoxHeader } from './ChatInputBoxHeader.js';
 import { ChatInputBoxFooter } from './ChatInputBoxFooter.js';
 import { ResizeHandles } from './ResizeHandles.js';
+import { notifyActiveTabDraft } from '../../utils/draftSync.js';
 import {
   useTextContent,
   useFileTags,
@@ -343,6 +344,10 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         // Notify parent component (use debounced version to reduce re-renders)
         // If determined empty (only zero-width characters), pass empty string to parent
         debouncedOnInput(isEmpty ? '' : text);
+
+        // Cross-view draft sync: the other view showing this tab sees the text
+        // after a short idle. Programmatic `setValue` does not go through here.
+        notifyActiveTabDraft(isEmpty ? '' : text);
 
         // Schedule file/quote tag rendering after the input DOM becomes stable.
         // Covers non-keyboard input paths (history restore, paste, etc.)

@@ -3,6 +3,7 @@ import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { OpenCodeSession, TurnCompletedInfo } from './OpenCodeSession';
 import { PermissionRequest } from './types';
 import type { JsTarget } from './SessionCallbackAdapter';
+import type { TabEventSink } from '../tab/TabEvent';
 
 export interface SessionManagerOptions {
 	context: HandlerContext;
@@ -86,6 +87,8 @@ export class SessionManager {
 	createSessionInstance(options?: {
 		viewSink?: JsTarget;
 		autoOpenFileEnabledResolver?: () => boolean | null | undefined;
+		contextEnabledResolver?: () => boolean;
+		eventSink?: TabEventSink;
 	}): OpenCodeSession {
 		const session = new OpenCodeSession({
 			context: this.options.context,
@@ -95,6 +98,8 @@ export class SessionManager {
 			editorSelectionResolver: this.options.editorSelectionResolver,
 			viewSink: options?.viewSink,
 			autoOpenFileEnabledResolver: options?.autoOpenFileEnabledResolver,
+			contextEnabledResolver: options?.contextEnabledResolver,
+			eventSink: options?.eventSink,
 			onTurnCompleted: (info) => {
 				this.options.onTurnCompleted?.(info);
 			},

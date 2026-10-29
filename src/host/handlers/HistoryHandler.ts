@@ -758,7 +758,7 @@ export class HistoryHandler extends BaseMessageHandler {
 	 * "not available from OpenCode daemon" message, which lied — the plugin had
 	 * never actually contacted the daemon).
 	 */
-	private handleLoadSubagentSession(content: string): void {
+	handleLoadSubagentSession(content: string): void {
 		const send = (payload: Record<string, unknown>): void => {
 			this.callJavaScript('onSubagentHistoryLoaded', JSON.stringify(payload));
 		};

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatHeader } from './ChatHeader';
 import type { SessionTabData } from './types';
@@ -118,10 +118,10 @@ describe('ChatHeader', () => {
     const onCloseTabsToRight = vi.fn();
     const onCloseAllTabs = vi.fn();
 
-    const threeTabs = [
-      { id: 'tab-1', title: 'Tab 1', messages: [] },
-      { id: 'tab-2', title: 'Tab 2', messages: [] },
-      { id: 'tab-3', title: 'Tab 3', messages: [] },
+    const threeTabs: SessionTabData[] = [
+      { id: 'tab-1', sessionId: null, title: 'Tab 1', messages: [], isShared: false },
+      { id: 'tab-2', sessionId: null, title: 'Tab 2', messages: [], isShared: false },
+      { id: 'tab-3', sessionId: null, title: 'Tab 3', messages: [], isShared: false },
     ];
 
     render(
@@ -169,13 +169,13 @@ describe('ChatHeader', () => {
   });
 
   it('disables close left on first tab and close right on last tab', () => {
-    const threeTabs = [
-      { id: 'tab-1', title: 'Tab 1', messages: [] },
-      { id: 'tab-2', title: 'Tab 2', messages: [] },
-      { id: 'tab-3', title: 'Tab 3', messages: [] },
+    const threeTabs: SessionTabData[] = [
+      { id: 'tab-1', sessionId: null, title: 'Tab 1', messages: [], isShared: false },
+      { id: 'tab-2', sessionId: null, title: 'Tab 2', messages: [], isShared: false },
+      { id: 'tab-3', sessionId: null, title: 'Tab 3', messages: [], isShared: false },
     ];
 
-    const { rerender } = render(
+    render(
       <ChatHeader {...defaultProps} tabs={threeTabs} />
     );
 

@@ -5,7 +5,8 @@
  * 输出要送达所有存活视图（侧边栏左右 + 编辑器 panel）。本通道只是把 callJavaScript /
  * postRaw 转发给 `WebviewBroadcaster`，自身不注册进广播表（否则会自我递归）。
  *
- * 每个 tab 的会话不直接用本通道，而是经 `TabScopedSink` 投影后再落到这里。
+ * 会话数据通过命名 `TabEvent` 由 `TabEventRouter` 广播到所有视图；本通道只承载
+ * 视图级/全局消息。
  */
 import type { WebviewChannel } from '../router/HandlerContext';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';

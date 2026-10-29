@@ -102,12 +102,13 @@
     "package": "pnpm run check-types && pnpm run lint && node tools/prepare-core.mjs && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "pretest": "pnpm run clean:out && pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
     "link:core": "pnpm link ../opencode-buddy-core",
-    "unlink:core": "pnpm unlink opencode-buddy-core && pnpm install --force"
+    "unlink:core": "pnpm unlink opencode-buddy-core && pnpm install --force",
+    "clean:out": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\""
   },
   "dependencies": {
     "opencode-buddy-core": "github:SenjuObito/opencode-buddy-core#v1.0.0",

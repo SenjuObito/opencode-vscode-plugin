@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendBridgeEvent } from './utils/bridge';
+import { sendBridgeEvent, sendWindowCommand } from './utils/bridge';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
 import {
@@ -119,6 +119,29 @@ const App = () => {
   // ── Permission dialog timeout (synced with backend config) ──
   const [permissionDialogTimeoutSeconds, setPermissionDialogTimeoutSeconds] = useState(DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS);
 
+  // ── Multi-view lifecycle ─────────────────────────────────────────────
+  // `view.ready` makes the host resync tabs/agents for this freshly mounted
+  // webview; focus/blur drives prompt-host election so only one view shows
+  // permission dialogs.
+  useEffect(() => {
+    sendWindowCommand('view.ready');
+    const reportFocus = () => {
+      sendWindowCommand('view.focus', { focused: document.hasFocus() });
+    };
+    reportFocus();
+    window.addEventListener('focus', reportFocus);
+    window.addEventListener('blur', reportFocus);
+    return () => {
+      window.removeEventListener('focus', reportFocus);
+      window.removeEventListener('blur', reportFocus);
+    };
+  }, []);
+
+  // 页面切换在视图间同步（设置页/历史页）；发送方由宿主回显时忽略。
+  useEffect(() => {
+    sendWindowCommand('view.navigate', { view: currentView });
+  }, [currentView]);
+
   // ── Local refs (don't trigger re-render, kept in App.tsx) ──
   const isFirstMountRef = useRef(true);
   const chatInputRef = useRef<ChatInputBoxHandle>(null);
@@ -173,7 +196,7 @@ const App = () => {
   // ── Model/Provider state ──
   const {
     currentProvider, selectedModel, permissionMode,
-    daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
+    daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled, daemonEngine,
     currentProviderRef,
     activeProviderConfig,
     reasoningEffort, sendShortcut, autoOpenFileEnabled,
@@ -302,10 +325,9 @@ const App = () => {
 
   // ── Session management ──
   const {
-    showNewSessionConfirm, showInterruptConfirm,
+    showInterruptConfirm,
     suppressNextStatusToastRef,
     forceCreateNewSession,
-    handleConfirmNewSession, handleCancelNewSession,
     handleConfirmInterrupt, handleCancelInterrupt,
     loadHistorySession, deleteHistorySession, deleteHistorySessions, exportHistorySession,
     toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal,
@@ -1042,6 +1064,7 @@ const App = () => {
           onAutoOpenFileEnabledChange={handleAutoOpenFileEnabledChange}
           permissionDialogTimeoutSeconds={permissionDialogTimeoutSeconds}
           onPermissionDialogTimeoutChange={setPermissionDialogTimeoutSeconds}
+          daemonEngine={daemonEngine}
         />
       ) : (
         <>
@@ -1095,6 +1118,7 @@ const App = () => {
               currentSdkInstalled={currentSdkInstalled}
               daemonStatusLoaded={daemonStatusLoaded}
               retryDaemonStatus={retryDaemonStatus}
+              daemonEngine={daemonEngine}
               activeProviderConfig={activeProviderConfig}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}
@@ -1134,9 +1158,6 @@ const App = () => {
       <div id="image-preview-root" />
 
       <AppDialogs
-        showNewSessionConfirm={showNewSessionConfirm}
-        onConfirmNewSession={handleConfirmNewSession}
-        onCancelNewSession={handleCancelNewSession}
         showInterruptConfirm={showInterruptConfirm}
         onConfirmInterrupt={handleConfirmInterrupt}
         onCancelInterrupt={handleCancelInterrupt}

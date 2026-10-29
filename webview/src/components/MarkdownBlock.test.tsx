@@ -360,7 +360,9 @@ describe('MarkdownBlock linkify integration', () => {
     fireEvent.click(screen.getByRole('link', { name: 'https://example.com/docs' }));
 
     expect(bridgeMocks.openFile).toHaveBeenCalledWith('src/components/App.tsx');
-    expect(bridgeMocks.openClass).toHaveBeenCalledWith(
+    // Class links are inert in VS Code (the IDEA-only open_class bridge is gone).
+    expect(bridgeMocks.openClass).not.toHaveBeenCalled();
+    expect(bridgeMocks.openFile).not.toHaveBeenCalledWith(
       'com.github.claudecodegui.handler.file.OpenFileHandler',
     );
     expect(bridgeMocks.openBrowser).toHaveBeenCalledWith('https://example.com/docs');

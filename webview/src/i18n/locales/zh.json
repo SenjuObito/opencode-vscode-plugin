@@ -43,7 +43,6 @@
     "sendFailedNoTab": "发送失败：找不到当前标签页",
     "sendMessage": "向 {{provider}} 发送消息",
     "createNewSession": "创建新会话",
-    "confirmNewSession": "当前会话已有消息，确定要创建新会话吗？",
     "confirmInterrupt": "当前正在对话中，创建新会话将中断当前对话，是否继续？",
     "requestInterrupted": "请求已被用户中断",
     "uploadedFiles": "已上传附件: {{files}}",
@@ -139,11 +138,7 @@
     "undoTooltip": "撤销此消息",
     "redoTooltip": "重做此消息",
     "forkTooltip": "分叉到新会话",
-    "shareTooltip": "分享会话",
-    "unshareTooltip": "取消分享会话",
     "shareSuccess": "链接已复制到剪贴板",
-    "unshareSuccess": "已取消分享会话",
-    "unshareFailed": "取消分享失败",
     "attachmentFile": "[附件: {{fileName}}]",
     "unknownFile": "未知文件",
     "attachmentsUploaded": "[已上传附件]",
@@ -184,8 +179,6 @@
     },
     "shareFailed": "复制失败，分享未完成",
     "shareDisabledHint": "分享功能可能已在 opencode.json 中关闭（\"share\": \"disabled\"）或需要登录 opencode 账号，请检查配置后重试",
-    "sharePendingTooltip": "正在分享…",
-    "copyShareLinkTooltip": "复制分享链接",
     "revertPlaceholderTitle": "已撤销此消息及后续回复",
     "revertPlaceholderCount": "已撤销 {{count}} 条消息",
     "revertExpand": "展开查看",
@@ -420,12 +413,6 @@
         "reset": "恢复默认",
         "hint": "自定义您的消息背景颜色，留空则跟随主题默认颜色"
       },
-      "newSessionConfirm": {
-        "label": "新建会话时二次确认",
-        "enabled": "已开启",
-        "disabled": "已关闭",
-        "hint": "关闭后，在已有消息的会话中点击新建将直接创建，不再弹出确认窗口"
-      },
       "compactConfirm": {
         "label": "压缩会话时二次确认",
         "enabled": "已开启",
@@ -436,6 +423,15 @@
         "label": "OpenCode 路径",
         "placeholder": "例如 /usr/local/bin/opencode — 留空则自动查找",
         "hint": "可选的自定义 opencode 二进制路径，用于启动 opencode 服务。留空则按 PATH 与默认安装位置（~/.opencode/bin）自动探测。保存后重启守护进程生效。"
+      },
+      "engine": {
+        "label": "opencode 引擎",
+        "state": "状态",
+        "cliVersion": "CLI 版本",
+        "cliSource": "CLI 来源",
+        "cliPath": "CLI 路径",
+        "apiVersion": "接口版本",
+        "reason": "原因"
       }
     },
     "providers": "供应商管理",
@@ -1889,5 +1885,10 @@
     "retryIn": "{{seconds}} 秒后重试",
     "openLink": "查看详情",
     "dismiss": "关闭"
+  },
+  "engineNotice": {
+    "title": "opencode 引擎不可用",
+    "message": "无法确认 opencode CLI 的版本或接口版本，请检查 CLI 路径后重试。",
+    "retry": "重新检测"
   }
 }

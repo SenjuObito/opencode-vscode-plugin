@@ -58,9 +58,6 @@ describe('useSessionManagement', () => {
     endTransition('tab-active');
     window.__pendingSessionTransitionToast = undefined;
     window.sendToJava = vi.fn();
-    // Reset the "skip new-session confirm" preference between tests so cases
-    // that exercise the localStorage path can't leak into ones that don't.
-    localStorage.removeItem('skipNewSessionConfirm');
   });
 
   it('starts a clean session transition for a direct new session', () => {
@@ -328,7 +325,7 @@ describe('useSessionManagement', () => {
   });
 
 
-  it('shows confirm dialog when creating new session with existing messages', () => {
+  it('creates a new session immediately with existing messages (no second confirm)', () => {
     const mocks = createMocks();
 
     const { result } = renderHook(() =>
@@ -346,45 +343,15 @@ describe('useSessionManagement', () => {
       result.current.createNewSession();
     });
 
-    // Should show confirm dialog, NOT immediately transition
-    expect(result.current.showNewSessionConfirm).toBe(true);
-    expect(isTabTransitioning('tab-1')).toBe(false);
-    expect(transitionTokenFor('tab-1')).toBeNull();
-    expect(mocks.setMessages).not.toHaveBeenCalled();
-  });
-
-  it('skips confirm dialog when skipNewSessionConfirm preference is enabled', () => {
-    // User previously ticked "don't ask again" — dialog should be bypassed.
-    localStorage.setItem('skipNewSessionConfirm', 'true');
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [{ type: 'user', content: 'hello', timestamp: new Date().toISOString() }],
-        loading: false,
-        historyData: null,
-        currentSessionId: 'session-1',
-        ...mocks,
-        t,
-      })
-    );
-
-    act(() => {
-      result.current.createNewSession();
-    });
-
-    // Should transition immediately without showing the dialog.
-    expect(result.current.showNewSessionConfirm).toBe(false);
+    // §5.5: the confirm dialog is gone; one click starts the transition.
     expect(isTabTransitioning('tab-1')).toBe(true);
     expect(transitionTokenFor('tab-1')).toBeTruthy();
     expect(mocks.setMessages).toHaveBeenCalledWith([]);
     expectNewSessionCommand();
   });
 
-  it('still shows the interrupt dialog while loading even if skipNewSessionConfirm is enabled', () => {
-    // Safety guard: the "don't ask again" preference must NOT bypass the
-    // dangerous "interrupt running AI" confirm dialog. (See AppDialogs comment.)
-    localStorage.setItem('skipNewSessionConfirm', 'true');
+  it('still shows the interrupt dialog while loading', () => {
+    // The interrupt confirmation guards an in-flight turn and stays.
     const mocks = createMocks();
 
     const { result } = renderHook(() =>
@@ -404,18 +371,14 @@ describe('useSessionManagement', () => {
 
     // Interrupt dialog must still appear; no silent transition.
     expect(result.current.showInterruptConfirm).toBe(true);
-    expect(result.current.showNewSessionConfirm).toBe(false);
     expect(isTabTransitioning('tab-1')).toBe(false);
     expect(mocks.setMessages).not.toHaveBeenCalled();
     expect(newSessionCommandCount()).toBe(0);
   });
 
-  it('handleConfirmInterrupt completes interrupt+transition even with skipNewSessionConfirm enabled', () => {
+  it('handleConfirmInterrupt completes interrupt+transition exactly once', () => {
     // Regression guard: once the interrupt dialog is confirmed, the flow must
-    // send interrupt_session + create_new_session exactly once. The skip
-    // preference must not cause a second silent transition or skip the
-    // interrupt signal.
-    localStorage.setItem('skipNewSessionConfirm', 'true');
+    // send interrupt_session + create_new_session exactly once.
     const mocks = createMocks();
 
     const { result } = renderHook(() =>
@@ -446,44 +409,8 @@ describe('useSessionManagement', () => {
     expect(transitionTokenFor('tab-1')).toBeTruthy();
     expect(mocks.setMessages).toHaveBeenCalledWith([]);
 
-    const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map(
-      (c: unknown[]) => c[0]
-    );
     expect(interruptCalls()).toHaveLength(1);
     expect(newSessionCommandCount()).toBe(1);
-  });
-
-  it('handleConfirmNewSession cleans state and creates new session', () => {
-    const mocks = createMocks();
-
-    const { result } = renderHook(() =>
-      useSessionManagement({
-        messages: [{ type: 'user', content: 'hello', timestamp: new Date().toISOString() }],
-        loading: false,
-        historyData: null,
-        currentSessionId: 'session-1',
-        ...mocks,
-        t,
-      })
-    );
-
-    // Trigger dialog first
-    act(() => {
-      result.current.createNewSession();
-    });
-
-    // Confirm
-    act(() => {
-      result.current.handleConfirmNewSession();
-    });
-
-    expect(isTabTransitioning('tab-1')).toBe(true);
-    expect(transitionTokenFor('tab-1')).toBeTruthy();
-    expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
-    expect(mocks.setCurrentSessionId).toHaveBeenCalledWith(null);
-    expectNewSessionCommand();
-    expect(result.current.showNewSessionConfirm).toBe(false);
   });
 
   it('handleConfirmInterrupt interrupts and cleans state', () => {

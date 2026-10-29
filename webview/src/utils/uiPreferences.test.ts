@@ -109,7 +109,6 @@ describe('uiPreferences', () => {
       diffTheme: 'hack',
       historyCompletionEnabled: 'yes',
       detailedOutputEnabled: 'y',
-      skipNewSessionConfirm: 1,
       skipCompactConfirm: 1,
     });
 
@@ -121,7 +120,6 @@ describe('uiPreferences', () => {
     // 非布尔值一律丢弃，回落到各字段默认值（历史补全默认开、其余默认关）。
     expect(prefs.historyCompletionEnabled).toBe(true);
     expect(prefs.detailedOutputEnabled).toBe(false);
-    expect(prefs.skipNewSessionConfirm).toBe(false);
     expect(prefs.skipCompactConfirm).toBe(false);
   });
 

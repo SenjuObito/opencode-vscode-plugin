@@ -12,10 +12,10 @@ import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
 import { SessionCallbackAdapter, JsTarget } from './SessionCallbackAdapter';
 import { MessageType } from './types';
-import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
 import { getModelContextLimit } from '../util/ModelContextLimits';
 import { logDiagnostic } from '../util/DiagnosticLogger';
+import type { TabEventSink } from '../tab/TabEvent';
 import { isKnownSlashCommand } from './KnownCommands';
 import { isAdvertisedCommand } from '../util/SlashCommandCatalog';
 import type { ChatMessage, PermissionRequest, SessionCallback } from './types';
@@ -64,6 +64,13 @@ export interface OpenCodeSessionOptions {
 	 * 返回 true/false = 本 tab 自己的决定（每个 tab 可以不同）。
 	 */
 	autoOpenFileEnabledResolver?: () => boolean | null | undefined;
+	/**
+	 * 本 tab 是否注入 IDE 上下文（§10.12 `TabSettings.contextEnabled`）。
+	 * 关闭后不再带活动文件/选区；显式 @ 引用仍然生效。
+	 */
+	contextEnabledResolver?: () => boolean;
+	/** 本 tab 的命名事件出口（未提供时退回 legacy JS 调用）。 */
+	eventSink?: TabEventSink;
 }
 
 export type TurnCompletedStatus = 'completed' | 'aborted' | 'error';
@@ -110,6 +117,7 @@ export class OpenCodeSession {
 		this.onTurnCompleted = options.onTurnCompleted;
 		this.editorSelectionResolver = options.editorSelectionResolver;
 		this.autoOpenFileEnabledResolver = options.autoOpenFileEnabledResolver;
+		this.contextEnabledResolver = options.contextEnabledResolver;
 		this.view = options.viewSink ?? {
 			callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
 		};
@@ -118,6 +126,7 @@ export class OpenCodeSession {
 		this.messageHandler = new MessageHandler(this.state, this.callbackHandler);
 		this.adapter = new SessionCallbackAdapter({
 			jsTarget: this.view,
+			eventSink: options.eventSink,
 			model: () => this.state.getModel(),
 			windowBaseIndex: () => this.state.getWindowBaseIndex(),
 			streamEndCallback: () => this.onTurnEnded(),
@@ -148,10 +157,7 @@ export class OpenCodeSession {
 	}
 
 	private readonly autoOpenFileEnabledResolver?: () => boolean | null | undefined;
-
-	private callView(functionName: string, ...args: string[]): void {
-		this.view.callJavaScript(functionName, ...args);
-	}
+	private readonly contextEnabledResolver?: () => boolean;
 
 
 	/**
@@ -172,11 +178,13 @@ export class OpenCodeSession {
 			? tabAutoOpenFile
 			: (!injectProjectPath
 				|| this.context.getSettingsService().getAutoOpenFileEnabled(injectProjectPath));
-		const selInfo = this.editorSelectionResolver?.() ?? null;
+		// §10.12：tab 的上下文开关关闭时，不注入活动文件/选区；显式 @ 引用不受影响。
+		const contextEnabled = this.contextEnabledResolver?.() ?? true;
+		const selInfo = contextEnabled ? (this.editorSelectionResolver?.() ?? null) : null;
 
 		let messageToSend = text;
 		if (!slashCommand) {
-			const contextAppend = buildContextAppend(payload, autoOpenFileOn, selInfo);
+			const contextAppend = buildContextAppend(payload, contextEnabled && autoOpenFileOn, selInfo);
 			messageToSend = (text ? text : '') + contextAppend;
 		}
 
@@ -425,7 +433,7 @@ export class OpenCodeSession {
 		}
 
 		const seq = this.adapter.coalescer.resetStreamState();
-		this.callView('clearMessages', String(seq));
+		this.adapter.notifyMessagesCleared(seq);
 		this.state.clearMessages();
 		this.messageHandler.resetTurnState();
 		this.state.setSessionId(null);
@@ -434,7 +442,7 @@ export class OpenCodeSession {
 		this.state.setError(null);
 		this.state.setRevertState(null);
 		// 新会话无 redo 状态，同步前端隐藏 Redo 按钮
-		this.callView('onRevertStateUpdate', JSON.stringify({ hasRevert: false }));
+		this.adapter.onRevertStateUpdate(false);
 		this.onSessionEnded?.();
 	}
 
@@ -446,12 +454,9 @@ export class OpenCodeSession {
 		for (const m of messages) {
 			this.state.addMessage(m as ChatMessage);
 		}
-		this.callView('clearMessages', String(seq));
-		this.callView(
-			'updateMessages',
-			convertMessagesToJson(this.state.getMessages()),
-			String(seq),
-		);
+		this.adapter.notifyMessagesCleared(seq);
+		this.adapter.onMessageUpdate(this.state.getMessages());
+		this.adapter.getCoalescer().flush();
 
 		// 恢复历史 Token 统计
 		this.republishUsageFromHistory();

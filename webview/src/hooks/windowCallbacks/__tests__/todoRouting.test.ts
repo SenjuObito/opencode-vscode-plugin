@@ -29,11 +29,15 @@ describe('todo 事件按 tab 路由', () => {
 
   const register = () => {
     const setSseTodos = vi.fn();
-    registerWindowCallbacks({
-      setSseTodos,
-      currentSessionIdRef: { current: 'ses_a' },
-      addToast: vi.fn(),
-    } as never);
+    registerWindowCallbacks(
+      {
+        setSseTodos,
+        currentSessionIdRef: { current: 'ses_a' },
+        addToast: vi.fn(),
+      } as never,
+      { current: ((key: string) => key) as never },
+      () => {},
+    );
     return { setSseTodos };
   };
 

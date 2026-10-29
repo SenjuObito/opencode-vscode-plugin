@@ -37,7 +37,6 @@ export interface UiPreferences {
   diffTheme: DiffThemeMode;
   diffExpandedByDefault: boolean;
   historyCompletionEnabled: boolean;
-  skipNewSessionConfirm: boolean;
   skipCompactConfirm: boolean;
   detailedOutputEnabled: boolean;
 }
@@ -51,7 +50,6 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   diffTheme: 'follow',
   diffExpandedByDefault: false,
   historyCompletionEnabled: true,
-  skipNewSessionConfirm: false,
   skipCompactConfirm: false,
   detailedOutputEnabled: false,
 };
@@ -130,10 +128,9 @@ function sanitize(patch: unknown): Partial<UiPreferences> {
     out.diffTheme = raw.diffTheme as DiffThemeMode;
   }
   const bools: Array<keyof Pick<UiPreferences,
-    'diffExpandedByDefault' | 'historyCompletionEnabled' | 'skipNewSessionConfirm' | 'skipCompactConfirm' | 'detailedOutputEnabled'>> = [
+    'diffExpandedByDefault' | 'historyCompletionEnabled' | 'skipCompactConfirm' | 'detailedOutputEnabled'>> = [
     'diffExpandedByDefault',
     'historyCompletionEnabled',
-    'skipNewSessionConfirm',
     'skipCompactConfirm',
     'detailedOutputEnabled',
   ];
@@ -167,7 +164,6 @@ function readLocalMirror(): Partial<UiPreferences> {
   for (const key of [
     'diffExpandedByDefault',
     'historyCompletionEnabled',
-    'skipNewSessionConfirm',
     'skipCompactConfirm',
     'detailedOutputEnabled',
   ] as const) {
@@ -202,7 +198,6 @@ function writeLocalMirror(prefs: UiPreferences): void {
   writeString('diffTheme', prefs.diffTheme);
   writeString('diffExpandedByDefault', prefs.diffExpandedByDefault ? 'true' : 'false');
   writeString('historyCompletionEnabled', prefs.historyCompletionEnabled ? 'true' : 'false');
-  writeString('skipNewSessionConfirm', prefs.skipNewSessionConfirm ? 'true' : 'false');
   writeString('skipCompactConfirm', prefs.skipCompactConfirm ? 'true' : 'false');
   writeString('detailedOutputEnabled', prefs.detailedOutputEnabled ? 'true' : 'false');
 }

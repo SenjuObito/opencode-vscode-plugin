@@ -1,8 +1,12 @@
 import { createElement, useState } from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
-import { useWindowCallbacks } from './useWindowCallbacks.js';
+import { useWindowCallbacks } from './useWindowCallbacks.js';
+
 import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor } from './windowCallbacks/tabTransition';
 import { seedTabStore } from '../test/seedTabStore';
+import { getTabStore } from '../store/tabStore';
+import { dispatchHostEnvelope } from '../utils/hostDispatcher';
+import { TabMessageStore } from '../store/tabMessageStore';
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
 
@@ -2181,5 +2185,90 @@ describe('useWindowCallbacks integration', () => {
 
       delete window.__pendingUpdateJson;
     });
+  });
+
+  it('routes a named content.delta into a background tab record', () => {
+    seedTabStore([{ id: 'tab-active' }, { id: 'tab-bg', sessionId: 'ses-bg' }], 'tab-active');
+    getTabStore().updateTab('tab-bg', (tab) => {
+      tab.messages = [{ type: 'assistant', content: 'before', timestamp: '2026-01-01T00:00:00.000Z' } as ClaudeMessage];
+    });
+
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'content.delta',
+        tabId: 'tab-bg',
+        epoch: 0,
+        payload: { delta: ' after' },
+      });
+    });
+
+    const background = getTabStore().findById('tab-bg');
+    expect(background?.messages[0]?.content).toBe('before after');
+    expect(background?.streamingActive).toBe(true);
+  });
+
+  it('applies a named message.snapshot to the background tab store', () => {
+    seedTabStore([{ id: 'tab-active' }, { id: 'tab-bg', sessionId: 'ses-bg' }], 'tab-active');
+    getTabStore().updateTab('tab-bg', (tab) => {
+      tab.messageStore = new TabMessageStore();
+    });
+    const snapshot = JSON.stringify([
+      { type: 'assistant', content: 'from snapshot', timestamp: '2026-01-01T00:00:00.000Z' },
+    ]);
+
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'message.snapshot',
+        tabId: 'tab-bg',
+        epoch: 0,
+        payload: { json: snapshot, sequence: 3, baseIndex: 0 },
+      });
+    });
+
+    const background = getTabStore().findById('tab-bg');
+    expect(background?.messages[0]?.content).toBe('from snapshot');
+  });
+
+  it('updates a background tab loading flag from session.loading', () => {
+    seedTabStore([{ id: 'tab-active' }, { id: 'tab-bg' }], 'tab-active');
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'session.loading',
+        tabId: 'tab-bg',
+        epoch: 0,
+        payload: { loading: true },
+      });
+    });
+
+    expect(getTabStore().findById('tab-bg')?.loading).toBe(true);
+  });
+
+  it('drops a named event for an unknown tab instead of applying it to the active tab', () => {
+    seedTabStore([{ id: 'tab-active' }], 'tab-active');
+    getTabStore().updateTab('tab-active', (tab) => {
+      tab.messages = [{ type: 'assistant', content: 'active', timestamp: '2026-01-01T00:00:00.000Z' } as ClaudeMessage];
+    });
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'content.delta',
+        tabId: 'tab-missing',
+        epoch: 0,
+        payload: { delta: ' leaked' },
+      });
+    });
+
+    expect(getTabStore().findById('tab-active')?.messages[0]?.content).toBe('active');
   });
 });

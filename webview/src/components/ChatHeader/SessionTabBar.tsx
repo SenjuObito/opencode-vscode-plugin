@@ -533,12 +533,51 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
     []
   );
 
+  // §7.14: Alt+T / Alt+W / Alt+1..9 / Alt+←→ work from anywhere in the view.
+  // F2/Delete are handled on the tab itself so they never steal typing keys.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.metaKey || event.ctrlKey) return;
+      const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId);
+      if (event.key === 't' || event.key === 'T') {
+        event.preventDefault();
+        window.__openNewSessionTab?.();
+        return;
+      }
+      if (event.key === 'w' || event.key === 'W') {
+        if (!activeTabId) return;
+        event.preventDefault();
+        onCloseTab(activeTabId);
+        return;
+      }
+      if (/^[1-9]$/.test(event.key)) {
+        const target = tabs[Number(event.key) - 1];
+        if (target) {
+          event.preventDefault();
+          onSelectTab(target.id);
+        }
+        return;
+      }
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        if (tabs.length < 2) return;
+        const delta = event.key === 'ArrowLeft' ? -1 : 1;
+        const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
+        event.preventDefault();
+        onSelectTab(tabs[nextIndex].id);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tabs, activeTabId, onCloseTab, onSelectTab]);
+
   return (
     <>
       <div
         className={`session-tabs-container ${draggingTabId ? 'is-reordering' : ''}`}
         ref={containerRef}
         onWheel={handleWheel}
+        role="tablist"
+        aria-label={t('common.sessions', { defaultValue: '会话标签' })}
       >
         {visibleTabs.map((tab, idx) => {
           const isActive = tab.id === activeTabId;
@@ -578,6 +617,33 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                   }
                 }}
                 className={`session-tab-item ${isActive ? 'active' : ''} ${hasPendingAction ? 'has-attention' : ''} ${isDragging ? 'is-dragging' : ''} ${isEditing ? 'is-editing' : ''}`}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectTab(tab.id);
+                  } else if (e.key === 'F2') {
+                    e.preventDefault();
+                    startEditing(tab);
+                  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault();
+                    onCloseTab(tab.id);
+                  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    if (tabs.length < 2) return;
+                    const delta = e.key === 'ArrowLeft' ? -1 : 1;
+                    const next = tabs[(idx + delta + tabs.length) % tabs.length];
+                    e.preventDefault();
+                    onSelectTab(next.id);
+                    window.setTimeout(() => {
+                      containerRef.current
+                        ?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(next.id)}"]`)
+                        ?.focus();
+                    }, 0);
+                  }
+                }}
+                data-tab-id={tab.id}
                 onMouseDown={(e) => handleTabMouseDown(e, tab, idx)}
                 onClick={() => {
                   if (justFinishedDragRef.current) return;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { TFunction } from 'i18next';
 import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
@@ -7,6 +7,7 @@ import type { ContextUsageData } from '../components/ContextUsageDialog';
 import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 import { useSession } from '../contexts/SessionContext';
+import { isPromptHost, subscribePromptHost } from '../utils/viewIdentity';
 
 interface UseDialogManagementOptions {
   t: TFunction;
@@ -65,6 +66,10 @@ interface UseDialogManagementReturn {
  * record is kept after a decision (matches opencode TUI / cc-gui behavior).
  */
 export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialogManagementReturn {
+  // Only the elected prompt-host view renders interactive dialogs; the other
+  // views keep the requests queued and show badges instead of duplicate modals.
+  const promptHost = useSyncExternalStore(subscribePromptHost, isPromptHost, isPromptHost);
+
   // Permission dialog state
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const [currentPermissionRequest, setCurrentPermissionRequest] = useState<PermissionRequest | null>(null);
@@ -126,13 +131,23 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         questions: AskUserQuestionRequest[],
         plans: PlanApprovalRequest[] = [],
       ) => {
+        const canOpen = isPromptHost();
         if (permissions && permissions.length > 0) {
-          currentPermissionRequestRef.current = permissions[0];
-          setCurrentPermissionRequest(permissions[0]);
-          pendingPermissionRequestsRef.current = permissions.slice(1);
-          setPendingPermissionRequests(permissions.slice(1));
-          permissionDialogOpenRef.current = true;
-          setPermissionDialogOpen(true);
+          if (canOpen) {
+            currentPermissionRequestRef.current = permissions[0];
+            setCurrentPermissionRequest(permissions[0]);
+            pendingPermissionRequestsRef.current = permissions.slice(1);
+            setPendingPermissionRequests(permissions.slice(1));
+            permissionDialogOpenRef.current = true;
+            setPermissionDialogOpen(true);
+          } else {
+            currentPermissionRequestRef.current = null;
+            setCurrentPermissionRequest(null);
+            pendingPermissionRequestsRef.current = [...permissions];
+            setPendingPermissionRequests([...permissions]);
+            permissionDialogOpenRef.current = false;
+            setPermissionDialogOpen(false);
+          }
         } else {
           currentPermissionRequestRef.current = null;
           setCurrentPermissionRequest(null);
@@ -143,10 +158,18 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         }
 
         if (plans && plans.length > 0) {
-          currentPlanApprovalRequestRef.current = plans[0];
-          setCurrentPlanApprovalRequest(plans[0]);
-          planApprovalDialogOpenRef.current = true;
-          setPlanApprovalDialogOpen(true);
+          if (canOpen) {
+            currentPlanApprovalRequestRef.current = plans[0];
+            setCurrentPlanApprovalRequest(plans[0]);
+            planApprovalDialogOpenRef.current = true;
+            setPlanApprovalDialogOpen(true);
+          } else {
+            currentPlanApprovalRequestRef.current = null;
+            setCurrentPlanApprovalRequest(null);
+            pendingPlanApprovalRequestsRef.current = [...plans];
+            planApprovalDialogOpenRef.current = false;
+            setPlanApprovalDialogOpen(false);
+          }
         } else {
           currentPlanApprovalRequestRef.current = null;
           setCurrentPlanApprovalRequest(null);
@@ -155,12 +178,21 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
         }
 
         if (questions && questions.length > 0) {
-          currentAskUserQuestionRequestRef.current = questions[0];
-          setCurrentAskUserQuestionRequest(questions[0]);
-          pendingAskUserQuestionRequestsRef.current = questions.slice(1);
-          setPendingAskUserQuestionRequests(questions.slice(1));
-          askUserQuestionDialogOpenRef.current = true;
-          setAskUserQuestionDialogOpen(true);
+          if (canOpen) {
+            currentAskUserQuestionRequestRef.current = questions[0];
+            setCurrentAskUserQuestionRequest(questions[0]);
+            pendingAskUserQuestionRequestsRef.current = questions.slice(1);
+            setPendingAskUserQuestionRequests(questions.slice(1));
+            askUserQuestionDialogOpenRef.current = true;
+            setAskUserQuestionDialogOpen(true);
+          } else {
+            currentAskUserQuestionRequestRef.current = null;
+            setCurrentAskUserQuestionRequest(null);
+            pendingAskUserQuestionRequestsRef.current = [...questions];
+            setPendingAskUserQuestionRequests([...questions]);
+            askUserQuestionDialogOpenRef.current = false;
+            setAskUserQuestionDialogOpen(false);
+          }
         } else {
           currentAskUserQuestionRequestRef.current = null;
           setCurrentAskUserQuestionRequest(null);
@@ -232,30 +264,30 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
     cardDebugLog(`[PCard][webview] openPermissionDialog channelId=${request.channelId}`);
     if (currentPermissionRequestRef.current?.channelId === request.channelId) return;
     if (pendingPermissionRequestsRef.current.some((r) => r.channelId === request.channelId)) return;
-    if (!currentPermissionRequestRef.current) {
-      currentPermissionRequestRef.current = request;
-      setCurrentPermissionRequest(request);
-      setPermissionDialogOpen(true);
-    } else {
+    if (!promptHost || currentPermissionRequestRef.current) {
       pendingPermissionRequestsRef.current.push(request);
       setPendingPermissionRequests([...pendingPermissionRequestsRef.current]);
+      return;
     }
-  }, []);
+    currentPermissionRequestRef.current = request;
+    setCurrentPermissionRequest(request);
+    setPermissionDialogOpen(true);
+  }, [promptHost]);
 
   // Open (or enqueue) an ask-user-question request. Mirrors openPermissionDialog.
   const openAskUserQuestionDialog = useCallback((request: AskUserQuestionRequest) => {
     cardDebugLog(`[QCard][webview] openAskUserQuestionDialog requestId=${request.requestId} toolName="${request.toolName}"`);
     if (currentAskUserQuestionRequestRef.current?.requestId === request.requestId) return;
     if (pendingAskUserQuestionRequestsRef.current.some((r) => r.requestId === request.requestId)) return;
-    if (!currentAskUserQuestionRequestRef.current) {
-      currentAskUserQuestionRequestRef.current = request;
-      setCurrentAskUserQuestionRequest(request);
-      setAskUserQuestionDialogOpen(true);
-    } else {
+    if (!promptHost || currentAskUserQuestionRequestRef.current) {
       pendingAskUserQuestionRequestsRef.current.push(request);
       setPendingAskUserQuestionRequests([...pendingAskUserQuestionRequestsRef.current]);
+      return;
     }
-  }, []);
+    currentAskUserQuestionRequestRef.current = request;
+    setCurrentAskUserQuestionRequest(request);
+    setAskUserQuestionDialogOpen(true);
+  }, [promptHost]);
 
   // Open plan approval dialog (queue of pending requests)
   const openPlanApprovalDialog = useCallback((request: PlanApprovalRequest) => {
@@ -269,22 +301,70 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       }
       return;
     }
+    if (!promptHost) {
+      if (!pendingPlanApprovalRequestsRef.current.some((item) => item.requestId === request.requestId)) {
+        pendingPlanApprovalRequestsRef.current.push(request);
+      }
+      return;
+    }
 
     currentPlanApprovalRequestRef.current = request;
     planApprovalDialogOpenRef.current = true;
     setCurrentPlanApprovalRequest(request);
     setPlanApprovalDialogOpen(true);
-  }, []);
+  }, [promptHost]);
 
   // Process pending plan approval requests queue
   useEffect(() => {
+    if (!promptHost) return;
     if (planApprovalDialogOpen) return;
     if (currentPlanApprovalRequest) return;
     const next = pendingPlanApprovalRequestsRef.current.shift();
     if (next) {
       openPlanApprovalDialog(next);
     }
-  }, [planApprovalDialogOpen, currentPlanApprovalRequest, openPlanApprovalDialog]);
+  }, [promptHost, planApprovalDialogOpen, currentPlanApprovalRequest, openPlanApprovalDialog]);
+
+  // Prompt-host election changed: the losing view closes its modal and puts
+  // the request back into its queue. The promotion itself is handled by the
+  // auto-promote effects below, which now also depend on `promptHost`.
+  useEffect(() => {
+    if (promptHost) {
+      return;
+    }
+    const activePermission = currentPermissionRequestRef.current;
+    if (activePermission) {
+      pendingPermissionRequestsRef.current = [
+        activePermission,
+        ...pendingPermissionRequestsRef.current,
+      ];
+      setPendingPermissionRequests([...pendingPermissionRequestsRef.current]);
+      currentPermissionRequestRef.current = null;
+      setCurrentPermissionRequest(null);
+      setPermissionDialogOpen(false);
+    }
+    const activeQuestion = currentAskUserQuestionRequestRef.current;
+    if (activeQuestion) {
+      pendingAskUserQuestionRequestsRef.current = [
+        activeQuestion,
+        ...pendingAskUserQuestionRequestsRef.current,
+      ];
+      setPendingAskUserQuestionRequests([...pendingAskUserQuestionRequestsRef.current]);
+      currentAskUserQuestionRequestRef.current = null;
+      setCurrentAskUserQuestionRequest(null);
+      setAskUserQuestionDialogOpen(false);
+    }
+    const activePlan = currentPlanApprovalRequestRef.current;
+    if (activePlan) {
+      pendingPlanApprovalRequestsRef.current = [
+        activePlan,
+        ...pendingPlanApprovalRequestsRef.current,
+      ];
+      currentPlanApprovalRequestRef.current = null;
+      setCurrentPlanApprovalRequest(null);
+      setPlanApprovalDialogOpen(false);
+    }
+  }, [promptHost]);
 
   // Force-close helpers — invoked by the backend safety-net handlers when the
   // host has already resolved the pending request and we must tear the WebView
@@ -458,6 +538,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
 
   // Auto-promote the next pending permission request when the dialog is idle.
   useEffect(() => {
+    if (!promptHost) return;
     if (permissionDialogOpen) return;
     if (currentPermissionRequest) return;
     const next = pendingPermissionRequestsRef.current.shift();
@@ -467,10 +548,11 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       setCurrentPermissionRequest(next);
       setPermissionDialogOpen(true);
     }
-  }, [permissionDialogOpen, currentPermissionRequest, pendingPermissionRequests]);
+  }, [promptHost, permissionDialogOpen, currentPermissionRequest, pendingPermissionRequests]);
 
   // Auto-promote the next pending ask-user-question request when the dialog is idle.
   useEffect(() => {
+    if (!promptHost) return;
     if (askUserQuestionDialogOpen) return;
     if (currentAskUserQuestionRequest) return;
     const next = pendingAskUserQuestionRequestsRef.current.shift();
@@ -480,7 +562,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       setCurrentAskUserQuestionRequest(next);
       setAskUserQuestionDialogOpen(true);
     }
-  }, [askUserQuestionDialogOpen, currentAskUserQuestionRequest, pendingAskUserQuestionRequests]);
+  }, [promptHost, askUserQuestionDialogOpen, currentAskUserQuestionRequest, pendingAskUserQuestionRequests]);
 
   // PlanApproval handlers
   const handlePlanApprovalApprove = useCallback((requestId: string, targetMode: string) => {

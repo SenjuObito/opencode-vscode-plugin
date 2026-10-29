@@ -30,7 +30,6 @@
   "chat": {
     "sendMessage": "Enviar mensaje a {{provider}}",
     "createNewSession": "Crear nueva sesión",
-    "confirmNewSession": "La sesión actual tiene mensajes, ¿estás seguro de que quieres crear una nueva sesión?",
     "confirmInterrupt": "Hay una conversación en curso, crear una nueva sesión la interrumpirá, ¿continuar?",
     "requestInterrupted": "Solicitud interrumpida por el usuario",
     "uploadedFiles": "Archivos subidos: {{files}}",
@@ -108,8 +107,6 @@
     "undoTooltip": "Deshacer este mensaje",
     "redoTooltip": "Rehacer este mensaje",
     "forkTooltip": "Bifurcar a nueva sesión",
-    "shareTooltip": "Compartir sesión",
-    "unshareTooltip": "Dejar de compartir la sesión",
     "shareSuccess": "Enlace copiado al portapapeles",
     "attachmentFile": "[Adjunto: {{fileName}}]",
     "unknownFile": "Unknown file",
@@ -151,8 +148,6 @@
     },
     "shareFailed": "Error al copiar: la sesión no se compartió",
     "shareDisabledHint": "Es posible que compartir esté deshabilitado en opencode.json (\"share\": \"disabled\") o requiera iniciar sesión en opencode. Revisa la configuración e inténtalo de nuevo",
-    "sharePendingTooltip": "Compartiendo…",
-    "copyShareLinkTooltip": "Copiar enlace",
     "revertPlaceholderTitle": "Este mensaje y las respuestas posteriores fueron deshechas",
     "revertPlaceholderCount": "{{count}} mensajes deshechos",
     "revertExpand": "Mostrar",
@@ -369,12 +364,6 @@
         "custom": "Personalizado",
         "reset": "Restablecer",
         "hint": "Personalizar el color de fondo de sus mensajes. Dejar vacío para seguir el tema predeterminado."
-      },
-      "newSessionConfirm": {
-        "label": "Confirmación de nueva sesión",
-        "enabled": "Habilitado",
-        "disabled": "Deshabilitado",
-        "hint": "Cuando está deshabilitado, crear una nueva sesión en una conversación con mensajes existentes omitirá el cuadro de confirmación."
       },
       "compactConfirm": {
         "label": "Confirmación al compactar sesión",

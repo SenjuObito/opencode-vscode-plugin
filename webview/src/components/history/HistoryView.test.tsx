@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HistoryData } from '../../types';
-import { sendBridgeEvent } from '../../utils/bridge';
 import HistoryView from './HistoryView';
 
 vi.mock('react-i18next', () => ({
@@ -82,7 +81,6 @@ describe('HistoryView multi-select', () => {
     render(
       <HistoryView
         historyData={historyData}
-        currentProvider="claude"
         onLoadSession={onLoadSession}
         onDeleteSession={onDeleteSession}
         onDeleteSessions={onDeleteSessions}
@@ -130,7 +128,6 @@ describe('HistoryView favorite visibility', () => {
             historyData.sessions![1],
           ],
         }}
-        currentProvider="claude"
         onLoadSession={vi.fn()}
         onDeleteSession={vi.fn()}
         onDeleteSessions={vi.fn()}

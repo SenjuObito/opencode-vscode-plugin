@@ -2,7 +2,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useModelProviderState } from './useModelProviderState';
-import { sendBridgeEvent } from '../utils/bridge';
 import { seedTabStore } from '../test/seedTabStore';
 
 vi.mock('../utils/bridge', async (importOriginal) => {

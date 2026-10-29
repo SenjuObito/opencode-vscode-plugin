@@ -3,6 +3,7 @@ import { createElement, type ReactNode } from 'react';
 import { useDialogManagement } from './useDialogManagement';
 import { MessagesProvider } from '../contexts/MessagesContext';
 import { SessionProvider, useSession } from '../contexts/SessionContext';
+import { seedTabStore } from '../test/seedTabStore';
 
 const t = ((key: string) => key) as any;
 
@@ -209,6 +210,7 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
   });
 
   it('handleAskUserQuestionTimeout rejects question, interrupts session, and closes dialog', () => {
+    seedTabStore([{ id: 'tab-q', sessionId: 'ses_123' }], 'tab-q');
     const sendCalls: string[] = [];
     (window as any).sendToJava = vi.fn((payload: string) => {
       sendCalls.push(payload);
@@ -238,6 +240,7 @@ describe('useDialogManagement - forceClose question/permission requests', () => 
   });
 
   it('handlePermissionTimeout rejects permission, interrupts session, and closes dialog', () => {
+    seedTabStore([{ id: 'tab-p', sessionId: 'ses_456' }], 'tab-p');
     const sendCalls: string[] = [];
     (window as any).sendToJava = vi.fn((payload: string) => {
       sendCalls.push(payload);

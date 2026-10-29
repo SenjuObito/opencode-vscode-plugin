@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
 import { uploadAttachments } from '../utils/attachmentTransport';
 import { getTabStore } from '../store/tabStore';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
@@ -271,24 +271,9 @@ export function useMessageSender({
       return;
     }
 
-    // 无 tab 身份：退回 legacy 通道，附件只能内联。
-    const legacyPayload = JSON.stringify({
-      ...commandPayload,
-      ...(hasAttachments
-        ? {
-          attachments: (attachments || []).map(a => ({
-            fileName: a.fileName,
-            mediaType: a.mediaType,
-            data: a.data,
-          })),
-        }
-        : {}),
-    });
-    if (hasAttachments) {
-      sendBridgeEvent('send_message_with_attachments', legacyPayload);
-    } else {
-      sendBridgeEvent('send_message', legacyPayload);
-    }
+    // 没有 tab 身份就不发（§5.5：legacy send_message 兜底已删除）。
+    // 正常启动时 useTabBarState 会同步建好第一个 tab，这里只在极端早期出现。
+    cardDebugLog('[MessageSender] dropped send: no active tab');
   }, [currentProvider, selectedModel, reasoningEffort]);
 
   /**

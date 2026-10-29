@@ -30,7 +30,6 @@
   "chat": {
     "sendMessage": "給 {{provider}} 發送訊息",
     "createNewSession": "建立新會話",
-    "confirmNewSession": "目前會話已有訊息，確定要建立新會話嗎？",
     "confirmInterrupt": "目前正在對話中，建立新會話將中斷目前對話，是否繼續？",
     "requestInterrupted": "請求已被使用者中斷",
     "uploadedFiles": "已上傳附件: {{files}}",
@@ -108,8 +107,6 @@
     "undoTooltip": "撤銷此訊息",
     "redoTooltip": "重做此訊息",
     "forkTooltip": "分叉到新會話",
-    "shareTooltip": "分享會話",
-    "unshareTooltip": "取消分享會話",
     "shareSuccess": "連結已複製到剪貼簿",
     "attachmentFile": "[附件: {{fileName}}]",
     "unknownFile": "Unknown file",
@@ -151,8 +148,6 @@
     },
     "shareFailed": "複製失敗，分享未完成",
     "shareDisabledHint": "分享功能可能已在 opencode.json 中關閉（\"share\": \"disabled\"）或需要登入 opencode 帳號，請檢查設定後重試",
-    "sharePendingTooltip": "分享中…",
-    "copyShareLinkTooltip": "複製分享連結",
     "revertPlaceholderTitle": "已復原此訊息及後續回覆",
     "revertPlaceholderCount": "已復原 {{count}} 條訊息",
     "revertExpand": "展開檢視",
@@ -369,12 +364,6 @@
         "custom": "自訂",
         "reset": "恢復預設",
         "hint": "自訂您的訊息背景顏色，留空則跟隨主題預設顏色"
-      },
-      "newSessionConfirm": {
-        "label": "建立新會話時二次確認",
-        "enabled": "已開啟",
-        "disabled": "已關閉",
-        "hint": "關閉後，在已有訊息的會话中點選新建將直接建立，不再彈出確認視窗"
       },
       "compactConfirm": {
         "label": "壓縮會話時二次確認",

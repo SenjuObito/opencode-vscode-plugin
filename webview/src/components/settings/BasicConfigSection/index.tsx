@@ -6,6 +6,7 @@ import type { UiFontConfig, CodeFontConfig } from '../hooks/useSettingsBasicActi
 import AppearanceTab from './AppearanceTab';
 import BehaviorTab from './BehaviorTab';
 import EnvironmentTab from './EnvironmentTab';
+import type { DaemonEngineStatus } from '../../../hooks/providers/useUsageTracking';
 
 type BasicTab = 'appearance' | 'behavior' | 'environment';
 
@@ -28,6 +29,7 @@ interface BasicConfigSectionProps {
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
   savingWorkingDirectory?: boolean;
+  daemonEngine?: DaemonEngineStatus | null;
   editorFontConfig?: {
     fontFamily: string;
     fontSize: number;
@@ -64,7 +66,6 @@ interface BasicConfigSectionProps {
   diffExpandedByDefault?: boolean;
   onDiffExpandedByDefaultChange?: (enabled: boolean) => void;
   // New-session confirm dialog (positive semantics: true = shown)
-  newSessionConfirmEnabled?: boolean;
   onNewSessionConfirmEnabledChange?: (enabled: boolean) => void;
   // Compact confirm dialog (positive semantics: true = shown)
   compactConfirmEnabled?: boolean;
@@ -158,8 +159,6 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onAutoOpenFileEnabledChange={props.onAutoOpenFileEnabledChange}
           diffExpandedByDefault={props.diffExpandedByDefault}
           onDiffExpandedByDefaultChange={props.onDiffExpandedByDefaultChange}
-          newSessionConfirmEnabled={props.newSessionConfirmEnabled}
-          onNewSessionConfirmEnabledChange={props.onNewSessionConfirmEnabledChange}
           compactConfirmEnabled={props.compactConfirmEnabled}
           onCompactConfirmEnabledChange={props.onCompactConfirmEnabledChange}
           soundNotificationEnabled={props.soundNotificationEnabled}
@@ -198,6 +197,7 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
           onWorkingDirectoryChange={props.onWorkingDirectoryChange}
           onSaveWorkingDirectory={props.onSaveWorkingDirectory}
           savingWorkingDirectory={props.savingWorkingDirectory}
+          daemonEngine={props.daemonEngine}
         />
       )}
     </div>

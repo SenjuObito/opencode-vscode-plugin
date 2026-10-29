@@ -157,6 +157,7 @@ export class TabManager {
 			this.htmlCache,
 			isDark,
 			settings.getUiPreferences(),
+			tabId,
 		);
 
 		panel.webview.onDidReceiveMessage(async (message: unknown) => {

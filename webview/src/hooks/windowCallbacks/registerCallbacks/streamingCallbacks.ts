@@ -14,6 +14,17 @@ import { parseSequence } from '../parseSequence';
 import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { isTabTransitioning, activeTabId } from '../tabTransition';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
+import { parseTaskNotification } from '../../../utils/taskEventParser';
+import type { HostEventEnvelope } from '../../../utils/hostEventTypes';
+import {
+  appendDeltaToTab,
+  applySnapshotToTab,
+  applyTailToTab,
+  isActiveTabEvent,
+  parseEventJson,
+  updateBackgroundTab,
+} from '../../../utils/tabEventRouting';
 
 /**
  * Pour every tool_use_id carried by tool_result blocks inside one message's raw
@@ -876,4 +887,224 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // Clear auto-expanded thinking keys for the new turn
     autoExpandedThinkingKeysRef.current.clear();
   };
+
+
+  // ── Named data-plane events (G8) ──────────────────────────────────────
+  // The host now names the owning tab on every session event. Background tabs
+  // absorb their own events; only the active tab reaches the React view.
+  const payloadOf = (payload: unknown): Record<string, unknown> =>
+    payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
+
+  registerHostEvents({
+    'content.delta': (payload: unknown, env?: HostEventEnvelope) => {
+      const delta = String(payloadOf(payload).delta ?? '');
+      if (!delta) return;
+      if (updateBackgroundTab(env, (tab) => appendDeltaToTab(tab, delta))) return;
+      window.onContentDelta?.(delta);
+    },
+    'thinking.delta': (payload: unknown, env?: HostEventEnvelope) => {
+      const delta = String(payloadOf(payload).delta ?? '');
+      if (!delta) return;
+      if (updateBackgroundTab(env, (tab) => {
+        tab.streamingActive = true;
+        tab.loading = true;
+        tab.isThinking = true;
+      })) return;
+      window.onThinkingDelta?.(delta);
+    },
+    'message.snapshot': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const json = typeof data.json === 'string' ? data.json : '';
+      if (!json) return;
+      const messages = parseEventJson<ClaudeMessage[]>(json);
+      if (!messages) return;
+      if (updateBackgroundTab(env, (tab) => applySnapshotToTab(tab, messages))) return;
+      window.updateMessages?.(json, String(data.sequence ?? ''), String(data.baseIndex ?? 0));
+    },
+    'message.tail': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const json = typeof data.json === 'string' ? data.json : '';
+      if (!json) return;
+      const messages = parseEventJson<ClaudeMessage[]>(json);
+      if (!messages) return;
+      if (updateBackgroundTab(env, (tab) => applyTailToTab(tab, messages))) return;
+      window.updateMessageTail?.(json, String(data.baseIndex ?? 0), String(data.sequence ?? ''));
+    },
+    'turn.heartbeat': (_payload: unknown, env?: HostEventEnvelope) => {
+      if (!isActiveTabEvent(env)) return;
+      window.onStreamingHeartbeat?.();
+    },
+    'turn.started': (_payload: unknown, env?: HostEventEnvelope) => {
+      if (updateBackgroundTab(env, (tab) => {
+        tab.streamingActive = true;
+        tab.loading = true;
+      })) return;
+      window.onStreamStart?.();
+    },
+    'turn.ended': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const sequence = data.sequence;
+      const reason = typeof data.reason === 'string' ? data.reason : '';
+      if (updateBackgroundTab(env, (tab) => {
+        tab.streamingActive = false;
+        tab.loading = false;
+        tab.isThinking = false;
+      })) return;
+      window.onStreamEnd?.(reason ? JSON.stringify({ reason }) : sequence as number);
+    },
+    'session.loading': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const loading = data.loading === true;
+      const turnStartTime = typeof data.turnStartTime === 'number' ? data.turnStartTime : undefined;
+      if (updateBackgroundTab(env, (tab) => { tab.loading = loading; })) return;
+      window.showLoading?.(String(loading), turnStartTime);
+    },
+    'thinking.status': (payload: unknown, env?: HostEventEnvelope) => {
+      const thinking = payloadOf(payload).thinking === true;
+      if (updateBackgroundTab(env, (tab) => { tab.isThinking = thinking; })) return;
+      window.showThinkingStatus?.(String(thinking));
+    },
+    'usage.updated': (payload: unknown, env?: HostEventEnvelope) => {
+      const usage = payloadOf(payload).usage;
+      if (updateBackgroundTab(env, (tab) => {
+        const parsed = parseEventJson<{ percentage?: number; usedTokens?: number; maxTokens?: number }>(usage);
+        if (parsed) {
+          tab.usagePercentage = parsed.percentage ?? tab.usagePercentage;
+          tab.usageUsedTokens = parsed.usedTokens ?? tab.usageUsedTokens;
+          tab.usageMaxTokens = parsed.maxTokens ?? tab.usageMaxTokens;
+        }
+      })) return;
+      if (typeof usage === 'string') window.onUsageUpdate?.(usage);
+    },
+    'session.bound': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+      if (updateBackgroundTab(env, (tab) => { tab.sessionId = sessionId || null; })) return;
+      window.setSessionId?.(sessionId);
+    },
+    'tab.title.changed': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const title = typeof data.title === 'string' ? data.title : '';
+      const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+      if (!title) return;
+      if (updateBackgroundTab(env, (tab) => {
+        if (!tab.isCustomTitle) tab.title = title;
+      })) return;
+      if (sessionId) window.updateSessionTitle?.(sessionId, title);
+    },
+    'status.updated': (payload: unknown, env?: HostEventEnvelope) => {
+      const status = String(payloadOf(payload).status ?? '');
+      if (updateBackgroundTab(env, (tab) => { tab.status = status; })) return;
+      window.updateStatus?.(status);
+    },
+    'turn.error': (payload: unknown, env?: HostEventEnvelope) => {
+      const error = String(payloadOf(payload).error ?? '');
+      if (!error) return;
+      if (updateBackgroundTab(env, (tab) => { tab.status = `Error: ${error}`; })) return;
+      window.updateStatus?.(`Error: ${error}`);
+    },
+    'message.block.reset': (_payload: unknown, env?: HostEventEnvelope) => {
+      if (!isActiveTabEvent(env)) return;
+      window.onBlockReset?.();
+    },
+    'todos.updated': (payload: unknown, env?: HostEventEnvelope) => {
+      const todos = payloadOf(payload).todos;
+      if (updateBackgroundTab(env, (tab) => {
+        const parsed = parseEventJson(todos);
+        if (Array.isArray(parsed)) tab.sseTodos = parsed as any;
+      })) return;
+      if (typeof todos === 'string') window.onTodoUpdated?.(todos);
+    },
+    'message.removed': (payload: unknown, env?: HostEventEnvelope) => {
+      const idsRaw = payloadOf(payload).ids;
+      const ids = parseEventJson<string[]>(idsRaw);
+      if (!Array.isArray(ids) || ids.length === 0) return;
+      if (updateBackgroundTab(env, (tab) => {
+        if (tab.messageStore) tab.messages = tab.messageStore.removeByIds(ids);
+      })) return;
+      if (typeof idsRaw === 'string') window.onMessagesRemoved?.(idsRaw);
+    },
+    'revert.changed': (payload: unknown, env?: HostEventEnvelope) => {
+      const state = payloadOf(payload).state;
+      const parsed = parseEventJson<{ hasRevert?: boolean; messageId?: string | null }>(state);
+      if (updateBackgroundTab(env, (tab) => {
+        tab.revertBoundaryId = parsed?.hasRevert ? (parsed.messageId ?? null) : null;
+      })) return;
+      if (typeof state === 'string') window.onRevertStateUpdate?.(state);
+    },
+
+    'turn.retry': (payload: unknown, env?: HostEventEnvelope) => {
+      const retry = String(payloadOf(payload).retry ?? '');
+      if (!retry) return;
+      // A retry notice is transient; a background tab keeps its own status line.
+      if (updateBackgroundTab(env, (tab) => { tab.status = retry; })) return;
+      window.updateRetryStatus?.(retry);
+    },
+    'session.summary': (payload: unknown, env?: HostEventEnvelope) => {
+      const summary = String(payloadOf(payload).summary ?? '');
+      if (!summary) return;
+      if (updateBackgroundTab(env, () => {})) return;
+      window.showSummary?.(summary);
+    },
+    'message.uuid.patched': (payload: unknown, env?: HostEventEnvelope) => {
+      const data = payloadOf(payload);
+      const content = typeof data.content === 'string' ? data.content : '';
+      const uuid = typeof data.uuid === 'string' ? data.uuid : '';
+      if (!content || !uuid) return;
+      if (updateBackgroundTab(env, (tab) => {
+        const messages = tab.messages ?? [];
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const message = messages[i];
+          if (message.type !== 'user' || message.content !== content) continue;
+          const raw = typeof message.raw === 'object' && message.raw ? { ...(message.raw as Record<string, unknown>) } : {};
+          if (raw.uuid) break;
+          const next = messages.slice();
+          next[i] = { ...message, raw: { ...raw, uuid } };
+          tab.messages = next;
+          break;
+        }
+      })) return;
+      window.patchMessageUuid?.(content, uuid);
+    },
+    'task.event': (payload: unknown, env?: HostEventEnvelope) => {
+      const eventJson = String(payloadOf(payload).event ?? '');
+      if (!eventJson) return;
+      if (updateBackgroundTab(env, (tab) => {
+        const parsed = parseEventJson<Record<string, unknown>>(eventJson);
+        const task = parseTaskNotification(parsed);
+        if (task) tab.taskEvents = { ...(tab.taskEvents ?? {}), [task.toolUseId]: task };
+      })) return;
+      window.onTaskEvent?.(eventJson);
+    },
+    'session.cleared': (payload: unknown, env?: HostEventEnvelope) => {
+      const barrier = payloadOf(payload).barrier;
+      if (updateBackgroundTab(env, (tab) => {
+        tab.messages = [];
+        tab.messageStore?.applySnapshot([]);
+        tab.streamingActive = false;
+      })) return;
+      window.clearMessages?.(String(barrier ?? 0));
+    },
+    'session.loaded': (_payload: unknown, env?: HostEventEnvelope) => {
+      if (!isActiveTabEvent(env)) return;
+      window.historyLoadComplete?.();
+    },
+    'tab.state': (payload: unknown, env?: HostEventEnvelope) => {
+      const raw = payloadOf(payload).state;
+      const parsed = parseEventJson<{ model?: string | null; permissionMode?: string; reasoningEffort?: string }>(raw);
+      if (updateBackgroundTab(env, (tab) => {
+        if (parsed) {
+          tab.selectedModel = parsed.model ?? tab.selectedModel;
+          tab.permissionMode = (parsed.permissionMode as typeof tab.permissionMode) ?? tab.permissionMode;
+          tab.reasoningEffort = (parsed.reasoningEffort as typeof tab.reasoningEffort) ?? tab.reasoningEffort;
+        }
+      })) return;
+      const json = typeof raw === 'string' ? raw : JSON.stringify(parsed ?? {});
+      window.applyBackendTabState?.(json);
+    },
+    'message.error': (payload: unknown) => {
+      const message = String(payloadOf(payload).message ?? '');
+      if (message) window.addErrorMessage?.(message);
+    },
+  });
 }

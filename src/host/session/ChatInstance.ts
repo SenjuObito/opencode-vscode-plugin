@@ -13,6 +13,7 @@ import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { OpenCodeSession, TurnCompletedInfo } from './OpenCodeSession';
 import { SessionManager } from './SessionManager';
 import type { JsTarget } from './SessionCallbackAdapter';
+import type { TabEventSink } from '../tab/TabEvent';
 import type { PromptRegistry } from '../prompt/PromptRegistry';
 import { NotificationService } from '../notifications/NotificationService';
 
@@ -88,6 +89,8 @@ export interface ChatInstance {
 	createSession(
 		viewSink?: JsTarget,
 		autoOpenFileEnabledResolver?: () => boolean | null | undefined,
+		contextEnabledResolver?: () => boolean,
+		eventSink?: TabEventSink,
 	): OpenCodeSession;
 	/** 把某个历史会话加载进活跃 tab（v2 `session.load`）。 */
 	loadSessionById(sessionId: string): void;
@@ -107,6 +110,8 @@ export interface ChatInstance {
 	saveText(content: string, filename: string): Promise<boolean>;
 	/** 列举候选文件（v2 `files.list`）：目录由宿主按目标 tab 的 cwd 给出。 */
 	listFiles(query: string, directory: string | undefined): Promise<FileEntry[]>;
+	/** 读取子代理 transcript（v2 `subagent.history`）。 */
+	loadSubagentHistory(payload: string): void;
 	/**
 	 * 接上语义事件发布器（`files.undo` 等按 tab 投递）。
 	 * 会话层先建、ChatWindow 后建，只能后注入。
@@ -190,8 +195,13 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		historyHandler,
 		permissionHandler,
 		fontConfigHandler,
-		createSession: (viewSink, autoOpenFileEnabledResolver) =>
-			sessionManager.createSessionInstance({ viewSink, autoOpenFileEnabledResolver }),
+		createSession: (viewSink, autoOpenFileEnabledResolver, contextEnabledResolver, eventSink) =>
+			sessionManager.createSessionInstance({
+				viewSink,
+				autoOpenFileEnabledResolver,
+				contextEnabledResolver,
+				eventSink,
+			}),
 		loadSessionById: (sessionId) => historyHandler.loadSessionById(sessionId),
 		refreshAgents: () => agentHandler.refresh(),
 		attachPromptRegistry: (registry, resolveTabId) => {
@@ -200,6 +210,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		rejectPrompts: (requestIds) => permissionHandler.rejectPrompts(requestIds),
 		saveText: (content, filename) => exportHandler.saveText(content, filename),
 		listFiles: (query, directory) => fileHandler.listFiles(query, directory),
+		loadSubagentHistory: (payload) => historyHandler.handleLoadSubagentSession(payload),
 		setEventPublisher: (publisher) => context.setEventPublisher(publisher),
 		dispose: () => sessionManager.dispose(),
 	};

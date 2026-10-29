@@ -57,6 +57,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// ── 2. 常驻 daemon（opencode serve + @opencode-ai/sdk）─────────────────
 	const daemonScriptPath = resolveDaemonScript(context.extensionPath);
+	// daemon 在 ChatWindow 之前创建；onDaemonDied 需要回调到窗口级状态清理。
+	let chatWindowRef: ChatWindow | null = null;
 	const daemon = new OpenCodeDaemonBridge({
 		daemonScriptPath,
 		// 用户自定义的 opencode TUI 路径（设置页）→ 注入 OPENCODE_BIN，
@@ -83,6 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// error 级：daemon 意外死亡与自动重启在生产包也必须可见
 				logError('OpenCode daemon died; will auto-restart');
 				WebviewBroadcaster.broadcastJavaScript('onDaemonStatusChanged', 'false');
+				chatWindowRef?.handleDaemonDied();
 			},
 		},
 		onLog: (message) => logDiagnostic(message),
@@ -146,7 +149,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// ── 5b. 全局单例：一个 ChatInstance + 一个 ChatWindow（单实例多视图）────────
 	// 会话归 tab 所有：所有视图（左右侧边栏 + 编辑器 panel）共享同一个实例，
-	// 每个 tab 的会话输出经 TabScopedSink 投影到「当前活跃 tab」。
+	// 每个 tab 的会话输出带 tab 身份，经 TabEventRouter 广播并由各视图按 tab 路由。
 	const instance = createChatInstance({
 		channel: new BroadcastWebviewChannel(),
 		settings,
@@ -161,8 +164,8 @@ export function activate(context: vscode.ExtensionContext) {
 		daemon,
 		fileOps,
 		fallbackWorkingDirectoryResolver,
-		createSession: (viewSink, autoOpenFileEnabledResolver) =>
-			instance.createSession(viewSink, autoOpenFileEnabledResolver),
+		createSession: (viewSink, autoOpenFileEnabledResolver, contextEnabledResolver, eventSink) =>
+			instance.createSession(viewSink, autoOpenFileEnabledResolver, contextEnabledResolver, eventSink),
 		configureSession: (session) => seedSessionFromPersistedSelection(settings, session),
 		onSessionBound: (tabId, sessionId) => {
 			logDiagnostic(`[Session] tab=${tabId} bound to session=${sessionId}`);
@@ -180,7 +183,10 @@ export function activate(context: vscode.ExtensionContext) {
 		},
 		// @ 文件候选：目录由宿主按目标 tab 的 cwd 给出（多 tab 各按各的目录）。
 		listFiles: (query, directory) => instance.listFiles(query, directory),
+		// 子代理 transcript（v2 `subagent.history`）：复用 HistoryHandler 的提取逻辑。
+		loadSubagentHistory: (payload) => instance.loadSubagentHistory(payload),
 	});
+	chatWindowRef = chatWindow;
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
 	chatWindow.bindSessionManager(instance.sessionManager);
 	// 语义事件按 tab 投递（files.undo 等）：结果回到发起请求的那个 tab。

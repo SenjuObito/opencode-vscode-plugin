@@ -39,6 +39,13 @@ export function registerSessionCallbacks(
       endTransition(ownerTabId);
     }
     currentSessionIdRef.current = sessionId;
+    // Keep the tab record in sync too: a view that learned this binding from a
+    // replayed snapshot must not keep `sessionId: null` until the next switch
+    // (rename/find-by-session read the record).
+    const boundTabId = activeTabId();
+    if (boundTabId) {
+      getTabStore().updateTabSessionId(boundTabId, sessionId);
+    }
     setCurrentSessionId(sessionId);
 
     // B-011 + B-014: Persist custom title under the real SDK session ID.

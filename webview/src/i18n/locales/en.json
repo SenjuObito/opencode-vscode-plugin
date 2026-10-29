@@ -43,7 +43,6 @@
     "sendFailedNoTab": "Send failed: no tab",
     "sendMessage": "Send message to {{provider}}",
     "createNewSession": "Create New Session",
-    "confirmNewSession": "Current session has messages. Are you sure you want to create a new session?",
     "confirmInterrupt": "A conversation is in progress. Creating a new session will interrupt it. Continue?",
     "requestInterrupted": "Request interrupted by user",
     "uploadedFiles": "Uploaded files: {{files}}",
@@ -139,11 +138,7 @@
     "undoTooltip": "Undo this message",
     "redoTooltip": "Redo this message",
     "forkTooltip": "Fork to new session",
-    "shareTooltip": "Share session",
-    "unshareTooltip": "Unshare session",
     "shareSuccess": "Link copied to clipboard",
-    "unshareSuccess": "Session unshared",
-    "unshareFailed": "Failed to unshare session",
     "attachmentFile": "[Attachment: {{fileName}}]",
     "unknownFile": "Unknown file",
     "attachmentsUploaded": "[Attachments Uploaded]",
@@ -184,8 +179,6 @@
     },
     "shareFailed": "Copy failed — session was not shared",
     "shareDisabledHint": "Sharing may be disabled in opencode.json (\"share\": \"disabled\") or requires an opencode login. Check the config and retry",
-    "sharePendingTooltip": "Sharing…",
-    "copyShareLinkTooltip": "Copy share link",
     "revertPlaceholderTitle": "This message and the replies after it were undone",
     "revertPlaceholderCount": "{{count}} messages undone",
     "revertExpand": "Show",
@@ -420,12 +413,6 @@
         "reset": "Reset",
         "hint": "Customize the background color of your messages. Leave empty to follow the theme default."
       },
-      "newSessionConfirm": {
-        "label": "New Session Confirmation",
-        "enabled": "Enabled",
-        "disabled": "Disabled",
-        "hint": "When disabled, creating a new session in a conversation with existing messages will skip the confirmation dialog."
-      },
       "compactConfirm": {
         "label": "Compact Session Confirmation",
         "enabled": "Enabled",
@@ -436,6 +423,15 @@
         "label": "OpenCode Path",
         "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
         "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
+      },
+      "engine": {
+        "label": "opencode engine",
+        "state": "State",
+        "cliVersion": "CLI version",
+        "cliSource": "CLI source",
+        "cliPath": "CLI path",
+        "apiVersion": "API version",
+        "reason": "Reason"
       }
     },
     "providers": "Provider Management",
@@ -1884,5 +1880,10 @@
     "retryIn": "retrying in {{seconds}}s",
     "openLink": "Learn more",
     "dismiss": "Dismiss"
+  },
+  "engineNotice": {
+    "title": "opencode engine unavailable",
+    "message": "The opencode CLI version or API version could not be determined. Check the CLI path and retry.",
+    "retry": "Check again"
   }
 }

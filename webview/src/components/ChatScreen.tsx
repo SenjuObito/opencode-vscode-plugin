@@ -99,6 +99,7 @@ export interface ChatScreenProps {
   currentSdkInstalled: ProviderState['currentSdkInstalled'];
   daemonStatusLoaded: boolean;
   retryDaemonStatus: () => void;
+  daemonEngine?: import('../hooks/providers/useUsageTracking').DaemonEngineStatus | null;
   activeProviderConfig: ProviderState['activeProviderConfig'];
   reasoningEffort: ProviderState['reasoningEffort'];
   sendShortcut: ProviderState['sendShortcut'];
@@ -145,6 +146,7 @@ export const ChatScreen = ({
   currentSdkInstalled,
   daemonStatusLoaded,
   retryDaemonStatus,
+  daemonEngine,
   activeProviderConfig,
   reasoningEffort, sendShortcut, autoOpenFileEnabled,
   usagePercentage, usageUsedTokens, usageMaxTokens,
@@ -302,7 +304,12 @@ export const ChatScreen = ({
           - a retry/backoff bar while a turn is running, and
           - a persistent, dismissible notice (e.g. quota exhausted) whose
             error pattern declares `presentation: "bar"`. */}
-      <StatusNoticeBar messages={mergedMessages} getMessageText={getMessageText} />
+      <StatusNoticeBar
+        messages={mergedMessages}
+        getMessageText={getMessageText}
+        engine={daemonEngine}
+        onRetryEngine={retryDaemonStatus}
+      />
 
       <StatusPanelErrorBoundary>
         <StatusPanel

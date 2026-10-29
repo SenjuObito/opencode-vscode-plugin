@@ -2,15 +2,16 @@ import './mockVscode';
 import * as assert from 'assert';
 import { ChatWindow } from '../host/window/ChatWindow';
 import { TabId } from '../host/tab/TabId';
-import { TabScopedSink } from '../host/window/TabScopedSink';
 import { SessionState } from '../host/session/SessionState';
 import { SessionCallbackAdapter } from '../host/session/SessionCallbackAdapter';
 import type { OpenCodeSession, SendMessagePayload } from '../host/session/OpenCodeSession';
 import type { WebviewChannel } from '../host/router/HandlerContext';
 import type { JsTarget } from '../host/session/SessionCallbackAdapter';
+import type { TabEventSink } from '../host/tab/TabEvent';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
+	public raw: Array<Record<string, unknown>> = [];
 
 	public callJavaScript(functionName: string, ...args: string[]): void {
 		this.calls.push({ fn: functionName, args });
@@ -20,7 +21,7 @@ class MockChannel implements WebviewChannel {
 		return false;
 	}
 
-	public postRaw(): void {}
+	public postRaw(message: unknown): void { this.raw.push(message as Record<string, unknown>); }
 
 	public getViewCount(): number {
 		return 1;
@@ -36,12 +37,13 @@ interface FakeSession {
 	disposed: number;
 }
 
-function makeSessionFactory(): { create: (sink: JsTarget) => OpenCodeSession; all: FakeSession[] } {
+function makeSessionFactory(): { create: (sink: JsTarget, eventSink?: TabEventSink) => OpenCodeSession; all: FakeSession[] } {
 	const all: FakeSession[] = [];
-	const create = (tabSink: JsTarget): OpenCodeSession => {
+	const create = (tabSink: JsTarget, eventSink?: TabEventSink): OpenCodeSession => {
 		const state = new SessionState();
 		const adapter = new SessionCallbackAdapter({
 			jsTarget: tabSink,
+			eventSink,
 			model: () => state.getModel(),
 			windowBaseIndex: () => state.getWindowBaseIndex(),
 		});
@@ -83,7 +85,7 @@ function makeChatWindow(factory: ReturnType<typeof makeSessionFactory>): ChatWin
 		daemon: {} as never,
 		fileOps: {} as never,
 		fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-		createSession: (sink) => factory.create(sink),
+		createSession: (sink, _auto, _ctx, eventSink) => factory.create(sink, eventSink),
 	});
 }
 
@@ -209,13 +211,18 @@ suite('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		await sendCommand(chatWindow, 'sidebar', 'session.send', tabB.value, { text: 'b' });
 
 		view.calls.length = 0;
+		view.raw.length = 0;
 		await sendCommand(chatWindow, 'sidebar', 'tab.activate', tabB.value, {});
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const fns = view.calls.map((c) => c.fn);
-		assert.ok(fns.includes('clearMessages'), '切 tab 必须先清屏（带屏障序列号）');
-		assert.ok(fns.includes('updateMessages') || fns.includes('updateMessageTail'), '切 tab 必须回放快照');
-		assert.ok(fns.includes('applyBackendTabState'), '切 tab 必须恢复该 tab 的 model/mode/effort');
-		assert.ok(fns.includes('historyLoadComplete'), '回放结束要释放过渡态');
+		const types = view.raw
+			.filter((message) => message.type === 'host.events')
+			.flatMap((message) => (message.batch as Array<Record<string, unknown>>) ?? [])
+			.map((event) => event.type);
+		assert.ok(types.includes('session.cleared'), '切 tab 必须先清屏（带屏障序列号）');
+		assert.ok(types.includes('message.snapshot'), '切 tab 必须回放快照');
+		assert.ok(types.includes('tab.state'), '切 tab 必须恢复该 tab 的 model/mode/effort');
+		assert.ok(types.includes('session.loaded'), '回放结束要释放过渡态');
 	});
 
 	test('切历史会话：先释放旧绑定再重绑，旧会话被释放', async () => {
@@ -260,21 +267,4 @@ suite('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(chatWindow.registry.findBySession('ses_old'), null);
 	});
 
-	test('TabScopedSink 只放行活跃 tab，addErrorMessage 例外', () => {		let active = false;
-		const forwarded: string[] = [];
-		const sink = new TabScopedSink('tab-a', () => active, {
-			callJavaScript: (fn) => forwarded.push(fn),
-		});
-
-		sink.callJavaScript('updateMessages', '[]');
-		assert.deepStrictEqual(forwarded, []);
-		assert.strictEqual(sink.getBlockedCount(), 1);
-
-		sink.callJavaScript('addErrorMessage', 'boom');
-		assert.deepStrictEqual(forwarded, ['addErrorMessage'], '后台 tab 的失败提示必须可见');
-
-		active = true;
-		sink.callJavaScript('updateMessages', '[]');
-		assert.deepStrictEqual(forwarded, ['addErrorMessage', 'updateMessages']);
 	});
-});

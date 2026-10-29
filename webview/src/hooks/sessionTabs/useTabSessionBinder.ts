@@ -3,14 +3,13 @@ import type { SessionTabData } from '../../components/ChatHeader/types';
 import { createTabId } from '../../store/tabStore';
 import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
-import type { TabStatusStore } from '../../store/tabStatusStore';
-import { statusSnapshotOf } from '../../store/tabStatusStore';
 import type { TabPromptStore } from '../../store/tabPromptStore';
 import type { PermissionMode, ReasoningEffort } from '../../components/ChatInputBox/types';
 import { resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
 import { sendSessionCommand, sendHostCommand, sendTabCommand, cardDebugLog } from '../../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../../utils/hostDispatcher';
 import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
+import { getViewId, setPromptHostViewId } from '../../utils/viewIdentity';
 import { endTransition, transitionTargetFor } from '../windowCallbacks/tabTransition';
 import type { UseSessionTabsOptions } from './types';
 import type { useTabBarState } from './useTabBarState';
@@ -77,7 +76,6 @@ export interface UseTabSessionBinderOptions extends Pick<
 > {
   tabBar: ReturnType<typeof useTabBarState>;
   draftStore: TabDraftStore;
-  statusStore: TabStatusStore;
   promptStore: TabPromptStore;
 }
 
@@ -131,9 +129,17 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
+    loadingStartTime,
+    loading,
+    streamingActive,
+    isThinking,
+    status,
+    isCompacting,
+    compactingStartTime,
+    subagentHistories,
+    sseTodos,
     tabBar,
     draftStore,
-    statusStore,
     promptStore,
   } = options;
 
@@ -167,6 +173,15 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
+    loadingStartTime,
+    loading,
+    streamingActive,
+    isThinking,
+    status,
+    isCompacting,
+    compactingStartTime,
+    subagentHistories,
+    sseTodos,
   });
 
   useEffect(() => {
@@ -184,6 +199,15 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       usagePercentage,
       usageUsedTokens,
       usageMaxTokens,
+      loadingStartTime,
+      loading,
+      streamingActive,
+      isThinking,
+      status,
+      isCompacting,
+      compactingStartTime,
+      subagentHistories,
+      sseTodos,
     };
   }, [
     messages,
@@ -199,6 +223,15 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
+    loadingStartTime,
+    loading,
+    streamingActive,
+    isThinking,
+    status,
+    isCompacting,
+    compactingStartTime,
+    subagentHistories,
+    sseTodos,
   ]);
 
   const syncHostActiveTabTo = useCallback((tabId: string | null | undefined) => {
@@ -226,6 +259,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           streaming?: boolean;
           loading?: boolean;
           epoch?: number;
+          draft?: string;
         }>;
       };
       try {
@@ -261,6 +295,15 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         const loading = typeof entry.loading === 'boolean'
           ? entry.loading
           : (previous?.loading ?? false);
+        if (typeof entry.draft === 'string') {
+          const previousDraft = draftStore.get(entry.tabId!);
+          draftStore.set(entry.tabId!, {
+            text: entry.draft,
+            attachments: previousDraft?.attachments ?? [],
+            fileTags: previousDraft?.fileTags ?? [],
+            quotes: previousDraft?.quotes ?? {},
+          });
+        }
         if (previous) {
           return { ...previous, sessionId, title, streamingActive, loading };
         }
@@ -290,7 +333,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         if (liveIds.has(previousId)) continue;
         deleteTabRuntime?.(previousId);
         draftStore.delete(previousId);
-        statusStore.delete(previousId);
         promptStore.delete(previousId);
       }
 
@@ -306,6 +348,12 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
       setCurrentSessionId?.(target.sessionId);
       setCustomSessionTitle(target.title || null);
+      // Restore the host-held draft after a view rebuild (drafts sync across
+      // views, but a fresh webview has no local draft store yet).
+      const targetDraft = draftStore.get(target.id)?.text ?? '';
+      if (targetDraft) {
+        window.setTimeout(() => chatInputRef?.current?.setValue?.(targetDraft), 0);
+      }
     };
 
     registerHostEvents({ 'tab.resync': resync });
@@ -320,13 +368,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     t,
     deleteTabRuntime,
     draftStore,
-    statusStore,
     promptStore,
     tabsRef,
     setTabs,
     activeTabIdRef,
     setActiveTabId,
     currentSessionIdRef,
+    chatInputRef,
   ]);
 
   const saveCurrentTabSnapshot = useCallback(() => {
@@ -350,16 +398,25 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       currentActive.usagePercentage = snap.usagePercentage;
       currentActive.usageUsedTokens = snap.usageUsedTokens;
       currentActive.usageMaxTokens = snap.usageMaxTokens;
+      // Turn/stream state is per tab and lives in the tab record now (the old
+      // TabStatusStore snapshot exchange is gone). Mirroring the active view's
+      // React projection here is a write, not a second source: the record is
+      // the only store that survives a switch, and background events only
+      // touch records of tabs that are not active in this view.
+      currentActive.loading = snap.loading;
+      currentActive.streamingActive = snap.streamingActive;
+      currentActive.isThinking = snap.isThinking;
+      currentActive.status = snap.status;
+      currentActive.isCompacting = snap.isCompacting;
+      currentActive.compactingStartTime = snap.compactingStartTime;
+      currentActive.subagentHistories = snap.subagentHistories;
+      currentActive.sseTodos = snap.sseTodos;
       currentActive.messageBaseIndex = typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : currentActive.messageBaseIndex;
       currentActive.opencodeListStart = typeof window.__opencodeListStart === 'number' ? window.__opencodeListStart : currentActive.opencodeListStart;
       currentActive.prependedHistoryMessageCount = typeof window.__prependedHistoryMessageCount === 'number' ? window.__prependedHistoryMessageCount : currentActive.prependedHistoryMessageCount;
       const capturedScroll = captureScrollState?.();
       if (capturedScroll) {
         currentActive.scrollState = capturedScroll;
-      }
-
-      for (const tab of tabsRef.current) {
-        statusStore.set(tab.id, statusSnapshotOf(tab));
       }
 
       const currentDraftText = chatInputRef?.current?.getValue?.() ?? '';
@@ -394,14 +451,14 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     activeTabIdRef,
     t,
     captureScrollState,
-    statusStore,
     chatInputRef,
     draftStore,
     promptStore,
   ]);
 
   const selectTab = useCallback(
-    (targetTabId: string) => {
+    (targetTabId: string, selectOptions?: { fromHost?: boolean }) => {
+      const fromHost = selectOptions?.fromHost === true;
       if (targetTabId === activeTabIdRef.current) return;
 
       saveCurrentTabSnapshot();
@@ -420,7 +477,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         endTransition(targetTabId);
       }
 
-      syncHostActiveTabTo(targetTab.id);
+      if (!fromHost) {
+        syncHostActiveTabTo(targetTab.id);
+      }
 
       if (currentSessionIdRef) {
         currentSessionIdRef.current = targetTab.sessionId;
@@ -431,18 +490,19 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setMessages?.(targetTab.messages ?? []);
 
       // Turn state, transcript and subagent histories belong to the target tab.
-      // Activating it is enough; copying a status-store snapshot back would let
-      // a stale background snapshot clear a live stream on the newly active tab.
-      const targetStatus = statusStore.get(targetTab.id);
+      // The tab record is authoritative; no status snapshot is exchanged.
       if (targetTab.streamingActive) {
         setTabRuntimeStreaming?.(targetTab.id, true);
       }
-      const targetRevertBoundaryId = targetTab.revertBoundaryId !== undefined
-        ? targetTab.revertBoundaryId
-        : (targetStatus?.revertBoundaryId ?? null);
-      setRevertBoundaryId?.(targetRevertBoundaryId);
-      setTaskEvents?.(targetStatus?.taskEvents ?? targetTab.taskEvents ?? {});
-      setFilteredFileChanges?.(targetStatus?.filteredFileChanges ?? targetTab.filteredFileChanges ?? []);
+      setLoading?.(targetTab.loading ?? false);
+      setStreamingActive?.(targetTab.streamingActive ?? false);
+      setIsThinking?.(targetTab.isThinking ?? false);
+      setStatus?.(targetTab.status ?? '');
+      setRevertBoundaryId?.(targetTab.revertBoundaryId ?? null);
+      setTaskEvents?.(targetTab.taskEvents ?? {});
+      setSseTodos?.(targetTab.sseTodos ?? null);
+      setSubagentHistories?.(targetTab.subagentHistories ?? {});
+      setFilteredFileChanges?.(targetTab.filteredFileChanges ?? []);
 
       window.__messageBaseIndex = targetTab.messageBaseIndex ?? 0;
       window.__opencodeListStart = targetTab.opencodeListStart ?? 0;
@@ -450,7 +510,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       const targetMode = targetTab.permissionMode || 'default';
       setPermissionMode?.(targetMode);
-      syncPermissionModeTo(targetTab.sessionId, targetMode);
+      if (!fromHost) {
+        syncPermissionModeTo(targetTab.sessionId, targetMode);
+      }
 
       const targetEffort = targetTab.reasoningEffort || 'default';
       setReasoningEffort?.(targetEffort);
@@ -465,16 +527,20 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
 
       const isAutoOpen = targetTab.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
-      sendHostCommand(targetTab.id, 'context.refresh', { enabled: isAutoOpen });
+      if (!fromHost) {
+        sendHostCommand(targetTab.id, 'context.refresh', { enabled: isAutoOpen });
+      }
       if (targetTab.contextInfo) {
         setContextInfo?.(targetTab.contextInfo);
       }
 
-      window.__turnStartedAt = targetTab.turnStartedAt ?? undefined;
+      const targetTurnStartedAt = targetTab.turnStartedAt ?? null;
+      setLoadingStartTime?.(targetTurnStartedAt);
+      window.__turnStartedAt = targetTurnStartedAt ?? undefined;
 
-      setUsagePercentage?.(targetStatus?.usagePercentage ?? targetTab.usagePercentage ?? 0);
-      setUsageUsedTokens?.(targetStatus ? targetStatus.usageUsedTokens : targetTab.usageUsedTokens);
-      setUsageMaxTokens?.(targetStatus ? targetStatus.usageMaxTokens : targetTab.usageMaxTokens);
+      setUsagePercentage?.(targetTab.usagePercentage ?? 0);
+      setUsageUsedTokens?.(targetTab.usageUsedTokens);
+      setUsageMaxTokens?.(targetTab.usageMaxTokens);
 
       if (chatInputRef?.current?.setValue) {
         const draft = draftStore.get(targetTab.id);
@@ -506,7 +572,13 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setCustomSessionTitle,
       restoreScrollState,
       setMessages,
-      statusStore,
+      setLoading,
+      setStreamingActive,
+      setIsThinking,
+      setStatus,
+      setSseTodos,
+      setSubagentHistories,
+      setLoadingStartTime,
       setTabRuntimeStreaming,
       setRevertBoundaryId,
       setTaskEvents,
@@ -528,6 +600,188 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       promptStore,
     ]
   );
+
+  // ── Host-driven tab sync (multi-view) ─────────────────────────────────
+  // Every view receives the same tab lifecycle events. The host is the single
+  // authority for which tab is active and in what order, so a view that is not
+  // the initiator follows without writing back (no echo loop).
+  useEffect(() => {
+    const onCreated = (payload: { tabId?: string; title?: string }) => {
+      const tabId = payload?.tabId;
+      if (!tabId || tabsRef.current.some((tab) => tab.id === tabId)) {
+        return;
+      }
+      const tab: SessionTabData = {
+        id: tabId,
+        sessionId: null,
+        messageStore: new TabMessageStore(),
+        title: payload.title || t('common.newSession', { defaultValue: '新会话' }),
+        messages: [],
+        isShared: false,
+        loading: false,
+        streamingActive: false,
+        permissionMode: 'default',
+        reasoningEffort: 'default',
+        filteredFileChanges: [],
+        contextInfo: null,
+        pendingPermissions: [],
+        pendingQuestions: [],
+      };
+      const next = [...tabsRef.current, tab];
+      tabsRef.current = next;
+      setTabs(next);
+    };
+
+    const onClosed = (payload: { tabId?: string }) => {
+      const tabId = payload?.tabId;
+      if (!tabId) {
+        return;
+      }
+      const next = tabsRef.current.filter((tab) => tab.id !== tabId);
+      if (next.length === tabsRef.current.length) {
+        return;
+      }
+      tabsRef.current = next;
+      setTabs(next);
+      draftStore.delete(tabId);
+      promptStore.delete(tabId);
+      if (activeTabIdRef.current === tabId) {
+        // Do NOT switch to a neighbour here: the host publishes `tab.activated`
+        // right after `tab.closed`, and that handler must run a full restore.
+        // Pre-selecting the neighbour would make it a no-op (same id).
+        activeTabIdRef.current = '';
+        setActiveTabId('');
+      }
+    };
+
+    const onActivated = (payload: { tabId?: string }) => {
+      const tabId = payload?.tabId;
+      if (!tabId || tabId === activeTabIdRef.current) {
+        return;
+      }
+      if (!tabsRef.current.some((tab) => tab.id === tabId)) {
+        // Defensive: if `tab.created` was missed, add the identity only. The
+        // host replays the full snapshot right after the activation.
+        const tab: SessionTabData = {
+          id: tabId,
+          sessionId: null,
+          messageStore: new TabMessageStore(),
+          title: t('common.newSession', { defaultValue: '新会话' }),
+          messages: [],
+          isShared: false,
+          loading: false,
+          streamingActive: false,
+          permissionMode: 'default',
+          reasoningEffort: 'default',
+          filteredFileChanges: [],
+          contextInfo: null,
+          pendingPermissions: [],
+          pendingQuestions: [],
+        };
+        const next = [...tabsRef.current, tab];
+        tabsRef.current = next;
+        setTabs(next);
+      }
+      selectTab(tabId, { fromHost: true });
+    };
+
+    const onReordered = (payload: { tabIds?: string[] }) => {
+      const ids = Array.isArray(payload?.tabIds)
+        ? payload.tabIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+      if (ids.length === 0) {
+        return;
+      }
+      const byId = new Map(tabsRef.current.map((tab) => [tab.id, tab]));
+      const ordered: SessionTabData[] = [];
+      for (const id of ids) {
+        const tab = byId.get(id);
+        if (tab) {
+          ordered.push(tab);
+          byId.delete(id);
+        }
+      }
+      for (const tab of tabsRef.current) {
+        if (byId.has(tab.id)) {
+          ordered.push(tab);
+          byId.delete(tab.id);
+        }
+      }
+      tabsRef.current = ordered;
+      setTabs(ordered);
+    };
+
+    const onDraftChanged = (payload: {
+      tabId?: string;
+      draft?: string;
+      sourceViewId?: string;
+    }) => {
+      const tabId = payload?.tabId;
+      const draft = payload?.draft;
+      if (!tabId || typeof draft !== 'string') {
+        return;
+      }
+      // 发送方忽略自己的回声，避免输入过程中光标被重置。
+      if (payload.sourceViewId && payload.sourceViewId === getViewId()) {
+        return;
+      }
+      const previous = draftStore.get(tabId);
+      draftStore.set(tabId, {
+        text: draft,
+        attachments: previous?.attachments ?? [],
+        fileTags: previous?.fileTags ?? [],
+        quotes: previous?.quotes ?? {},
+      });
+      if (tabId === activeTabIdRef.current) {
+        chatInputRef?.current?.setValue?.(draft);
+      }
+    };
+
+    const onPromptHostChanged = (payload: { viewId?: string }) => {
+      setPromptHostViewId(
+        typeof payload?.viewId === 'string' && payload.viewId ? payload.viewId : null,
+      );
+    };
+
+    const onViewNavigate = (payload: { view?: string; sourceViewId?: string }) => {
+      if (payload?.sourceViewId && payload.sourceViewId === getViewId()) {
+        return;
+      }
+      const view = payload?.view;
+      if (view === 'chat' || view === 'history' || view === 'settings') {
+        setCurrentView?.(view);
+      }
+    };
+
+    const handlers = {
+      'tab.created': onCreated,
+      'tab.closed': onClosed,
+      'tab.activated': onActivated,
+      'tab.reordered': onReordered,
+      'tab.draft.changed': onDraftChanged,
+      'prompt.host.changed': onPromptHostChanged,
+      'view.navigate': onViewNavigate,
+    };
+    registerHostEvents(handlers);
+    return () => {
+      for (const [type, handler] of Object.entries(handlers)) {
+        if (hostEventHandler(type) === handler) {
+          unregisterHostEvents([type]);
+        }
+      }
+    };
+  }, [
+    tabsRef,
+    setTabs,
+    activeTabIdRef,
+    setActiveTabId,
+    selectTab,
+    draftStore,
+    promptStore,
+    chatInputRef,
+    setCurrentView,
+    t,
+  ]);
 
   const openSessionInTab = useCallback(
     (

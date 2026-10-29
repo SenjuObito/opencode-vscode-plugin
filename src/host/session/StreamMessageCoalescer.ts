@@ -6,6 +6,7 @@
  */
 import { ChatMessage } from './types';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
+import { TabEvent, TabEventSink } from '../tab/TabEvent';
 
 const UPDATE_INTERVAL_MS = 50;
 const STREAMING_MIN_INTERVAL_MS = 150;
@@ -37,6 +38,7 @@ interface MessageTransport {
 
 export class StreamMessageCoalescer {
 	private readonly target: CoalescerTarget;
+	private readonly eventSink?: TabEventSink;
 	private streamActive = false;
 	private updateScheduled = false;
 	private lastUpdateAtMs = 0;
@@ -71,8 +73,9 @@ export class StreamMessageCoalescer {
 	private updateTimer: NodeJS.Timeout | null = null;
 	private heartbeatTimer: NodeJS.Timeout | null = null;
 
-	constructor(target: CoalescerTarget) {
+	constructor(target: CoalescerTarget, eventSink?: TabEventSink) {
 		this.target = target;
+		this.eventSink = eventSink;
 	}
 
 	enqueue(messages: ChatMessage[], baseIndex = 0): void {
@@ -253,7 +256,21 @@ export class StreamMessageCoalescer {
 		console.log('[StreamMessageCoalescer] sendToWebView SENDING: seq', sequence, 'tailUpdate:', tailUpdate);
 
 		try {
-			if (tailUpdate) {
+			if (this.eventSink && this.tabId) {
+				// Named data plane: the payload is an object, so the webview routes
+				// by `tabId` and applies it to that tab's store. Background tabs no
+				// longer depend on a later replay.
+				const baseForEvent = tailUpdate ? tailBaseIndex : baseIndex;
+				this.eventSink(new TabEvent({
+					type: tailUpdate ? 'message.tail' : 'message.snapshot',
+					tabId: this.tabId,
+					epoch: 0,
+					sessionId: this.sessionId,
+					seq: sequence,
+					payload: { json, sequence, baseIndex: baseForEvent },
+					legacy: false,
+				}));
+			} else if (tailUpdate) {
 				this.target.callUpdateMessages('updateMessageTail', [json, String(tailBaseIndex), String(sequence)]);
 			} else {
 				// 全量快照现在承载的是宿主「窗口」而非完整历史，第三个参数
@@ -280,7 +297,18 @@ export class StreamMessageCoalescer {
 				return;
 			}
 			try {
-				this.target.callHeartbeat();
+				if (this.eventSink && this.tabId) {
+					this.eventSink(new TabEvent({
+						type: 'turn.heartbeat',
+						tabId: this.tabId,
+						epoch: 0,
+						sessionId: this.sessionId,
+						payload: {},
+						legacy: false,
+					}));
+				} else {
+					this.target.callHeartbeat();
+				}
 			} catch {
 				// 忽略心跳失败
 			}

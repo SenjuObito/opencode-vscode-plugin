@@ -23,6 +23,14 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'session.cleared': 'clearMessages',
   'command.rejected': 'commandRejected',
   'attachment.failed': 'onAttachmentFailed',
+  'tab.created': 'onTabCreated',
+  'tab.closed': 'onTabClosed',
+  'tab.reordered': 'onTabReordered',
+  'tab.draft.changed': 'onTabDraftChanged',
+  'view.ready': 'onViewReady',
+  'view.focus': 'onViewFocus',
+  'view.navigate': 'onViewNavigate',
+  'prompt.host.changed': 'onPromptHostChanged',
 
   // ── turn & message ─────────────────────────────────────────────────
   'turn.started': 'onStreamStart',

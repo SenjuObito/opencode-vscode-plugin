@@ -11,6 +11,7 @@ import type { PermissionRequest } from '../session/types';
 import { NotificationService } from '../notifications/NotificationService';
 import type { PromptRegistry } from '../prompt/PromptRegistry';
 import { logDiagnostic } from '../util/DiagnosticLogger';
+import { PluginFileLogger } from '../util/PluginFileLogger';
 
 const SUPPORTED_TYPES = ['permission_decision', 'ask_user_question_response', 'ask_user_question_reject', 'plan_approval_response'];
 
@@ -104,7 +105,12 @@ export class PermissionHandler extends BaseMessageHandler {
 			this.onQuestionRequested(request);
 			return;
 		}
-		const sessionId = request.sessionId ?? this.context.getSession()?.state.getSessionId() ?? null;
+		const sessionId = request.sessionId ?? null;
+		if (!sessionId) {
+			// INV-5 / §10.7：缺失身份不得借用活跃会话。适配器本应盖章，
+			// 走到这里说明上游丢了身份，记录后仍把请求交给用户（服务端在等）。
+			PluginFileLogger.warn('PermissionHandler', 'permission request without sessionId');
+		}
 		// channelId 是前端卡片/对话框的关联键（优先 toolUseId，与卡片 placeCard 一致）；
 		// permissionId 是 opencode SDK replyPermission 需要的 per_xxx，必须优先取 requestId，
 		// 否则会把 call_xxx 当 permissionId 回传导致 replyPermission failed。
@@ -148,7 +154,7 @@ export class PermissionHandler extends BaseMessageHandler {
 			?? this.context.getFallbackWorkingDirectory()
 			?? null;
 		this.debugLog(`onQuestionRequested requestId=${requestId} sessionId=${request.sessionId} toolName="${request.toolName}" toolNameType=${typeof request.toolName} questions=${request.questions?.length ?? 0} directory=${directory}`);
-		const questionSessionId = request.sessionId ?? this.context.getSession()?.state.getSessionId() ?? null;
+		const questionSessionId = request.sessionId ?? null;
 		const tabId = request.tabId ?? this.tabIdForSession(questionSessionId);
 		this.pendingQuestions.set(requestId, {
 			sessionId: questionSessionId,

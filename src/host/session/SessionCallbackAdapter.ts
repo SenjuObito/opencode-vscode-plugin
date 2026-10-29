@@ -1,24 +1,33 @@
 /**
- * SessionCallbackAdapter — port of cc-gui `session/SessionCallbackAdapter.java`.
- * Routes SessionCallback events to webview `window.<fn>` calls: streaming
- * deltas via throttlers, structural updates via the coalescer, and lifecycle
- * signals (showLoading / onStreamEnd / setSessionId / …) directly.
+ * SessionCallbackAdapter — the per-tab data plane.
+ *
+ * <p>Ported from idea's `SessionCallbackAdapter.java`: every session-level
+ * callback becomes a named `TabEvent` carrying `tabId`/`sessionId`/`turnId`/
+ * `seq`, so the webview can route it to exactly one tab. The legacy
+ * `window.<fn>` call remains only for the no-tab/single-session path; when a
+ * tab exists the named path is the only one used for migrated data events.</p>
  */
 import { ChatMessage, PermissionRequest, SessionCallback } from './types';
 import { StreamDeltaThrottler } from './StreamDeltaThrottler';
 import { StreamMessageCoalescer } from './StreamMessageCoalescer';
 import { buildUsageSnapshot } from '../util/MessageJsonConverter';
+import { TabEvent, TabEventSink } from '../tab/TabEvent';
 
 const DELTA_THROTTLE_MS = 33;
 const STREAM_END_FALLBACK_MS = 300;
 
-/** Webview 侧 `window.<fn>(...args)` 的调用目标。 */
+/** Webview 侧 `window.<fn>(...args)` 的调用目标（legacy fallback）。 */
 export interface JsTarget {
 	callJavaScript(functionName: string, ...args: string[]): void;
 }
 
 export interface SessionCallbackAdapterOptions {
 	jsTarget: JsTarget;
+	/**
+	 * Named event sink of the owning tab. When present (and the adapter knows
+	 * its tab), data events travel as named events instead of `window.<fn>`.
+	 */
+	eventSink?: TabEventSink;
 	/** 给权限请求的实际处理（Phase 4 接 webview 弹层）。 */
 	permissionHandler?: (request: PermissionRequest) => void;
 	/** 服务端已答复/取消未决 prompt（同步关闭 webview 卡片）。 */
@@ -34,6 +43,7 @@ export interface SessionCallbackAdapterOptions {
 export class SessionCallbackAdapter implements SessionCallback {
 	private readonly streamCoalescer: StreamMessageCoalescer;
 	private readonly jsTarget: JsTarget;
+	private readonly eventSink?: TabEventSink;
 	private readonly permissionHandler?: (request: PermissionRequest) => void;
 	private readonly permissionClosedHandler?: (kind: 'question' | 'permission', content: string) => void;
 	private readonly streamEndCallback?: () => void;
@@ -46,6 +56,8 @@ export class SessionCallbackAdapter implements SessionCallback {
 	private streamEndFallbackTimer: NodeJS.Timeout | null = null;
 	private tabId: string | null = null;
 	private sessionId: string | null = null;
+	private turnCounter = 0;
+	private activeTurnId: number | null = null;
 
 	setTabId(tabId: string | null): void {
 		this.tabId = tabId;
@@ -77,28 +89,32 @@ export class SessionCallbackAdapter implements SessionCallback {
 
 	constructor(options: SessionCallbackAdapterOptions) {
 		this.jsTarget = options.jsTarget;
+		this.eventSink = options.eventSink;
 		this.permissionHandler = options.permissionHandler;
 		this.permissionClosedHandler = options.permissionClosedHandler;
 		this.streamEndCallback = options.streamEndCallback;
 		this.model = options.model;
 		this.windowBaseIndex = options.windowBaseIndex ?? (() => 0);
-		this.streamCoalescer = new StreamMessageCoalescer({
-			callUpdateMessages: (fn, args) => this.jsTarget.callJavaScript(fn, ...args),
-			callHeartbeat: () => this.jsTarget.callJavaScript('onStreamingHeartbeat'),
-			isDisposed: () => this.isInactive(),
-			pushUsageUpdate: (messages) => this.pushUsageFromMessages(messages),
-			onStreamEnded: () => {
-				/* 宿主可在流结束时做延迟工作 */
+		this.streamCoalescer = new StreamMessageCoalescer(
+			{
+				callUpdateMessages: (fn, args) => this.jsTarget.callJavaScript(fn, ...args),
+				callHeartbeat: () => this.jsTarget.callJavaScript('onStreamingHeartbeat'),
+				isDisposed: () => this.isInactive(),
+				pushUsageUpdate: (messages) => this.pushUsageFromMessages(messages),
+				onStreamEnded: () => {
+					/* 宿主可在流结束时做延迟工作 */
+				},
 			},
-		});
+			options.eventSink,
+		);
 		this.contentDeltaThrottler = new StreamDeltaThrottler(DELTA_THROTTLE_MS, (delta) => {
 			if (!this.isInactive()) {
-				this.jsTarget.callJavaScript('onContentDelta', delta);
+				this.emit('content.delta', { delta }, () => this.jsTarget.callJavaScript('onContentDelta', delta));
 			}
 		});
 		this.thinkingDeltaThrottler = new StreamDeltaThrottler(DELTA_THROTTLE_MS, (delta) => {
 			if (!this.isInactive()) {
-				this.jsTarget.callJavaScript('onThinkingDelta', delta);
+				this.emit('thinking.delta', { delta }, () => this.jsTarget.callJavaScript('onThinkingDelta', delta));
 			}
 		});
 	}
@@ -130,6 +146,33 @@ export class SessionCallbackAdapter implements SessionCallback {
 		}
 	}
 
+	/**
+	 * Publish a named event when this adapter has a tab, otherwise run the
+	 * legacy bridge call. This is the only place where the decision is made.
+	 */
+	private emit(
+		type: string,
+		payload: Record<string, unknown>,
+		legacy?: () => void,
+		extras?: { seq?: number | null; turnId?: number | null },
+	): void {
+		if (this.tabId && this.eventSink) {
+			this.eventSink(new TabEvent({
+				type,
+				tabId: this.tabId,
+				// The registry stamps the current epoch before routing.
+				epoch: 0,
+				sessionId: this.sessionId,
+				turnId: extras?.turnId ?? this.activeTurnId,
+				seq: extras?.seq ?? null,
+				payload,
+				legacy: false,
+			}));
+			return;
+		}
+		legacy?.();
+	}
+
 	// =========================================================================
 	// SessionCallback
 	// =========================================================================
@@ -139,7 +182,6 @@ export class SessionCallbackAdapter implements SessionCallback {
 			console.log('[SessionCallbackAdapter] onMessageUpdate BLOCKED: adapter inactive');
 			return;
 		}
-		console.log('[SessionCallbackAdapter] onMessageUpdate called, messages:', messages.length);
 		this.streamCoalescer.enqueue(messages, this.windowBaseIndex());
 	}
 
@@ -151,9 +193,13 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (!loading && this.streamCoalescer.isStreamActive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('showLoading', String(loading));
+		this.emit('session.loading', { loading }, () => {
+			this.jsTarget.callJavaScript('showLoading', String(loading));
+		});
 		if (error) {
-			this.jsTarget.callJavaScript('updateStatus', `Error: ${error}`);
+			this.emit('turn.error', { error }, () => {
+				this.jsTarget.callJavaScript('updateStatus', `Error: ${error}`);
+			});
 		}
 	}
 
@@ -161,30 +207,41 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive() || !message || message.trim() === '') {
 			return;
 		}
-		this.jsTarget.callJavaScript('updateStatus', message);
+		this.emit('status.updated', { status: message }, () => {
+			this.jsTarget.callJavaScript('updateStatus', message);
+		});
 	}
 
 	onRetryStatus(payload: string): void {
 		if (this.isInactive() || !payload || payload.trim() === '') {
 			return;
 		}
-		// 独立通道（不走 updateStatus）：重试提示要常驻并带可点击 action 链接，
-		// 而 updateStatus 是转瞬即逝的 toast，渲染不了链接。
-		this.jsTarget.callJavaScript('updateRetryStatus', payload);
+		// 独立通道（不走 updateStatus）：重试提示要常驻并带可点击 action 链接。
+		this.emit('turn.retry', { retry: payload }, () => {
+			this.jsTarget.callJavaScript('updateRetryStatus', payload);
+		});
 	}
 
 	onSessionIdReceived(sessionId: string): void {
 		if (this.isInactive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('setSessionId', sessionId);
+		const previousSessionId = this.sessionId;
+		this.setSessionId(sessionId);
+		this.emit('session.bound', { sessionId, previousSessionId }, () => {
+			this.jsTarget.callJavaScript('setSessionId', sessionId);
+		});
 	}
 
 	onSessionTitleReceived(sessionId: string, title: string): void {
-		if (this.isInactive() || !sessionId || !title) {
+		if (!sessionId || !title) {
 			return;
 		}
-		this.jsTarget.callJavaScript('updateSessionTitle', sessionId, title);
+		// Titles are addressed by session, not by adapter liveness: a tab switch
+		// must not lose the title that arrives during the switch.
+		this.emit('tab.title.changed', { title, sessionId }, () => {
+			this.jsTarget.callJavaScript('updateSessionTitle', sessionId, title);
+		});
 	}
 
 	onPermissionRequested(request: PermissionRequest): void {
@@ -211,14 +268,18 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('showThinkingStatus', String(isThinking));
+		this.emit('thinking.status', { thinking: isThinking }, () => {
+			this.jsTarget.callJavaScript('showThinkingStatus', String(isThinking));
+		});
 	}
 
 	onSummaryReceived(summary: string): void {
 		if (this.isInactive() || !summary || summary.trim() === '') {
 			return;
 		}
-		this.jsTarget.callJavaScript('showSummary', summary);
+		this.emit('session.summary', { summary }, () => {
+			this.jsTarget.callJavaScript('showSummary', summary);
+		});
 	}
 
 	// ===== 流式回调 =====
@@ -231,8 +292,13 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.contentDeltaThrottler.reset();
 		this.thinkingDeltaThrottler.reset();
 		this.streamCoalescer.onStreamStart();
-		this.jsTarget.callJavaScript('showLoading', 'true');
-		this.jsTarget.callJavaScript('onStreamStart');
+		this.activeTurnId = ++this.turnCounter;
+		this.emit('session.loading', { loading: true }, () => {
+			this.jsTarget.callJavaScript('showLoading', 'true');
+		});
+		this.emit('turn.started', {}, () => {
+			this.jsTarget.callJavaScript('onStreamStart');
+		});
 	}
 
 	onStreamEnd(): void {
@@ -278,12 +344,13 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
-		this.safeRun('callJavaScript(onStreamEnd)', () =>
-			this.jsTarget.callJavaScript('onStreamEnd', String(sequence)),
-		);
-		this.safeRun('callJavaScript(showLoading, false)', () =>
-			this.jsTarget.callJavaScript('showLoading', 'false'),
-		);
+		this.emit('turn.ended', { sequence }, () => {
+			this.jsTarget.callJavaScript('onStreamEnd', String(sequence));
+		}, { seq: sequence });
+		this.emit('session.loading', { loading: false }, () => {
+			this.jsTarget.callJavaScript('showLoading', 'false');
+		});
+		this.activeTurnId = null;
 	}
 
 	private cancelStreamEndFallback(): void {
@@ -307,13 +374,22 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.thinkingDeltaThrottler.append(delta);
 	}
 
+	/** Host-initiated clear (new chat / history restore); named for tab routing. */
+	notifyMessagesCleared(barrier: number): void {
+		this.emit('session.cleared', { barrier }, () => {
+			this.jsTarget.callJavaScript('clearMessages', String(barrier));
+		});
+	}
+
 	onBlockReset(): void {
 		if (this.isInactive()) {
 			return;
 		}
 		this.contentDeltaThrottler.reset();
 		this.thinkingDeltaThrottler.reset();
-		this.jsTarget.callJavaScript('onBlockReset');
+		this.emit('message.block.reset', {}, () => {
+			this.jsTarget.callJavaScript('onBlockReset');
+		});
 	}
 
 	onUsageUpdate(usedTokens: number, maxTokens: number): void {
@@ -328,7 +404,9 @@ export class SessionCallbackAdapter implements SessionCallback {
 			usedTokens: safeUsed,
 			maxTokens: safeMax,
 		});
-		this.jsTarget.callJavaScript('onUsageUpdate', json);
+		this.emit('usage.updated', { usage: json }, () => {
+			this.jsTarget.callJavaScript('onUsageUpdate', json);
+		});
 	}
 
 	/**
@@ -341,14 +419,19 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (this.isInactive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('onUsageUpdate', JSON.stringify({ percentage: 0 }));
+		const json = JSON.stringify({ percentage: 0 });
+		this.emit('usage.updated', { usage: json }, () => {
+			this.jsTarget.callJavaScript('onUsageUpdate', json);
+		});
 	}
 
 	onUserMessageUuidPatched(content: string, uuid: string): void {
 		if (this.isInactive()) {
 			return;
 		}
-		this.jsTarget.callJavaScript('patchMessageUuid', content, uuid);
+		this.emit('message.uuid.patched', { content, uuid }, () => {
+			this.jsTarget.callJavaScript('patchMessageUuid', content, uuid);
+		});
 	}
 
 	onTaskEvent(eventJson: string): void {
@@ -356,8 +439,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 			return;
 		}
 		// 补会话归属：多 tab 后同一个 webview 只有一份面板状态，后台 tab 的
-		// task 事件若不打标就会混进活跃 tab 的子代理列表（idea 侧由 Java 过滤，
-		// 本仓没有那层，只能在源头打标 + 前端过滤）。
+		// task 事件若不打标就会混进活跃 tab 的子代理列表。
 		let payload = eventJson;
 		if (this.sessionId) {
 			try {
@@ -369,24 +451,23 @@ export class SessionCallbackAdapter implements SessionCallback {
 				// 非 JSON 载荷原样转发，前端会自行丢弃
 			}
 		}
-		this.jsTarget.callJavaScript('onTaskEvent', payload);
+		this.emit('task.event', { event: payload }, () => {
+			this.jsTarget.callJavaScript('onTaskEvent', payload);
+		});
 	}
 
 	onRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {
 		if (this.isInactive()) {
 			return;
 		}
-		// messageId 供 webview 定位切片边界；缺省为 null，webview 会退回兜底逻辑。
-		this.jsTarget.callJavaScript('onRevertStateUpdate', JSON.stringify({ hasRevert, messageId }));
+		const json = JSON.stringify({ hasRevert, messageId });
+		this.emit('revert.changed', { state: json }, () => {
+			this.jsTarget.callJavaScript('onRevertStateUpdate', json);
+		});
 	}
 
 	/**
 	 * 把服务端权威删除转发给 webview。
-	 *
-	 * payload 是 opencode 消息 id 的裸 JSON 数组，与 webview 的
-	 * `onMessagesRemoved` 解析形状一致。必须在随后的 updateMessages 快照之前发出，
-	 * 这样快照到达时 webview 的列表已经收缩到位 —— 否则其「收缩保护」会把刚删的
-	 * 消息当成暂时性收缩抢救回来。
 	 */
 	onMessagesRemoved(messageIds: string[]): void {
 		if (this.isInactive() || !messageIds || messageIds.length === 0) {
@@ -396,17 +477,19 @@ export class SessionCallbackAdapter implements SessionCallback {
 		if (ids.length === 0) {
 			return;
 		}
-		this.jsTarget.callJavaScript('onMessagesRemoved', JSON.stringify(ids));
+		const json = JSON.stringify(ids);
+		this.emit('message.removed', { ids: json }, () => {
+			this.jsTarget.callJavaScript('onMessagesRemoved', json);
+		});
 	}
 
 	onTodoUpdated(payload: string): void {
-		console.log('[SessionCallbackAdapter] onTodoUpdated called, active:', this.active, 'payload length:', payload?.length);
 		if (this.isInactive() || !payload) {
-			console.log('[SessionCallbackAdapter] onTodoUpdated BLOCKED: inactive or empty payload');
 			return;
 		}
-		console.log('[SessionCallbackAdapter] onTodoUpdated calling jsTarget.callJavaScript("onTodoUpdated")');
-		this.jsTarget.callJavaScript('onTodoUpdated', payload);
+		this.emit('todos.updated', { todos: payload }, () => {
+			this.jsTarget.callJavaScript('onTodoUpdated', payload);
+		});
 	}
 
 	// =========================================================================
@@ -421,6 +504,8 @@ export class SessionCallbackAdapter implements SessionCallback {
 			return;
 		}
 		const json = JSON.stringify(snapshot);
-		this.jsTarget.callJavaScript('onUsageUpdate', json);
+		this.emit('usage.updated', { usage: json }, () => {
+			this.jsTarget.callJavaScript('onUsageUpdate', json);
+		});
 	}
 }

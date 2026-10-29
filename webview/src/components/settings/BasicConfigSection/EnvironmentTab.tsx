@@ -1,5 +1,6 @@
 import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
+import type { DaemonEngineStatus } from '../../../hooks/providers/useUsageTracking';
 
 export interface EnvironmentTabProps {
   opencodeCliPath?: string;
@@ -10,6 +11,7 @@ export interface EnvironmentTabProps {
   onWorkingDirectoryChange?: (dir: string) => void;
   onSaveWorkingDirectory?: () => void;
   savingWorkingDirectory?: boolean;
+  daemonEngine?: DaemonEngineStatus | null;
 }
 
 const EnvironmentTab = ({
@@ -21,11 +23,43 @@ const EnvironmentTab = ({
   onWorkingDirectoryChange = () => {},
   onSaveWorkingDirectory = () => {},
   savingWorkingDirectory = false,
+  daemonEngine = null,
 }: EnvironmentTabProps) => {
   const { t } = useTranslation();
 
   return (
     <div className={styles.tabContent}>
+      {daemonEngine && (
+        <div className={styles.workingDirSection}>
+          <div className={styles.fieldHeader}>
+            <span className="codicon codicon-pulse" />
+            <span className={styles.fieldLabel}>{t('settings.basic.engine.label')}</span>
+          </div>
+          <div className={styles.formHint} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+            <span>
+              {t('settings.basic.engine.state')}: {daemonEngine.state || 'unknown'}
+              {daemonEngine.locked ? ' · locked' : ''}
+              {daemonEngine.blocking ? ' · blocking' : ''}
+            </span>
+            {daemonEngine.cliVersion && (
+              <span>{t('settings.basic.engine.cliVersion')}: {daemonEngine.cliVersion}</span>
+            )}
+            {daemonEngine.cliSource && (
+              <span>{t('settings.basic.engine.cliSource')}: {daemonEngine.cliSource}</span>
+            )}
+            {daemonEngine.cliPath && (
+              <span>{t('settings.basic.engine.cliPath')}: {daemonEngine.cliPath}</span>
+            )}
+            {daemonEngine.apiVersion && (
+              <span>{t('settings.basic.engine.apiVersion')}: {daemonEngine.apiVersion}</span>
+            )}
+            {daemonEngine.reasonMessage && (
+              <span>{t('settings.basic.engine.reason')}: {daemonEngine.reasonMessage}</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Custom Claude CLI path */}
       <div className={styles.nodePathSection}>
         <div className={styles.fieldHeader}>

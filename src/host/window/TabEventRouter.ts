@@ -220,9 +220,11 @@ export class TabEventRouter {
 		for (const channel of channels) {
 			try {
 				channel.postRaw(batchMessage);
-				// Legacy function fallback for older webview callbacks
+				// Legacy function fallback for events whose webview handler is not
+				// named yet. Migrated data events set `legacy: false`: their payload
+				// is an object, and passing it positionally would corrupt the value.
 				for (const item of batch) {
-					if (item.fn) {
+					if (item.fn && item.legacy !== false) {
 						if (Array.isArray(item.payload?.args)) {
 							channel.callJavaScript(item.fn, ...(item.payload.args as string[]));
 						} else {

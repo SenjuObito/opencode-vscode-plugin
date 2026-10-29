@@ -97,12 +97,19 @@ export function readWebviewHtml(extensionUri: vscode.Uri): string {
  * 在 `<head>` 之后插入一段同步引导脚本，把 IDE 主题与已持久化的 UI 偏好在
  * 首帧之前写进 DOM。
  */
-export function buildWebviewHtml(rawHtml: string, isDark: boolean, uiPreferences: UiPreferences): string {
+export function buildWebviewHtml(
+	rawHtml: string,
+	isDark: boolean,
+	uiPreferences: UiPreferences,
+	viewId?: string,
+): string {
 	const prefsJson = JSON.stringify(uiPreferences).replace(/</g, '\\u003c');
+	const viewIdJson = JSON.stringify(viewId ?? '').replace(/</g, '\\u003c');
 	const bootstrap = [
 		'<script>',
 		'(function(){try{',
 		`var prefs=${prefsJson};`,
+		`window.__VIEW_ID__=${viewIdJson};`,
 		`var ideTheme=${JSON.stringify(isDark ? 'dark' : 'light')};`,
 		'window.__INITIAL_IDE_THEME__=ideTheme;',
 		'window.__INITIAL_UI_PREFERENCES__=prefs;',
@@ -176,6 +183,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 			this.html,
 			vscode.window.activeColorTheme.kind !== vscode.ColorThemeKind.Light,
 			this.getUiPreferences(),
+			this.host,
 		);
 
 		this.channel.attach(webviewView);

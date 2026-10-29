@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { useMessageSender } from './useMessageSender';
 import type { UseMessageSenderOptions } from './useMessageSender';
+import { seedTabStore } from '../test/seedTabStore';
 
 describe('useMessageSender - /context command', () => {
   const t = ((key: string, opts?: any) => opts?.defaultValue ?? key) as any;
@@ -36,15 +37,21 @@ describe('useMessageSender - /context command', () => {
     ...overrides,
   });
 
-  const getBridgePayload = (eventName: string) => {
+  /**
+   * Read the v2 `session.send` payload. The legacy `send_message` fallback was
+   * removed in §5.5, so every send now leaves as one host_command envelope.
+   */
+  const getBridgePayload = (_eventName: string) => {
     const calls = (window.sendToJava as any).mock.calls.map((call: [string]) => call[0]);
-    const prefix = `${eventName}:`;
-    const sendCall = calls.find((call: string) => call.startsWith(prefix));
+    const sendCall = calls.find(
+      (call: string) => call.startsWith('host_command:') && call.includes('"type":"session.send"'),
+    );
     expect(sendCall).toBeTruthy();
-    return JSON.parse(sendCall!.substring(prefix.length));
+    return JSON.parse(sendCall!.substring('host_command:'.length)).payload;
   };
 
   beforeEach(() => {
+    seedTabStore([{ id: 'tab-1', sessionId: 'ses_test' }], 'tab-1');
     window.sendToJava = vi.fn();
   });
 

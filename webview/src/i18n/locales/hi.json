@@ -30,7 +30,6 @@
   "chat": {
     "sendMessage": "{{provider}} को संदेश भेजें",
     "createNewSession": "नया सत्र बनाएं",
-    "confirmNewSession": "वर्तमान सत्र में संदेश हैं, क्या आप नया सत्र बनाना चाहते हैं?",
     "confirmInterrupt": "वर्तमान में बातचीत चल रही है, नया सत्र बनाने से वर्तमान बातचीत बाधित होगी, क्या जारी रखें?",
     "requestInterrupted": "उपयोगकर्ता द्वारा अनुरोध बाधित किया गया",
     "uploadedFiles": "अपलोड की गई फाइलें: {{files}}",
@@ -108,8 +107,6 @@
     "undoTooltip": "यह संदेश पूर्ववत करें",
     "redoTooltip": "यह संदेश फिर से करें",
     "forkTooltip": "नए सत्र में फ़ोर्क करें",
-    "shareTooltip": "सत्र साझा करें",
-    "unshareTooltip": "सत्र साझा करना बंद करें",
     "shareSuccess": "लिंक क्लिपबोर्ड पर कॉपी किया गया",
     "attachmentFile": "[अटैचमेंट: {{fileName}}]",
     "unknownFile": "Unknown file",
@@ -151,8 +148,6 @@
     },
     "shareFailed": "कॉपी विफल — सत्र साझा नहीं किया गया",
     "shareDisabledHint": "शेयरिंग opencode.json में अक्षम हो सकती है (\"share\": \"disabled\") या opencode लॉगिन आवश्यक हो सकता है। कॉन्फ़िगरेशन जाँचें और पुनः प्रयास करें",
-    "sharePendingTooltip": "साझा किया जा रहा है…",
-    "copyShareLinkTooltip": "साझा लिंक कॉपी करें",
     "revertPlaceholderTitle": "यह संदेश और उसके बाद के उत्तर पूर्वत में ले लिए गए",
     "revertPlaceholderCount": "{{count}} संदेश पूर्वत में लिए गए",
     "revertExpand": "देखें",
@@ -369,12 +364,6 @@
         "custom": "कस्टम",
         "reset": "रीसेट करें",
         "hint": "अपने संदेशों की पृष्ठभूमि रंग को अनुकूलित करें। थीम डिफ़ॉल्ट का पालन करने के लिए खाली छोड़ दें।"
-      },
-      "newSessionConfirm": {
-        "label": "नया सत्र पुष्टि",
-        "enabled": "सक्षम",
-        "disabled": "अक्षम",
-        "hint": "अक्षम होने पर, मौजूदा संदेशों वाले सत्र में नया बनाने पर पुष्टि संवाद नहीं दिखेगा।"
       },
       "compactConfirm": {
         "label": "सत्र संपीड़न पुष्टि",

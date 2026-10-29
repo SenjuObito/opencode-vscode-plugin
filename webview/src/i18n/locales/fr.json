@@ -30,7 +30,6 @@
   "chat": {
     "sendMessage": "Envoyer un message à {{provider}}",
     "createNewSession": "Créer une nouvelle session",
-    "confirmNewSession": "La session actuelle contient des messages, êtes-vous sûr de vouloir créer une nouvelle session ?",
     "confirmInterrupt": "Une conversation est en cours, créer une nouvelle session l'interrompra, continuer ?",
     "requestInterrupted": "Demande interrompue par l'utilisateur",
     "uploadedFiles": "Fichiers téléchargés : {{files}}",
@@ -108,8 +107,6 @@
     "undoTooltip": "Annuler ce message",
     "redoTooltip": "Rétablir ce message",
     "forkTooltip": "Dupliquer vers une nouvelle session",
-    "shareTooltip": "Partager la session",
-    "unshareTooltip": "Ne plus partager la session",
     "shareSuccess": "Lien copié dans le presse-papiers",
     "attachmentFile": "[Pièce jointe: {{fileName}}]",
     "unknownFile": "Unknown file",
@@ -151,8 +148,6 @@
     },
     "shareFailed": "Échec de la copie — la session n’a pas été partagée",
     "shareDisabledHint": "Le partage est peut-être désactivé dans opencode.json (\"share\": \"disabled\") ou nécessite une connexion opencode. Vérifiez la configuration puis réessayez",
-    "sharePendingTooltip": "Partage…",
-    "copyShareLinkTooltip": "Copier le lien de partage",
     "revertPlaceholderTitle": "Ce message et les réponses suivantes ont été annulés",
     "revertPlaceholderCount": "{{count}} messages annulés",
     "revertExpand": "Afficher",
@@ -369,12 +364,6 @@
         "custom": "Personnalisé",
         "reset": "Réinitialiser",
         "hint": "Personnaliser la couleur de fond de vos messages. Laisser vide pour suivre le thème par défaut."
-      },
-      "newSessionConfirm": {
-        "label": "Confirmation de nouvelle session",
-        "enabled": "Activé",
-        "disabled": "Désactivé",
-        "hint": "Lorsqu'elle est désactivée, créer une nouvelle session dans une conversation contenant des messages se fera directement, sans afficher la boîte de dialogue de confirmation."
       },
       "compactConfirm": {
         "label": "Confirmation de compactage de session",
