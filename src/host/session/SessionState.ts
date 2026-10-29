@@ -26,10 +26,37 @@ export function normalizePermissionMode(mode: string | null | undefined): string
 	return trimmed === 'default' ? 'build' : trimmed;
 }
 
-const VALID_REASONING_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+/**
+ * 合法的推理力度档位。
+ *
+ * `default` **必须**在这个白名单里：它不是一个真实档位，而是「本次不发 variant，
+ * 让 opencode 用模型目录自己的设置」。把它漏掉的话 `setReasoningEffort` 会静默
+ * 丢弃它 —— 状态里继续留着上一档（例如 low），UI 显示 Default 却照旧把旧的
+ * low 发给服务端。`normalizeRequestedReasoningEffort` 负责在发送前把它变成 null。
+ */
+const VALID_REASONING_EFFORTS = new Set(['default', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 export function isValidReasoningEffort(effort: string | null | undefined): boolean {
 	return effort != null && VALID_REASONING_EFFORTS.has(effort.trim());
+}
+
+/**
+ * 把「UI 选择的档位」归一成「要发给服务端的 variant」。
+ *
+ * <p>`default` 表示不发 variant（daemon 侧对 'default' 也做了同样的归一，这里
+ * 提前归一可以让 `opencode.send` 的参数更干净，两者语义一致）。</p>
+ */
+export function normalizeRequestedReasoningEffort(
+	effort: string | null | undefined,
+): string | undefined {
+	if (effort == null) {
+		return undefined;
+	}
+	const trimmed = effort.trim();
+	if (trimmed === '' || trimmed === 'default') {
+		return undefined;
+	}
+	return trimmed;
 }
 
 export class SessionState {

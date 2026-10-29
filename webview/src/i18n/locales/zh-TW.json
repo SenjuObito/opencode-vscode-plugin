@@ -1549,8 +1549,17 @@
     "parseError": "解析結果失敗"
   },
   "reasoning": {
+    "default": {
+      "label": "Default",
+      "description": "使用模型預設設定"
+    },
     "cycleHint": "切換推理力度",
     "title": "選擇思考深度",
+    "recommended": "推薦",
+    "none": {
+      "label": "None",
+      "description": "關閉思考，直接回答"
+    },
     "low": {
       "label": "較少",
       "description": "快速響應，基礎推理"
@@ -1566,6 +1575,10 @@
     "xhigh": {
       "label": "最多",
       "description": "最深推理，最高精度"
+    },
+    "max": {
+      "label": "Max",
+      "description": "最大推理深度"
     }
   },
   "errorBoundary": {

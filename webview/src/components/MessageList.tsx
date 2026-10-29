@@ -106,6 +106,16 @@ interface MessageListProps {
   onFork?: (message: ClaudeMessage) => void;
   /** Whether the session is currently streaming (disables fork). */
   forkDisabled?: boolean;
+  /**
+   * True while the turn is still running (`loading || streamingActive`).
+   * The generating indicator follows the turn, not one of its phases: a
+   * `loading=false` that is not a turn terminal must not hide it while the
+   * stream keeps producing output.
+   *
+   * 与 idea 一致，由 `useMessages().turnActive` 提供 —— 列表不再各自推导，
+   * 否则同一屏里「指示器」和「通知条」会用两套口径判断回合是否在跑。
+   */
+  turnActive: boolean;
 }
 
 export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListProps>(function MessageList({
@@ -133,11 +143,8 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   onRestore,
   onFork,
   forkDisabled = false,
+  turnActive,
 }, ref) {
-  // The generating indicator follows the whole turn, not one phase of it: a
-  // `loading=false` that is not a turn terminal must not hide it while the
-  // stream keeps producing output.
-  const turnActive = loading || streamingActive;
 
   const [revealedTurnCount, setRevealedTurnCount] = useState(0);
   const [loadingEarlierHistory, setLoadingEarlierHistory] = useState(false);
@@ -226,7 +233,14 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const { displayMessages, revertedMessages } = useMemo(() => {
     if (!revertBoundaryId) return { displayMessages: messages, revertedMessages: [] as ClaudeMessage[] };
     let idx = messages.findIndex((m) => messageMatchesId(m, revertBoundaryId));
-    if (idx < 0 && revertBoundaryId === 'latest') {
+    if (idx < 0) {
+      // 边界 id 没命中（历史恢复后 id 缺失、或服务端已过滤掉那条消息）时，
+      // 退化为「最后一条用户消息」—— 与 idea 完全一致。
+      //
+      // 此前这里多了 `&& revertBoundaryId === 'latest'` 这个条件：一旦 id 对不上
+      // 就跳过兜底，落到下面的 `revertedMessages = []`，于是占位条 count=0、
+      // 「展开」按钮 disabled；而列表已经被裁到边界之前，表现为「撤销后列表
+      // 空了且点不开」。
       for (let i = messages.length - 1; i >= 0; i--) {
         if (isHumanUserMessage(messages[i])) {
           idx = i;

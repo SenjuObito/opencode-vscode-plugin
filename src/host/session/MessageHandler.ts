@@ -174,6 +174,9 @@ export class MessageHandler implements MessageCallback {
 		case 'turn_error':
 			this.handleTurnError(content);
 			break;
+		case 'turn_end':
+			this.handleTurnEnd(content);
+			break;
 		}
 	}
 
@@ -197,8 +200,10 @@ export class MessageHandler implements MessageCallback {
 		this.state.setBusy(false);
 		this.state.setLoading(false);
 
-		const errorMessage = createMessage(MessageType.ERROR, error);
-		this.state.addMessage(errorMessage);
+		// 与 idea 的 OpenCodeMessageHandler.onError 一致：改写尾部错误行而不是
+		// 追加。同一回合里「本地超时」+「服务端真实原因」是同一个失败的两种表述，
+		// 两条 ERROR 气泡会被读成失败两次。
+		this.state.replaceLastErrorMessage(error);
 
 		// 先 signal stream-end 再推错误快照（与 Java 一致，顺序关键）。
 		this.callbackHandler.notifyStreamEnd();
@@ -635,39 +640,6 @@ export class MessageHandler implements MessageCallback {
 		return undefined;
 	}
 
-	/**
-	 * 用户主动中断（停止按钮）：与 handleStreamEnd 同一收尾语义 —— 先推
-	 * 最终消息快照（含已生成的 assistant 内容），再发 onStreamEnd，最后
-	 * 同步 loading 状态。把 streamEndedThisTurn 置位后，daemon abort 引发的
-	 * onComplete/onAbort 会走「已收尾」清理分支，不会重复通知，也不会把
-	 * 用户中断误报为错误。
-	 */
-	interruptTurn(_finalMessages: unknown[]): void {
-		if (!this.isStreaming && this.streamEndedThisTurn) {
-			return;
-		}
-		this.isStreaming = false;
-		this.streamEndedThisTurn = true;
-		this.errorReportedThisTurn = false;
-		this.lastReportedError = null;
-		this.resetSegmentState();
-
-		if (this.isThinking) {
-			this.isThinking = false;
-			this.callbackHandler.notifyThinkingStatusChanged(false);
-		}
-
-		this.ensureRawBlocksConsistency();
-		this.finalizeTurnDuration();
-
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
-		this.callbackHandler.notifyStreamEnd();
-		this.state.setBusy(false);
-		this.state.setLoading(false);
-		this.state.updateLastModifiedTime();
-		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
-	}
-
 	private handleBlockReset(): void {
 		this.resetSegmentState();
 		this.callbackHandler.notifyBlockReset();
@@ -1076,5 +1048,60 @@ export class MessageHandler implements MessageCallback {
 		this.callbackHandler.notifyStreamEnd();
 		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
 		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
+	}
+
+	/**
+	 * daemon 的权威回合终止（`[TURN_END] {sessionId, reason, turnId}`）。
+	 *
+	 * 与 idea 的 `OpenCodeMessageHandler.handleTurnEnd` 同语义：按 sessionId
+	 * 过滤（目录级事件流会夹带兄弟会话的终止），结束本回合的流式状态，
+	 * 然后投递 `turn.settled`。它是「停止后 loading 不归零」与「迟到错误
+	 * 泄漏」两条链路的唯一收口点。
+	 *
+	 * 与 `[STREAM_END]` 的关系：正常情况下 STREAM_END 先到（已收尾一次），
+	 * 这里只补一次幂等的状态通知；若 STREAM_END 因中断/断线没到，这里按同一
+	 * 收尾语义补齐，避免 UI 永远停在 streaming。
+	 */
+	private handleTurnEnd(content: string): void {
+		if (!content || content.trim() === '') {
+			return;
+		}
+
+		let sessionId: string | null = null;
+		let reason: string | null = null;
+		try {
+			const obj = JSON.parse(content) as { sessionId?: unknown; sessionID?: unknown; reason?: unknown };
+			const rawId = typeof obj.sessionId === 'string' ? obj.sessionId : obj.sessionID;
+			sessionId = typeof rawId === 'string' && rawId.trim() !== '' ? rawId.trim() : null;
+			reason = typeof obj.reason === 'string' ? obj.reason : null;
+		} catch {
+			// 非 JSON：仍按「本会话回合结束」处理，宁多收尾不漏收尾。
+		}
+
+		const ownSessionId = this.state.getSessionId();
+		if (sessionId && ownSessionId && sessionId !== ownSessionId) {
+			logDiagnostic(
+				`[MessageHandler] ignoring turn_end for another session: ${sessionId} (own=${ownSessionId})`,
+			);
+			return;
+		}
+
+		logDiagnostic(`[MessageHandler] turn_end session=${sessionId ?? '(own)'} reason=${reason ?? 'unknown'}`);
+
+		if (!this.streamEndedThisTurn) {
+			// STREAM_END 没到：按同一语义补齐收尾（含 notifyStreamEnd）。
+			this.handleStreamEnd();
+		} else {
+			this.state.setBusy(false);
+			this.state.setLoading(false);
+			this.state.updateLastModifiedTime();
+			this.callbackHandler.notifyStateChange(
+				this.state.isBusy(),
+				this.state.isLoading(),
+				this.state.getError(),
+			);
+		}
+
+		this.callbackHandler.notifyTurnEnd(content);
 	}
 }

@@ -2,6 +2,7 @@
  * Input box component type definitions
  * Feature: 004-refactor-input-box
  */
+import type { ClaudeMessage } from '../../types';
 
 // ============================================================
 // Core Entity Types
@@ -251,6 +252,12 @@ export interface ReasoningInfo {
  */
 export const REASONING_LEVELS: ReasoningInfo[] = [
   {
+    id: 'none',
+    label: 'None',
+    icon: 'codicon-circle-slash',
+    description: 'Disable reasoning',
+  },
+  {
     id: 'low',
     label: 'Low',
     icon: 'codicon-circle-small',
@@ -266,7 +273,7 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
     id: 'high',
     label: 'High',
     icon: 'codicon-circle-large-filled',
-    description: 'Deep reasoning for complex tasks (default)',
+    description: 'Deep reasoning for complex tasks',
   },
   {
     id: 'xhigh',
@@ -512,6 +519,10 @@ export interface ChatInputBoxProps {
   onLongContextChange?: (enabled: boolean) => void;
   /** Callback to trigger compact command */
   onCompactClick?: () => void;
+  /** Messages array for retry / quota notice bar */
+  messages?: ClaudeMessage[];
+  /** Resolver for message text */
+  getMessageText?: (message: ClaudeMessage) => string;
 }
 
 /**

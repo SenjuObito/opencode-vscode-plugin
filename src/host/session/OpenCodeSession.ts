@@ -6,7 +6,7 @@
  */
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import { HandlerContext } from '../router/HandlerContext';
-import { SessionState, createMessage, normalizePermissionMode } from './SessionState';
+import { SessionState, createMessage, normalizePermissionMode, normalizeRequestedReasoningEffort } from './SessionState';
 import { CallbackHandler } from './CallbackHandler';
 import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
@@ -33,6 +33,15 @@ export interface SendMessagePayload {
 	fileTags?: Array<{ displayPath?: string; absolutePath?: string }> | null;
 	permissionMode?: string;
 	reasoningEffort?: string;
+	/**
+	 * 本次发送要用的模型（`provider/model`）。
+	 *
+	 * <p>模型随**每一次发送**下发，而不是只靠 `settings.model` 写入会话状态：
+	 * 新建 tab 在首条消息之前根本没有会话可写（`handleModelSelect` 会跳过），
+	 * 只靠状态同步就会让首轮用上全局默认模型 —— idea 的 `SessionHandler` 同样
+	 * 从 payload 读 `model`。</p>
+	 */
+	model?: string;
 }
 
 export interface OpenCodeSessionOptions {
@@ -188,7 +197,10 @@ export class OpenCodeSession {
 			messageToSend = (text ? text : '') + contextAppend;
 		}
 
-		// 更新会话配置（permissionMode / reasoningEffort 来自 payload）
+		// 更新会话配置（model / permissionMode / reasoningEffort 来自 payload）
+		if (payload.model) {
+			this.state.setModel(payload.model);
+		}
 		if (payload.permissionMode) {
 			this.state.setPermissionMode(payload.permissionMode);
 		}
@@ -236,7 +248,7 @@ export class OpenCodeSession {
 				: { message: messageToSend }),
 			model: this.state.getModel() ?? undefined,
 			mode: normalizePermissionMode(this.state.getPermissionMode()) ?? undefined,
-			reasoningEffort: this.state.getReasoningEffort() ?? undefined,
+			reasoningEffort: normalizeRequestedReasoningEffort(this.state.getReasoningEffort()),
 			cwd: cwd ?? undefined,
 			attachments: attachments.length > 0 ? attachments : undefined,
 		};
@@ -369,20 +381,26 @@ export class OpenCodeSession {
 		});
 	}
 
+	/**
+	 * 用户主动中断（停止按钮）。语义对齐 idea `OpencodeSession#interrupt`：
+	 *
+	 * 1. 先打「本回合是用户主动中断」的标记 —— `MarkerParser` 据此抑制服务端
+	 *    随中断回来的 `[SEND_ERROR]` / `[TURN_ERROR]`（"Step interrupted" 不是
+	 *    失败，不该变成一条 ERROR 气泡）。
+	 * 2. 清错误、落 busy/loading，并推一次权威状态（前端 `interruptSession`
+	 *    已自行清掉流式缓冲与 loading，这里补宿主侧的一致状态）。
+	 * 3. **故意不 notifyStreamEnd**（与 idea 相同的三条理由）：本地收尾会触发
+	 *    消息快照回放，与随后到达的 `[STREAM_END]` / `[TURN_END]` 打架 ——
+	 *    收尾统一由 daemon 的终止信号驱动。
+	 */
 	interrupt(): void {
+		this.streamCtx.wasAborted = true;
+		this.state.setError(null);
 		this.state.setBusy(false);
 		this.state.setLoading(false);
-		// 用户主动中断：先收尾流式状态（含最终消息快照 + onStreamEnd），
-		// 让 webview 在停止按钮生效时就把已生成的回复定住，而不是留在
-		// isStreaming 占位气泡里等一条不会再来的正常 [STREAM_END]。
-		// 快照包含本轮的用户消息（发送时已入 state）与中断前生成的
-		// assistant 内容，webview 据此完成气泡收尾。
-		this.messageHandler.interruptTurn(this.state.getMessages());
-		// 标记中断并复用正常收尾路径：登记会话历史 + aborted 状态通知，
-		// 与 daemon abort 之后回流的 onComplete(streamEndedThisTurn) 清理
-		// 分支语义一致。
-		this.streamCtx.wasAborted = true;
-		this.onTurnEnded();
+		this.state.updateLastModifiedTime();
+		this.adapter.onStateChange(false, false, null);
+
 		const sessionId = this.state.getSessionId() ?? undefined;
 		const requestId = this.activeRequestId ?? undefined;
 		this.activeRequestId = null;

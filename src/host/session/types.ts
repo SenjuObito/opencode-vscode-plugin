@@ -79,6 +79,15 @@ export interface SessionCallback {
 	onTodoUpdated?(payload: string): void;
 	onSessionTitleReceived?(sessionId: string, title: string): void;
 	/**
+	 * 回合的权威终止（daemon 的 `[TURN_END] {sessionId, reason, turnId}`）。
+	 *
+	 * <p>与 `onStreamEnd()` 的区别：`onStreamEnd` 是「这一轮流式输出结束了」，
+	 * `onTurnEnd` 是「这个回合彻底结束了」—— 它携带终止原因（idle / aborted /
+	 * error / timeout / disconnected）与归属会话，是清 loading、终结工具卡片、
+	 * 抑制迟到错误的唯一权威信号。idea 宿主同样以 `[TURN_END]` 为准。</p>
+	 */
+	onTurnEnd?(jsonContent: string): void;
+	/**
 	 * 服务端正在重试当前回合（限流／额度），并给出了原因。
 	 *
 	 * opencode 发 `session.status`（type=retry），带人话 message 和可点击的

@@ -39,5 +39,10 @@ export function normalizeSendPayload(
 	if (typeof raw?.reasoningEffort === 'string') {
 		payload.reasoningEffort = raw.reasoningEffort;
 	}
+	// 模型随每次发送下发（idea `SessionHandler` 同样从 payload 读 `model`）。
+	// 缺了这一项，新建 tab 的首轮只能落到全局默认模型上。
+	if (typeof raw?.model === 'string' && raw.model.trim() !== '') {
+		payload.model = raw.model.trim();
+	}
 	return payload;
 }

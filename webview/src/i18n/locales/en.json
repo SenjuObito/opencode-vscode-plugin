@@ -1745,15 +1745,24 @@
     "parseError": "Failed to parse result"
   },
   "reasoning": {
+    "default": {
+      "label": "Default",
+      "description": "Use the model default"
+    },
     "cycleHint": "Cycle reasoning effort",
     "title": "Select reasoning depth",
+    "recommended": "Recommended",
+    "none": {
+      "label": "None",
+      "description": "Disable thinking and answer directly"
+    },
     "low": {
       "label": "Low",
       "description": "Quick responses with basic reasoning"
     },
     "medium": {
       "label": "Medium",
-      "description": "Balanced thinking (default)"
+      "description": "Balanced thinking"
     },
     "high": {
       "label": "High",

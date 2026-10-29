@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { sendBridgeEvent } from '../../utils/bridge';
 import type { ModelInfo } from '../../components/ChatInputBox/types';
-import { OPENCODE_MODELS } from '../../components/ChatInputBox/types';
+import { OPENCODE_MODELS, isKnownNonReasoningModel } from '../../components/ChatInputBox/types';
 
 type CliModelsByProvider = Record<string, ModelInfo[]>;
 
@@ -69,6 +69,17 @@ function fallbackModels(providerId: string): ModelInfo[] {
 
 function normalizeModels(raw: unknown): ModelInfo[] {
   if (!Array.isArray(raw)) return [];
+  // variants 的三态必须一路保留到 UI（与 idea 完全一致）：
+  //   ['low','high']  该模型显式声明了档位
+  //   []              该模型**没有**档位（opencode v2 会返回空数组/空对象）
+  //   undefined       v1 目录根本没有这个字段 —— 未知
+  // 把 `[]` 折成 `undefined`（本仓此前的简化）会让「没有档位」和「不知道档位」
+  // 在 UI 里长得一样：选择器给无档位模型列出了全档位，用户一选就发出一个服务端
+  // 不认识的 variant，每次发送都以 `Variant unavailable` 失败。
+  const catalogHasVariantsSupport = raw.some(
+    (item) => item && typeof item === 'object' && Array.isArray((item as Record<string, unknown>).variants),
+  );
+
   const out: ModelInfo[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
@@ -81,9 +92,23 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       ? row.label.trim()
       : id;
     const description = typeof row.description === 'string' ? row.description : undefined;
-    const variants = Array.isArray(row.variants)
-      ? row.variants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+
+    const rawVariants = Array.isArray(row.variants) ? row.variants : undefined;
+    const parsedVariants = rawVariants
+      ? rawVariants.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
       : undefined;
+    const hasExplicitVariants = rawVariants !== undefined;
+
+    let variants: string[] | undefined;
+    if (hasExplicitVariants) {
+      variants = parsedVariants;
+    } else if (catalogHasVariantsSupport || isKnownNonReasoningModel(id)) {
+      variants = [];
+    } else {
+      // 纯 v1 目录：这个字段不可知，保留 undefined 让 UI 走 legacy 档位。
+      variants = undefined;
+    }
+
     const rawContextWindow = Number(row.contextWindow);
     const contextWindow = Number.isInteger(rawContextWindow) && rawContextWindow > 0
       ? rawContextWindow
@@ -92,7 +117,7 @@ function normalizeModels(raw: unknown): ModelInfo[] {
       id,
       label,
       description,
-      ...(variants && variants.length > 0 ? { variants } : {}),
+      ...(variants !== undefined ? { variants } : {}),
       ...(contextWindow ? { contextWindow } : {}),
     });
   }

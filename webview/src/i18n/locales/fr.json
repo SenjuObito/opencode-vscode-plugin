@@ -1536,6 +1536,10 @@
     "parseError": "Échec de l'analyse du résultat"
   },
   "reasoning": {
+    "default": {
+      "label": "Par défaut",
+      "description": "Utiliser la valeur par défaut du modèle"
+    },
     "cycleHint": "Changer le niveau de raisonnement",
     "title": "Sélectionner la profondeur de raisonnement",
     "low": {

@@ -159,8 +159,25 @@ export function processOutputLine(
 		// 本地 180s 超时之后才到达的回合失败。此前被误投到
 		// [SESSION_COMPACT_RESULT]（宿主只打一行 log），服务端给出的真实原因
 		// 就此丢失。
+		//
+		// 用户主动中断后服务端仍会报 `session.step.failed`（error.message =
+		// "Step interrupted"），那不是失败而是一次正常停止。与 [SEND_ERROR]
+		// 一样按 `wasAborted` 抑制，否则列表里会凭空多出一条 ERROR 气泡。
+		if (context.wasAborted) {
+			logDiagnostic('[MarkerParser] suppressed [TURN_ERROR] after user abort');
+			return;
+		}
 		const payload = decodeJsonStringPayload(line.substring('[TURN_ERROR]'.length).trim());
 		callback.onMessage('turn_error', payload);
+		return;
+	}
+
+	if (line.startsWith('[TURN_END]')) {
+		// daemon 的权威回合终止：{ sessionId, reason, turnId }。
+		// reason ∈ idle / aborted / error / timeout / disconnected。
+		// 宿主据此结束本回合（清 loading、终结工具卡片、抑制迟到错误），
+		// 与 idea 的 OpenCodeMarkerParser 完全一致。
+		callback.onMessage('turn_end', line.substring('[TURN_END]'.length).trim());
 		return;
 	}
 

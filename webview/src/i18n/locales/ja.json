@@ -1541,6 +1541,10 @@
     "parseError": "結果の解析に失敗しました"
   },
   "reasoning": {
+    "default": {
+      "label": "デフォルト",
+      "description": "モデルの既定値を使用"
+    },
     "cycleHint": "推論の強さを切り替え",
     "title": "思考深度を選択",
     "low": {

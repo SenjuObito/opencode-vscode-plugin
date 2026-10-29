@@ -8,7 +8,7 @@ import type {
 import { MessageAnchorRail } from './MessageAnchorRail';
 import { MessageList } from './MessageList';
 import { MessagesErrorBoundary } from './MessagesErrorBoundary';
-import { StatusNoticeBar } from './StatusNoticeBar';
+import { EngineBlockedNotice } from './EngineBlockedNotice';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import type { TabType } from './StatusPanel/types';
@@ -154,7 +154,7 @@ export const ChatScreen = ({
   messageQueue, onRemoveFromQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, loading, isThinking, streamingActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
+  const { messages, loading, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime } = useMessages();
   cardDebugLog('[ChatScreen] render, sessionLoading:', sessionLoading, 'statusPanelExpanded:', statusPanelExpanded);
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
@@ -288,6 +288,7 @@ export const ChatScreen = ({
                   onUndo={onUndo}
                   onRestore={onRestore}
                   onFork={onFork}
+                  turnActive={turnActive}
                   forkDisabled={streamingActive}
                 />
                 </MessagesErrorBoundary>
@@ -299,16 +300,11 @@ export const ChatScreen = ({
 
       <ScrollControl containerRef={messagesContainerRef} inputAreaRef={inputAreaRef} />
 
-      {/* Single notice slot sitting just above the input area:
-          - a retry/backoff bar while a turn is running, and
-          - a persistent, dismissible notice (e.g. quota exhausted) whose
-            error pattern declares `presentation: "bar"`. */}
-      <StatusNoticeBar
-        messages={mergedMessages}
-        getMessageText={getMessageText}
-        engine={daemonEngine}
-        onRetryEngine={retryDaemonStatus}
-      />
+      {/* Retry / quota notice lives above the composer
+          (`ChatInputBoxHeader` → `StatusNoticeBar`, 与 idea 同一挂载点)。这里
+          只保留 VS Code 专属的「daemon 引擎不可用」提示 —— 它不属于额度条，
+          混在一起会让两份实现继续分叉。 */}
+      <EngineBlockedNotice engine={daemonEngine} onRetry={retryDaemonStatus} />
 
       <StatusPanelErrorBoundary>
         <StatusPanel
@@ -332,7 +328,9 @@ export const ChatScreen = ({
       <div className="input-area" ref={inputAreaRef}>
         <ChatInputBox
           ref={chatInputRef}
-          isLoading={loading}
+          isLoading={turnActive}
+          messages={mergedMessages}
+          getMessageText={getMessageText}
           selectedModel={selectedModel}
           permissionMode={permissionMode}
           currentProvider={currentProvider}

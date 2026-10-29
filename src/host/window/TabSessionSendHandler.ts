@@ -9,6 +9,7 @@
  * 服务端在第一轮 prompt 里分配 sessionId 后由 ChatWindow 写回 registry。
  */
 import { TabCommand } from '../tab/TabCommand';
+import { TabEvent } from '../tab/TabEvent';
 import { TabRecord } from '../tab/TabRecord';
 import type { OpenCodeSession, SendMessagePayload } from '../session/OpenCodeSession';
 import { normalizeSendPayload } from '../util/sendPayload';
@@ -83,7 +84,42 @@ export class TabSessionSendHandler {
 			return;
 		}
 		session.interrupt();
+		this.publishTurnTerminated(record);
 		PluginFileLogger.info('TabSessionSendHandler', `interrupt tab=${record.getTabId().value}`);
+	}
+
+	/**
+	 * 中断收尾：由宿主定向发布终止事件。
+	 *
+	 * <p>与 idea `SessionHandler#handleInterruptSession` 同一语义 —— 中断的结果
+	 * 不是「等待后续信号」，而是宿主明确地告诉这一个 tab：回合结束了、loading
+	 * 归零。事件带 tabId + sessionId，路由按身份落位，绝不落到「当前活跃 tab」
+	 * 上（那是一个 tab 的停止按钮清掉另一个 tab 转圈的老 bug）。</p>
+	 */
+	private publishTurnTerminated(record: TabRecord): void {
+		const sink = record.getEventSink();
+		const tabId = record.getTabId().value;
+		// 与 idea 的 `handleInterruptSession` 一致：sessionId 缺失时用 tabId 兜底，
+		// 让终止事件**永远带身份**。前端对无身份的终止一律丢弃（避免清错 tab），
+		// 所以这里不能留空 —— 否则「刚新建、会话还没绑定的 tab」按停止会一直转圈。
+		const sessionId = record.getSessionIdString() ?? tabId;
+		const epoch = record.epoch;
+		sink(new TabEvent({
+			type: 'turn.ended',
+			tabId,
+			epoch,
+			sessionId,
+			payload: {},
+			legacy: false,
+		}));
+		sink(new TabEvent({
+			type: 'session.loading',
+			tabId,
+			epoch,
+			sessionId,
+			payload: { loading: false },
+			legacy: false,
+		}));
 	}
 
 	/**
@@ -109,6 +145,16 @@ export class TabSessionSendHandler {
 		const mode = command.string('permissionMode') ?? payload.permissionMode ?? settings.getPermissionMode();
 		if (mode) {
 			state.setPermissionMode(mode);
+		}
+
+		// 模型：命令显式值 > 本次 payload > 该 tab 已保存的选择。
+		// 缺了这一段，新建 tab 的首轮会退回全局默认模型 —— webview 在会话尚未
+		// 绑定时故意不发 `settings.model`（模型随首条消息带上），所以这里是
+		// 首轮模型的唯一落点。上下文额度是模型自身的属性，真换了模型要重推用量。
+		const model = command.string('model') ?? payload.model ?? settings.getModel();
+		if (model && model !== state.getModel()) {
+			state.setModel(model);
+			session.republishUsageAfterModelChange();
 		}
 
 		const effort = command.string('reasoningEffort') ?? payload.reasoningEffort ?? settings.getReasoningEffort();

@@ -7,7 +7,9 @@ import type {
 import { readPinnedModelIds } from '../../components/ChatInputBox/modelSelectUtils';
 
 const STORAGE_KEY = 'model-selection-state';
-const REASONING_VALUES = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+/** 与 idea 一致：`default` / `none` 也是可持久化的合法取值，漏掉会让刷新后
+ *  退回初始值（Default 选了却恢复不回来）。 */
+const REASONING_VALUES = ['default', 'none', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 const isReasoningEffort = (value: unknown): value is ReasoningEffort =>
   typeof value === 'string' && (REASONING_VALUES as readonly string[]).includes(value);

@@ -1577,6 +1577,10 @@
     "parseError": "결과 분석 실패"
   },
   "reasoning": {
+    "default": {
+      "label": "기본값",
+      "description": "모델 기본값 사용"
+    },
     "cycleHint": "추론 강도 전환",
     "title": "추론 깊이 선택",
     "low": {

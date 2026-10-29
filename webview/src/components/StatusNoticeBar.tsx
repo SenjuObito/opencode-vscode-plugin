@@ -33,8 +33,31 @@ import { matchErrorPattern, type DiagnosticPattern } from '../utils/errorMatcher
 import type { ClaudeMessage } from '../types';
 import type { HostEventEnvelope } from '../utils/hostEventTypes';
 import { sendToJava } from '../utils/bridge';
-import type { DaemonEngineStatus } from '../hooks/providers/useUsageTracking';
 import './StatusNoticeBar.less';
+
+const useMessagesSafe = () => {
+  try {
+    return useMessages();
+  } catch {
+    return {
+      messages: [],
+      loading: false,
+      streamingActive: false,
+      turnActive: false,
+      sessionLoading: false,
+    } as unknown as ReturnType<typeof useMessages>;
+  }
+};
+
+const useSessionSafe = () => {
+  try {
+    return useSession();
+  } catch {
+    return {
+      currentSessionId: null,
+    } as unknown as ReturnType<typeof useSession>;
+  }
+};
 
 /** Server-provided call to action (e.g. subscribe to opencode Go). */
 export interface RetryAction {
@@ -98,7 +121,7 @@ let pendingRetryAction: (NoticeAction & { sessionID?: string }) | null = null;
  * sees it. The host therefore publishes the same error as a semantic event; it
  * is the authoritative source for the terminal notice.</p>
  */
-export interface TerminalErrorPayload {
+interface TerminalErrorPayload {
   sessionId: string | null;
   message: string;
   timestamp: number;
@@ -325,9 +348,6 @@ interface TerminalNotice {
 export interface StatusNoticeBarProps {
   messages?: ClaudeMessage[];
   getMessageText?: (message: ClaudeMessage) => string;
-  /** Daemon engine state: when blocked, the bar explains how to recover. */
-  engine?: DaemonEngineStatus | null;
-  onRetryEngine?: () => void;
 }
 
 const defaultGetMessageText = (message: ClaudeMessage): string => {
@@ -348,7 +368,7 @@ interface NoticeBarProps {
   message?: string;
   meta?: ReactNode;
   action: { label: string; tooltip?: string; onClick: () => void } | null;
-  onDismiss?: () => void;
+  onDismiss: () => void;
   dismissLabel: string;
 }
 
@@ -383,35 +403,31 @@ const NoticeBar = ({
         {action.label}
       </button>
     )}
-    {onDismiss && (
-      <button
-        type="button"
-        className="status-notice-dismiss"
-        aria-label={dismissLabel}
-        title={dismissLabel}
-        onClick={onDismiss}
-      >
-        <span className="codicon codicon-close" />
-      </button>
-    )}
+    <button
+      type="button"
+      className="status-notice-dismiss"
+      aria-label={dismissLabel}
+      title={dismissLabel}
+      onClick={onDismiss}
+    >
+      <span className="codicon codicon-close" />
+    </button>
   </div>
 );
 
 export const StatusNoticeBar = ({
   messages: propMessages,
   getMessageText: propGetMessageText,
-  engine = null,
-  onRetryEngine,
 }: StatusNoticeBarProps = {}) => {
   const { t } = useTranslation();
-  const messagesCtx = useMessages();
-  const sessionCtx = useSession();
+  const messagesCtx = useMessagesSafe();
+  const sessionCtx = useSessionSafe();
 
-  const messages = propMessages ?? messagesCtx.messages ?? [];
+  const messages = propMessages ?? messagesCtx?.messages ?? [];
   const getMessageText = propGetMessageText ?? defaultGetMessageText;
-  const turnActive = messagesCtx.loading || messagesCtx.streamingActive;
-  const sessionLoading = messagesCtx.sessionLoading;
-  const currentSessionId = sessionCtx.currentSessionId ?? null;
+  const turnActive = messagesCtx?.turnActive ?? false;
+  const sessionLoading = messagesCtx?.sessionLoading ?? false;
+  const currentSessionId = sessionCtx?.currentSessionId ?? null;
 
   const [payload, setPayload] = useState<RetryStatusPayload | null>(getRetryStatus);
   const [directTerminalError, setDirectTerminalErrorState] = useState<TerminalErrorPayload | null>(getTerminalError);
@@ -528,6 +544,8 @@ export const StatusNoticeBar = ({
 
   const handleOpenLink = useCallback((link: string) => {
     // The webview traps window.open / external <a>, so route through the host.
+    // 命令名是平台差异：VS Code 宿主只处理 `open_external_url`
+    // （WindowEventHandler 的命令白名单），IDEA 侧是 `open_browser`。
     sendToJava('open_external_url', link);
   }, []);
 
@@ -571,23 +589,6 @@ export const StatusNoticeBar = ({
 
     return null;
   })();
-
-  const engineBlocked = !!engine && (engine.blocking === true || engine.state === 'unknown');
-  if (engineBlocked) {
-    const meta = [engine.cliVersion, engine.cliSource, engine.apiVersion ? `API ${engine.apiVersion}` : null]
-      .filter((part): part is string => !!part && String(part).trim().length > 0);
-    return (
-      <NoticeBar
-        variant="error"
-        icon="codicon-debug-disconnect"
-        title={t('engineNotice.title')}
-        message={engine.reasonMessage?.trim() || t('engineNotice.message')}
-        meta={meta.length > 0 ? <span>{meta.join(' · ')}</span> : undefined}
-        action={onRetryEngine ? { label: t('engineNotice.retry'), onClick: onRetryEngine } : null}
-        dismissLabel={t('retryStatus.dismiss')}
-      />
-    );
-  }
 
   // Retry notice: only meaningful while the turn is actually running, and it
   // must not bleed across sessions.

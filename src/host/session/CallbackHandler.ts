@@ -60,6 +60,14 @@ export class CallbackHandler {
 		this.callback?.onStreamEnd();
 	}
 
+	/**
+	 * 回合的权威终止（`[TURN_END]`）。payload 原样透传，
+	 * 由 adapter 投递为 `turn.settled` 语义事件。
+	 */
+	notifyTurnEnd(jsonContent: string): void {
+		this.callback?.onTurnEnd?.(jsonContent);
+	}
+
 	notifyContentDelta(delta: string): void {
 		this.callback?.onContentDelta(delta);
 	}

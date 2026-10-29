@@ -1536,6 +1536,10 @@
     "parseError": "Error al analizar el resultado"
   },
   "reasoning": {
+    "default": {
+      "label": "Predeterminado",
+      "description": "Usar el valor predeterminado del modelo"
+    },
     "cycleHint": "Cambiar el nivel de razonamiento",
     "title": "Seleccionar profundidad de razonamiento",
     "low": {

@@ -1593,6 +1593,10 @@
     "parseError": "Falha ao interpretar resultado"
   },
   "reasoning": {
+    "default": {
+      "label": "Padrão",
+      "description": "Usar o padrão do modelo"
+    },
     "cycleHint": "Alternar nível de raciocínio",
     "title": "Selecionar profundidade de raciocínio",
     "low": {

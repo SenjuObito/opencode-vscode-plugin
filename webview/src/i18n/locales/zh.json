@@ -1750,26 +1750,35 @@
     "parseError": "解析结果失败"
   },
   "reasoning": {
+    "default": {
+      "label": "Default",
+      "description": "使用模型默认设置"
+    },
     "cycleHint": "切换推理力度",
     "title": "选择思考深度",
+    "recommended": "推荐",
+    "none": {
+      "label": "None",
+      "description": "关闭思考，直接回答"
+    },
     "low": {
-      "label": "low",
+      "label": "Low",
       "description": "快速响应，基础推理"
     },
     "medium": {
-      "label": "medium",
+      "label": "Medium",
       "description": "平衡思考（默认）"
     },
     "high": {
-      "label": "high",
+      "label": "High",
       "description": "深度推理，适合复杂任务"
     },
     "xhigh": {
-      "label": "xhigh",
+      "label": "XHigh",
       "description": "额外深度推理，适合高难度任务"
     },
     "max": {
-      "label": "max",
+      "label": "Max",
       "description": "最大推理深度"
     }
   },

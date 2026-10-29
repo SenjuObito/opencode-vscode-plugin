@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ButtonAreaProps, PermissionMode, ReasoningEffort } from './types';
-import { OPENCODE_DEFAULT_MODEL_ID, getAvailableReasoningLevels } from './types';
+import { OPENCODE_DEFAULT_MODEL_ID, getAvailableReasoningLevels, isKnownNonReasoningModel } from './types';
 import { ModelSelect, ModeSelect, ReasoningSelect } from './selectors';
 import { useCliModels } from '../../hooks/providers/useCliModels';
 import { useToolbarSelectorCompact } from './hooks/useToolbarSelectorCompact';
@@ -44,10 +44,15 @@ export const ButtonArea = ({
       || m.id.endsWith('/' + selectedModel)
       || selectedModel.endsWith('/' + m.id),
   );
+  // 与 idea 一致的三态收敛：目录给了 `[]` 就尊重「这个模型没有档位」；
+  // 只有目录完全没给（v1 未知）时才把已知无推理模型按空档位处理。
+  const effectiveModelVariants = selectedModelInfo?.variants !== undefined
+    ? selectedModelInfo.variants
+    : (isKnownNonReasoningModel(selectedModel) ? [] : undefined);
   const availableReasoningLevels = getAvailableReasoningLevels(
     currentProvider,
     selectedModel,
-    selectedModelInfo?.variants,
+    effectiveModelVariants,
   );
 
   // Ctrl+T 循环切换推理力度（对齐 opencode TUI `variant_cycle` 原生键位）。
@@ -195,7 +200,7 @@ export const ButtonArea = ({
           onChange={handleReasoningChange}
           selectedModel={selectedModel}
           currentProvider={currentProvider}
-          modelVariants={selectedModelInfo?.variants}
+          modelVariants={effectiveModelVariants}
         />
       </div>
 

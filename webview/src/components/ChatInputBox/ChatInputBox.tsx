@@ -116,6 +116,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       autoOpenFileEnabled,
       onAutoOpenFileEnabledChange,
       onCompactClick,
+      messages,
+      getMessageText,
     }: ChatInputBoxProps,
     ref: React.ForwardedRef<ChatInputBoxHandle>
   ) => {
@@ -630,6 +632,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           daemonAlive={sdkInstalled}
           onRetryDaemonStatus={onRetryDaemonStatus}
           t={t}
+          messages={messages}
+          getMessageText={getMessageText}
           attachments={attachments}
           onRemoveAttachment={handleRemoveAttachment}
           activeFile={activeFile}

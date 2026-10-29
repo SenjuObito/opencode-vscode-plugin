@@ -26,6 +26,7 @@ import {
   parseEventJson,
   updateBackgroundTab,
 } from '../../../utils/tabEventRouting';
+import { resolveSessionId } from '../../../utils/sessionIdentity';
 
 /**
  * Pour every tool_use_id carried by tool_result blocks inside one message's raw
@@ -890,6 +891,16 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
   const payloadOf = (payload: unknown): Record<string, unknown> =>
     payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
 
+  /**
+   * 已结算过的回合键（`sessionId#turnId`），每个视图一份。
+   *
+   * `turn.settled` 是 daemon 的权威终止，但它可能和 `turn.ended` 并存到达、
+   * 也可能因为重连被重放。没有这个集合，同一个回合会被结算两次 —— 表现是
+   * 停止后指示器闪一下又恢复，或后一次把新回合的 loading 清掉。
+   * 与 idea 的 `processedTurnEndKeys` 一致：有界（256），溢出整表清空。
+   */
+  const processedTurnEndKeys = new Set<string>();
+
   registerHostEvents({
     'content.delta': (payload: unknown, env?: HostEventEnvelope) => {
       const delta = String(payloadOf(payload).delta ?? '');
@@ -939,15 +950,40 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     'turn.ended': (payload: unknown, env?: HostEventEnvelope) => {
       const data = payloadOf(payload);
       const sequence = data.sequence;
-      const reason = typeof data.reason === 'string' ? data.reason : '';
       if (updateBackgroundTab(env, (tab) => {
         tab.streamingActive = false;
         tab.loading = false;
         tab.isThinking = false;
       })) return;
-      window.onStreamEnd?.(reason ? JSON.stringify({ reason }) : sequence as number);
+      // legacy `onStreamEnd` 只接受序号。此前把 reason 也塞进这个位置
+      // （`JSON.stringify({reason})`），`parseSequence` 解析失败后收尾会走
+      // skip 分支：只终结悬空工具调用，不清流式标志 —— 停止后 loading 因此
+      // 不归零，界面停在「生成中」。
+      window.onStreamEnd?.(
+        typeof sequence === 'number' || typeof sequence === 'string' ? sequence : undefined,
+      );
+      // skip 分支不会回落 React 层的流式标志；这里补齐，等价于 idea 的
+      // `onStreamEnd → finishTurn`（清 streaming/loading 并把回复定住）。
+      setStreamingActive(false);
+      setLoading(false);
+      setLoadingStartTime(null);
+      setIsThinking(false);
+      finalizeUnresolvedToolUses();
     },
-    'turn.settled': (_payload: unknown, env?: HostEventEnvelope) => {
+    'turn.settled': (payload: unknown, env?: HostEventEnvelope) => {
+      // 与 idea 的 `onTurnEnd` 同语义：先按线上身份定位会话（**没有身份就丢弃**，
+      // 绝不理解成「当前屏上的那个 tab」），再按 (sessionId, turnId) 去重。
+      const sessionId = resolveSessionId(env?.sessionId, 'onTurnEnd');
+      if (sessionId === null) return;
+
+      const data = payloadOf(payload);
+      const terminal = parseEventJson<{ turnId?: string | number }>(data.terminal);
+      const turnId = terminal && typeof terminal === 'object' ? terminal.turnId : undefined;
+      const key = `${sessionId}#${turnId ?? 'none'}`;
+      if (processedTurnEndKeys.has(key)) return;
+      processedTurnEndKeys.add(key);
+      if (processedTurnEndKeys.size > 256) processedTurnEndKeys.clear();
+
       if (updateBackgroundTab(env, (tab) => {
         tab.streamingActive = false;
         tab.loading = false;

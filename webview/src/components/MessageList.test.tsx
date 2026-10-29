@@ -127,7 +127,7 @@ function StableMessageList({
       messageKeys={snapshot.keys}
       streamingActive
       isThinking
-      loading={false}
+      turnActive={false}
       loadingStartTime={null}
       t={t}
       getMessageText={noopGetText}
@@ -147,7 +147,7 @@ function renderList(messages: ClaudeMessage[]) {
       messageKeys={keysFor(messages)}
       streamingActive={false}
       isThinking={false}
-      loading={false}
+      turnActive={false}
       loadingStartTime={null}
       t={t}
       getMessageText={noopGetText}
@@ -158,30 +158,6 @@ function renderList(messages: ClaudeMessage[]) {
     />
   );
 }
-
-describe('MessageList generating indicator', () => {
-  it('stays visible while the stream is active even when loading is false', () => {
-    const endRef = createRef<HTMLDivElement>();
-    render(
-      <MessageList
-        messages={makeMessages(2)}
-        messageKeys={keysFor(makeMessages(2))}
-        streamingActive
-        isThinking={false}
-        loading={false}
-        loadingStartTime={null}
-        t={t}
-        getMessageText={noopGetText}
-        getContentBlocks={noopGetBlocks}
-        findToolResult={noopFindToolResult}
-        extractMarkdownContent={noopExtractMd}
-        messagesEndRef={endRef}
-      />,
-    );
-
-    expect(screen.getByTestId('waiting-indicator')).toBeTruthy();
-  });
-});
 
 describe('MessageList paged collapse', () => {
   beforeEach(() => {
@@ -274,7 +250,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(messages)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -303,7 +279,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(makeMessages(50, 'session2'))}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -333,7 +309,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(firstSession)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -356,7 +332,7 @@ describe('MessageList paged collapse', () => {
         messageKeys={keysFor(secondSession)}
         streamingActive={false}
         isThinking={false}
-        loading={false}
+        turnActive={false}
         loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
@@ -368,6 +344,46 @@ describe('MessageList paged collapse', () => {
     );
 
     expect(screen.getAllByTestId('message-item')).toHaveLength(10);
+  });
+
+  it('shows loading animation and reveals earlier turns progressively on click', () => {
+    const endRef = createRef<HTMLDivElement>();
+    const messages = makeMessages(40); // 20 user turns
+    const { container } = render(
+      <MessageList
+        messages={messages}
+        messageKeys={keysFor(messages)}
+        streamingActive={false}
+        isThinking={false}
+        turnActive={false}
+        loadingStartTime={null}
+        t={t}
+        getMessageText={noopGetText}
+        getContentBlocks={noopGetBlocks}
+        findToolResult={noopFindToolResult}
+        extractMarkdownContent={noopExtractMd}
+        messagesEndRef={endRef}
+        currentSessionId="session-1"
+      />
+    );
+
+    const indicator = container.querySelector('.collapsed-messages-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator?.textContent).toContain('Show 5 earlier turns (15 remaining)');
+
+    // Click indicator to start loading
+    fireEvent.click(indicator!);
+    expect(indicator?.textContent).toBe('Loading earlier turns');
+    expect(indicator?.classList.contains('is-loading')).toBe(true);
+
+    // After 600ms timer expires, loading completes and 5 more turns (10 total) are shown
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(screen.getAllByTestId('message-item')).toHaveLength(20);
+    const updatedIndicator = container.querySelector('.collapsed-messages-indicator');
+    expect(updatedIndicator?.textContent).toContain('Show 5 earlier turns (10 remaining)');
   });
 });
 
@@ -452,7 +468,7 @@ describe('MessageList container behaviour', () => {
     expect(last.textContent).toBe('message 39');
   });
 
-  it('renders waiting indicator when loading', () => {
+  it('renders waiting indicator while the turn is active', () => {
     const endRef = createRef<HTMLDivElement>();
     render(
       <MessageList
@@ -460,8 +476,33 @@ describe('MessageList container behaviour', () => {
         messageKeys={keysFor(makeMessages(3))}
         streamingActive={false}
         isThinking={false}
-        loading={true}
+        turnActive
         loadingStartTime={Date.now()}
+        t={t}
+        getMessageText={noopGetText}
+        getContentBlocks={noopGetBlocks}
+        findToolResult={noopFindToolResult}
+        extractMarkdownContent={noopExtractMd}
+        messagesEndRef={endRef}
+      />
+    );
+    expect(screen.getByTestId('waiting-indicator')).toBeTruthy();
+  });
+
+  it('keeps the waiting indicator while streaming even if the loading phase cleared', () => {
+    // Regression: the indicator used to be keyed on `loading` alone. A
+    // session.loading=false that is not a turn terminal (e.g. a host-side
+    // error) hid the "generating" notice mid-turn, while the stop button and
+    // the incoming deltas proved the turn was still running.
+    const endRef = createRef<HTMLDivElement>();
+    render(
+      <MessageList
+        messages={makeMessages(3)}
+        messageKeys={keysFor(makeMessages(3))}
+        streamingActive
+        isThinking={false}
+        turnActive
+        loadingStartTime={null}
         t={t}
         getMessageText={noopGetText}
         getContentBlocks={noopGetBlocks}
