@@ -35,7 +35,7 @@
 - **验收门已全绿**：
   - `pnpm run compile` ✅（`tsc --noEmit` + `eslint src` + esbuild）；
   - `webview pnpm run build` ✅；
-  - webview `vitest` **178 文件 / 1476 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅；
+  - webview `vitest` **178 文件 / 1488 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅；
   - 宿主 `pnpm test`（`pretest` 先清理 `out/`）**119 passing / 0 failing**。
 - 整体完成度估算：宿主架构 ≈99%、webview 架构 ≈97%、14 项功能域 **14/14**、多视图一致性 ≈98%。
 ---
@@ -72,7 +72,7 @@
 | §4.4 命令路由 | 缺 tab 拒绝、不回落 | ✅ | 仅 `agents.list` / `commands.refresh` / `session.new` 允许无 tabId；其余回 `MISSING_TAB_ID` |
 | §4.5 数据面 | 每会话 parser/sink + lane | ✅ | 每会话命名 `TabEvent` + `TabEventRouter` per-tab lane；后台 tab 的事件写入自己的记录/消息库，不再丢弃；delta 在 lane 内按 `turnId` 合并 |
 | §4.6 生命周期 | daemon 重启收 `turn.ended{daemon_restart}` | ✅ | `ChatWindow.handleDaemonDied()` 清所有 tab loading/streaming，活跃视图收 `onStreamEnd{reason:daemon_restart}`；`extension.ts` 的 `onDaemonDied` 已接线 |
-| §4.8 PromptRegistry | 三类表 + 三重校验 | 🟡 | 三表归属、关 tab 拒绝、`forget` 已完成；**回复只按 `requestId`/`channelId` 查表，未校验 tab/session**，也没有失败回执（`command.rejected`） |
+| §4.8 PromptRegistry | 三类表 + 三重校验 | 🟡 | 三表归属、关 tab 拒绝、`forget` 已完成；A24 起回复按 `requestId`/`channelId` 查表后校验 pending 的 tab/session，串 tab 或过期答复直接丢弃；**失败回执 `command.rejected` 仍未发布** |
 | §4.9 回复定向 | 状态广播、失败回发起视图 | ✅ | `rejectCommand(viewId…)`；会话事件走 `TabEventRouter` + legacy 广播 |
 | §5.2 事件分发 | registry 唯一入口、无 window 回退 | 🟡 | 数据面已全部走 `hostDispatcher → registerHostEvents`；窗口级/命令回执仍有 legacy `window[fn]` 回退（未迁移项，不影响 tab 数据路由） |
 | §5.4 多视图适配 | 单一写入方、草稿同步、弹窗选举、页面同步 | ✅ | 草稿 300ms 防抖 + `sourceViewId` 回声抑制；`prompt.host.changed` 选举后仅 host 渲染弹窗，落选视图回队；页面切换 `view.navigate` 同步；滚动仍按 tab（各视图独立 UI 状态） |
@@ -172,8 +172,8 @@
 | 能力 | idea 落点 | 本仓 | 处置建议 |
 |---|---|---|---|
 | Markdown 解析结果 LRU（300 条，切 tab/重载不重解析） | `components/MarkdownBlock.tsx`（`HTML_CACHE_LIMIT=300` + `clearMarkdownHtmlCache`） | ✅ 已移植（`renderCachedMarkdownHtml` + 300 条 LRU，流式尾块不缓存） | 已完成 |
-| 常驻 terminal error 通知（跨重挂载保留，`turn.error` 语义事件驱动） | `StatusNoticeBar.tsx`（`setTerminalError` / `onTerminalErrorFromHost`，`main.tsx:450` 注册 `turn.error`） | 错误落为消息行，`turn.error` 无 sender/handler | 可选；先补 `turn.error` 事件再谈 UI |
-| 状态面板毛玻璃胶囊 | `StatusPanel.less` | 旧底色/直角（G16） | 视觉对齐时一起做 |
+| 常驻 terminal error 通知（跨重挂载保留，`turn.error` 语义事件驱动） | `StatusNoticeBar.tsx`（`setTerminalError` / `onTerminalErrorFromHost`，`main.tsx:450` 注册 `turn.error`） | ✅ 已移植（A24：`SessionCallbackAdapter` 发布 `turn.error`，`streamingCallbacks` 喂给 `StatusNoticeBar`） | 已完成 |
+| 状态面板毛玻璃胶囊 | `StatusPanel.less` | ✅ 已一致（`StatusPanel.less` 与 idea 逐字节相同） | 已完成 |
 | 命令管理设置页 `PromptSection` | `components/settings/PromptSection` | 无 | 方案 §9 明确**不搬** |
 | JCEF 帧治理 / Node 进程管理 | `forceWebviewRepaint` / `surfaceDamagePulse` / `nodeProcessCapabilities` | 无 | 方案 §9 明确**不搬** |
 | Java2D `AeroLoadingPanel` | `AeroLoadingPanel.java` | 不适用（VS Code 无原生首帧面板） | 用现有 boot splash 等价替代 |
@@ -186,7 +186,7 @@
 |---|---|
 | `pnpm run compile`（tsc + eslint + esbuild） | ✅ |
 | `cd webview && pnpm run build`（tsc + vite + copy-dist） | ✅（9.72MB 单文件） |
-| `webview: npx vitest run` | ✅ **178 文件 / 1476 项**通过 |
+| `webview: npx vitest run` | ✅ **178 文件 / 1488 项**通过 |
 | `webview: tsc -p tsconfig.test.json --noEmit` | ✅ 0 错 |
 | `pnpm test`（宿主，`pretest` 先 `clean:out`） | ✅ **119 passing / 0 failing** |
 | `pnpm run unlink:core && pnpm run package` | ⬜ 未复跑（需网络） |
@@ -202,8 +202,7 @@
 2. **P9 发布验证**：在无 link 的干净依赖环境跑 `pnpm run unlink:core && pnpm run package`，
    确认产物使用 GitHub Release 的 `opencode-buddy-core`；再跑一遍多视图手工矩阵
    （左右侧栏 + 编辑器 panel 同时打开：切 tab / 新建 / 关闭 / 拖拽 / 草稿 / 权限弹窗归属 / 页面切换）。
-3. **可选增强**：`turn.error` 常驻通知（`turn.error` 已发布，`StatusNoticeBar` 仍走错误消息行）；
-   `assets/.DS_Store` 清理。
+3. **可选增强**：清理 `webview/src/assets/.DS_Store`（未跟踪的本地文件）。
 ---
 
 ## 8. 变更记录
