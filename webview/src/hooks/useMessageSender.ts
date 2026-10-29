@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
+import { cardDebugLog, sendBridgeEvent, sendHostCommand, sendInterrupt } from '../utils/bridge';
 import { uploadAttachments } from '../utils/attachmentTransport';
 import { getTabStore } from '../store/tabStore';
 import type { ClaudeContentBlock, ClaudeMessage } from '../types';
@@ -265,10 +265,19 @@ export function useMessageSender({
       : (getTabStore().getActiveTabAutoOpenFileEnabled() ?? false);
 
     if (!activeTabId) {
-      console.error('[Frontend] refusing to send: no active tab id');
+      cardDebugLog('[Frontend] refusing to send: no active tab id');
       addToast(t('chat.sendFailedNoTab', { defaultValue: '发送失败：找不到当前标签页' }), 'error');
       return;
     }
+
+    cardDebugLog('[useMessageSender] sending session.send to host:', {
+      activeTabId,
+      targetSessionId,
+      textLength: text.length,
+      hasAttachments,
+      permissionMode: effectivePermissionMode,
+      selectedModel,
+    });
 
     if (hasAttachments) {
       try {

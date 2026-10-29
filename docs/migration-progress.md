@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A28：基于日志与 IDEA 源码闭环修复发送消息卡 loading 与推荐推理力度联动，打通 sessionSink 与 tabId 命名流；双端全量测试 100% 通过）
+> 最后更新：2026-10-29（P9-A29：根治发送消息无响应与持续 loading：修复 onTabResync 入参解析异常、补齐宿主对未建表 tab 自动建表、贯通 command.rejected 错误解除 loading 与双端追踪日志；双端全量测试 100% 通过）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `ea954a3`。
@@ -132,6 +132,17 @@
 
 | 日期 | 变更 |
 |---|---|
+| 2026-10-29 | **P9-A29（本轮）**：**彻底排查并根治发送消息无响应与持续 loading，打通宿主-Webview 全链路 Tab 同步与命令路由容错**：
+1. **彻底排查根因**：
+   - 追踪全链路日志与执行流：Webview 在初始化阶段收到宿主 `tab.resync`（带宿主生成的权威 activeTabId），因 `useTabSessionBinder.ts` 中的 `resync` 直接执行 `JSON.parse(json)`，而 VS Code 宿主通过 postMessage 传递的是结构化 Object，抛出 `SyntaxError: Unexpected token 'o', "[object Object]" is not valid JSON`，导致 `tab.resync` 被直接丢弃；
+   - Webview 因丢弃了宿主 Tab 状态，本地兜底采用了虚拟 `'tab-1'`；
+   - 当用户发送消息时，Webview 携带 `'tab-1'` 发起 `session.send`；宿主在 `this.registry.get(targetTabId)` 中查不到 `'tab-1'`，判定为 `TAB_NOT_FOUND` 直接 `rejectCommand` 丢弃，且由于宿主缺少详细日志，形成静默黑洞，daemon 根本未收到任何 `opencode.send`。
+2. **彻底修复与对齐**：
+   - **`useTabSessionBinder.ts` 健壮解析**：将 `resync` 入参改为兼容 `string | unknown`，若已为对象则直接使用，若为字符串则 `JSON.parse`，彻底治愈 `tab.resync` 崩溃，使 Webview 100% 成功同步宿主的权威 Tab 列表与 activeTabId；
+   - **宿主会话命令自动建表容错（对齐 IDEA）**：在 `ChatWindow.ts:1142`，对齐 IDEA `SessionHandler.java` 的 `context.createSession(tabId)` 设计，当收到 `session.` 前缀的命令且在 registry 中未找到对应 Tab 时，自动调用 `this.registry.create` 进行建表挂载，杜绝丢弃；
+   - **全面对齐 `sessionCallbacks.ts`**：引入 IDEA 权威的 `registerHostEvents` 语义注册，接通 `command.rejected` / `attachment.failed` / `session.bound` / `tab.title.changed` 等事件；在命令被拒绝时不仅输出 toast，并立即重置界面的 `loading: false` 与 `streamingActive: false`，彻底消除界面无限 loading；
+   - **全链路命令审计与日志增强**：在 `OpenCodeViewProvider`（host_command 入站）、`ChatWindow.handleViewCommand`、`rejectCommand` 中补充详细的日志追踪，保证每一步命令执行与拒绝在 `opencode-plugin.log` 中清清楚楚。
+3. **双端验证全绿**：宿主 **121 passing**、Webview 178 个测试文件 **1491 项单测 100% 全部通过**，双端全量编译打包 **0 error 0 warning**。 |
 | 2026-10-29 | **P9-A28（本轮）**：**修复发送消息无 AI 返回与新建会话推荐推理力度未生效，打通全链路 SessionSink 与命名数据面**：
 1. **彻底解决发送消息后一直 loading 无 AI 消息返回问题**：
    - **重绑定与解除绑定机制闭环**：当 daemon 检测到目录不匹配或在同一 tab 切换会话时，`ChatWindow.bindTabSession` 对发生变更的 sessionId 自动执行 `registry.release(tabId)`，彻底消除 `already bound to` 异常阻断，并在重绑时向前端广播 `session.bound` 命名事件；

@@ -1032,6 +1032,7 @@ export class ChatWindow {
 	}
 
 	rejectCommand(viewId: string, tabId: string, requestId: string, code: CommandRejectCode, message: string): void {
+		PluginFileLogger.warn('ChatWindow', `Command rejected [${code}] view=${viewId} tab=${tabId} req=${requestId}: ${message}`);
 		const view = this.viewRegistry.get(viewId);
 		if (!view) {return;}
 		view.channel.postRaw({
@@ -1060,6 +1061,7 @@ export class ChatWindow {
 		if (!command) {return;}
 
 		const type = command.type;
+		PluginFileLogger.info('ChatWindow', `handleViewCommand: type=${type} tab=${command.tabId?.value} req=${command.requestId} view=${viewId}`);
 
 		// 1. View lifecycle
 		if (type === 'view.ready') {
@@ -1139,7 +1141,11 @@ export class ChatWindow {
 				return;
 			}
 
-			const record = this.registry.get(targetTabId);
+			let record = this.registry.get(targetTabId);
+			if (!record && type.startsWith('session.')) {
+				PluginFileLogger.info('ChatWindow', `Auto-creating tab record for ${targetTabId.value} on ${type}`);
+				record = this.registry.create(targetTabId, this.fallbackWorkingDirectoryResolver() || '');
+			}
 			if (!record) {
 				this.rejectCommand(
 					viewId,

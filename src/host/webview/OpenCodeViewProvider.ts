@@ -214,6 +214,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 			if (type === 'host_command') {
 				try {
 					const commandObj = JSON.parse(content);
+					logVerbose(`[OpenCodeViewProvider:${this.host}] host_command: type=${commandObj?.type} tab=${commandObj?.tabId} req=${commandObj?.requestId}`);
 					await this.chatWindow.handleViewCommand(this.host, commandObj);
 				} catch (e) {
 					logDiagnostic(`[OpenCodeViewProvider:${this.host}] Failed to parse host_command: ${content}`, 'error');

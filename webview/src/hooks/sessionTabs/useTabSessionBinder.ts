@@ -248,7 +248,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
   );
 
   useEffect(() => {
-    const resync = (json: string) => {
+    const resync = (raw: string | unknown) => {
       let payload: {
         type?: string;
         activeTabId?: string;
@@ -263,11 +263,12 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         }>;
       };
       try {
-        payload = JSON.parse(json) as typeof payload;
+        payload = typeof raw === 'string' ? JSON.parse(raw) as typeof payload : (raw as typeof payload);
       } catch (error) {
         cardDebugLog('[SessionTabs] onTabResync: invalid payload', error);
         return;
       }
+      cardDebugLog('[SessionTabs] onTabResync applied tabs count:', payload?.tabs?.length, 'active:', payload?.activeTabId);
       const incoming = (payload?.tabs ?? []).filter(
         (entry): entry is NonNullable<typeof entry> =>
           !!entry && typeof entry.tabId === 'string' && entry.tabId.length > 0,

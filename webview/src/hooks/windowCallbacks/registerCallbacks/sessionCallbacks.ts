@@ -8,8 +8,12 @@
 import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { downloadJSON } from '../../../utils/exportMarkdown';
-import { endTransition, activeTabId, transitionTargetFor } from '../tabTransition';
+import { activeTabId, endTransition, isTabTransitioning, transitionTargetFor } from '../tabTransition';
 import { getTabStore } from '../../../store/tabStore';
+import type { HostEventEnvelope, HostEventPayload } from '../../../utils/hostEventTypes';
+import { cardDebugLog } from '../../../utils/bridge';
+import { registerHostEvents } from '../../../utils/hostEventRegistry';
+import { isEnginePlaceholderTitle } from '../../../utils/sessionTitle';
 
 // Matches session-titles-service.cjs#updateTitle, which rejects longer titles.
 const CUSTOM_TITLE_MAX_LENGTH = 50;
@@ -26,26 +30,57 @@ export function registerSessionCallbacks(
     updateHistoryTitle,
     applyHistoryTitleLocal,
     setCustomSessionTitle,
+    setLoading,
+    setStreamingActive,
   } = options;
 
-  window.setSessionId = (sessionId: string) => {
+  const setSessionId = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const rawSessionId = typeof payload === 'string' ? payload : (payload?.sessionId ?? '');
+    const sessionId = String(rawSessionId ?? '');
+    if (!sessionId) return;
+    const previousSessionId = typeof payload === 'object' ? (payload?.previousSessionId as string | undefined) : undefined;
+    const tabId = env?.tabId ?? (typeof payload === 'object' ? (payload?.tabId as string | undefined) : undefined);
     const oldId = currentSessionIdRef.current;
-    // Release a pending transition only when this is NOT a history load: those
-    // carry a transition target and must wait for `historyLoadComplete`. The
-    // new-session flow has no target and relies on this release so the first
-    // deltas are accepted.
-    const ownerTabId = getTabStore().findIdBySession(sessionId) ?? activeTabId();
-    if (!transitionTargetFor(ownerTabId)) {
-      endTransition(ownerTabId);
+    cardDebugLog(
+      '[setSessionId] called, sessionId:',
+      sessionId,
+      'previousSessionId:',
+      previousSessionId,
+      'tabId:',
+      tabId,
+      'oldId:',
+      oldId,
+      'transitioning:',
+      isTabTransitioning(getTabStore().getActiveTabId()),
+    );
+
+    const tabStore = getTabStore();
+    const tabs = tabStore.getTabs();
+    const currentActiveTabId = tabStore.getActiveTabId();
+    const activeTab = tabs.find((t) => t.id === currentActiveTabId);
+
+    let targetTab = tabId ? tabs.find((t) => t.id === tabId) : null;
+    if (!targetTab && !tabId) {
+      targetTab = previousSessionId
+        ? tabs.find((t) => t.id === previousSessionId || t.sessionId === previousSessionId)
+        : null;
+      if (!targetTab) {
+        targetTab = tabs.find((t) => t.sessionId === sessionId);
+      }
+      if (!targetTab && (previousSessionId === '' || previousSessionId === undefined) && activeTab && !activeTab.sessionId) {
+        targetTab = activeTab;
+      }
     }
+
+    if (targetTab) {
+      tabStore.updateTabSessionId(targetTab.id, sessionId);
+    }
+
+    if (targetTab && currentActiveTabId && targetTab.id !== currentActiveTabId) {
+      return;
+    }
+
     currentSessionIdRef.current = sessionId;
-    // Keep the tab record in sync too: a view that learned this binding from a
-    // replayed snapshot must not keep `sessionId: null` until the next switch
-    // (rename/find-by-session read the record).
-    const boundTabId = activeTabId();
-    if (boundTabId) {
-      getTabStore().updateTabSessionId(boundTabId, sessionId);
-    }
     setCurrentSessionId(sessionId);
 
     // B-011 + B-014: Persist custom title under the real SDK session ID.
@@ -57,10 +92,72 @@ export function registerSessionCallbacks(
         applyHistoryTitleLocal(sessionId, title);
       }
     }
+
+    const ownerTabId = (targetTab ? targetTab.id : (tabStore.findIdBySession(sessionId) ?? null)) ?? activeTabId();
+    if (!transitionTargetFor(ownerTabId)) {
+      endTransition(ownerTabId);
+    }
+  };
+
+  const handleAddToast = (message: string, type?: string) => {
+    addToast(message, type as 'info' | 'success' | 'warning' | 'error' | undefined);
+  };
+
+  /**
+   * A command was refused by the host. The rejection is routed back to the
+   * tab that sent the command, so a refused send is visible instead of silently swallowed.
+   */
+  const commandRejected = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const tabId = String(payload?.tabId ?? env?.tabId ?? '');
+    const requestId = String(payload?.requestId ?? '');
+    const code = String(payload?.code ?? '');
+    const message = String(payload?.message ?? '');
+    cardDebugLog('[commandRejected] code:', code, 'tab:', tabId, 'request:', requestId, 'message:', message);
+    const text = message || code;
+    if (text) {
+      addToast(text, 'error');
+    }
+    setLoading?.(false);
+    setStreamingActive?.(false);
+  };
+
+  /**
+   * An attachment upload failed.
+   */
+  const onAttachmentFailed = (payload: HostEventPayload | undefined) => {
+    const fileName = String(payload?.fileName ?? '');
+    const code = String(payload?.code ?? '');
+    const message = String(payload?.message ?? '');
+    cardDebugLog('[attachmentFailed] code:', code, 'file:', fileName, 'message:', message);
+    const text = message || code;
+    if (text) {
+      addToast(text, 'error');
+    }
+  };
+
+  const updateSessionTitle = (payload: HostEventPayload | undefined, env?: HostEventEnvelope) => {
+    const rawTitle = typeof payload === 'string' ? payload : (payload?.title ?? '');
+    const title = String(rawTitle ?? '');
+    const sessionId = env?.sessionId ?? (typeof payload === 'object' ? (payload?.sessionId as string | undefined) : undefined) ?? '';
+    const tabId = env?.tabId ?? (typeof payload === 'object' ? (payload?.tabId as string | undefined) : undefined);
+    if (!title || !title.trim() || !sessionId) return;
+    const cleanTitle = title.trim();
+    if (isEnginePlaceholderTitle(cleanTitle)) return;
+
+    if (currentSessionIdRef.current === sessionId) {
+      setCustomSessionTitle(cleanTitle);
+    }
+    getTabStore().updateTabTitle(sessionId, cleanTitle, tabId);
+    applyHistoryTitleLocal(sessionId, cleanTitle);
+  };
+
+  // Window callbacks (legacy fallback)
+  window.setSessionId = (sessionId: string) => {
+    setSessionId({ sessionId });
   };
 
   window.addToast = (message, type) => {
-    addToast(message, type as 'info' | 'success' | 'warning' | 'error' | undefined);
+    handleAddToast(message, type);
   };
 
   window.onExportSessionData = (json) => {
@@ -85,16 +182,16 @@ export function registerSessionCallbacks(
     }
   };
 
-  // =========================================================================
-  // AI Title Callback
-  // =========================================================================
-
   window.updateSessionTitle = (sessionId: string, title: string) => {
-    if (!title || !title.trim() || !sessionId) return;
-    if (currentSessionIdRef.current === sessionId) {
-      setCustomSessionTitle(title.trim());
-    }
-    applyHistoryTitleLocal(sessionId, title.trim());
+    updateSessionTitle({ title, sessionId });
   };
 
+  // Semantic event registrations
+  registerHostEvents({
+    'command.rejected': commandRejected,
+    'attachment.failed': onAttachmentFailed,
+    'session.bound': setSessionId,
+    'tab.title.changed': updateSessionTitle,
+    'toast.shown': handleAddToast,
+  });
 }
