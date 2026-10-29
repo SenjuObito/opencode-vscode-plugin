@@ -258,6 +258,84 @@ suite('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => {
 	});
 });
 
+suite('v2 prompt replies stay with the tab that owns the prompt', () => {
+	setup(() => {
+		Object.defineProperty(vscode.window, 'state', {
+			configurable: true,
+			get: () => ({ focused: true }),
+		});
+	});
+
+	teardown(() => {
+		delete (vscode.window as unknown as Record<string, unknown>).state;
+	});
+
+	test('permission.reply from another tab is refused', () => {
+		const { handler, daemonCalls } = makeHandler(() => 'tab-a');
+		handler.onPermissionRequested(permissionRequest());
+
+		handler.handleReplyCommand(
+			'permission.reply',
+			{ channelId: 'call_1', allow: true, remember: false, sessionId: 'ses_a' },
+			'tab-b',
+		);
+
+		assert.strictEqual(daemonCalls.length, 0, 'wrong tab must not answer the prompt');
+	});
+
+	test('permission.reply from the owner tab answers it', () => {
+		const { handler, daemonCalls } = makeHandler(() => 'tab-a');
+		handler.onPermissionRequested(permissionRequest());
+
+		handler.handleReplyCommand(
+			'permission.reply',
+			{ channelId: 'call_1', allow: true, remember: true, sessionId: 'ses_a' },
+			'tab-a',
+		);
+
+		const reply = daemonCalls.find((call) => call.method === 'replyPermission');
+		assert.ok(reply);
+		assert.strictEqual(reply.params.permissionID, 'per_1');
+		assert.strictEqual(reply.params.reply, 'allowAlways');
+	});
+
+	test('question.reply parses both answers and a rejection', () => {
+		const { handler, daemonCalls } = makeHandler(() => 'tab-a');
+		handler.onQuestionRequested({
+			type: 'question',
+			toolUseId: 'call_2',
+			toolName: 'task',
+			description: '',
+			sessionId: 'ses_a',
+			requestId: 'q_1',
+			questions: [{ question: '继续吗？', options: ['是', '否'] }],
+		});
+
+		handler.handleReplyCommand(
+			'question.reply',
+			{ requestId: 'q_1', answers: { '继续吗？': '是' }, sessionId: 'ses_a' },
+			'tab-a',
+		);
+		assert.ok(daemonCalls.some((call) => call.method === 'replyQuestion'));
+
+		handler.onQuestionRequested({
+			type: 'question',
+			toolUseId: 'call_3',
+			toolName: 'task',
+			description: '',
+			sessionId: 'ses_a',
+			requestId: 'q_2',
+			questions: [],
+		});
+		handler.handleReplyCommand(
+			'question.reply',
+			{ requestId: 'q_2', rejected: true, sessionId: 'ses_a' },
+			'tab-a',
+		);
+		assert.ok(daemonCalls.some((call) => call.method === 'rejectQuestion'));
+	});
+});
+
 suite('P8 §10.7: ChatWindow 关 tab 时上报被作废的 prompt', () => {
 	test('把 rejectForTab 的结果交给宿主会话层', async () => {
 		const rejectedSeen: string[][] = [];

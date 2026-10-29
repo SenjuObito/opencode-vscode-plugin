@@ -34,6 +34,23 @@ import { PluginFileLogger } from '../util/PluginFileLogger';
  */
 const WINDOW_SCOPED_COMMANDS = new Set(['agents.list', 'commands.refresh', 'session.new']);
 
+/**
+ * Commands whose handler must verify that the tab still holds the session the
+ * command was addressed to. The envelope's sessionId is copied into the payload
+ * because TabCommand itself only carries tabId.
+ */
+const SESSION_GUARDED_COMMANDS = new Set([
+	'session.fork',
+	'session.revert',
+	'session.unrevert',
+	'session.compact',
+	'session.share',
+	'session.unshare',
+	'permission.reply',
+	'question.reply',
+	'plan.reply',
+]);
+
 export interface ChatWindowOptions {
 	settings: SettingsService;
 	daemon: OpenCodeDaemonBridge;
@@ -66,6 +83,8 @@ export interface ChatWindowOptions {
 	saveText?: (content: string, filename: string) => void;
 	/** 读取子代理 transcript（`subagent.history`，按会话归属）。 */
 	loadSubagentHistory?: (payload: string) => void;
+	/** v2 提示答复：`permission.reply` / `question.reply` / `plan.reply`。 */
+	replyPrompt?: (type: string, payload: Record<string, unknown>, tabId: string) => void;
 	/**
 	 * 列举候选文件（v2 `files.list`）：由 ChatInstance 接到 FileHandler。
 	 * 目录由宿主按目标 tab 的 cwd 给出。
@@ -139,7 +158,7 @@ export class ChatWindow {
 			daemon: () => this.daemon,
 			resolveCwd: () => this.fallbackWorkingDirectoryResolver() ?? undefined,
 			onForkBound: (targetTabId, newSessionId) => {
-				PluginFileLogger.info('ChatWindow', `Fork bound: tab=${targetTabId}, ses=${newSessionId}`);
+				this.bindForkedSession(targetTabId, newSessionId);
 			},
 		});
 
@@ -524,6 +543,14 @@ export class ChatWindow {
 		this.commandRouter.register('agents.list', () => {
 			this.options.requestAgents?.();
 		});
+		// 未决提示的答复必须回到发起它的 tab/session（idea 的 permission.reply /
+		// question.reply / plan.reply）。ChatWindow 先把命令路由到目标 tab，
+		// PermissionHandler 再核对 pending 的归属，过期或串 tab 的答复直接丢弃。
+		for (const type of ['permission.reply', 'question.reply', 'plan.reply']) {
+			this.commandRouter.register(type, (cmd) => {
+				this.options.replyPrompt?.(type, cmd.payload, cmd.tabId.value);
+			});
+		}
 	}
 
 	private registerAttachmentCommands(): void {
@@ -708,6 +735,38 @@ export class ChatWindow {
 			PluginFileLogger.warn(
 				'ChatWindow',
 				`failed to bind session ${sessionId} to tab ${tabId.value}: ${String(err)}`,
+			);
+		}
+	}
+
+	/**
+	 * Bind a forked session to the tab the webview reserved for it.
+	 *
+	 * <p>The target tab is created before the fork returns, so the session is
+	 * already owned when the webview's `session.fork.bound` handler asks to load
+	 * it. The source tab is not touched.</p>
+	 */
+	private bindForkedSession(targetTabId: string, newSessionId: string): void {
+		const tabId = TabId.of(targetTabId);
+		const existing = this.registry.get(tabId);
+		if (existing?.getSessionIdString()) {
+			PluginFileLogger.info('ChatWindow', `fork target ${targetTabId} is already bound; ignoring`);
+			return;
+		}
+		const cwd = existing?.getCwd() || this.fallbackWorkingDirectoryResolver() || '';
+		try {
+			const record = this.sessionFactory.attachSession(tabId, newSessionId, cwd, (session) => {
+				if (cwd) {
+					session.state.setCwd(cwd);
+				}
+				this.options.configureSession?.(session);
+			});
+			this.options.onSessionBound?.(targetTabId, newSessionId);
+			PluginFileLogger.info('ChatWindow', `Fork bound: tab=${targetTabId}, ses=${newSessionId}`);
+		} catch (err) {
+			PluginFileLogger.warn(
+				'ChatWindow',
+				`failed to bind forked session ${newSessionId} to tab ${targetTabId}: ${String(err)}`,
 			);
 		}
 	}
@@ -1052,7 +1111,12 @@ export class ChatWindow {
 				return;
 			}
 
-			const tabCmd = TabCommand.of(targetTabId.value, type, command.requestId, command.payload);
+			const guardedPayload = SESSION_GUARDED_COMMANDS.has(type)
+				&& command.sessionId
+				&& typeof command.payload.sessionId !== 'string'
+				? { ...command.payload, sessionId: command.sessionId.value }
+				: command.payload;
+			const tabCmd = TabCommand.of(targetTabId.value, type, command.requestId, guardedPayload);
 			const result = await this.commandRouter.route(tabCmd);
 			if (result === TabCommandRouteResult.UNKNOWN_TAB) {
 				this.rejectCommand(

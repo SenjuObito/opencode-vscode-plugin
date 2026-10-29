@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendBridgeEvent, sendWindowCommand } from './utils/bridge';
+import { sendHostCommand, sendSessionCommand, sendWindowCommand } from './utils/bridge';
+import { createTabId, getTabStore } from './store/tabStore';
+import { registerHostEvents, unregisterHostEvents } from './utils/hostEventRegistry';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
 import {
@@ -95,6 +97,8 @@ const App = () => {
     title?: string,
     historyModel?: string,
     historyMode?: string,
+    historyEffort?: string,
+    reservedTabId?: string,
   ) => void) | null>(null);
   const appTabsRef = useRef<SessionTabData[]>([]);
 
@@ -365,12 +369,12 @@ const App = () => {
     // No premature success toast here: the share URL only becomes copyable
     // when the host round-trips onShareSuccess. Feedback happens there.
     setSharePending(true);
-    sendBridgeEvent('share_session', currentSessionId);
+    sendSessionCommand('session.share', currentSessionId);
   }, [currentSessionId, sharePending, shareHidden]);
 
   const handleUnshare = useCallback(async () => {
     if (!currentSessionId) return;
-    sendBridgeEvent('unshare_session', currentSessionId);
+    sendSessionCommand('session.unshare', currentSessionId);
     setIsShared(false);
     setShareUrl(null);
   }, [currentSessionId]);
@@ -438,16 +442,16 @@ const App = () => {
     if (!id) {
       // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
       console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('revert_session', 'latest');
+      sendSessionCommand('session.revert', currentSessionIdRef.current, { messageId: 'latest' });
       applyRevertState(true);
       return;
     }
     console.debug('[App] undo: reverting to message', id);
-    sendBridgeEvent('revert_session', id);
+    sendSessionCommand('session.revert', currentSessionIdRef.current, { messageId: id });
     // Optimistic: boundary is the undone user message; the host's
     // onRevertStateUpdate push carries the authoritative pointer.
     applyRevertState(true, id);
-  }, [applyRevertState, getMessageId]);
+  }, [applyRevertState, getMessageId, currentSessionIdRef]);
 
   /** Pending "interrupt then undo/redo" confirmation (busy session). */
   const [pendingRevert, setPendingRevert] = useState<
@@ -468,9 +472,9 @@ const App = () => {
       setPendingRevert({ op: 'redo' });
       return;
     }
-    sendBridgeEvent('unrevert_session');
+    sendSessionCommand('session.unrevert', currentSessionIdRef.current);
     applyRevertState(false);
-  }, [applyRevertState, streamingActive]);
+  }, [applyRevertState, streamingActive, currentSessionIdRef]);
 
   // Confirm/cancel handlers live below, after `interruptSession` (useMessageSender)
   // exists — see handleConfirmInterruptRevert.
@@ -481,13 +485,17 @@ const App = () => {
       return;
     }
     const id = getMessageId(message);
+    const sid = currentSessionIdRef.current ?? currentSessionId;
+    const sourceTabId = getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId() ?? '';
+    if (!sourceTabId) return;
+    const targetTabId = createTabId();
     if (!id) {
       console.warn('[App] fork: message has no id; falling back to backend latest-user resolution');
-      sendBridgeEvent('fork_session', 'latest');
+      sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId, messageId: 'latest' });
       return;
     }
-    sendBridgeEvent('fork_session', id);
-  }, [streamingActive, addToast, t, getMessageId]);
+    sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId, messageId: id });
+  }, [streamingActive, addToast, t, getMessageId, currentSessionId, currentSessionIdRef]);
 
   /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
   const handleForkFull = useCallback(() => {
@@ -495,8 +503,14 @@ const App = () => {
       addToast(t('chat.forkDisabledTooltip'), 'warning');
       return;
     }
-    sendBridgeEvent('fork_session', 'full');
-  }, [streamingActive, addToast, t]);
+    const sid = currentSessionIdRef.current ?? currentSessionId;
+    const sourceTabId = getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId() ?? '';
+    if (!sourceTabId) return;
+    sendHostCommand(sourceTabId, 'session.fork', {
+      sourceTabId,
+      targetTabId: createTabId(),
+    });
+  }, [streamingActive, addToast, t, currentSessionId, currentSessionIdRef]);
 
   // Latest user message id, used by the builtin /undo slash command.
   const findLatestUserMessageId = useCallback((): string | undefined => {
@@ -642,7 +656,68 @@ const App = () => {
       setCompactingStartTime(null);
       setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
     };
+    // Named command results (G8 command plane): the host publishes these with
+    // legacy:false, so the window.<fn> assignments above are only the fallback
+    // for a view that has not mounted this effect yet.
+    const onForkBound = (payload: Record<string, unknown>) => {
+      const targetTabId = typeof payload.targetTabId === 'string' ? payload.targetTabId : '';
+      const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
+      if (!targetTabId || !sessionId) return;
+      const activeId = getTabStore().getActiveTabId();
+      const currentTabs = appTabsRef.current || [];
+      const sourceTab =
+        (typeof payload.sourceTabId === 'string'
+          ? currentTabs.find((tab) => tab.id === payload.sourceTabId)
+          : undefined) ||
+        (typeof payload.sourceSessionId === 'string'
+          ? currentTabs.find((tab) => tab.sessionId === payload.sourceSessionId)
+          : undefined) ||
+        (activeId ? currentTabs.find((tab) => tab.id === activeId && tab.id !== targetTabId) : undefined) ||
+        currentTabs.find((tab) => tab.id !== targetTabId);
+      const forkedTitle = sourceTab ? `${sourceTab.title} (Fork)` : `${customSessionTitleRef.current || 'Session'} (Fork)`;
+      openSessionInTabRef.current?.(sessionId, forkedTitle, undefined, undefined, undefined, targetTabId);
+      addToast(t('chat.forkCreatedToast'), 'success');
+    };
+
+    registerHostEvents({
+      'session.fork.bound': onForkBound,
+      'session.fork.failed': (payload: Record<string, unknown>) => {
+        window.onForkError?.(String(payload.data ?? payload.error ?? ''));
+      },
+      'session.share.done': (payload: Record<string, unknown>) => {
+        window.onShareSuccess?.(String(payload.data ?? payload.url ?? ''));
+      },
+      'session.share.failed': (payload: Record<string, unknown>) => {
+        window.onShareError?.(String(payload.data ?? payload.error ?? ''));
+      },
+      'session.unshare.done': () => {
+        window.onUnshareSuccess?.();
+      },
+      'session.unshare.failed': (payload: Record<string, unknown>) => {
+        window.onUnshareError?.(String(payload.data ?? payload.error ?? ''));
+      },
+      'session.revert.failed': (payload: Record<string, unknown>) => {
+        window.onRevertError?.(JSON.stringify({
+          op: String(payload.op ?? 'undo'),
+          error: String(payload.error ?? ''),
+        }));
+      },
+      'session.compact.done': (payload: Record<string, unknown>) => {
+        window.onCompactSuccess?.(String(payload.data ?? payload.sessionId ?? ''));
+      },
+      'session.compact.failed': (payload: Record<string, unknown>) => {
+        window.onCompactError?.(String(payload.data ?? ''), String(payload.error ?? ''));
+      },
+    });
+
     return () => {
+      unregisterHostEvents([
+        'session.fork.bound', 'session.fork.failed',
+        'session.share.done', 'session.share.failed',
+        'session.unshare.done', 'session.unshare.failed',
+        'session.revert.failed',
+        'session.compact.done', 'session.compact.failed',
+      ]);
       delete window.onForkSuccess;
       delete window.onForkError;
       delete window.onShareSuccess;
@@ -653,7 +728,7 @@ const App = () => {
       delete window.onCompactSuccess;
       delete window.onCompactError;
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, scrollToBottom]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, scrollToBottom, customSessionTitleRef]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
@@ -731,10 +806,10 @@ const App = () => {
     if (pending.op === 'undo') {
       dispatchRevert(pending.target);
     } else {
-      sendBridgeEvent('unrevert_session');
+      sendSessionCommand('session.unrevert', currentSessionIdRef.current);
       applyRevertState(false);
     }
-  }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState]);
+  }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState, currentSessionIdRef]);
 
   const handleCancelInterruptRevert = useCallback(() => {
     setPendingRevert(null);
@@ -780,10 +855,10 @@ const App = () => {
   // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    sendBridgeEvent('compact_session');
+    sendSessionCommand('session.compact', currentSessionIdRef.current);
     setIsCompacting(true);
     setCompactingStartTime(Date.now());
-  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime]);
+  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime, currentSessionIdRef]);
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
     useCompactConfirm(doCompact);
 

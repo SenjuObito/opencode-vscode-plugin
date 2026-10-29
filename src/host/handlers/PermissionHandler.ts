@@ -98,6 +98,72 @@ export class PermissionHandler extends BaseMessageHandler {
 		}
 	}
 
+	/**
+	 * v2 提示答复入口（`permission.reply` / `question.reply` / `plan.reply`）。
+	 *
+	 * 命令已经由 ChatWindow 路由到目标 tab；这里再核对 pending 的 tab/session
+	 * 归属。过期对话框、另一个 tab 的迟到答复都不会落到当前会话。
+	 */
+	handleReplyCommand(type: string, payload: Record<string, unknown>, tabId: string | null): void {
+		const requestId = type === 'permission.reply'
+			? this.stringField(payload.channelId)
+			: this.stringField(payload.requestId);
+		if (!requestId) {
+			return;
+		}
+		if (type === 'plan.reply') {
+			// opencode 没有 plan approval；保留关闭对话框的语义。
+			this.prompts?.forget(requestId);
+			this.forceCloseFrontendDialog('forceClosePlanApprovalDialog');
+			return;
+		}
+		const pending = type === 'permission.reply'
+			? this.pendingPermissions.get(requestId)
+			: this.pendingQuestions.get(requestId);
+		if (!pending) {
+			PluginFileLogger.warn('PermissionHandler', `${type} for unknown prompt ${requestId}`);
+			return;
+		}
+		const replySessionId = this.stringField(payload.sessionId) || null;
+		if (!this.replyMatchesOwner(requestId, replySessionId, tabId, pending.sessionId)) {
+			PluginFileLogger.warn('PermissionHandler', `${type} refused: owner mismatch for ${requestId}`);
+			return;
+		}
+		if (type === 'permission.reply') {
+			this.handlePermissionDecision(JSON.stringify(payload));
+			return;
+		}
+		if (payload.rejected === true) {
+			this.handleAskUserQuestionReject(JSON.stringify(payload));
+			return;
+		}
+		this.handleAskUserQuestionResponse(JSON.stringify(payload));
+	}
+
+	private stringField(value: unknown): string {
+		return typeof value === 'string' ? value : '';
+	}
+
+	/**
+	 * The tab that owns a prompt and the tab that answered must agree, and so
+	 * must their sessions. Missing identities are tolerated (legacy calls).
+	 */
+	private replyMatchesOwner(
+		requestId: string,
+		replySessionId: string | null,
+		replyTabId: string | null,
+		ownerSessionId: string | null,
+	): boolean {
+		if (ownerSessionId && replySessionId && ownerSessionId !== replySessionId) {
+			return false;
+		}
+		const ownerTabId = this.prompts?.tabIdOf(requestId) ?? null;
+		if (ownerTabId && replyTabId && ownerTabId !== replyTabId) {
+			return false;
+		}
+		return true;
+	}
+
 	/** 由 OpenCodeSession 的 SessionCallbackAdapter 注入：收到 daemon 权限/提问请求。 */
 	onPermissionRequested(request: PermissionRequest): void {
 		this.debugLog(`onPermissionRequested type=${request.type} toolUseId=${request.toolUseId} requestId=${request.requestId} toolName=${request.toolName} sessionId=${request.sessionId} directory=${request.directory}`);

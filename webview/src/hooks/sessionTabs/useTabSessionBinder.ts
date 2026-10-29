@@ -848,13 +848,22 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         saveCurrentTabSnapshot();
 
         const newId = reservedTabId ?? createTabId();
-        sendTabCommand(newId, 'tab.create');
+        // A reserved fork tab may already exist because the host bound it and
+        // another event (tab.created) arrived first. Reuse it instead of
+        // appending a second tab with the same id.
+        const reservedTab = reservedTabId
+          ? tabsRef.current.find((tab) => tab.id === reservedTabId)
+          : undefined;
+        if (!reservedTab) {
+          sendTabCommand(newId, 'tab.create');
+        }
         const newTab: SessionTabData = {
+          ...(reservedTab ?? {}),
           id: newId,
           sessionId,
-          messageStore: new TabMessageStore(),
+          messageStore: reservedTab?.messageStore ?? new TabMessageStore(),
           title: resolvedTitle,
-          messages: [],
+          messages: reservedTab?.messages ?? [],
           isShared: false,
           loading: false,
           streamingActive: false,
@@ -868,7 +877,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           contextInfo: null,
         };
 
-        const updatedTabs = [...tabsRef.current, newTab];
+        const updatedTabs = reservedTab
+          ? tabsRef.current.map((tab) => (tab.id === newId ? newTab : tab))
+          : [...tabsRef.current, newTab];
         tabsRef.current = updatedTabs;
         activeTabIdRef.current = newId;
         setTabs(updatedTabs);

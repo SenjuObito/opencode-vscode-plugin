@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StatusNoticeBar, {
   __resetNoticeStateForTest,
   getRetryStatus,
+  getTerminalError,
   onRetryStatusFromHost,
+  onTerminalErrorFromHost,
   setRetryStatus,
 } from './StatusNoticeBar';
 import type { ClaudeMessage } from '../types';
@@ -171,7 +173,9 @@ describe('StatusNoticeBar — terminal quota notice', () => {
 
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
     expect(screen.getByText('errorDiagnostic.opencodeQuotaExceeded.title')).toBeTruthy();
-    expect(screen.getByText('errorDiagnostic.opencodeQuotaExceeded.notice')).toBeTruthy();
+    // Idea parity: the server's own text is more actionable than the generic
+    // i18n copy, so it wins when the transcript carries it.
+    expect(screen.getByText(QUOTA_TEXT)).toBeTruthy();
     // No inline diagnostic card, no retry chrome.
     expect(container.querySelector('.status-notice-bar--warning')).toBeNull();
   });
@@ -219,20 +223,22 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     expect(next.querySelector('.status-notice-bar--error')).toBeTruthy();
   });
 
-  it('retires the notice when a new turn starts', () => {
-    // One stable snapshot: the notice key is derived from the message, so the
-    // rerenders must hand over the *same* message (as a snapshot replay does).
+  it('keeps the notice across a new turn until the user dismisses it', () => {
+    // Idea parity: a terminal notice is persistent. A new turn only clears the
+    // *semantic* copy and the buffered action, never the transcript row.
     const message = quotaMessage();
     const { container, rerender } = renderBar([message]);
     expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
 
     messagesState.loading = true;
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
-    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
 
-    // ...and it must not come back once that turn settles.
     messagesState.loading = false;
     rerender(<StatusNoticeBar messages={[message]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+
+    fireEvent.click(container.querySelector('.status-notice-dismiss') as HTMLElement);
     expect(container.querySelector('.status-notice-bar--error')).toBeNull();
   });
 
@@ -280,6 +286,72 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     const { container } = renderBar([quotaMessage()]);
 
     expect(container.querySelector('.status-notice-bar')).toBeNull();
+  });
+});
+
+describe('StatusNoticeBar — semantic turn.error', () => {
+  beforeEach(() => {
+    sendToJava.mockClear();
+    __resetNoticeStateForTest();
+    messagesState.loading = false;
+    messagesState.streamingActive = false;
+    messagesState.sessionLoading = false;
+    sessionState.currentSessionId = 'ses_a';
+  });
+
+  afterEach(() => {
+    cleanup();
+    __resetNoticeStateForTest();
+  });
+
+  it('shows the bar from turn.error without any transcript row', () => {
+    onTerminalErrorFromHost({ error: QUOTA_TEXT }, { sessionId: 'ses_a' });
+
+    const { container } = renderBar([]);
+
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+    expect(screen.getByText(QUOTA_TEXT)).toBeTruthy();
+    expect(getTerminalError()?.message).toBe(QUOTA_TEXT);
+  });
+
+  it('ignores a turn.error from another session', () => {
+    onTerminalErrorFromHost({ error: QUOTA_TEXT }, { sessionId: 'ses_b' });
+
+    const { container } = renderBar([]);
+
+    expect(container.querySelector('.status-notice-bar')).toBeNull();
+  });
+
+  it('parses a JSON-string error payload', () => {
+    onTerminalErrorFromHost(JSON.stringify({ error: { message: QUOTA_TEXT } }), { sessionId: 'ses_a' });
+
+    const { container } = renderBar([]);
+
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+    expect(screen.getByText(QUOTA_TEXT)).toBeTruthy();
+  });
+
+  it('clears the semantic notice when a new turn starts', () => {
+    onTerminalErrorFromHost({ error: QUOTA_TEXT }, { sessionId: 'ses_a' });
+    const { container, rerender } = renderBar([]);
+    expect(container.querySelector('.status-notice-bar--error')).toBeTruthy();
+
+    messagesState.loading = true;
+    rerender(<StatusNoticeBar messages={[]} getMessageText={getMessageText} />);
+    messagesState.loading = false;
+    rerender(<StatusNoticeBar messages={[]} getMessageText={getMessageText} />);
+
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+  });
+
+  it('the transcript row does not override a dismissed semantic notice', () => {
+    onTerminalErrorFromHost({ error: QUOTA_TEXT }, { sessionId: 'ses_a' });
+    const { container, rerender } = renderBar([]);
+    fireEvent.click(container.querySelector('.status-notice-dismiss') as HTMLElement);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
+
+    rerender(<StatusNoticeBar messages={[quotaMessage()]} getMessageText={getMessageText} />);
+    expect(container.querySelector('.status-notice-bar--error')).toBeNull();
   });
 });
 

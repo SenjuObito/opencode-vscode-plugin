@@ -185,6 +185,7 @@ export function activate(context: vscode.ExtensionContext) {
 		listFiles: (query, directory) => instance.listFiles(query, directory),
 		// 子代理 transcript（v2 `subagent.history`）：复用 HistoryHandler 的提取逻辑。
 		loadSubagentHistory: (payload) => instance.loadSubagentHistory(payload),
+		replyPrompt: (type, payload, tabId) => instance.permissionHandler.handleReplyCommand(type, payload, tabId),
 	});
 	chatWindowRef = chatWindow;
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。

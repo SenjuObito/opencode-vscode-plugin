@@ -4,7 +4,8 @@ import type { PermissionRequest } from '../components/PermissionDialog';
 import type { AskUserQuestionRequest } from '../components/AskUserQuestionDialog';
 import type { PlanApprovalRequest } from '../components/PlanApprovalDialog';
 import type { ContextUsageData } from '../components/ContextUsageDialog';
-import { sendBridgeEvent, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { sendHostCommand, sendInterrupt, cardDebugLog } from '../utils/bridge';
+import { getTabStore } from '../store/tabStore';
 import { removeQuestionAnswerByRequestId } from '../store/questionAnswerStore';
 import { useSession } from '../contexts/SessionContext';
 import { isPromptHost, subscribePromptHost } from '../utils/viewIdentity';
@@ -413,17 +414,65 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
 
   // Permission handlers — send the decision (protocol unchanged) and close the dialog.
   // When the id is not the active dialog it is dropped from the pending queue instead.
+  /**
+   * v2 prompt replies. The owner tab/session travel with the command so a
+   * late answer from a stale dialog cannot land on whichever tab is active.
+   */
+  const sendPromptReply = (
+    type: 'question.reply' | 'plan.reply',
+    requestId: string,
+    payload: Record<string, unknown>,
+    sessionId?: string | null,
+    tabId?: string | null,
+  ) => {
+    const ownerTabId = tabId
+      ?? (sessionId ? getTabStore().findIdBySession(sessionId) : null)
+      ?? getTabStore().getActiveTabId()
+      ?? '';
+    if (!ownerTabId && !sessionId) {
+      cardDebugLog(`[Prompt][webview] dropping a ${type} without a tab or a session`);
+      return;
+    }
+    sendHostCommand(ownerTabId, type, { requestId, ...payload }, sessionId ?? null);
+  };
+
+  const sendPermissionReply = (options: {
+    channelId: string;
+    sessionId?: string | null;
+    tabId?: string | null;
+    allow: boolean;
+    remember: boolean;
+    rejectMessage?: string | null;
+  }) => {
+    const active = currentPermissionRequestRef.current;
+    const sessionId = options.sessionId ?? active?.sessionId ?? null;
+    const ownerTabId = options.tabId ?? active?.tabId
+      ?? (sessionId ? getTabStore().findIdBySession(sessionId) : null)
+      ?? getTabStore().getActiveTabId()
+      ?? '';
+    if (!ownerTabId && !sessionId) {
+      cardDebugLog('[PCard][webview] dropping a permission reply without a tab or a session');
+      return;
+    }
+    sendHostCommand(ownerTabId, 'permission.reply', {
+      channelId: options.channelId,
+      allow: options.allow,
+      remember: options.remember,
+      rejectMessage: options.rejectMessage ?? null,
+    }, sessionId);
+  };
+
   const handlePermissionApprove = useCallback((channelId: string) => {
     if (currentPermissionRequestRef.current?.channelId !== channelId) {
       forceClosePermissionDialog(channelId);
       return;
     }
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
       allow: true,
       remember: false,
       rejectMessage: null,
-    }));
+    });
     closePermissionCurrent();
   }, [closePermissionCurrent, forceClosePermissionDialog]);
 
@@ -432,12 +481,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceClosePermissionDialog(channelId);
       return;
     }
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
       allow: true,
       remember: true,
       rejectMessage: null,
-    }));
+    });
     closePermissionCurrent();
   }, [closePermissionCurrent, forceClosePermissionDialog]);
 
@@ -446,12 +495,12 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceClosePermissionDialog(channelId);
       return;
     }
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.userDenied'),
-    }));
+    });
     closePermissionCurrent();
   }, [closePermissionCurrent, t, forceClosePermissionDialog]);
 
@@ -463,7 +512,8 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceCloseAskUserQuestionDialog(requestId);
       return;
     }
-    sendBridgeEvent('ask_user_question_response', JSON.stringify({ requestId, answers }));
+    const active = currentAskUserQuestionRequestRef.current;
+    sendPromptReply('question.reply', requestId, { answers }, active?.sessionId, active?.tabId);
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
@@ -473,7 +523,8 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       forceCloseAskUserQuestionDialog(requestId);
       return;
     }
-    sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId }));
+    const active = currentAskUserQuestionRequestRef.current;
+    sendPromptReply('question.reply', requestId, { rejected: true }, active?.sessionId, active?.tabId);
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
 
@@ -493,13 +544,14 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       return;
     }
     const sessionId = activeReq.sessionId ?? null;
-    sendBridgeEvent('permission_decision', JSON.stringify({
+    sendPermissionReply({
       channelId,
       sessionId,
+      tabId: activeReq.tabId,
       allow: false,
       remember: false,
       rejectMessage: t('permission.timedOut'),
-    }));
+    });
     sendInterrupt({ tabId: activeReq.tabId ?? null, sessionId });
     closePermissionCurrent();
   }, [closePermissionCurrent, t, forceClosePermissionDialog]);
@@ -513,7 +565,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
       return;
     }
     const sessionId = activeReq.sessionId ?? null;
-    sendBridgeEvent('ask_user_question_reject', JSON.stringify({ requestId, sessionId }));
+    sendPromptReply('question.reply', requestId, { rejected: true }, sessionId, activeReq.tabId);
     sendInterrupt({ tabId: activeReq.tabId ?? null, sessionId });
     closeQuestionCurrent();
   }, [closeQuestionCurrent, forceCloseAskUserQuestionDialog]);
@@ -566,12 +618,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
 
   // PlanApproval handlers
   const handlePlanApprovalApprove = useCallback((requestId: string, targetMode: string) => {
-    const payload = JSON.stringify({
-      requestId,
-      approved: true,
-      targetMode,
-    });
-    sendBridgeEvent('plan_approval_response', payload);
+    sendPromptReply('plan.reply', requestId, { approved: true, targetMode });
     planApprovalDialogOpenRef.current = false;
     currentPlanApprovalRequestRef.current = null;
     setPlanApprovalDialogOpen(false);
@@ -579,12 +626,7 @@ export function useDialogManagement({ t }: UseDialogManagementOptions): UseDialo
   }, []);
 
   const handlePlanApprovalReject = useCallback((requestId: string) => {
-    const payload = JSON.stringify({
-      requestId,
-      approved: false,
-      targetMode: 'default',
-    });
-    sendBridgeEvent('plan_approval_response', payload);
+    sendPromptReply('plan.reply', requestId, { approved: false, targetMode: 'default' });
     planApprovalDialogOpenRef.current = false;
     currentPlanApprovalRequestRef.current = null;
     setPlanApprovalDialogOpen(false);

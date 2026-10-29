@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A22：G8 数据面命名事件化完成；全量编译/测试复跑）
+> 最后更新：2026-10-29（P9-A24：提示答复 v2 + terminal error 语义提示完成；全量编译/测试复跑）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `3e166ea`。
@@ -27,11 +27,16 @@
   经 `TabEventRouter` 的 per-tab lane 广播；webview 按 `envelope.tabId` 写入对应 tab 的
   `messageStore` / tab 记录，只有活跃 tab 才触发 React 更新。`TabScopedSink` 的“后台丢弃 +
   切回整段回放”已删除。
+- **命令面 v2 对齐（本轮）**：`TabSessionCommandHandler` 的 core 方法名修正为
+  `opencode.fork` / `opencode.summarize` / `opencode.shareSession` / `opencode.unshareSession` /
+  `opencode.revert` / `opencode.unrevert`，并补齐 fork 目标 tab 绑定、revert 指针回写、
+  compact/share 结果事件；webview 的 fork/compact/revert/share/unshare 从 legacy
+  `*_session` 切换到 `sendHostCommand` / `sendSessionCommand`，结果走命名事件。
 - **验收门已全绿**：
   - `pnpm run compile` ✅（`tsc --noEmit` + `eslint src` + esbuild）；
   - `webview pnpm run build` ✅；
   - webview `vitest` **178 文件 / 1476 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅；
-  - 宿主 `pnpm test`（`pretest` 先清理 `out/`）**111 passing / 0 failing**。
+  - 宿主 `pnpm test`（`pretest` 先清理 `out/`）**119 passing / 0 failing**。
 - 整体完成度估算：宿主架构 ≈99%、webview 架构 ≈97%、14 项功能域 **14/14**、多视图一致性 ≈98%。
 ---
 
@@ -112,12 +117,12 @@
 | 10.4 | 模式列表 | ✅ | `store/agentStore` + `ModeSelect` + `modeColors`；`agents.list` → `AgentHandler.refresh`。**注意**：宿主不会在 `view.ready`/配置变更后主动推 `agents.updated`，只在 webview 请求时推（G15） |
 | 10.5 | 模型列表与置顶 | ✅ | idea `ModelSelect` 整份移植（长按 180ms 拖拽 + `writePinnedModelIds`）、`selectors.css`；保留 `useDropdownPosition` |
 | 10.6 | 推理力度 | ✅ | `reasoningUtils` + `types.getAvailableReasoningLevels` 均为 idea 版；`settings.reasoning` per tab |
-| 10.7 | 权限弹窗 | ✅ | `SessionCallbackAdapter` 盖 `tabId/sessionId`；`PromptRegistry` 登记/关 tab 拒绝；后台 tab 排队 + 角标。**残留**：`request.sessionId ?? getSession()` 仍在（`PermissionHandler.ts:107`），违反 §10.7 的"禁止 `?? getSession()`"（G11） |
+| 10.7 | 权限弹窗 | ✅ | `SessionCallbackAdapter` 盖 `tabId/sessionId`；`PromptRegistry` 登记/关 tab 拒绝；后台 tab 排队 + 角标；A24 起答复改走 v2 `permission.reply` / `question.reply` / `plan.reply`，`PermissionHandler` 校验 pending 的 tab/session 归属，过期或串 tab 的答复直接丢弃 |
 | 10.8 | 问题弹窗 | ✅ | 同一套归属；超时=拒绝+中断会话+关卡片；`questionAnswerStore` 按 `callId` 失效；答案卡 |
-| 10.9 | 状态面板三子页 | 🟡 | 展开/子页按 tab（`useTabBarState.statusPanelTab`）；`task`/`todos`/`files.undo` 按 tab；`resolveSubagentRunState` 统一。**缺口**：①`AgentGroupBlock` 展开详情走 `subagent.history`，宿主无 handler（G3）；②idea 的毛玻璃胶囊样式未移植（`StatusPanel.less` 仍是旧样式，视觉差异） |
+| 10.9 | 状态面板三子页 | ✅ | 展开/子页按 tab（`useTabBarState.statusPanelTab`）；`task`/`todos`/`files.undo` 按 tab；`resolveSubagentRunState` 统一；`subagent.history` 宿主 handler 已补（G3）；`StatusPanel.less` 与 idea 已逐字节一致（毛玻璃胶囊样式已移植） |
 | 10.10 | 添加附件 | ✅ | `TabAttachmentStore`（32MB、分块顺序、按 tab 落盘、关 tab `releaseTab`）；发送只带 `attachmentId`；切 tab 由 `tabDraftStore.attachments` + `useTabSessionBinder` 恢复。**待人工**：10MB 图片、粘贴/拖拽/选择三入口 |
 | 10.11 | 引用文件 `@` | ✅ | `files.list`（按目标 tab cwd）→ `files.listed`；`useFileTags.restoreFileTags` 切 tab 重建 chip |
-| 10.12 | 文件上下文 | 🟡 | `autoOpenFileEnabled` 三态 + `autoOpenFileEnabledResolver` 真正按 tab 注入（`OpenCodeSession.ts:170`）；`context.refresh` 已落 `TabSettings`。**缺口**：`contextEnabled` 只写不读（全仓无 `getContextEnabled`），关闭 Context Bar 不会阻止注入；`selection.clear` 时不清空已注入内容 |
+| 10.12 | 文件上下文 | ✅ | `autoOpenFileEnabled` 三态 + `autoOpenFileEnabledResolver` 按 tab 注入（`OpenCodeSession.ts:170`）；`context.refresh` 落 `TabSettings`；`ChatWindow.createSessionForTab` 注入 `contextEnabledResolver`，`OpenCodeSession` 发送前读取 `isContextEnabled()`，关闭 Context Bar 即停止注入活动文件/选区（显式 `@` 引用不受影响） |
 | 10.13 | bash `!` | ✅ | `TabSessionSendHandler` 的 `!cmd` 分支取目标 tab 的 cwd；legacy `SessionHandler` 保留兜底 |
 | 10.14 | opencode `/` | ✅ | `commands.refresh` 按 tab cwd + `slash.commands` 按 tab 投递 + 前端 `commandsByTab`；未知命令回退普通消息（`KnownCommands`）；`SHARE_MENU_ENABLED=false` |
 
@@ -134,7 +139,7 @@
 | **G5** | ✅ | 宿主测试被过期 `out/` 产物污染 | `package.json` 新增 `clean:out`，`pretest` 先清理再 `compile-tests`；宿主 108 passing / 0 failing |
 | **G6** | ✅ | §5.5 删除清单未清 | 删除 `skipNewSessionConfirm`（文件/偏好/设置开关/确认弹窗）、6 个分享死文案、`open_class`、legacy `send_message/send_message_with_attachments/interrupt_session` 兜底 |
 | **G7** | ✅ | tab 重命名不同步服务端标题 | 新增宿主 `session.rename`（`opencode.updateSessionTitle`）；`renameTab` 在有 sessionId 时发送 |
-| **G8** | ✅ | 数据面仍是投影式 legacy 通道 | `SessionCallbackAdapter` / `StreamMessageCoalescer` 全部改为命名 `TabEvent`；`TabEventRouter` 按 tab 分 lane；webview `streamingCallbacks` 注册 `content.delta`/`thinking.delta`/`message.snapshot`/`message.tail`/`turn.*`/`session.*`/`tab.state`/`message.error` 等 handler，后台 tab 写自己的 `messageStore` 与记录；`TabScopedSink` 已删除 |
+| **G8** | ✅ | 数据面仍是投影式 legacy 通道 / 命令面 v2 未对齐 | `SessionCallbackAdapter` / `StreamMessageCoalescer` 全部改为命名 `TabEvent`；`TabEventRouter` 按 tab 分 lane；webview `streamingCallbacks` 注册 `content.delta`/`thinking.delta`/`message.snapshot`/`message.tail`/`turn.*`/`session.*`/`tab.state`/`message.error` 等 handler，后台 tab 写自己的 `messageStore` 与记录；`TabScopedSink` 已删除。命令面：`fork`/`compact`/`share`/`revert` 改用 core 真实方法名，fork 目标 tab 由宿主绑定，webview 改发 v2 命令 |
 | **G9** | ✅ | §8.3 引擎 UI 缺失 | `StatusNoticeBar` 增加 engine 分支（`blocking`/`unknown` → 原因/版本 + 重新检测）；`EnvironmentTab` 增加引擎状态卡（状态/锁定/阻塞/CLI 版本/来源/路径/API 版本/原因） |
 | **G10** | ✅ | 护栏覆盖不足 | `multiSessionGuardrails.test.ts` 新增：`PermissionHandler` 禁止借用活跃会话、webview `bridge.ts` 禁止 legacy 发送 |
 | **G11** | ✅ | 命令/弹窗仍可回落活跃 tab | 缺 tabId 的 tab 级命令直接 `MISSING_TAB_ID`；`PermissionHandler` 去掉 `?? getSession()`，缺失身份仅记日志 |
@@ -183,7 +188,7 @@
 | `cd webview && pnpm run build`（tsc + vite + copy-dist） | ✅（9.72MB 单文件） |
 | `webview: npx vitest run` | ✅ **178 文件 / 1476 项**通过 |
 | `webview: tsc -p tsconfig.test.json --noEmit` | ✅ 0 错 |
-| `pnpm test`（宿主，`pretest` 先 `clean:out`） | ✅ **111 passing / 0 failing** |
+| `pnpm test`（宿主，`pretest` 先 `clean:out`） | ✅ **119 passing / 0 failing** |
 | `pnpm run unlink:core && pnpm run package` | ⬜ 未复跑（需网络） |
 
 **端到端手工项仍未做**：2 视图 + 3 tab + 2 并发流；关视图再开；关最后一个 tab；daemon 重启；v1/v2 各一遍；10MB 附件三入口。
@@ -205,6 +210,8 @@
 
 | 日期 | 变更 |
 |---|---|
+| 2026-10-29 | **P9-A24（本轮）**：①提示答复命令面 v2：webview 权限/提问/计划答复从 legacy `permission_decision` / `ask_user_question_*` / `plan_approval_response` 切到 `permission.reply` / `question.reply` / `plan.reply`；ChatWindow 注册三类命令并把 envelope sessionId 注入 payload，`PermissionHandler.handleReplyCommand` 校验 pending 的 tab/session，串 tab 的迟到答复拒绝。②移植 idea `StatusNoticeBar` 的 `turn.error` 终端提示：模块级 terminal error 缓冲、语义事件优先于 transcript error row、`noticeKeyFor` 按最新用户 prompt 锚定、server 文案/动作优先；`streamingCallbacks` 的 `turn.error` 同步喂给提示条。新增宿主 prompt 归属测试(3)、webview 提示条/回复命令测试。实跑：宿主 **119 passing**、webview **1483**、编译/构建 ✅。
+| 2026-10-29 | **P9-A23（本轮）**：命令面 v2 对齐。`TabSessionCommandHandler` 重写为 idea 语义：`opencode.fork`（原 `forkSession`）、`opencode.summarize`（原 `compact`）、`opencode.shareSession`/`unshareSession`、`opencode.revert`/`unrevert`；补 fork 目标 tab `bindForkedSession`、revert 指针解析与状态回写、share URL 解析、latest 用户消息解析（state → listMessages 兜底）；事件统一 `legacy:false` 并发布 `session.fork.bound`/`session.fork.failed`/`session.share.*`/`session.revert.failed`/`session.compact.*`。webview `App` 的 fork/compact/revert/share/unshare 改为 `sendHostCommand`/`sendSessionCommand`，新增命名结果 handler 与 `onForkBound` 目标 tab 打开。新增宿主 `tabSessionCommands`(5)。实跑：宿主 **116 passing**、webview **1476**、编译/构建 ✅。
 | 2026-10-29 | **P9-A22（本轮）**：G8 数据面重写完成。`SessionCallbackAdapter` / `StreamMessageCoalescer` 全部改为命名 `TabEvent`（`content.delta`、`thinking.delta`、`message.snapshot`、`message.tail`、`turn.started`、`turn.ended`、`session.loading`、`session.bound`、`session.cleared`、`session.loaded`、`tab.state`、`message.error` 等），带 `tabId`/`sessionId`/`turnId`/`seq`，经 `TabEventRouter` per-tab lane 广播；webview 按 `envelope.tabId` 写 `TabMessageStore` / tab 记录，仅活跃 tab 更新 React。删除 `TabScopedSink` 及其后台丢弃逻辑；`replayTab` / `handleDaemonDied` / `resetSession` / `restoreMessages` / 附件与发送错误均改为命名事件。新增宿主 `tabDataPlaneEvents`(3) 与 `tabDataPlaneWiring`(1)、前端 `useWindowCallbacks` 后台路由(4)。实跑：宿主 **111 passing**、webview **1476**、编译/构建 ✅。
 | 2026-10-29 | **P9-A21（本轮）**：按 A20 审计结果收口，除 G8 外全部修复。
 <br>① **多视图（G1/G2/G12）**：webview 接线 `tab.created/closed/activated/reordered/draft.changed`、`prompt.host.changed`、`view.navigate`，发送 `view.ready/focus/navigate`、`tab.reorder`、300ms 防抖的 `tab.draft.changed`（带 `sourceViewId` 回声抑制）；`selectTab` 增加 `fromHost` 模式；关闭活跃 tab 不再预选邻居；宿主 `tab.activated` 回放延后一拍，避免快照先于切换到达。删除 `TabStatusStore`，切 tab 状态写回 tab 记录。标签栏补 `role=tablist/tab`、Alt+T/W/1-9/←→、F2/Delete。

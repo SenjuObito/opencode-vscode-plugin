@@ -16,6 +16,7 @@ import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstructi
 import { isTabTransitioning, activeTabId } from '../tabTransition';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { parseTaskNotification } from '../../../utils/taskEventParser';
+import { onTerminalErrorFromHost } from '../../../components/StatusNoticeBar';
 import type { HostEventEnvelope } from '../../../utils/hostEventTypes';
 import {
   appendDeltaToTab,
@@ -1000,6 +1001,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     'turn.error': (payload: unknown, env?: HostEventEnvelope) => {
       const error = String(payloadOf(payload).error ?? '');
       if (!error) return;
+      // The semantic event is the authoritative terminal notice: a transcript
+      // snapshot can shrink while a turn settles and drop the error row.
+      onTerminalErrorFromHost({ error }, env);
       if (updateBackgroundTab(env, (tab) => { tab.status = `Error: ${error}`; })) return;
       window.updateStatus?.(`Error: ${error}`);
     },
