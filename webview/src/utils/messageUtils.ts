@@ -20,6 +20,7 @@ import {
 import type { CompactNotificationItem } from '../types';
 import { MESSAGE_MERGE_CACHE_LIMIT } from './messageMergeCache';
 import { clearStaleStreamEndedMarker, hasRecentlyEndedTurnId } from './streamMarkers';
+import { isToolResultOnlyUserMessage } from './turnScope';
 
 // ---------------------------------------------------------------------------
 // Re-exports — keep messageUtils.ts as the public barrel so existing imports
@@ -174,6 +175,37 @@ function hasOriginField(raw: unknown): raw is { origin: { kind: string } } {
   if (!origin || typeof origin !== 'object') return false;
   const o = origin as Record<string, unknown>;
   return typeof o.kind === 'string';
+}
+
+/**
+ * Whether a user row is a real human prompt rather than a tool_result carrier
+ * or a synthetic/task-notification row. The anchor rail and pagination both
+ * need this so tool plumbing never becomes a navigation anchor.
+ */
+export function isHumanUserMessage(message: ClaudeMessage): boolean {
+  if (message.type !== 'user') return false;
+  if (isToolResultOnlyUserMessage(message)) return false;
+
+  const raw = typeof message.raw === 'object' && message.raw !== null
+    ? (message.raw as Record<string, unknown>)
+    : null;
+  if (raw?.synthetic === true) return false;
+
+  const contentStr = typeof message.content === 'string' ? message.content : '';
+  if (contentStr === '[tool_result]' || contentStr.includes('<task-notification>')) return false;
+
+  const nestedMessage = raw?.message && typeof raw.message === 'object'
+    ? (raw.message as Record<string, unknown>)
+    : undefined;
+  const rawContent = raw?.content ?? nestedMessage?.content;
+  if (Array.isArray(rawContent)) {
+    if (rawContent.length === 0) return Boolean(contentStr.trim());
+    return rawContent.some((block) => {
+      if (!block || typeof block !== 'object') return false;
+      return (block as { type?: string }).type !== 'tool_result';
+    });
+  }
+  return true;
 }
 
 /**

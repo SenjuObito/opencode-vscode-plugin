@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A24：提示答复 v2 + terminal error 语义提示完成；全量编译/测试复跑）
+> 最后更新：2026-10-29（P9-A25：历史深度刷新、生成指示器与若干 UI 对齐；全量编译/测试复跑）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `3e166ea`。
@@ -210,6 +210,7 @@
 
 | 日期 | 变更 |
 |---|---|
+| 2026-10-29 | **P9-A25（本轮）**：按文件从 idea 同步剩余 UI/交互：①历史页“深度搜索”刷新按钮（`HistoryActions` + `HistoryView` 30s 超时/自动收尾；宿主 `HistoryHandler` 接收 `history.deepSearch` / `deep_search_history` 并重载列表）；②Shift+Tab 改为循环宿主推送的全部 primary agent（`getNextPrimaryMode`），不再写死 Build/Plan；③生成指示器按整个 turn（`loading || streamingActive`）显示，避免 `loading=false` 时流式输出被隐藏；④`CompactSummaryBlock` 换成 idea 的紧凑胶囊样式；⑤锚点栏过滤 tool_result/合成用户消息，单条用户消息也显示锚点；⑥工具块以 `result.is_error` 为准，denied 仅在无结果时作为错误态；⑦模型选择器支持 `provider/model` 后缀匹配、默认模型回退与 `opencode-default` 立即纠偏。新增/更新前端测试（历史深度刷新、Shift+Tab、等待指示器、锚点/消息工具函数、工具块、模型纠偏）。实跑：宿主 **119 passing**、webview **1488**、编译/构建 ✅。
 | 2026-10-29 | **P9-A24（本轮）**：①提示答复命令面 v2：webview 权限/提问/计划答复从 legacy `permission_decision` / `ask_user_question_*` / `plan_approval_response` 切到 `permission.reply` / `question.reply` / `plan.reply`；ChatWindow 注册三类命令并把 envelope sessionId 注入 payload，`PermissionHandler.handleReplyCommand` 校验 pending 的 tab/session，串 tab 的迟到答复拒绝。②移植 idea `StatusNoticeBar` 的 `turn.error` 终端提示：模块级 terminal error 缓冲、语义事件优先于 transcript error row、`noticeKeyFor` 按最新用户 prompt 锚定、server 文案/动作优先；`streamingCallbacks` 的 `turn.error` 同步喂给提示条。新增宿主 prompt 归属测试(3)、webview 提示条/回复命令测试。实跑：宿主 **119 passing**、webview **1483**、编译/构建 ✅。
 | 2026-10-29 | **P9-A23（本轮）**：命令面 v2 对齐。`TabSessionCommandHandler` 重写为 idea 语义：`opencode.fork`（原 `forkSession`）、`opencode.summarize`（原 `compact`）、`opencode.shareSession`/`unshareSession`、`opencode.revert`/`unrevert`；补 fork 目标 tab `bindForkedSession`、revert 指针解析与状态回写、share URL 解析、latest 用户消息解析（state → listMessages 兜底）；事件统一 `legacy:false` 并发布 `session.fork.bound`/`session.fork.failed`/`session.share.*`/`session.revert.failed`/`session.compact.*`。webview `App` 的 fork/compact/revert/share/unshare 改为 `sendHostCommand`/`sendSessionCommand`，新增命名结果 handler 与 `onForkBound` 目标 tab 打开。新增宿主 `tabSessionCommands`(5)。实跑：宿主 **116 passing**、webview **1476**、编译/构建 ✅。
 | 2026-10-29 | **P9-A22（本轮）**：G8 数据面重写完成。`SessionCallbackAdapter` / `StreamMessageCoalescer` 全部改为命名 `TabEvent`（`content.delta`、`thinking.delta`、`message.snapshot`、`message.tail`、`turn.started`、`turn.ended`、`session.loading`、`session.bound`、`session.cleared`、`session.loaded`、`tab.state`、`message.error` 等），带 `tabId`/`sessionId`/`turnId`/`seq`，经 `TabEventRouter` per-tab lane 广播；webview 按 `envelope.tabId` 写 `TabMessageStore` / tab 记录，仅活跃 tab 更新 React。删除 `TabScopedSink` 及其后台丢弃逻辑；`replayTab` / `handleDaemonDied` / `resetSession` / `restoreMessages` / 附件与发送错误均改为命名事件。新增宿主 `tabDataPlaneEvents`(3) 与 `tabDataPlaneWiring`(1)、前端 `useWindowCallbacks` 后台路由(4)。实跑：宿主 **111 passing**、webview **1476**、编译/构建 ✅。

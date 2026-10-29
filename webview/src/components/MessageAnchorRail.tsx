@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClaudeMessage } from '../types';
 import { getLogicalOffsetTop } from '../utils/viewport';
+import { isHumanUserMessage } from '../utils/messageUtils';
 
 interface AnchorItem {
   id: string;
@@ -88,11 +89,11 @@ export const MessageAnchorRail = memo(function MessageAnchorRail({
   // Compute anchor items from visible user messages only (skip collapsed ones)
   const anchors = useMemo<AnchorItem[]>(() => {
     const userMessages: AnchorItem[] = [];
-    const startIndex = collapsedCount;
+    const startIndex = (collapsedCount > 0 && collapsedCount < messages.length) ? collapsedCount : 0;
     for (let i = startIndex; i < messages.length; i++) {
       const message = messages[i];
       const messageKey = messageKeys[i];
-      if (message?.type === 'user' && messageKey) {
+      if (message && isHumanUserMessage(message) && messageKey) {
         userMessages.push({
           id: messageKey,
           position: 0,
@@ -100,8 +101,16 @@ export const MessageAnchorRail = memo(function MessageAnchorRail({
         });
       }
     }
-    // Guard: also prevents division by zero in the position calculation below
-    if (userMessages.length <= 1) return [];
+    if (userMessages.length === 0) return [];
+    if (messages.length <= 1) return [];
+    if (userMessages.length === 1) {
+      const targetId = userMessages[0].id;
+      const originalIdx = messageKeys.indexOf(targetId);
+      const ratio = originalIdx >= 0 && messages.length > 1
+        ? originalIdx / (messages.length - 1)
+        : 0;
+      return [{ ...userMessages[0], position: 0.04 + ratio * 0.92 }];
+    }
     // Keep the rail usable for long conversations by sampling evenly across the
     // full message range while retaining the first and last user messages.
     const visibleMessages = sampleAnchorItems(userMessages);

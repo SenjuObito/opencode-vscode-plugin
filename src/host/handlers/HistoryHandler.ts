@@ -26,6 +26,8 @@ import {
 
 const SUPPORTED_TYPES = [
 	'load_history_data',
+	'history.deepSearch',
+	'deep_search_history',
 	'load_session',
 	'delete_session',
 	'delete_sessions',

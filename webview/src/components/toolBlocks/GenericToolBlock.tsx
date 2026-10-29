@@ -249,12 +249,14 @@ const GenericToolBlock = memo(function GenericToolBlock({ name, input, result, t
 
   // Determine tool call status based on result
   // If denied, treat as completed (show error state)
-  const isCompleted = (result !== undefined && result !== null) || isDenied;
+  const hasResult = result !== undefined && result !== null;
+  const isCompleted = hasResult || isDenied;
   // AskUserQuestion tool should never show as error - it's a user interaction tool
   // The is_error field may be set by SDK but it doesn't indicate a real error
   const isAskUserQuestion = lowerName === 'askuserquestion' || lowerName === 'question';
-  // If denied, show as error state
-  const isError = isDenied || (isCompleted && result?.is_error === true && !isAskUserQuestion);
+  // A result is authoritative; only a denied/interrupted block without one
+  // uses the denied flag as its error state.
+  const isError = hasResult ? (result.is_error === true && !isAskUserQuestion) : isDenied;
 
   if (!input) {
     return null;

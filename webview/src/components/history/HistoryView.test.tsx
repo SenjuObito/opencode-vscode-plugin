@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HistoryData } from '../../types';
 import HistoryView from './HistoryView';
+import { sendWindowCommand } from '../../utils/bridge';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -25,6 +26,7 @@ vi.mock('react-i18next', () => ({
         'history.retry': 'Retry',
         'history.loading': 'Loading history...',
         'history.loadFailed': 'Failed to load history',
+        'history.deepSearchTooltip': 'Deep search',
         'history.favoriteSession': 'Favorite session',
         'history.unfavoriteSession': 'Unfavorite session',
         'common.cancel': 'Cancel',
@@ -41,6 +43,7 @@ vi.mock('../shared/ProviderModelIcon', () => ({
 
 vi.mock('../../utils/bridge', () => ({
   sendBridgeEvent: vi.fn(),
+  sendWindowCommand: vi.fn(() => true),
 }));
 
 vi.mock('../../utils/copyUtils', () => ({
@@ -142,6 +145,42 @@ describe('HistoryView favorite visibility', () => {
 
     expect(favoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(true);
     expect(unfavoritedButton.closest('.history-action-buttons')?.classList.contains('has-favorite')).toBe(false);
+  });
+});
+
+describe('HistoryView deep search', () => {
+  it('asks the host for a full reload and stops the spinner when data arrives', () => {
+    const { rerender } = render(
+      <HistoryView
+        historyData={historyData}
+        onLoadSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onDeleteSessions={vi.fn()}
+        onExportSession={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onUpdateTitle={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: 'Deep search' });
+    fireEvent.click(button);
+
+    expect(sendWindowCommand).toHaveBeenCalledWith('history.deepSearch');
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+
+    rerender(
+      <HistoryView
+        historyData={{ ...historyData, sessions: [...historyData.sessions!] }}
+        onLoadSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onDeleteSessions={vi.fn()}
+        onExportSession={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onUpdateTitle={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByRole('button', { name: 'Deep search' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

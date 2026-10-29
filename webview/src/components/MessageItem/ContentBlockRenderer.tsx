@@ -116,49 +116,51 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
   const meta = block.metadata;
   const hasCountMeta = meta && typeof meta.messagesSummarized === 'number';
   const compactionStats = meta ? formatCompactionStats(meta) : null;
-  const hasMeta = hasCountMeta || compactionStats;
-  const titleText = t(block.title);
   const toggleLabel = expanded ? t('chat.compactSummary.collapse') : t('chat.compactSummary.expand');
 
   return (
-    <div className="compact-summary-block">
+    <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
       <div
-        className="compact-summary-title"
+        className="compact-card compact-card--compact-pill compact-card--success"
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        aria-label={`${titleText} — ${toggleLabel}`}
-        onClick={toggleExpanded}
-        onKeyDown={onKeyDown}
+        aria-label={`${t('chat.compactSuccess')} — ${toggleLabel}`}
+        onClick={block.content ? toggleExpanded : undefined}
+        onKeyDown={block.content ? onKeyDown : undefined}
+        style={{ cursor: block.content ? 'pointer' : 'default' }}
       >
-        <span className="compact-summary-icon" aria-hidden="true">●</span>
-        <span className="compact-summary-title-text">{titleText}</span>
-        <span className="compact-summary-toggle" aria-hidden="true">{expanded ? '▼' : '▶'}</span>
+        <i className="codicon codicon-check compact-card__pill-icon" />
+        <span className="compact-card__pill-title">{t('chat.compactSuccess')}</span>
+        {hasCountMeta && (
+          <span className="compact-card__pill-detail">
+            {`— ${t(
+              meta.direction === 'from'
+                ? 'chat.compactSummary.messagesFrom'
+                : 'chat.compactSummary.messagesUpTo',
+              { count: meta.messagesSummarized },
+            )}`}
+          </span>
+        )}
+        {compactionStats && (
+          <span className="compact-card__pill-detail">
+            {`· ${compactionStats}`}
+          </span>
+        )}
+        {meta?.userContext && meta.userContext !== block.content && (
+          <span className="compact-card__pill-detail">
+            {`(${meta.userContext})`}
+          </span>
+        )}
+        {block.content && (
+          <span
+            className={`codicon ${expanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`}
+            style={{ marginLeft: 'auto', fontSize: '11px', opacity: 0.7 }}
+          />
+        )}
       </div>
-      {hasMeta && (
-        <div className="compact-summary-metadata">
-          {hasCountMeta && (
-            <span className="compact-summary-meta-count">
-              {t(
-                meta.direction === 'from'
-                  ? 'chat.compactSummary.messagesFrom'
-                  : 'chat.compactSummary.messagesUpTo',
-                { count: meta.messagesSummarized },
-              )}
-            </span>
-          )}
-          {compactionStats && (
-            <span className="compact-summary-meta-count">{compactionStats}</span>
-          )}
-          {meta?.userContext && (
-            <span className="compact-summary-meta-context">
-              {t('chat.compactSummary.userContext', { context: meta.userContext })}
-            </span>
-          )}
-        </div>
-      )}
       {expanded && block.content && (
-        <div className="compact-summary-content">
+        <div className="compact-summary-content" style={{ marginTop: '4px', width: '100%' }}>
           <MarkdownBlock content={block.content} />
         </div>
       )}

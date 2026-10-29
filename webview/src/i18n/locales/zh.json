@@ -841,6 +841,7 @@
     "deleteMessage": "确定要删除这个会话吗?此操作无法撤销。",
     "deleteSession": "删除此会话",
     "selectMode": "多选",
+    "deepSearchTooltip": "深度搜索（清空缓存后重新加载）",
     "exitSelectMode": "退出多选",
     "selectedSessions": "已选择 {{count}} 个会话",
     "selectAll": "全选",

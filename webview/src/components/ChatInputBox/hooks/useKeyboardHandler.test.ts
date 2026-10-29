@@ -1,6 +1,11 @@
 import { renderHook } from '@testing-library/react';
 import type React from 'react';
 import { useKeyboardHandler } from './useKeyboardHandler.js';
+import { getNextPrimaryMode } from '../providers/agentProvider';
+
+vi.mock('../providers/agentProvider', () => ({
+  getNextPrimaryMode: vi.fn(() => 'plan'),
+}));
 
 function reactKeyEvent({
   key,
@@ -58,6 +63,36 @@ describe('useKeyboardHandler', () => {
     expect(submittedOnEnterRef.current).toBe(true);
   });
 
+
+  it('cycles the live primary agents on Shift+Tab', () => {
+    const onModeSelect = vi.fn();
+    const { result } = renderHook(() =>
+      useKeyboardHandler({
+        isComposingRef: { current: false },
+        lastCompositionEndTimeRef: { current: Date.now() - 1000 },
+        sendShortcut: 'enter',
+        daemonStatusLoaded: true,
+        sdkInstalled: true,
+        fileCompletion: { isOpen: false, handleKeyDown: vi.fn(() => false) },
+        commandCompletion: { isOpen: false, handleKeyDown: vi.fn(() => false) },
+        dollarCommandCompletion: { isOpen: false, handleKeyDown: vi.fn(() => false) },
+        handleMacCursorMovement: vi.fn(() => false),
+        handleHistoryKeyDown: vi.fn(() => false),
+        completionSelectedRef: { current: false },
+        submittedOnEnterRef: { current: false },
+        handleSubmit: vi.fn(),
+        onModeSelect,
+        permissionMode: 'build',
+      })
+    );
+
+    const e = reactKeyEvent({ key: 'Tab', shiftKey: true });
+    result.current.onKeyDown(e);
+
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(getNextPrimaryMode).toHaveBeenCalledWith('build');
+    expect(onModeSelect).toHaveBeenCalledWith('plan');
+  });
 
   it('resets submit refs on key up', () => {
     const handleSubmit = vi.fn();

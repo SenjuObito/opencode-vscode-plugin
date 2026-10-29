@@ -19,7 +19,7 @@ export const ButtonArea = ({
   selectedModel = OPENCODE_DEFAULT_MODEL_ID,
   permissionMode = 'default',
   currentProvider = 'opencode',
-  reasoningEffort = 'medium',
+  reasoningEffort = 'default',
   onSubmit,
   onStop,
   onModeSelect,
@@ -39,7 +39,11 @@ export const ButtonArea = ({
   }, [currentProvider, cliModels, cliCatalogHasEntries]);
 
   // 所选模型的 opencode variants（推理力度档位）。
-  const selectedModelInfo = availableModels.find((m) => m.id === selectedModel);
+  const selectedModelInfo = availableModels.find(
+    (m) => m.id === selectedModel
+      || m.id.endsWith('/' + selectedModel)
+      || selectedModel.endsWith('/' + m.id),
+  );
   const availableReasoningLevels = getAvailableReasoningLevels(
     currentProvider,
     selectedModel,
@@ -85,7 +89,12 @@ export const ButtonArea = ({
     if (!availableModels.length || !onModelSelect) return;
     const exists = availableModels.some((model) => model.id === selectedModel);
     if (!exists) {
-      const fallbackId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel) ?? availableModels[0].id;
+      const fallbackId = getFirstPreferredModelId(currentProvider, availableModels, cliDefaultModel)
+        ?? (cliDefaultModel ?? availableModels[0].id);
+      if (selectedModel === 'opencode-default' || !selectedModel) {
+        onModelSelect(fallbackId);
+        return;
+      }
       const timer = window.setTimeout(() => {
         // Re-check against the *latest* state at fire time.
         const { models, selectedModel: currentSelection } = latestCatalogRef.current;

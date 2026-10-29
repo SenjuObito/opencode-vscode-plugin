@@ -159,6 +159,30 @@ function renderList(messages: ClaudeMessage[]) {
   );
 }
 
+describe('MessageList generating indicator', () => {
+  it('stays visible while the stream is active even when loading is false', () => {
+    const endRef = createRef<HTMLDivElement>();
+    render(
+      <MessageList
+        messages={makeMessages(2)}
+        messageKeys={keysFor(makeMessages(2))}
+        streamingActive
+        isThinking={false}
+        loading={false}
+        loadingStartTime={null}
+        t={t}
+        getMessageText={noopGetText}
+        getContentBlocks={noopGetBlocks}
+        findToolResult={noopFindToolResult}
+        extractMarkdownContent={noopExtractMd}
+        messagesEndRef={endRef}
+      />,
+    );
+
+    expect(screen.getByTestId('waiting-indicator')).toBeTruthy();
+  });
+});
+
 describe('MessageList paged collapse', () => {
   beforeEach(() => {
     vi.useFakeTimers();

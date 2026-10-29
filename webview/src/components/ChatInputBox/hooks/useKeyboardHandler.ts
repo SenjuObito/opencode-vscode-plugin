@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MutableRefObject } from 'react';
 import type { PermissionMode } from '../types';
+import { getNextPrimaryMode } from '../providers/agentProvider';
 
 interface CompletionWithKeyDown {
   isOpen: boolean;
@@ -35,7 +36,7 @@ export interface UseKeyboardHandlerOptions {
   completionSelectedRef: MutableRefObject<boolean>;
   submittedOnEnterRef: MutableRefObject<boolean>;
   handleSubmit: () => void;
-  /** Shift+Tab toggles between default (Build) and plan modes */
+  /** Shift+Tab cycles through the live primary agents (build/plan/custom). */
   onModeSelect?: (mode: PermissionMode) => void;
   permissionMode?: PermissionMode;
 }
@@ -69,11 +70,12 @@ export function useKeyboardHandler({
 }: UseKeyboardHandlerOptions) {
   const onKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      // Handle Shift+Tab for mode switching
+      // Handle Shift+Tab for mode switching. Cycle the live primary-agent list
+      // (build → plan → custom agents → build), not a hardcoded pair.
       if (e.key === 'Tab' && e.shiftKey) {
         if (onModeSelect) {
           e.preventDefault();
-          onModeSelect(permissionMode === 'plan' ? 'default' : 'plan');
+          onModeSelect(getNextPrimaryMode(permissionMode));
         }
         return;
       }

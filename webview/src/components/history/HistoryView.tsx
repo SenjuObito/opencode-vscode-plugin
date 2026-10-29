@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HistoryData, HistorySessionSummary } from '../../types';
 import VirtualList from './VirtualList';
+import { sendWindowCommand } from '../../utils/bridge';
 import { copyToClipboard } from '../../utils/copyUtils';
 import { HistoryListItem, stopPropagationHandler } from './HistoryListItem';
 import { HistoryFilters } from './HistoryFilters';
 import { HistoryActions } from './HistoryActions';
 
 // Deep search timeout (milliseconds)
+const DEEP_SEARCH_TIMEOUT_MS = 30000;
 
 const ROOT_STYLE: React.CSSProperties = {
   height: '100%',
@@ -122,6 +124,8 @@ const HistoryView = ({ historyData, onLoadSession, onDeleteSession, onDeleteSess
   const [searchQuery, setSearchQuery] = useState(''); // Actual search keyword (debounced)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null); // Session ID being edited
   const [editingTitle, setEditingTitle] = useState(''); // Title content being edited
+  const [isDeepSearching, setIsDeepSearching] = useState(false);
+  const deepSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Copy status timeout timer
   const [copiedSessionId, setCopiedSessionId] = useState<string | null>(null); // Track which session ID was copied
   const [copyFailedSessionId, setCopyFailedSessionId] = useState<string | null>(null); // Track which session ID copy failed
@@ -365,6 +369,38 @@ const HistoryView = ({ historyData, onLoadSession, onDeleteSession, onDeleteSess
     }, 2000);
   }, []);
 
+  // A new history payload (or a failed one) ends the refresh spinner. Depend on
+  // the stable content fields so an unchanged list refresh still clears it.
+  useEffect(() => {
+    if (!historyData) return;
+    if (deepSearchTimeoutRef.current) {
+      clearTimeout(deepSearchTimeoutRef.current);
+      deepSearchTimeoutRef.current = null;
+    }
+    setIsDeepSearching(false);
+  }, [historyData?.success, historyData?.total, historyData?.sessions]);
+
+  useEffect(() => () => {
+    if (deepSearchTimeoutRef.current) {
+      clearTimeout(deepSearchTimeoutRef.current);
+    }
+  }, []);
+
+  const handleDeepSearch = useCallback(() => {
+    setIsDeepSearching((prev) => {
+      if (prev) return prev;
+      sendWindowCommand('history.deepSearch');
+      if (deepSearchTimeoutRef.current) {
+        clearTimeout(deepSearchTimeoutRef.current);
+      }
+      deepSearchTimeoutRef.current = setTimeout(() => {
+        setIsDeepSearching(false);
+        deepSearchTimeoutRef.current = null;
+      }, DEEP_SEARCH_TIMEOUT_MS);
+      return true;
+    });
+  }, []);
+
   const handleItemClick = useCallback((session: HistorySessionSummary, isEditing: boolean) => {
     if (isSelectionMode) {
       toggleSessionSelection(session.sessionId);
@@ -519,11 +555,13 @@ const HistoryView = ({ historyData, onLoadSession, onDeleteSession, onDeleteSess
             selectedCount={selectedCount}
             visibleCount={sessions.length}
             allVisibleSelected={allVisibleSelected}
+            isDeepSearching={isDeepSearching}
             t={t}
             onEnterSelectionMode={enterSelectionMode}
             onExitSelectionMode={exitSelectionMode}
             onToggleSelectAllVisible={toggleSelectAllVisible}
             onStartDeleteSelected={handleStartDeleteSelected}
+            onDeepSearch={handleDeepSearch}
           />
         </div>
         {!isSelectionMode && (

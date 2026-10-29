@@ -13,6 +13,7 @@ import {
   hasCommandMessageTag,
   hasTaskNotificationTag,
   isTaskNotificationOnlyMessage,
+  isHumanUserMessage,
   isPlaceholderMessageContent,
   isSyntheticToolMessageContent,
   hasNonHumanOrigin,
@@ -1486,5 +1487,31 @@ describe('applyMessagesRemoved', () => {
     const list = [kept('a'), withRawId('b'), withRawUuid('c'), kept('d')];
     const next = applyMessagesRemoved(list, ['a', 'b', 'c']);
     expect(next).toEqual([kept('d')]);
+  });
+});
+
+
+describe('isHumanUserMessage', () => {
+  it('accepts a real human prompt', () => {
+    expect(isHumanUserMessage({ type: 'user', content: 'hello' } as any)).toBe(true);
+  });
+
+  it('rejects tool-result carries, synthetic rows and task notifications', () => {
+    expect(isHumanUserMessage({ type: 'user', content: '[tool_result]' } as any)).toBe(false);
+    expect(isHumanUserMessage({
+      type: 'user',
+      content: 'x',
+      raw: { synthetic: true },
+    } as any)).toBe(false);
+    expect(isHumanUserMessage({
+      type: 'user',
+      content: '<task-notification>x</task-notification>',
+    } as any)).toBe(false);
+    expect(isHumanUserMessage({
+      type: 'user',
+      content: 'x',
+      raw: { content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }] },
+    } as any)).toBe(false);
+    expect(isHumanUserMessage({ type: 'assistant', content: 'x' } as any)).toBe(false);
   });
 });

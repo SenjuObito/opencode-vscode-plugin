@@ -6,11 +6,13 @@ export interface HistoryActionsProps {
   selectedCount: number;
   visibleCount: number;
   allVisibleSelected: boolean;
+  isDeepSearching: boolean;
   t: TFunction;
   onEnterSelectionMode: () => void;
   onExitSelectionMode: () => void;
   onToggleSelectAllVisible: () => void;
   onStartDeleteSelected: () => void;
+  onDeepSearch: () => void;
 }
 
 export const HistoryActions = memo(({
@@ -18,11 +20,13 @@ export const HistoryActions = memo(({
   selectedCount,
   visibleCount,
   allVisibleSelected,
+  isDeepSearching,
   t,
   onEnterSelectionMode,
   onExitSelectionMode,
   onToggleSelectAllVisible,
   onStartDeleteSelected,
+  onDeepSearch,
 }: HistoryActionsProps) => {
   if (isSelectionMode) {
     return (
@@ -69,6 +73,15 @@ export const HistoryActions = memo(({
       >
         <span className="codicon codicon-checklist"></span>
         <span>{t('history.selectMode')}</span>
+      </button>
+      <button
+        className={`history-deep-search-btn ${isDeepSearching ? 'searching' : ''}`}
+        onClick={onDeepSearch}
+        disabled={isDeepSearching}
+        title={t('history.deepSearchTooltip')}
+        aria-label={t('history.deepSearchTooltip')}
+      >
+        <span className={`codicon ${isDeepSearching ? 'codicon-sync codicon-modifier-spin' : 'codicon-refresh'}`}></span>
       </button>
     </div>
   );
