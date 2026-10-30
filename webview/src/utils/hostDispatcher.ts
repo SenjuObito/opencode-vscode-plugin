@@ -22,6 +22,7 @@ interface HostEnvelope {
   v?: number;
   type?: string;
   tabId?: string;
+  sessionId?: string;
   epoch?: number;
   /** Positional args, or a named payload object (`TabEvent`). */
   payload?: { args?: unknown[] } | unknown[] | Record<string, unknown>;

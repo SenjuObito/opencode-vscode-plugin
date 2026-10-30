@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-30（P9-A32：宿主命令面按 IDEA 架构完成窗口级迁移：固定 bootstrap `tab-1`、`session.*` 交给窗口 dispatcher、删除 tab 自动补建与命令白名单；双端全量测试 100% 通过）
+> 最后更新：2026-10-30（P9-A36：权限弹窗删除全局 LESS 里的旧 v3 副本，边框/圆角恢复四边一致；双端全量测试 100% 通过）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `ea954a3`。
@@ -132,7 +132,37 @@
 
 | 日期 | 变更 |
 |---|---|
-| 2026-10-30 | **P9-A32（本轮）**：**宿主命令面完成 IDEA 式窗口级迁移，彻底移除旧 vscode 混合命令框架胶水**：
+| 2026-10-30 | **P9-A36（本轮）**：**权限弹窗边框/圆角修复（双端同步）**：
+1. **现象**：权限弹窗左上圆角、右侧边框缺失、左下/右下直角，右边和下边没有边框；30 秒警告描边也缺下半圈。
+2. **根因**：`styles/less/components/permission.less` 里残留了整段旧版 `.permission-dialog-v3*` 样式（`border-radius: 12px 12px 0 0; width: 100%`）。生产包里全局 LESS 排在组件 `PermissionDialog.css` 之后，同优先级覆盖了新的 `8px` 圆角与 `width: auto`；旧副本没写 `margin`，组件里的 `margin: 0 8px 8px` 仍生效，总宽变成容器 +16px，右侧被视口裁掉，于是只剩左上圆角和顶边。
+3. **单一来源**：删除全局 LESS 中整段 v3 旧规则（含 `@media`），只保留 `.permission-dialog-overlay` 与共享 `.countdown-timer`；v3 样式统一由 `components/PermissionDialog.css` 提供。
+4. **四边边框**：`border-top` 改为完整 `border: 1px solid var(--border-secondary)`，保留 `border-radius: 8px`、`width: auto`、`margin: 0 8px 8px`，与问题弹窗几何一致。
+5. **警告态**：去掉 `::after` 内描边（它会继承被覆盖的圆角），改为和问题弹窗同一套 `border-color: var(--text-warning)` + `0 0 0 1px` 外圈，四边视觉 2px、四角圆角一致。
+6. **验证**：`opencode-vscode-plugin` webview **178 文件 / 1505 项**、`opencode-idea-gui` **182 文件 / 1605 项** 全绿；两端 `tsc + vite build` 通过，并 grep 产物确认 `.permission-dialog-v3` 只剩组件 CSS 一份（`border-radius:8px; width:auto; margin:0 8px 8px`）。 |
+| 2026-10-30 | **P9-A35（本轮）**：**弹窗归属改为「tab 记录即队列」（方案 B，双端同步）**：
+1. **现象**：切到设置页 / 历史页时权限、问题弹窗仍浮在上面；后台 tab 的弹窗与前台弹窗各存一份，切换时靠 `window.__dialogStore` 快照/恢复，容易漏、容易重复。
+2. **单一队列**：`useDialogManagement` 不再维护 `current*/pending*` 本地状态，改为用 `useSyncExternalStore` 订阅 `tabStore`，把**当前活跃 tab** 的 `pendingPermissions` / `pendingQuestions` / `pendingPlans` 投影为 `current*`（队首）与 `pending*`（其余）；答复 / 关闭直接改写所属 tab 的记录。
+3. **投递归位**：`permissionCallbacks` 不再按 `isActiveTab` 分流入队，只做「解析 + 交给 `open*Dialog`」；归属（`tabId`，其次 `sessionId`）统一由对话框层解析，找不到归属 tab 时落到当前 tab（绝不丢弃）。
+4. **删除快照胶水**：移除 `TabPromptStore`、`window.__dialogStore`、`useTabSessionBinder` / `useTabLifecycle` 里的 prompt 捕获与恢复；切 tab 只是投影换一条记录，不再复制。
+5. **视图门控**：`App.tsx` 向 `AppDialogs` 传 `promptsVisible={currentView === 'chat'}`，设置页 / 历史页不渲染弹窗（倒计时随之暂停）；请求仍留在 tab 上，回到聊天页继续显示。
+6. **角标**：活跃 tab 正在显示弹窗时不再重复点亮「等待操作」角标；非 prompt-host 视图（VS Code 多视图）仍保留角标作为唯一提示。
+7. **验证**：`opencode-vscode-plugin` 宿主 **127 passing**、webview **178 文件 / 1505 项**；`opencode-idea-gui` webview **181 文件 / 1604 项**；两端 `tsc + vite build` 全绿。 |
+| 2026-10-30 | **P9-A34（本轮）**：**取消 / 超时不再弹错误 toast，答复竞态按 idea 静默收尾**：
+1. **现象**：问题弹窗超时（或点取消）后，服务端早已把 form settled / 回合已 abort，`opencode.rejectQuestion` 返回 `409 FormAlreadySettledError`；宿主据此弹 `跳过问题失败: daemon rejected`，用户看到纯噪音错误提示。
+2. **答复失败静默（仅取消/超时）**：`PermissionHandler.handleAskUserQuestionReject` 的失败分支（含无 daemon）改为只记日志，不再 `handleReplyFailure`、不再恢复未决项、不再发 `question.invalidated`；与 idea `PermissionHandler.java:943-963` 行为一致。
+3. **权限拒绝静默**：`permission.reply { allow: false }`（拒绝 / 超时）失败同样只记日志并关卡片；只有 `allow: true`（批准未送达服务端）才弹 `toast.error`，避免用户误以为已放行。
+4. **取消即结束**：`handleAskUserQuestionSkip` 与超时一致，先回 `question.reply { rejected: true }` 再定向 `session.interrupt`；服务端本就会在 form 被拒后中断该步，主动中断让宿主 `wasAborted` 生效，迟到的 `Step interrupted` 被抑制，转录里不再多出一条 ERROR 气泡。
+5. **回执抑制只覆盖取消/超时**：`handleReply()` 仅对 `rejected: true` 与权限 `deny` 的答复失败静默；过期 prompt 上的**作答 / 批准**失败仍回 `command.rejected`（webview 弹 toast），坏 envelope 也照旧回执。
+6. **附带修复**：`question.invalidated` 的命名 payload（`{ requestId }`）此前被当成字符串，日志与 store 里出现 `[object Object]`；`permissionCallbacks.handleInvalidateQuestionCard` 现在同时接受字符串与对象两种形状。
+7. **验证**：宿主 **127 passing / 0 failing**（新增"取消/超时失败不弹 toast"、"allow 失败仍提示"、"过期 prompt 的正常答复仍回执"回归）；webview **178 文件 / 1504 项**（新增 `question.invalidated` payload 解析、取消即中断两条用例）；`pnpm run compile` 与 webview `tsc + vite build` 全绿。 |
+| 2026-10-30 | **P9-A33**：**提示答复回到窗口 dispatcher，并把 prompt 生命周期全量事件化（以 idea `PermissionHandler` 为蓝图）**：
+1. **根因**：P9-A32 把 `permission.reply` / `question.reply` / `plan.reply` 迁到窗口 dispatcher 时，只更新了 `PermissionHandler.SUPPORTED_TYPES`，没有接进 `handle()`；`handleReplyCommand()` 成了无调用方的死代码，于是每次答复都被 `ChatWindow` 落到 `UNKNOWN_TYPE`（前端报错，服务端 prompt 永远等不到回答）。
+2. **答复入口归位**：`PermissionHandler.handle()` 直接处理三类 v2 答复（与 idea `PermissionHandler.java:207-239` 一致），解析信封 payload、核对 tab/session 归属，失败回 `command.rejected`（`legacy:false`），命令本身始终算已消费。
+3. **prompt 事件化去胶水**：`permission.requested` / `question.requested` / `question.answered` / `question.invalidated` / `prompt.closed` / `prompt.question.closed` / `prompt.plan.closed` / `toast.error` 全部改走 `context.publishTabEvent`（带 tabId/epoch/sessionId），删除 `PermissionHandler` 里所有 `callJavaScript('show*Dialog' / 'forceClose*' / 'onQuestionAnswered' / 'showToast')`；webview 删除同名 window 别名与 `main.tsx` 占位队列，`permissionRouting` 测试改走 `dispatchHostEnvelope`。
+4. **答复顺序对齐 idea**：`question.answered` 只在 `opencode.replyQuestion` 成功后发布；失败时把未决项放回、发 `toast.error` + `question.invalidated`，避免"服务端没接受却显示已作答"的假卡片。
+5. **身份兜底**：`HandlerContext.publishTabEvent` / `ChatWindow.publishTabEvent` 允许 `tabId` 为空（走全局 lane），会话尚未绑定 tab 的 prompt 仍然送达，不丢请求。
+6. **验证**：宿主 **124 passing / 0 failing**（新增 `windowPromptReplies` 回归：断言两类答复不再产生 `UNKNOWN_TYPE`、daemon 真收到 reply）；webview **178 文件 / 1498 项**；`pnpm run compile` 与 webview `tsc + vite build` 全绿。 |
+| 2026-10-30 | **P9-A32**：**宿主命令面完成 IDEA 式窗口级迁移，彻底移除旧 vscode 混合命令框架胶水**：
 1. **启动契约对齐**：`ChatWindow.ensureInitialTab()` 固定创建 `tab-1` + provisional session，与 webview 初始身份一致，启动期 `commands.refresh` / 首次 `session.send` 不再落入 `TAB_NOT_FOUND` 窗口；
 2. **窗口级命令归位**：`HostCommand` 统一把信封 `tabId/sessionId` 合并进 payload；删除 `WINDOW_SCOPED_COMMANDS`、`SESSION_GUARDED_COMMANDS` 与逐命令注入；`session.send` / `session.interrupt` / `session.restart` 迁回窗口级 `SessionHandler`；`commands.refresh` / `context.refresh` 迁回 `WindowEventHandler`；`permission.reply` / `question.reply` / `plan.reply` 迁回 `PermissionHandler`；
 3. **删除旧路径**：删除 `TabSessionSendHandler`、`TabContextCommandHandler`；`TabCommandRouter` 只保留 tab 生命周期、fork/share/revert/compact 与明确的 vscode 平台增强命令；删除 `session.*` 未知 tab 自动补建；

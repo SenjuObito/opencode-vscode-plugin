@@ -235,7 +235,7 @@ const PermissionDialog: React.FC<PermissionDialogProps> = ({
     >
       <div
         ref={dialogRef}
-        className="permission-dialog-v3"
+        className={`permission-dialog-v3 ${isTimeWarning ? 'time-warning' : ''}`}
         style={dialogHeight ? {height: dialogHeight, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' as const} : undefined}
       >
         <div

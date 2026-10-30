@@ -27,12 +27,18 @@ interface Window {
    * between snapshots the webview performs a windowed splice instead of the
    * legacy index-aligned merge. Absent = legacy semantics (base 0).
    */
-  updateMessages?: (json: string, sequence?: string | number, baseIndex?: string | number) => void;
+  updateMessages?: (
+    json: string,
+    sequence?: string | number,
+    baseIndex?: string | number,
+    targetSessionId?: string | null,
+  ) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
     json: string,
     baseIndex: string | number,
     sequence?: string | number,
+    targetSessionId?: string | null,
   ) => void;
   /**
    * Prepend an earlier history page (opencode restore paging / live window
@@ -975,7 +981,11 @@ interface Window {
   /**
    * Pending updateMessages payload before React initialization
    */
-  __pendingUpdateMessages?: string | { json: string; sequence?: number | null };
+  __pendingUpdateMessages?: string | {
+    json: string;
+    sequence?: number | null;
+    targetSessionId?: string | null;
+  };
 
   /**
    * Pending status text before React initialization
@@ -1112,18 +1122,6 @@ interface Window {
         }
   ) => void;
   __pendingCliModels?: unknown;
-  /**
-   * Dialog store for switching and preserving pending permissions/questions across session tabs
-   */
-  __dialogStore?: {
-    getSnapshot: () => { permissions: any[]; questions: any[]; plans?: any[] };
-    restore: (
-      permissions: any[],
-      questions: any[],
-      plans?: any[],
-    ) => void;
-    clearActive: () => void;
-  };
 }
 
 declare module 'mermaid' {

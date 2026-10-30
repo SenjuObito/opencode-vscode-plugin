@@ -2,7 +2,13 @@
  * PermissionHandler — port of cc-gui `handler/PermissionHandler.java`
  * (opencode subset). Bridges daemon `[PERMISSION_REQUEST]`/`[QUESTION_REQUEST]`
  * events to the webview dialog and routes decisions back to the daemon
- * (`opencode.replyPermission` / `opencode.replyQuestion`, Phase 4 wiring).
+ * (`opencode.replyPermission` / `opencode.replyQuestion`).
+ *
+ * <p>The window dispatcher (`MessageDispatcher`) owns every prompt command:
+ * `permission.reply` / `question.reply` / `plan.reply` are handled here, exactly
+ * like idea's `PermissionHandler.handle`. Prompts and their lifecycle are
+ * published as tab-scoped semantic events — the same names the webview
+ * registers in `permissionCallbacks` — instead of window-level callbacks.</p>
  */
 import { appendFileSync } from 'node:fs';
 import { BaseMessageHandler } from '../router/MessageHandler';
@@ -30,11 +36,18 @@ const SUPPORTED_TYPES = [
 	'plan.reply',
 ];
 
+/** v2 prompt replies routed through the window dispatcher. */
+const REPLY_TYPES = new Set(['permission.reply', 'question.reply', 'plan.reply']);
+
+type PromptClosedType = 'prompt.closed' | 'prompt.question.closed' | 'prompt.plan.closed';
+
 interface PendingPermission {
 	sessionId: string | null;
 	permissionId: string;
 	toolName: string;
 	directory?: string | null;
+	/** 弹窗归属的 tab：prompt 事件与答复回执都按它投递。 */
+	tabId: string | null;
 }
 
 interface PendingQuestion {
@@ -42,6 +55,20 @@ interface PendingQuestion {
 	questions: Array<Record<string, unknown>>;
 	toolName: string;
 	directory?: string | null;
+	tabId: string | null;
+}
+
+/** Parse a dispatcher payload; `null` when it is not a JSON object. */
+function parsePayload(content: string): Record<string, unknown> | null {
+	try {
+		const parsed = JSON.parse(content) as unknown;
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return null;
+		}
+		return parsed as Record<string, unknown>;
+	} catch {
+		return null;
+	}
 }
 
 export class PermissionHandler extends BaseMessageHandler {
@@ -94,6 +121,9 @@ export class PermissionHandler extends BaseMessageHandler {
 	}
 
 	handle(type: string, content: string): boolean {
+		if (REPLY_TYPES.has(type)) {
+			return this.handleReply(type, content);
+		}
 		switch (type) {
 			case 'permission_decision':
 				this.handlePermissionDecision(content);
@@ -106,7 +136,7 @@ export class PermissionHandler extends BaseMessageHandler {
 				return true;
 			case 'plan_approval_response':
 				// opencode 无 plan approval 概念；忽略并关闭对话框
-				this.forceCloseFrontendDialog('forceClosePlanApprovalDialog');
+				this.publishPromptClosed('prompt.plan.closed', '', null);
 				return true;
 			default:
 				return false;
@@ -114,22 +144,61 @@ export class PermissionHandler extends BaseMessageHandler {
 	}
 
 	/**
-	 * v2 提示答复入口（`permission.reply` / `question.reply` / `plan.reply`）。
+	 * v2 答复入口（`permission.reply` / `question.reply` / `plan.reply`）。
 	 *
-	 * 命令已经由 ChatWindow 路由到目标 tab；这里再核对 pending 的 tab/session
-	 * 归属。过期对话框、另一个 tab 的迟到答复都不会落到当前会话。
+	 * <p>窗口 dispatcher 已经把信封的 `tabId` / `sessionId` 合并进 payload；
+	 * 归属核对仍然在这里做，过期对话框、另一个 tab 的迟到答复都不会落到
+	 * 当前会话。校验失败按 idea 的 `publishRejection` 回 `command.rejected`。</p>
 	 */
-	handleReplyCommand(type: string, payload: Record<string, unknown>, tabId: string | null): PromptReplyResult {
-		const requestId = type === 'permission.reply'
+	private handleReply(type: string, content: string): boolean {
+		const payload = parsePayload(content);
+		const tabId = payload ? this.stringField(payload.tabId) || null : null;
+		const requestId = payload ? this.replyRequestId(type, payload) : '';
+		if (!payload) {
+			this.rejectReply(tabId, requestId, CommandRejectCode.INVALID_PAYLOAD,
+				`${type} payload is not a JSON object`);
+			return true;
+		}
+		// 取消/超时答复：服务端多半已经自行收尾（form 已 settled / 回合已 abort），
+		// 失败是预期内的竞态——只记日志，不再向用户弹 command.rejected。
+		const dismissed = payload.rejected === true
+			|| (type === 'permission.reply' && payload.allow !== true);
+		const result = this.handleReplyCommand(type, payload, tabId);
+		if (!result.ok) {
+			const code = result.code ?? CommandRejectCode.INVALID_PAYLOAD;
+			const message = result.reason ?? `${type} rejected`;
+			PluginFileLogger.warn('PermissionHandler', `${String(code)} tab=${tabId ?? ''} request=${requestId}: ${message}`);
+			if (!dismissed) {
+				this.publishPromptEvent('command.rejected', tabId, null, {
+					tabId: tabId ?? '',
+					requestId,
+					code,
+					message,
+				});
+			}
+		}
+		return true;
+	}
+
+	private replyRequestId(type: string, payload: Record<string, unknown>): string {
+		return type === 'permission.reply'
 			? this.stringField(payload.channelId)
 			: this.stringField(payload.requestId);
+	}
+
+	/**
+	 * 校验归属后把答复交给对应分支。返回值只描述「是否被接受」，
+	 * 命令本身始终算已消费（否则会落成 `UNKNOWN_TYPE`）。
+	 */
+	handleReplyCommand(type: string, payload: Record<string, unknown>, tabId: string | null): PromptReplyResult {
+		const requestId = this.replyRequestId(type, payload);
 		if (!requestId) {
 			return { ok: false, code: CommandRejectCode.INVALID_PAYLOAD, reason: `${type} missing requestId or channelId` };
 		}
 		if (type === 'plan.reply') {
 			// opencode 没有 plan approval；保留关闭对话框的语义。
 			this.prompts?.forget(requestId);
-			this.forceCloseFrontendDialog('forceClosePlanApprovalDialog');
+			this.publishPromptClosed('prompt.plan.closed', requestId, tabId);
 			return { ok: true };
 		}
 		const pending = type === 'permission.reply'
@@ -180,6 +249,53 @@ export class PermissionHandler extends BaseMessageHandler {
 		return true;
 	}
 
+	/**
+	 * 把 prompt 生命周期事件投给宿主事件层（与 idea 的 `publishPrompt` /
+	 * `forceCloseFrontendDialog` / `publishRejection` 同一套语义事件）。
+	 *
+	 * <p>tab 已关闭 / 会话尚未绑定 tab 时退化为全局 lane：请求本身不能丢，
+	 * 丢了服务端会一直等答复。</p>
+	 */
+	private publishPromptEvent(
+		type: string,
+		tabId: string | null,
+		sessionId: string | null,
+		payload: Record<string, unknown>,
+	): void {
+		const delivered = this.context.publishTabEvent(type, tabId, payload, {
+			legacy: false,
+			sessionId,
+		});
+		if (!delivered) {
+			PluginFileLogger.warn('PermissionHandler', `${type} not delivered: no event publisher`);
+		}
+	}
+
+	private publishPromptClosed(
+		type: PromptClosedType,
+		requestId: string,
+		tabId: string | null,
+		sessionId: string | null = null,
+	): void {
+		this.publishPromptEvent(type, tabId, sessionId, { requestId });
+	}
+
+	/** 命令被拒绝：只有带 tab 身份时才能定向回执。 */
+	private rejectReply(
+		tabId: string | null,
+		requestId: string,
+		code: CommandRejectCode | string,
+		message: string,
+	): void {
+		PluginFileLogger.warn('PermissionHandler', `${String(code)} tab=${tabId ?? ''} request=${requestId}: ${message}`);
+		this.publishPromptEvent('command.rejected', tabId, null, {
+			tabId: tabId ?? '',
+			requestId,
+			code,
+			message,
+		});
+	}
+
 	/** 由 OpenCodeSession 的 SessionCallbackAdapter 注入：收到 daemon 权限/提问请求。 */
 	onPermissionRequested(request: PermissionRequest): void {
 		this.debugLog(`onPermissionRequested type=${request.type} toolUseId=${request.toolUseId} requestId=${request.requestId} toolName=${request.toolName} sessionId=${request.sessionId} directory=${request.directory}`);
@@ -202,28 +318,26 @@ export class PermissionHandler extends BaseMessageHandler {
 			?? this.context.resolveEffectiveWorkingDirectory()
 			?? this.context.getFallbackWorkingDirectory()
 			?? null;
-		this.debugLog(`onPermissionRequested storing channelId=${channelId} sessionId=${sessionId} permissionId=${permissionId} directory=${directory}`);
 		const tabId = request.tabId ?? this.tabIdForSession(sessionId);
+		this.debugLog(`onPermissionRequested storing channelId=${channelId} sessionId=${sessionId} permissionId=${permissionId} directory=${directory} tabId=${tabId}`);
 		this.pendingPermissions.set(channelId, {
 			sessionId,
 			permissionId,
 			toolName: request.toolName,
 			directory,
+			tabId,
 		});
 		if (tabId) {
 			this.prompts?.rememberPermissionTab(channelId, tabId);
 		}
-		this.callJavaScript(
-			'showPermissionDialog',
-			JSON.stringify({
-				channelId,
-				sessionId,
-				tabId,
-				toolName: request.toolName ?? request.tool ?? '',
-				description: request.description ?? '',
-				inputs: request.inputs ?? { command: request.description ?? '' },
-			}),
-		);
+		this.publishPromptEvent('permission.requested', tabId, sessionId, {
+			channelId,
+			sessionId,
+			tabId: tabId ?? '',
+			toolName: request.toolName ?? request.tool ?? '',
+			description: request.description ?? '',
+			inputs: request.inputs ?? { command: request.description ?? '' },
+		});
 		// 触发权限提醒提示音（与 AskUserQuestion 共用"提问提示音"开关）。
 		// 此前权限分支完全漏接，导致"审批权限时没有提示音"。
 		this.notifications.onPermissionRequested();
@@ -243,24 +357,22 @@ export class PermissionHandler extends BaseMessageHandler {
 			questions: request.questions ?? [],
 			toolName: request.tool ?? request.toolName ?? '',
 			directory,
+			tabId,
 		});
 		if (tabId) {
 			this.prompts?.rememberQuestionTab(requestId, tabId);
 		}
-		const payload = JSON.stringify({
+		const payload = {
 			requestId,
-			tabId,
+			tabId: tabId ?? '',
 			sessionId: questionSessionId,
 			// normalizeQuestionRequest 返回字段名为 tool，直接回传即可；
 			// toolName 留空会让前端只能走模糊 name 匹配，导致问题卡片错位。
 			toolName: request.tool ?? request.toolName,
 			questions: request.questions ?? [],
-		});
-		this.debugLog(`onQuestionRequested calling showAskUserQuestionDialog payload=${payload.slice(0, 300)}`);
-		this.callJavaScript(
-			'showAskUserQuestionDialog',
-			payload,
-		);
+		};
+		this.debugLog(`onQuestionRequested publishing question.requested payload=${JSON.stringify(payload).slice(0, 300)}`);
+		this.publishPromptEvent('question.requested', tabId, questionSessionId, payload);
 		// 触发提问提醒：系统通知 + 提示音（受对应开关与"仅未聚焦时"门控）。
 		// 此前漏接，导致"提问系统通知""提问提示音"两个设置形同虚设。
 		this.notifications.onQuestionRequested();
@@ -278,10 +390,12 @@ export class PermissionHandler extends BaseMessageHandler {
 			if (kind === 'question') {
 				const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
 				if (requestId) {
+					const pending = this.pendingQuestions.get(requestId);
+					const tabId = pending?.tabId ?? this.prompts?.tabIdOf(requestId) ?? null;
 					logDiagnostic(`[PermissionHandler] onPromptClosed deleting pendingQuestions[${requestId}], had=${this.pendingQuestions.has(requestId)}`);
 					this.pendingQuestions.delete(requestId);
 					this.prompts?.forget(requestId);
-					this.callJavaScript('forceCloseAskUserQuestionDialog', JSON.stringify(requestId));
+					this.publishPromptClosed('prompt.question.closed', requestId, tabId, pending?.sessionId ?? null);
 				}
 			} else {
 				const permissionId = typeof payload?.permissionId === 'string' ? payload.permissionId : '';
@@ -299,10 +413,12 @@ export class PermissionHandler extends BaseMessageHandler {
 						}
 					}
 					if (matchedChannelId) {
+						const pending = this.pendingPermissions.get(matchedChannelId);
+						const tabId = pending?.tabId ?? this.prompts?.tabIdOf(matchedChannelId) ?? null;
 						logDiagnostic(`[PermissionHandler] onPromptClosed deleting pendingPermissions[${matchedChannelId}], had=true`);
 						this.pendingPermissions.delete(matchedChannelId);
 						this.prompts?.forget(matchedChannelId);
-						this.callJavaScript('forceClosePermissionDialog', JSON.stringify(matchedChannelId));
+						this.publishPromptClosed('prompt.closed', matchedChannelId, tabId, pending?.sessionId ?? null);
 					}
 				}
 			}
@@ -329,7 +445,7 @@ export class PermissionHandler extends BaseMessageHandler {
 			if (permission) {
 				this.pendingPermissions.delete(requestId);
 				this.prompts?.forget(requestId);
-				this.callJavaScript('forceClosePermissionDialog', JSON.stringify(requestId));
+				this.publishPromptClosed('prompt.closed', requestId, permission.tabId, permission.sessionId);
 				logDiagnostic(`[PermissionHandler] tab closed: denying permission ${requestId}`);
 				if (daemon) {
 					void daemon.request('opencode.replyPermission', {
@@ -347,7 +463,7 @@ export class PermissionHandler extends BaseMessageHandler {
 			if (question) {
 				this.pendingQuestions.delete(requestId);
 				this.prompts?.forget(requestId);
-				this.callJavaScript('forceCloseAskUserQuestionDialog', JSON.stringify(requestId));
+				this.publishPromptClosed('prompt.question.closed', requestId, question.tabId, question.sessionId);
 				logDiagnostic(`[PermissionHandler] tab closed: rejecting question ${requestId}`);
 				if (daemon) {
 					void daemon.request('opencode.rejectQuestion', {
@@ -360,11 +476,12 @@ export class PermissionHandler extends BaseMessageHandler {
 		}
 	}
 
-	clearPendingRequests(): void {		this.pendingPermissions.clear();
+	clearPendingRequests(): void {
+		this.pendingPermissions.clear();
 		this.pendingQuestions.clear();
-		this.forceCloseFrontendDialog('forceClosePermissionDialog');
-		this.forceCloseFrontendDialog('forceCloseAskUserQuestionDialog');
-		this.forceCloseFrontendDialog('forceClosePlanApprovalDialog');
+		this.publishPromptClosed('prompt.closed', '', null);
+		this.publishPromptClosed('prompt.question.closed', '', null);
+		this.publishPromptClosed('prompt.plan.closed', '', null);
 	}
 
 	private handlePermissionDecision(content: string): void {
@@ -386,10 +503,23 @@ export class PermissionHandler extends BaseMessageHandler {
 
 			const daemon = this.context.getDaemon();
 			if (!daemon) {
-				this.debugLog(`[P] channelId=${channelId} no daemon — early return`);
+				this.debugLog(`[P] channelId=${channelId} no daemon — keep pending and report`);
+				this.pendingPermissions.set(channelId, pending);
+				if (pending.tabId) {
+					this.prompts?.rememberPermissionTab(channelId, pending.tabId);
+				}
+				if (allow) {
+					this.handleReplyFailure('权限回复失败: daemon is not available', {
+						tabId: pending.tabId,
+						permissionChannelId: channelId,
+					});
+				} else {
+					PluginFileLogger.warn('PermissionHandler', `permission deny for ${channelId} not delivered: no daemon`);
+				}
 				return;
 			}
 			this.debugLog(`[P] channelId=${channelId} calling replyPermission sessionId=${pending.sessionId} permissionId=${pending.permissionId} directory=${pending.directory}`);
+			let failure: string | null = null;
 			void daemon.request(
 				'opencode.replyPermission',
 				{
@@ -402,11 +532,25 @@ export class PermissionHandler extends BaseMessageHandler {
 				{
 					onLine: () => {},
 					onError: (error) => {
-						this.debugLog(`[P] channelId=${channelId} replyPermission onError: ${error}`);
-						this.handleReplyFailure(`权限回复失败: ${error}`, undefined, channelId);
+						failure = error;
 					},
-					onComplete: () => {
-						this.debugLog(`[P] channelId=${channelId} replyPermission onComplete`);
+					onComplete: (success) => {
+						if (success) {
+							this.debugLog(`[P] channelId=${channelId} replyPermission onComplete`);
+							return;
+						}
+						const reason = failure ?? 'daemon rejected';
+						this.debugLog(`[P] channelId=${channelId} replyPermission failed: ${reason}`);
+						if (!allow) {
+							// 用户拒绝 / 超时：服务端多半已经收尾（回合被 abort 或 form 已 settled），
+							// 失败属于预期竞态——静默结束，不弹 toast。卡片按关闭处理。
+							this.publishPromptClosed('prompt.closed', channelId, pending.tabId, pending.sessionId);
+							return;
+						}
+						this.handleReplyFailure(`权限回复失败: ${reason}`, {
+							tabId: pending.tabId,
+							permissionChannelId: channelId,
+						});
 					},
 				},
 			);
@@ -420,32 +564,30 @@ export class PermissionHandler extends BaseMessageHandler {
 			const response = JSON.parse(content) as Record<string, unknown>;
 			const requestId = typeof response?.requestId === 'string' ? response.requestId : '';
 			const answers = (response?.answers ?? {}) as Record<string, unknown>;
-		this.debugLog(`[Q] >>> received requestId=${requestId} pendingQuestions=${this.pendingQuestions.size} keys=[${[...this.pendingQuestions.keys()].join(',')}]`);
-		const pending = this.pendingQuestions.get(requestId);
-		if (!pending) {
-			this.debugLog(`[Q] requestId=${requestId} NOT in pendingQuestions — early return`);
-			return;
-		}
-		this.pendingQuestions.delete(requestId);
-		this.prompts?.forget(requestId);
-		// Emit complete Q&A data to webview so it can render the summary card
-		// without needing to match tool_use_id across messages.
-		const onQAData = {
-			callId: pending.toolName,
-			requestId,
-			questions: pending.questions,
-			answers,
-		};
-		this.debugLog(`[Q] >>> onQuestionAnswered callId="${pending.toolName}" requestId="${requestId}" questions=${pending.questions.length} answers=${JSON.stringify(answers).substring(0, 200)}`);
-		console.log(`[PermissionHandler] onQuestionAnswered callId="${pending.toolName}" requestId="${requestId}"`, onQAData);
-		this.callJavaScript('onQuestionAnswered', JSON.stringify(onQAData));
-		const daemon = this.context.getDaemon();
+			this.debugLog(`[Q] >>> received requestId=${requestId} pendingQuestions=${this.pendingQuestions.size} keys=[${[...this.pendingQuestions.keys()].join(',')}]`);
+			const pending = this.pendingQuestions.get(requestId);
+			if (!pending) {
+				this.debugLog(`[Q] requestId=${requestId} NOT in pendingQuestions — early return`);
+				return;
+			}
+			this.pendingQuestions.delete(requestId);
+			this.prompts?.forget(requestId);
+			const daemon = this.context.getDaemon();
 			if (!daemon) {
-				this.debugLog(`[Q] requestId=${requestId} no daemon — early return`);
+				this.debugLog(`[Q] requestId=${requestId} no daemon — keep pending and report`);
+				this.pendingQuestions.set(requestId, pending);
+				if (pending.tabId) {
+					this.prompts?.rememberQuestionTab(requestId, pending.tabId);
+				}
+				this.handleReplyFailure('回答提交失败: daemon is not available', {
+					tabId: pending.tabId,
+					questionRequestId: requestId,
+				});
 				return;
 			}
 			const orderedAnswers = buildOrderedAnswers(pending.questions, answers);
 			this.debugLog(`[Q] requestId=${requestId} calling replyQuestion sessionId=${pending.sessionId} directory=${pending.directory}`);
+			let failure: string | null = null;
 			void daemon.request(
 				'opencode.replyQuestion',
 				{
@@ -457,11 +599,32 @@ export class PermissionHandler extends BaseMessageHandler {
 				{
 					onLine: () => {},
 					onError: (error) => {
-						this.debugLog(`[Q] requestId=${requestId} replyQuestion onError: ${error}`);
-						this.handleReplyFailure(`回答提交失败: ${error}`, requestId);
+						failure = error;
 					},
-					onComplete: () => {
-						this.debugLog(`[Q] requestId=${requestId} replyQuestion onComplete`);
+					onComplete: (success) => {
+						if (success) {
+							// 服务端接受答复之后才发 answered：先发会让失败的答复
+							// 在消息流里留下一张"已作答"的假卡片（idea 同款顺序）。
+							this.debugLog(`[Q] requestId=${requestId} replyQuestion onComplete`);
+							this.publishPromptEvent('question.answered', pending.tabId, pending.sessionId, {
+								callId: pending.toolName,
+								requestId,
+								questions: pending.questions,
+								answers,
+							});
+							return;
+						}
+						const reason = failure ?? 'daemon rejected';
+						this.debugLog(`[Q] requestId=${requestId} replyQuestion failed: ${reason}`);
+						// 服务端还没接受答复：把未决项放回去，关 tab 时仍能 reject 它。
+						this.pendingQuestions.set(requestId, pending);
+						if (pending.tabId) {
+							this.prompts?.rememberQuestionTab(requestId, pending.tabId);
+						}
+						this.handleReplyFailure(`回答提交失败: ${reason}`, {
+							tabId: pending.tabId,
+							questionRequestId: requestId,
+						});
 					},
 				},
 			);
@@ -483,8 +646,10 @@ export class PermissionHandler extends BaseMessageHandler {
 			this.prompts?.forget(requestId);
 			const daemon = this.context.getDaemon();
 			if (!daemon) {
+				PluginFileLogger.warn('PermissionHandler', `question reject ${requestId} not delivered: no daemon`);
 				return;
 			}
+			let failure: string | null = null;
 			void daemon.request(
 				'opencode.rejectQuestion',
 				{
@@ -494,8 +659,19 @@ export class PermissionHandler extends BaseMessageHandler {
 				},
 				{
 					onLine: () => {},
-					onError: (error) => this.handleReplyFailure(`跳过问题失败: ${error}`),
-					onComplete: () => {},
+					onError: (error) => {
+						failure = error;
+					},
+					onComplete: (success) => {
+						if (success) {
+							return;
+						}
+						// 取消/超时：form 往往已经被服务端 settled，rejectQuestion 返回 409
+						// 属于预期竞态（回合也已经 abort）。idea 对此只记日志，不打扰用户。
+						const reason = failure ?? 'daemon rejected';
+						this.debugLog(`[Q] requestId=${requestId} rejectQuestion failed (ignored): ${reason}`);
+						PluginFileLogger.warn('PermissionHandler', `question reject ${requestId} not delivered: ${reason}`);
+					},
 				},
 			);
 		} catch (err) {
@@ -509,21 +685,22 @@ export class PermissionHandler extends BaseMessageHandler {
 	 * 对卡片：把已乐观置为"已回答/已允许/已拒绝"的记录如实翻转为失效状态，
 	 * 避免调用破坏性的 sendAbort() 强行杀死整个正在运行的对话循环。
 	 */
-	private handleReplyFailure(message: string, questionRequestId?: string, permissionChannelId?: string): void {
-		logDiagnostic(`[PermissionHandler] handleReplyFailure: ${message} questionRequestId=${questionRequestId ?? 'N/A'} permissionChannelId=${permissionChannelId ?? 'N/A'}`);
-		this.callJavaScript('showToast', JSON.stringify(message));
+	private handleReplyFailure(message: string, options: {
+		tabId: string | null;
+		questionRequestId?: string;
+		permissionChannelId?: string;
+	}): void {
+		const { tabId, questionRequestId, permissionChannelId } = options;
+		logDiagnostic(`[PermissionHandler] handleReplyFailure: ${message} tab=${tabId ?? ''} questionRequestId=${questionRequestId ?? 'N/A'} permissionChannelId=${permissionChannelId ?? 'N/A'}`);
+		this.publishPromptEvent('toast.error', tabId, null, { message });
 		if (questionRequestId) {
-			logDiagnostic(`[PermissionHandler] calling invalidateQuestionCard(${questionRequestId})`);
-			this.callJavaScript('invalidateQuestionCard', JSON.stringify(questionRequestId));
+			logDiagnostic(`[PermissionHandler] publishing question.invalidated(${questionRequestId})`);
+			this.publishPromptEvent('question.invalidated', tabId, null, { requestId: questionRequestId });
 		}
 		if (permissionChannelId) {
-			logDiagnostic(`[PermissionHandler] calling invalidatePermissionCard(${permissionChannelId})`);
-			this.callJavaScript('invalidatePermissionCard', JSON.stringify(permissionChannelId));
+			logDiagnostic(`[PermissionHandler] publishing prompt.closed(${permissionChannelId})`);
+			this.publishPromptClosed('prompt.closed', permissionChannelId, tabId);
 		}
-	}
-
-	private forceCloseFrontendDialog(fnName: string): void {
-		this.callJavaScript(fnName, '');
 	}
 }
 

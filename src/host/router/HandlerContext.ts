@@ -205,8 +205,9 @@ export class HandlerContext {
 	}
 
 	/**
-	 * 把语义事件投给某个 tab。返回 false 表示没有发布器（未装配 / 单测），
-	 * 调用方应退回 legacy 回调。
+	 * 把语义事件投给某个 tab。`tabId` 缺失时事件走全局 lane（例如会话还没
+	 * 绑定 tab 的 prompt）——请求本身不能丢，丢了服务端会一直等答复。
+	 * 返回 false 表示没有发布器（未装配 / 单测）。
 	 */
 	publishTabEvent(
 		type: string,
@@ -214,10 +215,10 @@ export class HandlerContext {
 		payload: Record<string, unknown>,
 		options?: { legacy?: boolean; sessionId?: string | null },
 	): boolean {
-		if (!this.eventPublisher || !tabId) {
+		if (!this.eventPublisher) {
 			return false;
 		}
-		this.eventPublisher(type, tabId, payload, options);
+		this.eventPublisher(type, tabId ?? '', payload, options);
 		return true;
 	}
 

@@ -419,6 +419,75 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setMessages).not.toHaveBeenCalled();
   });
 
+  it('updateMessages accepts the session the tab is transitioning to', () => {
+    const opts = createOptions();
+    renderHook(() => useWindowCallbacks(opts));
+
+    beginTransition('tab-active', 'hist-1', 'transition-test');
+
+    act(() => {
+      window.updateMessages!(
+        JSON.stringify([
+          { type: 'user', content: 'authoritative history', timestamp: new Date().toISOString() },
+        ]),
+        undefined,
+        undefined,
+        'hist-1',
+      );
+    });
+
+    // A same-session soft reload must land; dropping it is what emptied the
+    // transcript after revert.
+    expect(opts.setMessages).toHaveBeenCalled();
+  });
+
+  it('accepts a named message.snapshot for the transition target session', () => {
+    seedTabStore([{ id: 'tab-active', sessionId: 'ses-target' }], 'tab-active');
+    const opts = createOptions({ currentSessionIdRef: { current: 'ses-target' } });
+    renderHook(() => useWindowCallbacks(opts));
+
+    beginTransition('tab-active', 'ses-target', 'transition-test');
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'message.snapshot',
+        tabId: 'tab-active',
+        sessionId: 'ses-target',
+        epoch: 0,
+        payload: {
+          json: JSON.stringify([
+            { type: 'user', content: 'authoritative history', timestamp: new Date().toISOString() },
+          ]),
+          sequence: '1',
+          baseIndex: 0,
+        },
+      });
+    });
+
+    expect(opts.setMessages).toHaveBeenCalled();
+  });
+
+  it('still drops a snapshot from another session while transitioning', () => {
+    const opts = createOptions();
+    renderHook(() => useWindowCallbacks(opts));
+
+    beginTransition('tab-active', 'hist-1', 'transition-test');
+
+    act(() => {
+      window.updateMessages!(
+        JSON.stringify([
+          { type: 'user', content: 'outgoing session', timestamp: new Date().toISOString() },
+        ]),
+        undefined,
+        undefined,
+        'hist-0',
+      );
+    });
+
+    expect(opts.setMessages).not.toHaveBeenCalled();
+  });
+
   it('updateMessages works normally after guard is released', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));

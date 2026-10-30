@@ -106,13 +106,19 @@ Manages streaming message state and rendering helpers.
 - `patchAssistantForStreaming()` - Patch message with streaming segments
 
 ### useDialogManagement
-Manages all dialog states with request queuing.
+Dialog orchestration for permission / ask-user / plan prompts. The tab record
+(`tabStore`) is the single queue, not a second copy of dialog state:
 
-**Handles:**
-- Permission dialog (approve/skip/approve-always)
-- AskUserQuestion dialog (submit/cancel)
-- Rewind dialog (confirm/cancel)
-- Rewind select dialog
+- `pendingPermissions` / `pendingQuestions` / `pendingPlans` on each tab hold
+  everything still waiting for an answer;
+- the hook projects the **active tab's** lists (`current*` = first item,
+  `pending*` = the rest);
+- `open*Dialog` writes into the owning tab (by `tabId`, else its session), so a
+  background tab's prompt waits there and appears when the tab is selected;
+- answering/force-closing removes the request from the owning tab;
+- switching tabs needs no capture/restore step, and `AppDialogs` gates the
+  modals on the chat page (`promptsVisible`), so settings/history never show
+  them while the request stays queued.
 
 ### useSessionManagement
 Handles session CRUD operations.
@@ -204,9 +210,11 @@ const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
 6. Full message sync via `window.updateMessages()`
 
 ### Permission Flow
-1. Backend requests permission via `window.showPermissionDialog()`
-2. User approves/skips via `handlePermissionApprove()` / `handlePermissionSkip()`
-3. Decision sent via `sendBridgeEvent('permission_decision', ...)`
+1. Backend publishes the tab-scoped semantic event `permission.requested` (host `PermissionHandler` → `TabEventRouter`); `hostDispatcher` routes it to `permissionCallbacks`
+2. `permissionCallbacks` hands the request to `openPermissionDialog`, which appends it to the owning tab's `pendingPermissions` (background tabs keep it until selected)
+3. `useDialogManagement` projects the active tab's queue into the dialog; `AppDialogs` renders it only while the chat page is visible
+4. User approves/skips via `handlePermissionApprove()` / `handlePermissionSkip()`; the request is removed from the owning tab
+5. Decision goes back through the v2 command plane: `host_command` `permission.reply` (window dispatcher → `PermissionHandler`)
 
 ## Key Design Decisions
 

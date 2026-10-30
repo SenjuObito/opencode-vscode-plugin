@@ -5,7 +5,6 @@ import { TabRecord } from '../tab/TabRecord';
 import { TabRegistry } from '../tab/TabRegistry';
 import { TabEventRouter } from './TabEventRouter';
 import { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
-import type { ChatMessage } from '../session/types';
 import { extractJsonObjectFromRaw } from '../util/ListMessagesCollector';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
@@ -61,7 +60,7 @@ export class TabSessionCommandHandler {
 		const requested = command.string('messageId');
 		const messageId = requested && requested !== 'full' ? requested : null;
 		if (messageId) {
-			this.withMessageId(sourceRecord, sourceSessionId, messageId,
+			this.withMessageId(sourceSessionId, messageId,
 				(resolvedId) => this.requestFork(sourceSessionId, resolvedId, sourceTabId, targetTabId),
 				(error) => this.publishForkFailure(sourceTabId, sourceSessionId, error));
 			return;
@@ -158,7 +157,7 @@ export class TabSessionCommandHandler {
 			return;
 		}
 		const requested = command.string('messageId') ?? command.string('messageID');
-		this.withMessageId(target.record, target.sessionId, requested,
+		this.withMessageId(target.sessionId, requested,
 			(resolvedId) => {
 				const params = this.sessionParams(target.sessionId);
 				params.messageID = resolvedId;
@@ -254,11 +253,12 @@ export class TabSessionCommandHandler {
 	/**
 	 * Resolve "latest"/empty to the last user message id.
 	 *
-	 * <p>The live state usually already has the id (from the SDK raw payload).
-	 * When it does not, fall back to the daemon's listMessages just like idea.</p>
+	 * <p>Ported from idea's `withMessageId`: only an explicit id is accepted
+	 * locally. `latest` always asks the daemon, because a live user message may
+	 * not carry an opencode id yet; searching the host transcript would fall
+	 * back to an older history message and revert too much.</p>
 	 */
 	private withMessageId(
-		record: TabRecord,
 		sessionId: string,
 		messageId: string | null,
 		run: (resolvedId: string) => void,
@@ -267,12 +267,6 @@ export class TabSessionCommandHandler {
 		const trimmed = messageId?.trim() ?? '';
 		if (trimmed && trimmed !== 'latest') {
 			run(trimmed);
-			return;
-		}
-
-		const local = latestUserIdFromMessages(record.getSession()?.state.getMessages() ?? []);
-		if (local) {
-			run(local);
 			return;
 		}
 
@@ -337,32 +331,6 @@ export class TabSessionCommandHandler {
 			}),
 		);
 	}
-}
-
-function latestUserIdFromMessages(messages: ChatMessage[]): string | null {
-	for (let i = messages.length - 1; i >= 0; i -= 1) {
-		const message = messages[i];
-		if (!message || message.type !== 'user') {
-			continue;
-		}
-		const direct = typeof (message as ChatMessage & { id?: unknown }).id === 'string'
-			? (message as ChatMessage & { id: string }).id
-			: '';
-		if (direct) {
-			return direct;
-		}
-		const raw = message.raw;
-		if (raw && typeof raw === 'object') {
-			const rawObj = raw as Record<string, unknown>;
-			const id = typeof rawObj.id === 'string'
-				? rawObj.id
-				: typeof rawObj.uuid === 'string' ? rawObj.uuid : '';
-			if (id) {
-				return id;
-			}
-		}
-	}
-	return null;
 }
 
 function latestUserIdFromChunks(chunks: string[]): string | null {

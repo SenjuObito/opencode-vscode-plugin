@@ -19,6 +19,10 @@ export interface PlanApprovalRequest {
   plan?: string;
   allowedPrompts?: AllowedPrompt[];
   timestamp?: string;
+  /** 发起请求的会话（宿主盖章）。 */
+  sessionId?: string;
+  /** 发起请求的 tab（宿主盖章）。 */
+  tabId?: string;
 }
 
 interface PlanApprovalDialogProps {

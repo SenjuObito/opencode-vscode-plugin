@@ -34,6 +34,13 @@ interface DaemonCall {
 	params: Record<string, unknown>;
 }
 
+interface PublishedEvent {
+	type: string;
+	tabId: string | null;
+	sessionId: string | null;
+	payload: Record<string, unknown>;
+}
+
 /** 权限/提问通知读设置与窗口焦点；关掉全部提醒，测试只关心拒绝链路。 */
 function stubSettings(): SettingsService {
 	return {
@@ -46,13 +53,18 @@ function stubSettings(): SettingsService {
 	} as unknown as SettingsService;
 }
 
-function makeHandler(resolveTabId: (sessionId: string | null) => string | null): {
+function makeHandler(
+	resolveTabId: (sessionId: string | null) => string | null,
+	daemonOptions: { success?: boolean; error?: string } = {},
+): {
 	handler: PermissionHandler;
 	registry: PromptRegistry;
 	calls: Array<{ fn: string; args: string[] }>;
+	events: PublishedEvent[];
 	daemonCalls: DaemonCall[];
 } {
 	const calls: Array<{ fn: string; args: string[] }> = [];
+	const events: PublishedEvent[] = [];
 	const daemonCalls: DaemonCall[] = [];
 	const context = {
 		getDaemon: () => ({
@@ -62,11 +74,23 @@ function makeHandler(resolveTabId: (sessionId: string | null) => string | null):
 				callback: { onLine: (line: string) => void; onError: (err: string) => void; onComplete: (ok: boolean) => void },
 			) => {
 				daemonCalls.push({ method: method.replace(/^opencode\./, ''), params });
-				callback.onComplete(true);
-				return Promise.resolve(true);
+				if (daemonOptions.error) {
+					callback.onError(daemonOptions.error);
+				}
+				callback.onComplete(daemonOptions.success ?? true);
+				return Promise.resolve(daemonOptions.success ?? true);
 			},
 		}),
 		callJavaScript: (fn: string, ...args: string[]) => calls.push({ fn, args }),
+		publishTabEvent: (
+			type: string,
+			tabId: string | null | undefined,
+			payload: Record<string, unknown>,
+			options?: { sessionId?: string | null },
+		) => {
+			events.push({ type, tabId: tabId ?? null, sessionId: options?.sessionId ?? null, payload });
+			return true;
+		},
 		getSettingsService: () => stubSettings(),
 		getSession: () => null,
 		resolveEffectiveWorkingDirectory: () => '/mock/workspace',
@@ -76,7 +100,7 @@ function makeHandler(resolveTabId: (sessionId: string | null) => string | null):
 	const registry = new PromptRegistry();
 	const handler = new PermissionHandler(context);
 	handler.attachPromptRegistry(registry, resolveTabId);
-	return { handler, registry, calls, daemonCalls };
+	return { handler, registry, calls, events, daemonCalls };
 }
 
 function permissionRequest(overrides: Partial<PermissionRequest> = {}): PermissionRequest {
@@ -171,21 +195,21 @@ suite('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => {
 	});
 
 	test('权限弹窗载荷带上 tabId 与 sessionId', () => {
-		const { handler, calls, registry } = makeHandler(() => 'tab-a');
+		const { handler, events, registry } = makeHandler(() => 'tab-a');
 
 		handler.onPermissionRequested(permissionRequest());
 
-		const dialog = calls.find((c) => c.fn === 'showPermissionDialog');
+		const dialog = events.find((e) => e.type === 'permission.requested');
 		assert.ok(dialog, '必须弹权限框');
-		const payload = JSON.parse(dialog.args[0]) as Record<string, unknown>;
-		assert.strictEqual(payload.tabId, 'tab-a');
-		assert.strictEqual(payload.sessionId, 'ses_a');
-		assert.strictEqual(payload.channelId, 'call_1');
+		assert.strictEqual(dialog.tabId, 'tab-a');
+		assert.strictEqual(dialog.payload.tabId, 'tab-a');
+		assert.strictEqual(dialog.payload.sessionId, 'ses_a');
+		assert.strictEqual(dialog.payload.channelId, 'call_1');
 		assert.strictEqual(registry.tabIdOf('call_1'), 'tab-a', '未决项必须登记到该 tab');
 	});
 
 	test('提问弹窗载荷带上 tabId，并登记到该 tab', () => {
-		const { handler, calls, registry } = makeHandler(() => 'tab-a');
+		const { handler, events, registry } = makeHandler(() => 'tab-a');
 
 		handler.onQuestionRequested({
 			type: 'question',
@@ -197,16 +221,16 @@ suite('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => {
 			questions: [{ question: '继续吗？', options: ['是', '否'] }],
 		});
 
-		const dialog = calls.find((c) => c.fn === 'showAskUserQuestionDialog');
+		const dialog = events.find((e) => e.type === 'question.requested');
 		assert.ok(dialog);
-		const payload = JSON.parse(dialog.args[0]) as Record<string, unknown>;
-		assert.strictEqual(payload.tabId, 'tab-a');
+		assert.strictEqual(dialog.tabId, 'tab-a');
+		assert.strictEqual(dialog.payload.tabId, 'tab-a');
 		assert.strictEqual(registry.tabIdOf('q_1'), 'tab-a');
 	});
 
 	test('关 tab：只拒绝该 tab 的未决项，并真的 deny / rejectQuestion', () => {
 		let tabOf: string | null = 'tab-a';
-		const { handler, registry, calls, daemonCalls } = makeHandler(() => tabOf);
+		const { handler, registry, events, daemonCalls } = makeHandler(() => tabOf);
 
 		handler.onPermissionRequested(permissionRequest());
 		handler.onQuestionRequested({
@@ -240,7 +264,7 @@ suite('P8 §10.7/10.8: 未决 prompt 的 tab 归属与关 tab 拒绝', () => {
 		assert.ok(rejectQuestion);
 		assert.strictEqual(rejectQuestion.params.questionID, 'q_1');
 
-		const closed = calls.filter((c) => c.fn === 'forceClosePermissionDialog' || c.fn === 'forceCloseAskUserQuestionDialog');
+		const closed = events.filter((e) => e.type === 'prompt.closed' || e.type === 'prompt.question.closed');
 		assert.strictEqual(closed.length, 2, '两个卡片都要关掉');
 
 		// 已处理过的不能再被重复拒绝
@@ -271,28 +295,31 @@ suite('v2 prompt replies stay with the tab that owns the prompt', () => {
 	});
 
 	test('permission.reply from another tab is refused', () => {
-		const { handler, daemonCalls } = makeHandler(() => 'tab-a');
+		const { handler, events, daemonCalls } = makeHandler(() => 'tab-a');
 		handler.onPermissionRequested(permissionRequest());
 
-		handler.handleReplyCommand(
+		const handled = handler.handle(
 			'permission.reply',
-			{ channelId: 'call_1', allow: true, remember: false, sessionId: 'ses_a' },
-			'tab-b',
+			JSON.stringify({ channelId: 'call_1', allow: true, remember: false, sessionId: 'ses_a', tabId: 'tab-b' }),
 		);
 
+		assert.strictEqual(handled, true, '命令必须被消费，不能落成 UNKNOWN_TYPE');
 		assert.strictEqual(daemonCalls.length, 0, 'wrong tab must not answer the prompt');
+		const rejected = events.find((e) => e.type === 'command.rejected');
+		assert.ok(rejected);
+		assert.strictEqual(rejected.payload.code, 'SESSION_MISMATCH');
 	});
 
 	test('permission.reply from the owner tab answers it', () => {
 		const { handler, daemonCalls } = makeHandler(() => 'tab-a');
 		handler.onPermissionRequested(permissionRequest());
 
-		handler.handleReplyCommand(
+		const handled = handler.handle(
 			'permission.reply',
-			{ channelId: 'call_1', allow: true, remember: true, sessionId: 'ses_a' },
-			'tab-a',
+			JSON.stringify({ channelId: 'call_1', allow: true, remember: true, sessionId: 'ses_a', tabId: 'tab-a' }),
 		);
 
+		assert.strictEqual(handled, true);
 		const reply = daemonCalls.find((call) => call.method === 'replyPermission');
 		assert.ok(reply);
 		assert.strictEqual(reply.params.permissionID, 'per_1');
@@ -300,7 +327,7 @@ suite('v2 prompt replies stay with the tab that owns the prompt', () => {
 	});
 
 	test('question.reply parses both answers and a rejection', () => {
-		const { handler, daemonCalls } = makeHandler(() => 'tab-a');
+		const { handler, events, daemonCalls } = makeHandler(() => 'tab-a');
 		handler.onQuestionRequested({
 			type: 'question',
 			toolUseId: 'call_2',
@@ -311,12 +338,16 @@ suite('v2 prompt replies stay with the tab that owns the prompt', () => {
 			questions: [{ question: '继续吗？', options: ['是', '否'] }],
 		});
 
-		handler.handleReplyCommand(
+		assert.strictEqual(handler.handle(
 			'question.reply',
-			{ requestId: 'q_1', answers: { '继续吗？': '是' }, sessionId: 'ses_a' },
-			'tab-a',
-		);
+			JSON.stringify({ requestId: 'q_1', answers: { '继续吗？': '是' }, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
 		assert.ok(daemonCalls.some((call) => call.method === 'replyQuestion'));
+		const answered = events.find((e) => e.type === 'question.answered');
+		assert.ok(answered, '服务端接受答复后才发 answered');
+		assert.strictEqual(answered.tabId, 'tab-a');
+		assert.strictEqual(answered.payload.callId, 'task');
+		assert.deepStrictEqual(answered.payload.answers, { '继续吗？': '是' });
 
 		handler.onQuestionRequested({
 			type: 'question',
@@ -327,16 +358,15 @@ suite('v2 prompt replies stay with the tab that owns the prompt', () => {
 			requestId: 'q_2',
 			questions: [],
 		});
-		handler.handleReplyCommand(
+		assert.strictEqual(handler.handle(
 			'question.reply',
-			{ requestId: 'q_2', rejected: true, sessionId: 'ses_a' },
-			'tab-a',
-		);
+			JSON.stringify({ requestId: 'q_2', rejected: true, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
 		assert.ok(daemonCalls.some((call) => call.method === 'rejectQuestion'));
 	});
 
-	test('handleReplyCommand returns failure result on unknown prompt or owner mismatch', () => {
-		const { handler } = makeHandler(() => 'tab-a');
+	test('unknown prompt / malformed payload return a command.rejected receipt', () => {
+		const { handler, events } = makeHandler(() => 'tab-a');
 		const res1 = handler.handleReplyCommand('permission.reply', { channelId: 'non-exist' }, 'tab-a');
 		assert.strictEqual(res1.ok, false);
 
@@ -350,6 +380,90 @@ suite('v2 prompt replies stay with the tab that owns the prompt', () => {
 		const res2 = handler.handleReplyCommand('permission.reply', { channelId: 'call_x', sessionId: 'ses_other' }, 'tab-a');
 		assert.strictEqual(res2.ok, false);
 		assert.strictEqual(res2.code, 'SESSION_MISMATCH');
+
+		// 过期对话框 / 坏载荷：命令仍算已消费，但必须回 command.rejected。
+		assert.strictEqual(handler.handle(
+			'permission.reply',
+			JSON.stringify({ channelId: 'call_gone', allow: true, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+		assert.strictEqual(handler.handle('question.reply', 'not-json'), true, '坏载荷也必须被消费');
+		const rejected = events.filter((e) => e.type === 'command.rejected');
+		assert.strictEqual(rejected.length, 2);
+		assert.ok(rejected.some((e) => e.payload.code === 'INVALID_PAYLOAD'));
+	});
+
+	test('取消/超时（rejected / deny）失败只记日志，不弹 toast', () => {
+		// 服务端已经把 form settled / 回合已 abort：reject 返回失败是预期竞态。
+		const { handler, events } = makeHandler(() => 'tab-a', { success: false, error: 'FormAlreadySettledError' });
+
+		handler.onQuestionRequested({
+			type: 'question',
+			toolUseId: 'call_q',
+			toolName: 'call_q',
+			description: '',
+			sessionId: 'ses_a',
+			requestId: 'call_q',
+			questions: [{ question: '继续吗？', options: ['是', '否'] }],
+		});
+		assert.strictEqual(handler.handle(
+			'question.reply',
+			JSON.stringify({ requestId: 'call_q', rejected: true, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+
+		handler.onPermissionRequested(permissionRequest());
+		assert.strictEqual(handler.handle(
+			'permission.reply',
+			JSON.stringify({ channelId: 'call_1', allow: false, rejectMessage: 'timeout', sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+
+		assert.deepStrictEqual(
+			events.filter((e) => e.type === 'toast.error'),
+			[],
+			'取消/超时不应打扰用户',
+		);
+		// 同样不应把「未知提示」当成错误回执弹给用户。
+		assert.deepStrictEqual(events.filter((e) => e.type === 'command.rejected'), []);
+	});
+
+	test('只有取消/超时静默：过期 prompt 的正常答复仍回 command.rejected', () => {
+		const { handler, events } = makeHandler(() => 'tab-a');
+
+		// 作答 / 批准遇到过期 prompt：属于真正的失败，必须让用户知道。
+		assert.strictEqual(handler.handle(
+			'question.reply',
+			JSON.stringify({ requestId: 'q_gone', answers: { q: 'a' }, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+		assert.strictEqual(handler.handle(
+			'permission.reply',
+			JSON.stringify({ channelId: 'p_gone', allow: true, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+
+		// 取消 / 拒绝再次遇到过期 prompt：静默，不打扰用户。
+		assert.strictEqual(handler.handle(
+			'question.reply',
+			JSON.stringify({ requestId: 'q_gone2', rejected: true, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+		assert.strictEqual(handler.handle(
+			'permission.reply',
+			JSON.stringify({ channelId: 'p_gone2', allow: false, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+
+		const rejected = events.filter((e) => e.type === 'command.rejected');
+		assert.deepStrictEqual(
+			rejected.map((e) => e.payload.requestId),
+			['q_gone', 'p_gone'],
+			'只有作答/批准的失败才回执（即弹 toast）',
+		);
+	});
+
+	test('允许（allow）失败仍然提示用户，避免静默地为审批失败', () => {
+		const { handler, events } = makeHandler(() => 'tab-a', { success: false, error: 'PermissionRequestNotFound' });
+		handler.onPermissionRequested(permissionRequest());
+		assert.strictEqual(handler.handle(
+			'permission.reply',
+			JSON.stringify({ channelId: 'call_1', allow: true, sessionId: 'ses_a', tabId: 'tab-a' }),
+		), true);
+		assert.strictEqual(events.filter((e) => e.type === 'toast.error').length, 1);
 	});
 });
 

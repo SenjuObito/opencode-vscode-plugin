@@ -1,145 +1,135 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerPermissionCallbacks } from '../registerCallbacks/permissionCallbacks';
-import { getTabStore, resetTabStore } from '../../../store/tabStore';
-import type { SessionTabData } from '../../../components/ChatHeader/types';
+import { dispatchHostEnvelope } from '../../../utils/hostDispatcher';
+import { resetTabStore } from '../../../store/tabStore';
 
 /**
- * §10.7 / §10.8：后台 tab 的权限与提问请求怎么路由。
+ * §10.7 / §10.8：权限 / 提问事件如何进入对话框层。
  *
  * 规则（与 idea 同一套）：
- *  1. 请求带 tabId 且不属于当前活跃 tab → 挂到那个 tab 的记录上，切过去再弹；
- *  2. 找不到归属 tab（已关闭 / 视图重载）→ **当场弹出**，绝不丢弃；
- *     丢弃等于服务端永远等一个没人能答的 prompt；
- *  3. 服务端把请求关掉 → 从所有 tab 上摘掉同一份，否则角标一直亮。
+ *  1. 注册回调只做「解析 + 投递」：带 id 的请求一律交给 `openPermissionDialog`
+ *     / `openAskUserQuestionDialog`，由对话框层按 `tabId` 落到所属 tab 的队列；
+ *  2. 没有 id 的请求直接丢弃（无从答复，弹出来只会挂死）；
+ *  3. 服务端把请求关掉 → 交给 `forceClose*`，由对话框层从所有 tab 上摘掉。
+ *
+ * 队列归属本身（后台 tab 挂起、切过去再弹）由 `useDialogManagement` 负责，
+ * 见 `useDialogManagement.forceClose.test.ts`。
+ *
+ * 宿主只发语义事件（`permission.requested` / `question.requested` /
+ * `prompt.closed`），事件走 `hostDispatcher` 进注册表，没有 window 裸调用路径。
  */
-const makeTab = (id: string): SessionTabData => ({
-  id,
-  sessionId: null,
-  title: '',
-  messages: [],
-  pendingPermissions: [],
-  pendingQuestions: [],
-  pendingPlans: [],
-} as SessionTabData);
-
 const setup = () => {
   const openPermissionDialog = vi.fn();
   const openAskUserQuestionDialog = vi.fn();
+  const openPlanApprovalDialog = vi.fn();
   const forceClosePermissionDialog = vi.fn();
   const forceCloseAskUserQuestionDialog = vi.fn();
+  const forceClosePlanApprovalDialog = vi.fn();
+  const invalidateQuestionCard = vi.fn();
 
   registerPermissionCallbacks({
     addToast: vi.fn(),
     openPermissionDialog,
     openAskUserQuestionDialog,
-    openPlanApprovalDialog: vi.fn(),
+    openPlanApprovalDialog,
     forceClosePermissionDialog,
     forceCloseAskUserQuestionDialog,
-    forceClosePlanApprovalDialog: vi.fn(),
-    invalidateQuestionCard: vi.fn(),
+    forceClosePlanApprovalDialog,
+    invalidateQuestionCard,
     invalidatePermissionCard: vi.fn(),
   } as never);
 
   return {
     openPermissionDialog,
     openAskUserQuestionDialog,
+    openPlanApprovalDialog,
     forceClosePermissionDialog,
     forceCloseAskUserQuestionDialog,
+    forceClosePlanApprovalDialog,
+    invalidateQuestionCard,
   };
 };
 
-const tabById = (id: string) => getTabStore().findById(id);
+const emit = (type: string, payload: Record<string, unknown>) => {
+  dispatchHostEnvelope({ v: 2, type, tabId: String(payload.tabId ?? ''), epoch: 0, payload });
+};
 
-describe('permission/question 路由：后台 tab 挂起，认不到 tab 就当场弹', () => {
+describe('permission/question 事件投递', () => {
   beforeEach(() => {
     resetTabStore();
-    const store = getTabStore();
-    store.setTabs([makeTab('tab-a'), makeTab('tab-b')]);
-    store.setActiveTabId('tab-a');
   });
 
-  it('别的 tab 的权限请求挂到那个 tab 上，不打断当前对话', () => {
+  it('带 id 的权限请求原样投递（归属 tab 由对话框层决定）', () => {
     const { openPermissionDialog } = setup();
 
-    window.showPermissionDialog?.(JSON.stringify({
+    emit('permission.requested', {
       channelId: 'call_1',
       toolName: 'bash',
       tabId: 'tab-b',
       sessionId: 'ses_b',
-    }));
-
-    expect(openPermissionDialog).not.toHaveBeenCalled();
-    const parked = tabById('tab-b')?.pendingPermissions ?? [];
-    expect(parked).toHaveLength(1);
-    expect(parked[0].channelId).toBe('call_1');
-    expect(tabById('tab-a')?.pendingPermissions ?? []).toHaveLength(0);
-  });
-
-  it('认不到归属 tab 时当场弹出（不能丢，服务端还在等答复）', () => {
-    const { openPermissionDialog } = setup();
-
-    window.showPermissionDialog?.(JSON.stringify({
-      channelId: 'call_gone',
-      toolName: 'bash',
-      tabId: 'tab-closed',
-      sessionId: 'ses_gone',
-    }));
+    });
 
     expect(openPermissionDialog).toHaveBeenCalledTimes(1);
-    expect(openPermissionDialog.mock.calls[0][0].channelId).toBe('call_gone');
-  });
-
-  it('当前活跃 tab 的请求直接弹', () => {
-    const { openPermissionDialog } = setup();
-
-    window.showPermissionDialog?.(JSON.stringify({
-      channelId: 'call_now',
-      toolName: 'bash',
-      tabId: 'tab-a',
-      sessionId: 'ses_a',
-    }));
-
-    expect(openPermissionDialog).toHaveBeenCalledTimes(1);
-    expect(tabById('tab-a')?.pendingPermissions ?? []).toHaveLength(0);
+    expect(openPermissionDialog.mock.calls[0][0]).toMatchObject({
+      channelId: 'call_1',
+      tabId: 'tab-b',
+      sessionId: 'ses_b',
+    });
   });
 
   it('没有身份的请求直接丢弃（无从答复，弹出来只会挂死）', () => {
     const { openPermissionDialog } = setup();
 
-    window.showPermissionDialog?.(JSON.stringify({ toolName: 'bash' }));
+    emit('permission.requested', { toolName: 'bash' });
 
     expect(openPermissionDialog).not.toHaveBeenCalled();
   });
 
-  it('提问请求走同一套：挂到 tab 上', () => {
+  it('提问请求走同一套投递', () => {
     const { openAskUserQuestionDialog } = setup();
 
-    window.showAskUserQuestionDialog?.(JSON.stringify({
+    emit('question.requested', {
       requestId: 'q_1',
       toolName: 'ask',
       tabId: 'tab-b',
       sessionId: 'ses_b',
       questions: [],
-    }));
+    });
 
-    expect(openAskUserQuestionDialog).not.toHaveBeenCalled();
-    expect(tabById('tab-b')?.pendingQuestions ?? []).toHaveLength(1);
+    expect(openAskUserQuestionDialog).toHaveBeenCalledTimes(1);
+    expect(openAskUserQuestionDialog.mock.calls[0][0]).toMatchObject({
+      requestId: 'q_1',
+      tabId: 'tab-b',
+    });
   });
 
-  it('服务端关闭后从所有 tab 上摘掉同一份（角标要灭）', () => {
-    setup();
+  it('计划审批请求走同一套投递', () => {
+    const { openPlanApprovalDialog } = setup();
 
-    window.showPermissionDialog?.(JSON.stringify({
-      channelId: 'call_1',
-      toolName: 'bash',
+    emit('plan.requested', {
+      requestId: 'plan_1',
+      toolName: 'ExitPlanMode',
       tabId: 'tab-b',
       sessionId: 'ses_b',
-    }));
-    expect(tabById('tab-b')?.pendingPermissions ?? []).toHaveLength(1);
+    });
 
-    window.forceClosePermissionDialog?.('call_1');
+    expect(openPlanApprovalDialog).toHaveBeenCalledTimes(1);
+  });
 
-    expect(tabById('tab-b')?.pendingPermissions ?? []).toHaveLength(0);
+  it('服务端关闭后交给 forceClose（由对话框层摘掉所有 tab 上的同一份）', () => {
+    const { forceClosePermissionDialog } = setup();
+
+    emit('prompt.closed', { requestId: 'call_1' });
+
+    expect(forceClosePermissionDialog).toHaveBeenCalledWith('call_1');
+  });
+
+  it('question.invalidated 的命名 payload 能解析出 requestId（不是 [object Object]）', () => {
+    const { invalidateQuestionCard } = setup();
+
+    emit('question.invalidated', { requestId: 'call_q' });
+
+    expect(invalidateQuestionCard).toHaveBeenCalledWith('call_q');
   });
 });

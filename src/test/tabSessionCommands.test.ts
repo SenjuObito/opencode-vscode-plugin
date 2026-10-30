@@ -5,6 +5,7 @@ import { TabRegistry } from '../host/tab/TabRegistry';
 import { TabId } from '../host/tab/TabId';
 import { TabCommand } from '../host/tab/TabCommand';
 import { SessionState } from '../host/session/SessionState';
+import { MessageType } from '../host/session/types';
 import type { TabEvent } from '../host/tab/TabEvent';
 import type { TabEventRouter } from '../host/window/TabEventRouter';
 import type { OpenCodeDaemonBridge } from '../host/provider/OpenCodeDaemonBridge';
@@ -56,7 +57,7 @@ function makeHarness(replies: Record<string, string>) {
 		onForkBound: (targetTabId, sessionId) => bound.push({ targetTabId, sessionId }),
 	});
 
-	return { handler, calls, events, bound, registry };
+	return { handler, calls, events, bound, registry, state };
 }
 
 suite('Tab session commands match the core method names', () => {
@@ -108,5 +109,29 @@ suite('Tab session commands match the core method names', () => {
 		assert.ok(changed);
 		const state = JSON.parse(String(changed!.payload.state)) as { hasRevert: boolean; messageId: string };
 		assert.deepStrictEqual(state, { hasRevert: true, messageId: 'msg_1' });
+	});
+
+	test('latest always resolves through listMessages, never an older local history id', () => {
+		const h = makeHarness({
+			'opencode.listMessages': [
+				'{"messageEntry":{"info":{"role":"user","id":"msg_old"}}}',
+				'{"messageEntry":{"info":{"role":"user","id":"msg_new"}}}',
+			].join('\n'),
+			'opencode.revert': '{"success":true,"revert":{"messageID":"msg_new"}}',
+		});
+		h.state.addMessage({
+			type: MessageType.USER,
+			content: 'older turn',
+			timestamp: Date.now(),
+			raw: { id: 'msg_old' },
+		});
+
+		h.handler.revert(TabCommand.of('tab-src', 'session.revert', 'r6', { messageId: 'latest' }));
+
+		assert.deepStrictEqual(h.calls.map((call) => call.method), [
+			'opencode.listMessages',
+			'opencode.revert',
+		]);
+		assert.strictEqual(h.calls[1]?.params.messageID, 'msg_new');
 	});
 });

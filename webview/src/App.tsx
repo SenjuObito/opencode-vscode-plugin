@@ -581,10 +581,7 @@ const App = () => {
       sendHostCommand(tabId, 'session.unrevert', {}, sid ?? null);
     }
     applyRevertState(false);
-    if (sid) {
-      loadHistorySession(sid);
-    }
-  }, [applyRevertState, streamingActive, currentSessionIdRef, loadHistorySession]);
+  }, [applyRevertState, streamingActive, currentSessionIdRef]);
 
   // Confirm/cancel handlers live below, after `interruptSession` (useMessageSender)
   // exists — see handleConfirmInterruptRevert.
@@ -1415,6 +1412,7 @@ const App = () => {
         onConfirmInterrupt={handleConfirmInterrupt}
         onCancelInterrupt={handleCancelInterrupt}
         permissionDialogTimeoutSeconds={permissionDialogTimeoutSeconds}
+        promptsVisible={currentView === 'chat'}
       />
 
       <ConfirmDialog

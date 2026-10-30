@@ -925,7 +925,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       const messages = parseEventJson<ClaudeMessage[]>(json);
       if (!messages) return;
       if (updateBackgroundTab(env, (tab) => applySnapshotToTab(tab, messages))) return;
-      window.updateMessages?.(json, String(data.sequence ?? ''), String(data.baseIndex ?? 0));
+      window.updateMessages?.(
+        json,
+        String(data.sequence ?? ''),
+        String(data.baseIndex ?? 0),
+        env?.sessionId ?? null,
+      );
     },
     'message.tail': (payload: unknown, env?: HostEventEnvelope) => {
       const data = payloadOf(payload);
@@ -934,7 +939,12 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       const messages = parseEventJson<ClaudeMessage[]>(json);
       if (!messages) return;
       if (updateBackgroundTab(env, (tab) => applyTailToTab(tab, messages))) return;
-      window.updateMessageTail?.(json, String(data.baseIndex ?? 0), String(data.sequence ?? ''));
+      window.updateMessageTail?.(
+        json,
+        String(data.baseIndex ?? 0),
+        String(data.sequence ?? ''),
+        env?.sessionId ?? null,
+      );
     },
     'turn.heartbeat': (_payload: unknown, env?: HostEventEnvelope) => {
       if (!isActiveTabEvent(env)) return;

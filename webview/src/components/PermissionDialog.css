@@ -3,15 +3,30 @@
 .permission-dialog-v3 {
   position: relative;
   background: var(--bg-primary);
-  border-radius: 12px 12px 0 0;
-  border-top: 1px solid var(--border-secondary);
+  /* 与问题弹窗同一套几何：8px 圆角 + 8px 外边距 + 四边完整边框。
+   * 旧全局 LESS 里留了一份 v3 的旧几何（12px 上圆角 / width:100%），
+   * 生产包里排在组件样式之后，把这里覆盖掉，右侧还被 margin 挤出视口，
+   * 看起来就是「左边圆、右边和下边没边框、下角直角」。
+   * 旧副本已删除，这里现在是唯一来源。 */
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-  width: 100%;
+  width: auto;
   max-width: 100%;
+  margin: 0 8px 8px;
   padding: 12px 16px;
   padding-top: 16px;
   display: flex;
   flex-direction: column;
+}
+
+/* 倒计时进入警告窗口（≤30s）：与问题弹窗同一套黄色描边提醒。
+ * 1px 边框 + 1px 外圈 = 视觉 2px，四边四角完全一致；
+ * 不做脉动：问题弹窗是静态描边，两边保持一致，也避免闪烁时视觉粗细变化。 */
+.permission-dialog-v3.time-warning {
+  border-color: var(--text-warning);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15),
+              0 0 0 1px var(--text-warning);
 }
 
 .permission-dialog-v3-resize-handle {

@@ -21,7 +21,13 @@ import {
   preserveStreamingAssistantContent,
   stripDuplicateTrailingToolMessages,
 } from '../messageSync';
-import { endTransition, isTabTransitioning, activeTabId } from '../tabTransition';
+import {
+  activeTabId,
+  endTransition,
+  isSessionTransitioning,
+  isTabTransitioning,
+  transitionTargetOfSession,
+} from '../tabTransition';
 import { parseSequence } from '../parseSequence';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
@@ -92,6 +98,26 @@ export function registerMessageCallbacks(
    */
   const isActiveTabTransitioning = (): boolean => isTabTransitioning(activeTabId());
 
+  /**
+   * Port of idea's message transition guard.
+   *
+   * <p>A tab that is switching sessions must ignore the outgoing session's
+   * late snapshots, but it must accept the session it is switching *to*.
+   * Same-session history reloads and the revert soft reload are target
+   * transitions: dropping their authoritative snapshot clears the transcript
+   * until a later background delivery happens to restore it.</p>
+   */
+  const isTransitionBlocked = (targetSessionId?: string | null): boolean => {
+    if (!isSessionTransitioning(targetSessionId ?? null)) {
+      return false;
+    }
+    const transitionTarget = transitionTargetOfSession(targetSessionId ?? null);
+    const isTargetActiveSession = Boolean(
+      targetSessionId && transitionTarget && targetSessionId === transitionTarget,
+    );
+    return !isTargetActiveSession;
+  };
+
   // During streaming, buffer updateMessages calls and process only the latest
   // one per animation frame. This prevents JSON.parse of large payloads from
   // blocking the main thread on every coalescer push (which can arrive every
@@ -110,6 +136,7 @@ export function registerMessageCallbacks(
   let pendingUpdateRaf: number | null = null;
   let pendingUpdateSequence: number | null = null;
   let pendingUpdateBaseIndex: string | number | null | undefined = null;
+  let pendingUpdateTargetSessionId: string | null = null;
   const getPrependedHistoryMessageCount = (messageCount: number): number => {
     const count = window.__prependedHistoryMessageCount;
     return typeof count === 'number'
@@ -131,6 +158,7 @@ export function registerMessageCallbacks(
     pendingUpdateJson = null;
     pendingUpdateSequence = null;
     pendingUpdateBaseIndex = null;
+    pendingUpdateTargetSessionId = null;
     window.__pendingUpdateRaf = null;
     window.__pendingUpdateJson = null;
     window.__pendingUpdateSequence = null;
@@ -151,7 +179,12 @@ export function registerMessageCallbacks(
     requestNativeHistoryRefresh();
   };
 
-  const processUpdateMessages = (json: string, sequence: number | null = null, baseIndexArg?: string | number | null) => {
+  const processUpdateMessages = (
+    json: string,
+    sequence: number | null = null,
+    baseIndexArg?: string | number | null,
+    targetSessionId?: string | null,
+  ) => {
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path (window.updateMessages → setTimeout → processUpdateMessages)
     // cannot resurrect cleared messages when a transition starts between the
@@ -159,7 +192,7 @@ export function registerMessageCallbacks(
     // callers that bypass the entry point — addHistoryMessage / addUserMessage
     // already guard, but processUpdateMessages is the canonical setter and
     // should be self-defending.
-    if (isActiveTabTransitioning()) {
+    if (isTransitionBlocked(targetSessionId)) {
       return;
     }
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
@@ -406,8 +439,9 @@ export function registerMessageCallbacks(
     json: string,
     baseIndexArg: string | number,
     sequenceArg?: string | number,
+    targetSessionId?: string | null,
   ) => {
-    if (isActiveTabTransitioning()) return;
+    if (isTransitionBlocked(targetSessionId)) return;
     const sequence = parseSequence(sequenceArg);
     const minAcceptedSequence = window.__minAcceptedUpdateSequence ?? 0;
     if (sequence != null && sequence < minAcceptedSequence) return;
@@ -480,10 +514,11 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (json, sequenceArg, baseIndexArg) => {
-    // During session transition, ignore message updates from stale session
-    // callbacks to prevent cleared messages from being restored
-    if (isActiveTabTransitioning()) {
+  window.updateMessages = (json, sequenceArg, baseIndexArg, targetSessionIdArg) => {
+    // Port of idea's guard: a transition only blocks the outgoing session.
+    // The session the tab is switching to is authoritative and must land.
+    const targetSessionId = targetSessionIdArg ?? null;
+    if (isTransitionBlocked(targetSessionId)) {
       return;
     }
     const sequence = parseSequence(sequenceArg);
@@ -508,6 +543,7 @@ export function registerMessageCallbacks(
       pendingUpdateJson = json;
       pendingUpdateSequence = sequence;
       pendingUpdateBaseIndex = baseIndexArg ?? null;
+      pendingUpdateTargetSessionId = targetSessionId;
       window.__pendingUpdateJson = json;
       window.__pendingUpdateSequence = sequence;
       if (pendingUpdateRaf === null) {
@@ -517,20 +553,19 @@ export function registerMessageCallbacks(
           const latestJson = pendingUpdateJson;
           const latestSequence = pendingUpdateSequence;
           const latestBaseIndex = pendingUpdateBaseIndex;
+          const latestTargetSessionId = pendingUpdateTargetSessionId;
           pendingUpdateJson = null;
           pendingUpdateSequence = null;
           pendingUpdateBaseIndex = null;
+          pendingUpdateTargetSessionId = null;
           window.__pendingUpdateJson = null;
           window.__pendingUpdateSequence = null;
           // A session transition may have begun while this frame was buffered.
-          // processUpdateMessages re-checks the transition guard itself now, so
-          // this early return is defense-in-depth — without either check, a
-          // stale snapshot deferred during the outgoing session's streaming
-          // would run down the non-streaming path (isStreamingRef was cleared
-          // by beginSessionTransition) and resurrect the cleared messages.
-          if (isActiveTabTransitioning()) return;
+          // processUpdateMessages re-checks the target-aware guard itself, so
+          // this early return only protects against an outgoing-session frame.
+          if (isTransitionBlocked(latestTargetSessionId)) return;
           if (latestJson) {
-            processUpdateMessages(latestJson, latestSequence, latestBaseIndex);
+            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, latestTargetSessionId);
           }
         }, 16);
         pendingUpdateRaf = timerId as unknown as number;
@@ -539,7 +574,7 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processUpdateMessages(json, sequence, baseIndexArg);
+    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
   };
 
   window.updateMessageTail = processMessageTail;
@@ -628,8 +663,17 @@ export function registerMessageCallbacks(
     typeof (pendingMessages as { json?: unknown }).json === 'string'
   ) {
     delete (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
-    const payload = pendingMessages as { json: string; sequence?: number | null };
-    window.updateMessages(payload.json, payload.sequence ?? undefined);
+    const payload = pendingMessages as {
+      json: string;
+      sequence?: number | null;
+      targetSessionId?: string | null;
+    };
+    window.updateMessages(
+      payload.json,
+      payload.sequence ?? undefined,
+      undefined,
+      payload.targetSessionId ?? null,
+    );
   }
 
   window.updateStatus = (text) => {
@@ -778,6 +822,7 @@ export function registerMessageCallbacks(
       pendingUpdateRaf = null;
       pendingUpdateJson = null;
       pendingUpdateSequence = null;
+      pendingUpdateTargetSessionId = null;
       window.__pendingUpdateRaf = null;
       window.__pendingUpdateJson = null;
       window.__pendingUpdateSequence = null;

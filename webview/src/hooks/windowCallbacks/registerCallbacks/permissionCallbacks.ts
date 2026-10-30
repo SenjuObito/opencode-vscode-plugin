@@ -11,8 +11,6 @@ import { cardDebugLog } from '../../../utils/bridge';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
 import { setQuestionAnswer, removeQuestionAnswerByRequestId } from '../../../store/questionAnswerStore';
 import type { HostEventPayload } from '../../../utils/hostEventTypes';
-import { getTabStore } from '../../../store/tabStore';
-import { owningTabIdForSession } from '../tabTransition';
 
 export function registerPermissionCallbacks(options: UseWindowCallbacksOptions): void {
   const {
@@ -28,23 +26,37 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
 
   // Host-side failures (e.g. opencode.replyQuestion / replyPermission errors
   // surfaced by PermissionHandler, or daemon startup errors) land here as a user-visible toast.
-  const showToast = (message: unknown) => {
+  // The event carries a named payload (`{ message }`); the legacy window
+  // callback passed the string positionally, so accept both shapes.
+  const showToast = (payload: unknown) => {
+    const message = typeof payload === 'string'
+      ? payload
+      : String((payload as { message?: unknown } | undefined)?.message ?? '');
     cardDebugLog(`[PCard][webview] showToast: ${message}`);
-    addToast(String(message ?? ''), 'error');
+    if (message) {
+      addToast(message, 'error');
+    }
   };
 
   // A question reply failed server-side — flip the optimistic "answered"
   // record back to an honest skipped state.
-  const handleInvalidateQuestionCard = (requestId: string) => {
+  // The semantic event carries a named payload (`{ requestId }`); the legacy
+  // window callback passed the id positionally, so accept both shapes.
+  const handleInvalidateQuestionCard = (payload: unknown) => {
+    const requestId = typeof payload === 'string'
+      ? payload
+      : String((payload as { requestId?: unknown } | undefined)?.requestId ?? '');
     cardDebugLog(`[PCard][webview] invalidateQuestionCard called: requestId=${requestId}`);
     if (requestId) {
       removeQuestionAnswerByRequestId(requestId);
     }
-    invalidateQuestionCard?.(requestId ?? '');
+    invalidateQuestionCard?.(requestId);
   };
 
-  // A permission reply failed server-side — flip the optimistic
-  // approved/denied record back to a denied state.
+  // A prompt is owned by a tab, not by whichever page is on screen. The dialog
+  // layer appends it to that tab's queue (projection of the active tab), so a
+  // background tab keeps it until the user selects it; the current view gate
+  // lives in AppDialogs (`promptsVisible`).
   const showPermissionDialog = (payload: HostEventPayload | undefined) => {
     try {
       const request = payload as any;
@@ -55,67 +67,22 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
         return;
       }
       cardDebugLog(`[PCard][webview] showPermissionDialog channelId=${request.channelId} toolName=${request.toolName} sessionId=${request.sessionId} tabId=${request.tabId}`);
-      const targetSessionId = request.sessionId;
-      const tabStore = getTabStore();
-      // The host stamps the owning tab: routing by tab id is exact, routing by
-      // session id only finds the tab when it happens to be bound already.
-      const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
-
-      const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
-      const isCurrentActive = ownerTabId
-        ? tabStore.isActiveTab(ownerTabId)
-        : !targetSessionId;
-
-      if (!isCurrentActive && (targetTabId || targetSessionId)) {
-        const enqueue = (t: any) => {
-          const list = t.pendingPermissions || [];
-          if (!list.some((r: any) => r.channelId === request.channelId)) {
-            t.pendingPermissions = [...list, request];
-          }
-        };
-        const stored = ownerTabId ? tabStore.updateTab(ownerTabId, enqueue) : false;
-        if (stored) {
-          return;
-        }
-        cardDebugLog(
-          `[PCard][webview] background tab not found for ${targetTabId || targetSessionId}; showing permission prompt in the active window instead of dropping it`
-        );
-      }
-
       openPermissionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse permission request:', error);
     }
   };
 
-  // The Java backend calls these when its safety-net timer fires after the
-  // permission/ask/plan dialog future has already been resolved with a default
-  // (DENY / empty answers). Without an explicit close signal the WebView's
-  // openRefs stay true, every subsequent show*Dialog enqueues silently behind
-  // the orphaned dialog, and the user appears to "lose" all further prompts
-  // until they reload the tab — see issue #1360.
+  // The host publishes a close when it already resolved the request (server
+  // close / safety net): drop it from every tab so the badge cannot stay lit.
   const handleForceClosePermissionDialog = (payload: HostEventPayload) => {
     const channelId = String(payload?.requestId ?? '');
     forceClosePermissionDialog(channelId || null);
-    if (channelId) {
-      getTabStore().updateAllTabs((t) => {
-        if (t.pendingPermissions) {
-          t.pendingPermissions = t.pendingPermissions.filter((r: any) => r.channelId !== channelId);
-        }
-      });
-    }
   };
 
   const handleForceCloseAskUserQuestionDialog = (payload: HostEventPayload) => {
     const requestId = String(payload?.requestId ?? '');
     forceCloseAskUserQuestionDialog(requestId || null);
-    if (requestId) {
-      getTabStore().updateAllTabs((t) => {
-        if (t.pendingQuestions) {
-          t.pendingQuestions = t.pendingQuestions.filter((r: any) => r.requestId !== requestId);
-        }
-      });
-    }
   };
 
   const handleForceClosePlanApprovalDialog = (payload: HostEventPayload) => {
@@ -131,31 +98,6 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
         return;
       }
       cardDebugLog(`[QCard][webview] showAskUserQuestionDialog requestId=${request.requestId} toolName=${request.toolName} questions=${request.questions?.length ?? 0} sessionId=${request.sessionId} tabId=${request.tabId}`);
-      const targetSessionId = request.sessionId;
-      const tabStore = getTabStore();
-      const targetTabId = typeof request.tabId === 'string' && request.tabId ? request.tabId : null;
-
-      const ownerTabId = targetTabId ?? owningTabIdForSession(targetSessionId);
-      const isCurrentActive = ownerTabId
-        ? tabStore.isActiveTab(ownerTabId)
-        : !targetSessionId;
-
-      if (!isCurrentActive && (targetTabId || targetSessionId)) {
-        const enqueue = (t: any) => {
-          const list = t.pendingQuestions || [];
-          if (!list.some((r: any) => r.requestId === request.requestId)) {
-            t.pendingQuestions = [...list, request];
-          }
-        };
-        const stored = ownerTabId ? tabStore.updateTab(ownerTabId, enqueue) : false;
-        if (stored) {
-          return;
-        }
-        cardDebugLog(
-          `[QCard][webview] background tab not found for ${targetTabId || targetSessionId}; showing question prompt in active window`
-        );
-      }
-
       openAskUserQuestionDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse ask user question request:', error);
@@ -181,30 +123,13 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
         cardDebugLog('[PlanApproval][webview] dropping a plan approval without an id');
         return;
       }
-      const targetTabId = typeof request.tabId === 'string' ? request.tabId : null;
-      const tabStore = getTabStore();
-      const ownerTabId = targetTabId ?? owningTabIdForSession(request.sessionId);
-      if (ownerTabId && !tabStore.isActiveTab(ownerTabId)) {
-        // A background tab's plan approval waits in that tab's queue instead of
-        // stealing the foreground.
-        const stored = tabStore.updateTab(ownerTabId, (t: any) => {
-          const list = t.pendingPlans || [];
-          if (!list.some((r: any) => r.requestId === request.requestId)) {
-            t.pendingPlans = [...list, request];
-          }
-        });
-        if (stored) {
-          cardDebugLog('[PlanApproval][webview] queued the approval in tab', targetTabId);
-          return;
-        }
-      }
       openPlanApprovalDialog(request);
     } catch (error) {
       console.error('[Frontend] Failed to parse plan approval request:', error);
     }
   };
 
-  // The semantic catalog is the routing table.
+  // The semantic catalog is the routing table; there is no `window.<fn>` path.
   registerHostEvents({
     'prompt.question.closed': handleForceCloseAskUserQuestionDialog,
     'prompt.closed': handleForceClosePermissionDialog,
@@ -216,39 +141,4 @@ export function registerPermissionCallbacks(options: UseWindowCallbacksOptions):
     'question.invalidated': handleInvalidateQuestionCard,
     'toast.error': showToast,
   });
-
-  // Backward compatibility aliases for tests and legacy callers:
-  window.showPermissionDialog = (raw: any) => {
-    try {
-      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      showPermissionDialog(payload);
-    } catch {
-      // ignore
-    }
-  };
-  window.showAskUserQuestionDialog = (raw: any) => {
-    try {
-      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      showAskUserQuestionDialog(payload);
-    } catch {
-      // ignore
-    }
-  };
-  window.showPlanApprovalDialog = (raw: any) => {
-    try {
-      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      showPlanApprovalDialog(payload);
-    } catch {
-      // ignore
-    }
-  };
-  window.forceClosePermissionDialog = (id: any) => {
-    handleForceClosePermissionDialog({ requestId: id });
-  };
-  window.forceCloseAskUserQuestionDialog = (id: any) => {
-    handleForceCloseAskUserQuestionDialog({ requestId: id });
-  };
-  window.forceClosePlanApprovalDialog = (id: any) => {
-    handleForceClosePlanApprovalDialog({ requestId: id });
-  };
 }

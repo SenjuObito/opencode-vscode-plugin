@@ -443,7 +443,12 @@ if (window.__pendingLanguageConfig) {
 // Pre-register updateMessages to handle backend message snapshots that arrive before React initializes
 if (typeof window !== 'undefined' && !window.updateMessages) {
   debugLog('[Main] Pre-registering updateMessages placeholder');
-  window.updateMessages = (json: string, sequence?: string | number) => {
+  window.updateMessages = (
+    json: string,
+    sequence?: string | number,
+    _baseIndex?: string | number,
+    targetSessionId?: string | null,
+  ) => {
     const parsedSequence =
       typeof sequence === 'number'
         ? sequence
@@ -453,6 +458,7 @@ if (typeof window !== 'undefined' && !window.updateMessages) {
     window.__pendingUpdateMessages = {
       json,
       sequence: Number.isFinite(parsedSequence) ? parsedSequence : null,
+      targetSessionId: targetSessionId ?? null,
     };
   };
 }
@@ -600,33 +606,6 @@ if (typeof window !== 'undefined' && !window.onUsageUpdate) {
 if (typeof window !== 'undefined' && !window.applyBackendTabState) {
   window.applyBackendTabState = (json: string) => {
     window.__pendingBackendTabState = json;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.showPermissionDialog) {
-  debugLog('[Main] Pre-registering showPermissionDialog placeholder');
-  window.showPermissionDialog = (json: string) => {
-    const pending = window.__pendingPermissionDialogRequests || [];
-    pending.push(json);
-    window.__pendingPermissionDialogRequests = pending;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.showAskUserQuestionDialog) {
-  debugLog('[Main] Pre-registering showAskUserQuestionDialog placeholder');
-  window.showAskUserQuestionDialog = (json: string) => {
-    const pending = window.__pendingAskUserQuestionDialogRequests || [];
-    pending.push(json);
-    window.__pendingAskUserQuestionDialogRequests = pending;
-  };
-}
-
-if (typeof window !== 'undefined' && !window.showPlanApprovalDialog) {
-  debugLog('[Main] Pre-registering showPlanApprovalDialog placeholder');
-  window.showPlanApprovalDialog = (json: string) => {
-    const pending = window.__pendingPlanApprovalDialogRequests || [];
-    pending.push(json);
-    window.__pendingPlanApprovalDialogRequests = pending;
   };
 }
 

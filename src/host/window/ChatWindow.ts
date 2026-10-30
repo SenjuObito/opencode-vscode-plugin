@@ -582,7 +582,9 @@ export class ChatWindow {
 	 * 把语义事件投给某个 tab（§10.9 的 `files.undo` 等）。
 	 *
 	 * 事件带上 tab 的 epoch：webview 侧会丢掉比当前绑定更早的事件，
-	 * 避免一次 reattach 之前的迟到结果覆盖新会话。
+	 * 避免一次 reattach 之前的迟到结果覆盖新会话。`tabId` 为空时走全局
+	 * lane——会话尚未绑定 tab 的 prompt 仍然要送达（webview 按 sessionId
+	 * 找归属，找不到就在当前视图弹出）。
 	 */
 	publishTabEvent(
 		type: string,
@@ -590,7 +592,7 @@ export class ChatWindow {
 		payload: Record<string, unknown>,
 		options?: { legacy?: boolean; sessionId?: string | null },
 	): void {
-		const record = this.registry.get(TabId.of(tabId));
+		const record = tabId ? this.registry.get(TabId.of(tabId)) : null;
 		this.eventRouter.publish(
 			new TabEvent({
 				type,

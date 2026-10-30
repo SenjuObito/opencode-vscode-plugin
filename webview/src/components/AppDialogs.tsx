@@ -44,6 +44,15 @@ export interface AppDialogsProps {
   onCancelInterrupt: () => void;
   /** Permission dialog timeout in seconds (from backend config). */
   permissionDialogTimeoutSeconds?: number;
+  /**
+   * Whether prompt modals (permission / question / plan) may render.
+   *
+   * A prompt belongs to a tab, so it is only visible while that tab's chat page
+   * is the one on screen. Queued prompts keep waiting in the tab; leaving the
+   * chat page hides them (and pauses their countdown) instead of floating them
+   * over settings / history.
+   */
+  promptsVisible?: boolean;
 }
 
 /**
@@ -57,6 +66,7 @@ export const AppDialogs = ({
   onConfirmInterrupt,
   onCancelInterrupt,
   permissionDialogTimeoutSeconds = DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS,
+  promptsVisible = true,
 }: AppDialogsProps) => {
   const { t } = useTranslation();
   const {
@@ -83,9 +93,12 @@ export const AppDialogs = ({
         onConfirm={onConfirmInterrupt}
         onCancel={onCancelInterrupt}
       />
-      {/* Permission + AskUserQuestion now render as top-level popups (mirrors cc-gui). */}
+      {/* Permission + AskUserQuestion now render as top-level popups (mirrors cc-gui).
+          `isOpen` also carries the view gate: leaving the chat page hides the
+          prompt (and clears its countdown) without losing it — it stays queued
+          on its tab and comes back when that tab's page is shown again. */}
       <PermissionDialog
-        isOpen={permissionDialogOpen}
+        isOpen={promptsVisible && permissionDialogOpen}
         request={currentPermissionRequest}
         onApprove={handlePermissionApprove}
         onApproveAlways={handlePermissionApproveAlways}
@@ -94,7 +107,7 @@ export const AppDialogs = ({
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
       <AskUserQuestionDialog
-        isOpen={askUserQuestionDialogOpen}
+        isOpen={promptsVisible && askUserQuestionDialogOpen}
         request={currentAskUserQuestionRequest}
         onSubmit={handleAskUserQuestionSubmit}
         onCancel={handleAskUserQuestionSkip}
@@ -102,7 +115,7 @@ export const AppDialogs = ({
         timeoutSeconds={permissionDialogTimeoutSeconds}
       />
       <PlanApprovalDialog
-        isOpen={planApprovalDialogOpen}
+        isOpen={promptsVisible && planApprovalDialogOpen}
         request={currentPlanApprovalRequest}
         onApprove={handlePlanApprovalApprove}
         onReject={handlePlanApprovalReject}

@@ -93,11 +93,6 @@ describe('useSessionTabs - multi-session attribution', () => {
     // Every test starts with an empty tab strip.
     resetTabStore();
     vi.clearAllMocks();
-    delete window.__dialogStore;
-  });
-
-  afterEach(() => {
-    delete window.__dialogStore;
   });
 
   it('treats an empty id as belonging to no session', () => {
@@ -251,12 +246,6 @@ describe('useSessionTabs - multi-session attribution', () => {
   });
 
   it('keeps a background tab status and prompt written while it was hidden', () => {
-    const restore = vi.fn();
-    (window as any).__dialogStore = {
-      getSnapshot: () => ({ permissions: [], questions: [] }),
-      restore,
-    };
-
     const { result } = renderTabs({ currentSessionId: 'ses_a' });
     act(() => {
       store().updateTabSessionId('tab-1', 'ses_a');
@@ -267,22 +256,24 @@ describe('useSessionTabs - multi-session attribution', () => {
     });
 
     // While tab 1 is hidden, a background turn updates its own fields and a
-    // permission arrives for it.
-    const tab1 = result.current.tabs.find((tab) => tab.id === tab1Id)!;
+    // permission arrives for it. Both live on the tab record; selecting the tab
+    // only projects them, it does not copy or restore a second snapshot.
     act(() => {
-      tab1.loading = true;
-      tab1.status = 'running';
-      tab1.pendingPermissions = [{ channelId: 'per-bg' }];
+      store().updateTab(tab1Id, (tab) => {
+        tab.loading = true;
+        tab.status = 'running';
+        tab.pendingPermissions = [{ channelId: 'per-bg' }];
+      });
     });
 
     act(() => {
       result.current.selectTab(tab1Id);
     });
 
-    const active = result.current.tabs.find((tab) => tab.id === tab1Id)!;
+    const active = store().findById(tab1Id)!;
     expect(active.loading).toBe(true);
     expect(active.status).toBe('running');
-    expect(restore).toHaveBeenCalledWith([{ channelId: 'per-bg' }], [], []);
+    expect(active.pendingPermissions).toEqual([{ channelId: 'per-bg' }]);
   });
 
   it('follows a host tab.activated broadcast without echoing tab.activate', () => {
@@ -401,11 +392,6 @@ describe('useSessionTabs - history session loading', () => {
     // Every test starts with an empty tab strip.
     resetTabStore();
     vi.clearAllMocks();
-    delete window.__dialogStore;
-  });
-
-  afterEach(() => {
-    delete window.__dialogStore;
   });
 
   it('binds a freshly opened history session to the blank draft tab', () => {

@@ -117,6 +117,14 @@ describe('PermissionDialog', () => {
     countdown.state = { remainingSeconds: 10, isTimeWarning: true };
     renderDialog(mkRequest());
     expect(document.querySelector('.warning-mode')).toBeTruthy();
+    // 与问题弹窗同一套：倒计时 ≤30s 时对话框顶边高亮提醒。
+    expect(document.querySelector('.permission-dialog-v3.time-warning')).toBeTruthy();
+  });
+
+  it('keeps the dialog border neutral outside the warning window', () => {
+    countdown.state = { remainingSeconds: 90, isTimeWarning: false };
+    renderDialog(mkRequest());
+    expect(document.querySelector('.permission-dialog-v3.time-warning')).toBeNull();
   });
 
   it('timeout invokes onSkip for the active request even when the countdown is gated', () => {
