@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionTabs } from './useSessionTabs';
 import { sendBridgeEvent } from '../utils/bridge';
 import type { ClaudeMessage } from '../types';

@@ -373,11 +373,12 @@ function normalizeBlocks(raw: ClaudeRawMessage | unknown): (ClaudeContentBlock |
  * Trigger file download (via backend save)
  */
 export function downloadJSON(content: string, filename: string): void {
-  // Save file via backend, showing file chooser dialog
-  const payload = JSON.stringify({
-    content: content,
-    filename: filename.endsWith('.json') ? filename : `${filename}.json`
-  });
+  // Save file via backend, showing file chooser dialog.
+  // The v2 envelope payload has to be an object: HostCommand.parse only reads
+  // `payload.content` when payload is an object, otherwise it falls back to the
+  // whole envelope and the file is written empty.
+  const safeFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
+  const payload = { content, filename: safeFilename };
 
   if (window.sendToJava) {
     sendWindowCommand('save_json', payload);
@@ -423,10 +424,9 @@ export function convertMessagesToMarkdown(messages: ClaudeMessage[], sessionTitl
 
 export function downloadMarkdown(content: string, filename: string): void {
   const safeFilename = (filename.endsWith('.md') ? filename : `${filename}.md`).replace(/[/\\?%*:|"<>]/g, '_');
-  const payload = JSON.stringify({
-    content,
-    filename: safeFilename,
-  });
+  // Object payload (see downloadJSON): a JSON string would be dropped by the
+  // host parser and produce an empty file.
+  const payload = { content, filename: safeFilename };
 
   if (window.sendToJava) {
     sendWindowCommand('save_json', payload);
