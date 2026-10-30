@@ -9,13 +9,11 @@ import { ViewRegistry, ViewRecord } from './ViewRegistry';
 import { TabEventRouter } from './TabEventRouter';
 import { PromptRegistry } from '../prompt/PromptRegistry';
 import { TabSessionCommandHandler } from './TabSessionCommandHandler';
-import { TabContextCommandHandler } from './TabContextCommandHandler';
 import { TabFileCommandHandler } from './TabFileCommandHandler';
-import { TabSessionSendHandler } from './TabSessionSendHandler';
 import { TabAttachmentCommandHandler } from './TabAttachmentCommandHandler';
 import { TabAttachmentStore } from '../attachments/TabAttachmentStore';
 import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router/HostCommand';
-import type { WebviewChannel, FileOps } from '../router/HandlerContext';
+import type { WebviewChannel, FileOps, TabSessionContext } from '../router/HandlerContext';
 import type { SettingsService } from '../settings/SettingsService';
 import type { OpenCodeDaemonBridge } from '../provider/OpenCodeDaemonBridge';
 import type { FileEntry } from '../handlers/FileHandler';
@@ -25,31 +23,6 @@ import type { SessionManager } from '../session/SessionManager';
 import { isValidPermissionMode } from '../session/SessionState';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { PluginFileLogger } from '../util/PluginFileLogger';
-
-/**
- * 允许不带 tabId 的窗口级命令。
- *
- * <p>方案 §4.4 / INV-4：缺 tabId 的**tab 级**命令必须拒绝，不能回落到活跃 tab；
- * 只有真正与 tab 无关的命令（设置目录、命令列表、活跃 tab 内新建会话）例外。</p>
- */
-const WINDOW_SCOPED_COMMANDS = new Set(['agents.list', 'commands.refresh', 'session.new']);
-
-/**
- * Commands whose handler must verify that the tab still holds the session the
- * command was addressed to. The envelope's sessionId is copied into the payload
- * because TabCommand itself only carries tabId.
- */
-const SESSION_GUARDED_COMMANDS = new Set([
-	'session.fork',
-	'session.revert',
-	'session.unrevert',
-	'session.compact',
-	'session.share',
-	'session.unshare',
-	'permission.reply',
-	'question.reply',
-	'plan.reply',
-]);
 
 export interface ChatWindowOptions {
 	settings: SettingsService;
@@ -83,8 +56,8 @@ export interface ChatWindowOptions {
 	saveText?: (content: string, filename: string) => void;
 	/** 读取子代理 transcript（`subagent.history`，按会话归属）。 */
 	loadSubagentHistory?: (payload: string) => void;
-	/** v2 提示答复：`permission.reply` / `question.reply` / `plan.reply`。 */
-	replyPrompt?: (type: string, payload: Record<string, unknown>, tabId: string) => { ok: boolean; code?: string; reason?: string } | void;
+	/** Window-level v2 commands are dispatched by the ChatInstance handlers. */
+	dispatchWindowCommand?: (type: string, payload: Record<string, unknown>) => boolean;
 	/**
 	 * 列举候选文件（v2 `files.list`）：由 ChatInstance 接到 FileHandler。
 	 * 目录由宿主按目标 tab 的 cwd 给出。
@@ -108,8 +81,6 @@ export class ChatWindow {
 	readonly eventRouter: TabEventRouter;
 	readonly commandRouter: TabCommandRouter;
 	readonly sessionCommandHandler: TabSessionCommandHandler;
-	readonly contextCommandHandler: TabContextCommandHandler;
-	readonly sessionSendHandler: TabSessionSendHandler;
 	readonly fileCommandHandler: TabFileCommandHandler;
 	readonly sessionFactory: TabSessionFactory;
 	readonly attachments: TabAttachmentStore;
@@ -162,11 +133,6 @@ export class ChatWindow {
 			},
 		});
 
-		this.contextCommandHandler = new TabContextCommandHandler(
-			() => this.daemon,
-			(type, tabId, payload) => this.publishTabEvent(type, tabId, payload),
-		);
-
 		this.fileCommandHandler = new TabFileCommandHandler({
 			listFiles: (query, directory) =>
 				this.options.listFiles
@@ -189,19 +155,6 @@ export class ChatWindow {
 			adapterOf: (session) => session.getAdapter() ?? null,
 			coalescerOf: (session) => session.getAdapter().getCoalescer() ?? null,
 		});
-		this.sessionSendHandler = new TabSessionSendHandler({
-			ensureSession: (record) => this.ensureTabSession(record),
-			replay: (record) => this.replayTab(record),
-			reportError: (record, message) => this.publishTabError(record, message),
-			resolveAttachment: (tabId, attachmentId) => {
-				const resolved = this.attachments.resolve(tabId, attachmentId);
-				const data = this.attachments.readBase64(tabId, attachmentId);
-				if (!resolved || data == null) {
-					return null;
-				}
-				return { data, fileName: resolved.fileName, mediaType: resolved.mediaType };
-			},
-		});
 		this.attachments = new TabAttachmentStore(this.options.attachmentsRoot ?? null);
 		this.attachmentCommandHandler = new TabAttachmentCommandHandler({
 			store: () => this.attachments,
@@ -217,11 +170,16 @@ export class ChatWindow {
 
 	private ensureInitialTab(): TabRecord {
 		if (this.registry.size() === 0) {
-			const initialId = TabId.create();
+			// Idea's window owns a bootstrap tab from construction time: the
+			// webview starts with the same `tab-1` identity and can send tab-scoped
+			// commands before the first resync. The provisional session makes the
+			// first send reuse it instead of racing a lazy creation.
+			const initialId = TabId.of('tab-1');
 			const cwd = this.fallbackWorkingDirectoryResolver() || '';
-			const record = this.registry.create(initialId, cwd);
+			const prepared = this.sessionFactory.prepare(initialId, cwd);
+			this.registry.activate(initialId);
 			this.eventRouter.setActiveTabId(initialId.value);
-			return record;
+			return prepared.tab;
 		}
 		return this.registry.liveTabs()[0];
 	}
@@ -444,15 +402,6 @@ export class ChatWindow {
 	}
 
 	private registerContextCommands(): void {
-		// 上下文注入开关（per tab）：webview 在切换「自动附带当前文件」时发送。
-		this.commandRouter.register('context.refresh', (cmd, record) => {
-			this.contextCommandHandler.refreshContext(cmd, record);
-		});
-		// 斜杠命令列表（per tab 的 cwd）：webview 打 `/` 与 tab 切换时发送。
-		this.commandRouter.register('commands.refresh', (cmd, record) => {
-			this.contextCommandHandler.refreshCommands(cmd, record);
-		});
-
 		// @ 文件补全候选：结果按 tab 回到发起请求的那个 tab。
 		this.commandRouter.register('files.list', (cmd, record) => {
 			void this.fileCommandHandler.list(cmd, record);
@@ -460,13 +409,6 @@ export class ChatWindow {
 	}
 
 	private registerSessionRuntimeCommands(): void {
-		// 发送 / 中断都按 tab 解析目标会话：B 的操作绝不落到 A 身上。
-		this.commandRouter.register('session.send', (cmd, record) => {
-			this.sessionSendHandler.send(cmd, record);
-		});
-		this.commandRouter.register('session.interrupt', (cmd, record) => {
-			this.sessionSendHandler.interrupt(cmd, record);
-		});
 		// 在同一个 tab 内开新对话（/clear、新建对话按钮）：保留 tab，重置会话与绑定。
 		this.commandRouter.register('session.new', () => {
 			if (!this.sessionManager) {
@@ -539,32 +481,6 @@ export class ChatWindow {
 			record.getSettings().setReasoningEffort(effort);
 			record.getSession()?.getState().setReasoningEffort(effort);
 		});
-		// agent 目录：webview 的 ModeSelect 在未收到过推送时主动要一次。
-		this.commandRouter.register('agents.list', () => {
-			this.options.requestAgents?.();
-		});
-		// 未决提示的答复必须回到发起它的 tab/session（idea 的 permission.reply /
-		// question.reply / plan.reply）。ChatWindow 先把命令路由到目标 tab，
-		// PermissionHandler 再核对 pending 的归属，过期或串 tab 的答复发 command.rejected。
-		for (const type of ['permission.reply', 'question.reply', 'plan.reply']) {
-			this.commandRouter.register(type, (cmd, record) => {
-				const result = this.options.replyPrompt?.(type, cmd.payload, cmd.tabId.value);
-				if (result && typeof result === 'object' && result.ok === false) {
-					record?.getEventSink()(new TabEvent({
-						type: 'command.rejected',
-						tabId: cmd.tabId.value,
-						epoch: record.epoch,
-						payload: {
-							tabId: cmd.tabId.value,
-							requestId: cmd.requestId,
-							code: result.code ?? CommandRejectCode.INVALID_PAYLOAD,
-							message: result.reason ?? `${type} rejected`,
-						},
-						legacy: false,
-					}));
-				}
-			});
-		}
 	}
 
 	private registerAttachmentCommands(): void {
@@ -613,19 +529,76 @@ export class ChatWindow {
 	}
 
 	/**
+	 * The tab registry/session factory surface used by window-level handlers.
+	 *
+	 * <p>Handlers such as SessionHandler receive only IDs; they resolve the tab
+	 * through this context instead of reading the active session. The injected
+	 * callbacks are the single bridge between the idea-shaped dispatcher and
+	 * this window's per-tab resources.</p>
+	 */
+	createTabSessionContext(): TabSessionContext {
+		const recordOf = (tabId: string): TabRecord | null => {
+			if (!tabId) { return null; }
+			try {
+				return this.registry.get(TabId.of(tabId));
+			} catch {
+				return null;
+			}
+		};
+		return {
+			getSessionForTab: (tabId) => recordOf(tabId)?.getSession() ?? null,
+			createSessionForTab: (tabId) => {
+				const record = recordOf(tabId);
+				return record ? this.ensureTabSession(record) : null;
+			},
+			getSessionBySessionId: (sessionId) => this.registry.findBySession(sessionId)?.getSession() ?? null,
+			getTabIdForSession: (sessionId) => this.registry.findBySession(sessionId)?.getTabId().value ?? null,
+			getCwdForTab: (tabId) => recordOf(tabId)?.getCwd() ?? null,
+			getSendSettings: (tabId) => {
+				const record = recordOf(tabId);
+				if (!record) { return null; }
+				const settings = record.getSettings();
+				return {
+					model: settings.getModel(),
+					permissionMode: settings.getPermissionMode(),
+					reasoningEffort: settings.getReasoningEffort(),
+				};
+			},
+			resolveAttachment: (tabId, attachmentId) => {
+				const resolved = this.attachments.resolve(tabId, attachmentId);
+				const data = this.attachments.readBase64(tabId, attachmentId);
+				if (!resolved || data == null) { return null; }
+				return { data, fileName: resolved.fileName, mediaType: resolved.mediaType };
+			},
+			setContextEnabled: (tabId, enabled) => {
+				const settings = recordOf(tabId)?.getSettings();
+				settings?.setAutoOpenFileEnabled(enabled);
+				settings?.setContextEnabled(enabled);
+			},
+		};
+	}
+
+	/**
 	 * 把语义事件投给某个 tab（§10.9 的 `files.undo` 等）。
 	 *
 	 * 事件带上 tab 的 epoch：webview 侧会丢掉比当前绑定更早的事件，
 	 * 避免一次 reattach 之前的迟到结果覆盖新会话。
 	 */
-	publishTabEvent(type: string, tabId: string, payload: Record<string, unknown>): void {
+	publishTabEvent(
+		type: string,
+		tabId: string,
+		payload: Record<string, unknown>,
+		options?: { legacy?: boolean; sessionId?: string | null },
+	): void {
 		const record = this.registry.get(TabId.of(tabId));
 		this.eventRouter.publish(
 			new TabEvent({
 				type,
 				tabId,
 				epoch: record?.epoch ?? 0,
+				sessionId: options?.sessionId ?? record?.getSessionIdString() ?? null,
 				payload,
+				legacy: options?.legacy,
 			}),
 		);
 	}
@@ -822,6 +795,11 @@ export class ChatWindow {
 				`failed to bind forked session ${newSessionId} to tab ${targetTabId}: ${String(err)}`,
 			);
 		}
+	}
+
+	/** Inject/replace the window-level dispatcher (also used by tests). */
+	setWindowCommandDispatcher(dispatcher: (type: string, payload: Record<string, unknown>) => boolean): void {
+		this.options.dispatchWindowCommand = dispatcher;
 	}
 
 	/** 拿到（必要时创建）某个 tab 的会话。 */
@@ -1118,92 +1096,72 @@ export class ChatWindow {
 			return;
 		}
 
-		// 3. Command routing
+		// Window-level commands that belong to the chat instance, not a tab.
+		if (type === 'agents.list') {
+			this.options.requestAgents?.();
+			return;
+		}
+
+		// 3. Tab-scoped commands. The router owns only the commands it was
+		// registered for; everything else goes to the window dispatcher, exactly
+		// like idea's TabCommandRouter + MessageDispatcher split.
 		if (this.commandRouter.handles(type)) {
 			if (type === 'tab.create') {
-				const createTabId = command.tabId ?? TabId.create();
-				const tabCmd = TabCommand.of(createTabId.value, type, command.requestId, command.payload);
+				if (!command.tabId) {
+					this.unattributedCount += 1;
+					this.rejectCommand(viewId, '', command.requestId, CommandRejectCode.MISSING_TAB_ID,
+						'Command tab.create requires a target tab');
+					return;
+				}
+				const tabCmd = TabCommand.of(command.tabId.value, type, command.requestId, command.payload);
 				await this.commandRouter.route(tabCmd);
 				return;
 			}
 
-			const targetTabId = command.tabId ?? (
-				WINDOW_SCOPED_COMMANDS.has(type) ? this.registry.getActiveTabId() : null
-			);
+			const targetTabId = command.tabId;
 			if (!targetTabId) {
 				this.unattributedCount += 1;
-				this.rejectCommand(
-					viewId,
-					'',
-					command.requestId,
-					CommandRejectCode.MISSING_TAB_ID,
-					`Command ${type} requires a target tab`,
-				);
+				this.rejectCommand(viewId, '', command.requestId, CommandRejectCode.MISSING_TAB_ID,
+					`Command ${type} requires a target tab`);
 				return;
 			}
 
-			let record = this.registry.get(targetTabId);
-			if (!record && type.startsWith('session.')) {
-				PluginFileLogger.info('ChatWindow', `Auto-creating tab record for ${targetTabId.value} on ${type}`);
-				record = this.registry.create(targetTabId, this.fallbackWorkingDirectoryResolver() || '');
-			}
+			const record = this.registry.get(targetTabId);
 			if (!record) {
-				this.rejectCommand(
-					viewId,
-					targetTabId.value,
-					command.requestId,
-					CommandRejectCode.TAB_NOT_FOUND,
-					`Tab ${targetTabId.value} not found`,
-				);
+				this.rejectCommand(viewId, targetTabId.value, command.requestId,
+					CommandRejectCode.TAB_NOT_FOUND, `Tab ${targetTabId.value} not found`);
 				return;
 			}
 
-			// Validate session match if command explicitly specifies sessionId
+			// The envelope identity was merged into the payload. Verify it agrees
+			// with the tab before a handler sees it.
 			if (command.sessionId && record.getSessionId() && !command.sessionId.equals(record.getSessionId()!)) {
-				this.rejectCommand(
-					viewId,
-					targetTabId.value,
-					command.requestId,
+				this.rejectCommand(viewId, targetTabId.value, command.requestId,
 					CommandRejectCode.SESSION_MISMATCH,
-					`Session mismatch: command specifies ${command.sessionId.value} but tab is bound to ${record.getSessionIdString()}`,
-				);
+					`Session mismatch: command specifies ${command.sessionId.value} but tab is bound to ${record.getSessionIdString()}`);
 				return;
 			}
 
-			const guardedPayload = SESSION_GUARDED_COMMANDS.has(type)
-				&& command.sessionId
-				&& typeof command.payload.sessionId !== 'string'
-				? { ...command.payload, sessionId: command.sessionId.value }
-				: command.payload;
-			const tabCmd = TabCommand.of(targetTabId.value, type, command.requestId, guardedPayload);
+			const tabCmd = TabCommand.of(targetTabId.value, type, command.requestId, command.payload);
 			const result = await this.commandRouter.route(tabCmd);
 			if (result === TabCommandRouteResult.UNKNOWN_TAB) {
-				this.rejectCommand(
-					viewId,
-					targetTabId.value,
-					command.requestId,
-					CommandRejectCode.TAB_NOT_FOUND,
-					`Tab ${targetTabId.value} not found`,
-				);
+				this.rejectCommand(viewId, targetTabId.value, command.requestId,
+					CommandRejectCode.TAB_NOT_FOUND, `Tab ${targetTabId.value} not found`);
 			} else if (result === TabCommandRouteResult.UNKNOWN_COMMAND) {
-				this.rejectCommand(
-					viewId,
-					targetTabId.value,
-					command.requestId,
-					CommandRejectCode.UNKNOWN_TYPE,
-					`Command ${type} is not supported`,
-				);
+				this.rejectCommand(viewId, targetTabId.value, command.requestId,
+					CommandRejectCode.UNKNOWN_TYPE, `Command ${type} is not supported`);
 			}
 			return;
 		}
 
-		// If command is unknown to commandRouter
-		this.rejectCommand(
-			viewId,
-			command.tabId?.value || '',
-			command.requestId,
-			CommandRejectCode.UNKNOWN_TYPE,
-			`Unknown command type: ${type}`,
-		);
+		// 4. Window-level dispatcher (SessionHandler / WindowEventHandler /
+		// PermissionHandler / ...). This is the idea path for session.send,
+		// session.interrupt, commands.refresh, context.refresh and prompt replies.
+		if (this.options.dispatchWindowCommand?.(type, command.payload)) {
+			return;
+		}
+
+		this.rejectCommand(viewId, command.tabId?.value || '', command.requestId,
+			CommandRejectCode.UNKNOWN_TYPE, `Unknown command type: ${type}`);
 	}
 }

@@ -1,9 +1,7 @@
 /**
  * 发送载荷归一化。
  *
- * 两条发送路径共用：
- *   - legacy `send_message` / `send_message_with_attachments`（`SessionHandler`，内容是一段 JSON 文本）
- *   - v2 `session.send`（`TabSessionSendHandler`，payload 已经是对象）
+ * v2 `session.send` 的 payload 归一化。
  *
  * 归一化只接受字符串字段与白名单枚举，别把任意 JSON 直接递给会话层。
  */

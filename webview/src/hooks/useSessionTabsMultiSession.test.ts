@@ -48,15 +48,6 @@ vi.mock('../utils/bridge', async (importOriginal) => {
       payload: Record<string, unknown> = {},
       sessionId: string | null | undefined = null,
     ) => emitCommand({ type, tabId, sessionId, payload }),
-    sendSessionCommand: (
-      type: string,
-      sessionId: string | null | undefined,
-      payload: Record<string, unknown> = {},
-    ) => {
-      const tabStore = getTabStore();
-      const tabId = sessionId ? tabStore.findIdBySession(sessionId) : tabStore.getActiveTabId();
-      return emitCommand({ type, tabId, sessionId, payload });
-    },
   };
 });
 

@@ -117,7 +117,12 @@ export interface ChatInstance {
 	 * 会话层先建、ChatWindow 后建，只能后注入。
 	 */
 	setEventPublisher(
-		publisher: (type: string, tabId: string, payload: Record<string, unknown>) => void,
+		publisher: (
+			type: string,
+			tabId: string,
+			payload: Record<string, unknown>,
+			options?: { legacy?: boolean; sessionId?: string | null },
+		) => void,
 	): void;
 	dispose(): void;
 }

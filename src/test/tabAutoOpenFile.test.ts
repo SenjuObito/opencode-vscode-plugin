@@ -3,6 +3,9 @@ import * as assert from 'assert';
 import { ChatWindow } from '../host/window/ChatWindow';
 import type { WebviewChannel } from '../host/router/HandlerContext';
 import { TabId } from '../host/tab/TabId';
+import { SessionState } from '../host/session/SessionState';
+import { SessionCallbackAdapter } from '../host/session/SessionCallbackAdapter';
+import { attachWindowCommands } from './windowDispatcherHarness';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
@@ -55,6 +58,12 @@ async function sendCommand(
  * 开关（context.refresh 写进 TabSettings）形同虚设。现在会话按 tab 解析：tab 显式
  * 设过就用它的，没设过才跟随全局。
  */
+let tabSequence = 0;
+function churnTabId(): string {
+	tabSequence += 1;
+	return tabSequence === 1 ? 'tab-a' : 'tab-b';
+}
+
 suite('P8-A17: §10.12 per-tab autoOpenFileEnabled', () => {
 	test('没设过的 tab 跟随全局（undefined），设过的 tab 用自己的值', async () => {
 		const resolvers = new Map<string, () => boolean | null | undefined>();
@@ -64,12 +73,17 @@ suite('P8-A17: §10.12 per-tab autoOpenFileEnabled', () => {
 			fileOps: {} as never,
 			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
 			createSession: (sink, autoOpenFileEnabledResolver) => {
-				const tabId = resolvers.size === 0 ? 'tab-a' : 'tab-b';
+				const tabId = churnTabId();
 				resolvers.set(tabId, autoOpenFileEnabledResolver ?? (() => undefined));
+				const state = new SessionState();
+				const adapter = new SessionCallbackAdapter({
+					jsTarget: sink,
+					model: () => state.getModel(),
+				});
 				return {
-					state: { setCwd: () => {}, setPermissionMode: () => {}, setReasoningEffort: () => {}, getCwd: () => '/mock/workspace' },
-					getState: () => ({}),
-					getAdapter: () => ({ setTabId: () => {}, setSessionId: () => {}, getCoalescer: () => null }),
+					state,
+					getState: () => state,
+					getAdapter: () => adapter,
 					send: async () => {},
 					sendShell: async () => {},
 					interrupt: () => {},
@@ -77,6 +91,7 @@ suite('P8-A17: §10.12 per-tab autoOpenFileEnabled', () => {
 				} as never;
 			},
 		});
+		chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
 		chatWindow.registerView('sidebar', new MockChannel());
 
 		const tabA = chatWindow.registry.getActiveTabId()!;

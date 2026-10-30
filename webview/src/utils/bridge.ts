@@ -233,22 +233,6 @@ export const sendInterrupt = (
   return sendHostCommand(tabId, 'session.interrupt', {}, options.sessionId ?? null);
 };
 
-export const sendSessionCommand = (
-  type: string,
-  sessionId: string | null | undefined,
-  payload: Record<string, unknown> = {},
-): boolean => {
-  const tabStore = getTabStore();
-  const tabId = sessionId
-    ? tabStore.findIdBySession(sessionId)
-    : tabStore.getActiveTabId();
-  if (!tabId) {
-    console.warn(`[bridge] dropped the ${type} command: no tab owns the session`);
-    return false;
-  }
-  return sendHostCommand(tabId, type, payload, sessionId ?? null);
-};
-
 export const sendWindowCommand = (
   type: string,
   payload: unknown = {},

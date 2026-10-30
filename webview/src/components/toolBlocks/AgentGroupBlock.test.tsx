@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import AgentGroupBlock from './AgentGroupBlock';
 
-const mockSendSessionCommand = vi.fn();
+const mockSendHostCommand = vi.fn();
 let mockHistories: Record<string, unknown> = {};
 const mockUseSessionId = vi.fn<() => string | null>();
 const mockUseSessionProvider = vi.fn<() => string>();
@@ -15,7 +15,14 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('../../utils/bridge', () => ({
-  sendSessionCommand: (...args: unknown[]) => mockSendSessionCommand(...args),
+  sendHostCommand: (...args: unknown[]) => mockSendHostCommand(...args),
+}));
+
+vi.mock('../../store/tabStore', () => ({
+  getTabStore: () => ({
+    findIdBySession: () => 'tab-test',
+    getActiveTabId: () => 'tab-test',
+  }),
 }));
 
 vi.mock('../../contexts/SubagentContext', () => ({
@@ -56,7 +63,7 @@ function renderGroup(result: unknown, overrides: Record<string, unknown> = {}) {
 
 describe('AgentGroupBlock subagent status', () => {
   beforeEach(() => {
-    mockSendSessionCommand.mockReset();
+    mockSendHostCommand.mockReset();
     mockGetToolResultRaw.mockReset();
     mockUseSessionId.mockReset();
     mockUseSessionProvider.mockReset();
@@ -122,24 +129,24 @@ describe('AgentGroupBlock subagent status', () => {
 
     const { container, rerender } = renderGroup(null);
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
-    expect(mockSendSessionCommand).toHaveBeenCalledTimes(1);
+    expect(mockSendHostCommand).toHaveBeenCalledTimes(1);
 
     // The expand-time answer is a snapshot taken while the child still ran; it
     // must not by itself schedule another read.
     mockHistories = {
       'subagent-1': { success: true, status: 'running', completed: false, messages: [] },
     };
-    mockSendSessionCommand.mockClear();
+    mockSendHostCommand.mockClear();
     rerender(rerenderGroup(null));
-    expect(mockSendSessionCommand).not.toHaveBeenCalled();
+    expect(mockSendHostCommand).not.toHaveBeenCalled();
 
     // The terminal report lands as the parent tool_result; status comes from
     // that (or core's event), so the transcript is not re-read.
     rerender(rerenderGroup(result));
-    expect(mockSendSessionCommand).not.toHaveBeenCalled();
+    expect(mockSendHostCommand).not.toHaveBeenCalled();
     expect(container.querySelector('.tool-status-indicator')?.className).toContain('completed');
 
     rerender(rerenderGroup(result));
-    expect(mockSendSessionCommand).not.toHaveBeenCalled();
+    expect(mockSendHostCommand).not.toHaveBeenCalled();
   });
 });

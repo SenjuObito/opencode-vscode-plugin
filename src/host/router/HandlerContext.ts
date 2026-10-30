@@ -36,6 +36,26 @@ export interface FileOps {
 	copyToClipboard(text: string): boolean;
 }
 
+/** The tab-owned session surface used by the window command dispatcher. */
+export interface TabSessionContext {
+	getSessionForTab(tabId: string): OpenCodeSession | null;
+	createSessionForTab(tabId: string): OpenCodeSession | null;
+	getSessionBySessionId(sessionId: string): OpenCodeSession | null;
+	getTabIdForSession(sessionId: string): string | null;
+	getCwdForTab(tabId: string): string | null;
+	getSendSettings(tabId: string): {
+		model?: string | null;
+		permissionMode?: string | null;
+		reasoningEffort?: string | null;
+	} | null;
+	resolveAttachment(tabId: string, attachmentId: string): {
+		data: string;
+		fileName: string;
+		mediaType: string;
+	} | null;
+	setContextEnabled(tabId: string, enabled: boolean): void;
+}
+
 export class HandlerContext {
 	private sessionManager: SessionManager | null = null;
 	private session: OpenCodeSession | null = null;
@@ -44,6 +64,7 @@ export class HandlerContext {
 	private disposed = false;
 	private fallbackWorkingDir: (() => string | null) | null = null;
 	private daemon: OpenCodeDaemonBridge | null = null;
+	private tabSessionContext: TabSessionContext | null = null;
 	private fileOps: FileOps = {
 		openFile: () => {},
 		resolveFilePath: (p) => p,
@@ -63,6 +84,51 @@ export class HandlerContext {
 
 	setDaemon(daemon: OpenCodeDaemonBridge | null): void {
 		this.daemon = daemon;
+	}
+
+	/** Wire the host's tab registry/session factory into window-level handlers. */
+	setTabSessionContext(context: TabSessionContext | null): void {
+		this.tabSessionContext = context;
+	}
+
+	getSessionForTab(tabId: string): OpenCodeSession | null {
+		return this.tabSessionContext?.getSessionForTab(tabId) ?? null;
+	}
+
+	createSessionForTab(tabId: string): OpenCodeSession | null {
+		return this.tabSessionContext?.createSessionForTab(tabId) ?? null;
+	}
+
+	getSessionBySessionId(sessionId: string): OpenCodeSession | null {
+		return this.tabSessionContext?.getSessionBySessionId(sessionId) ?? null;
+	}
+
+	getTabIdForSession(sessionId: string): string | null {
+		return this.tabSessionContext?.getTabIdForSession(sessionId) ?? null;
+	}
+
+	getCwdForTab(tabId: string): string | null {
+		return this.tabSessionContext?.getCwdForTab(tabId) ?? null;
+	}
+
+	getSendSettings(tabId: string): {
+		model?: string | null;
+		permissionMode?: string | null;
+		reasoningEffort?: string | null;
+	} | null {
+		return this.tabSessionContext?.getSendSettings(tabId) ?? null;
+	}
+
+	resolveAttachment(tabId: string, attachmentId: string): {
+		data: string;
+		fileName: string;
+		mediaType: string;
+	} | null {
+		return this.tabSessionContext?.resolveAttachment(tabId, attachmentId) ?? null;
+	}
+
+	setTabContextEnabled(tabId: string, enabled: boolean): void {
+		this.tabSessionContext?.setContextEnabled(tabId, enabled);
 	}
 
 	getFileOps(): FileOps {
@@ -120,10 +186,20 @@ export class HandlerContext {
 	 * 处理器把结果按语义事件投回某个 tab（`files.undo` 等），而不是窗口级
 	 * `callJavaScript` —— 多 tab 时窗口级回调会把结果送到别的 tab 的视图上。
 	 */
-	private eventPublisher: ((type: string, tabId: string, payload: Record<string, unknown>) => void) | null = null;
+	private eventPublisher: ((
+		type: string,
+		tabId: string,
+		payload: Record<string, unknown>,
+		options?: { legacy?: boolean; sessionId?: string | null },
+	) => void) | null = null;
 
 	setEventPublisher(
-		publisher: ((type: string, tabId: string, payload: Record<string, unknown>) => void) | null,
+		publisher: ((
+			type: string,
+			tabId: string,
+			payload: Record<string, unknown>,
+			options?: { legacy?: boolean; sessionId?: string | null },
+		) => void) | null,
 	): void {
 		this.eventPublisher = publisher;
 	}
@@ -132,11 +208,16 @@ export class HandlerContext {
 	 * 把语义事件投给某个 tab。返回 false 表示没有发布器（未装配 / 单测），
 	 * 调用方应退回 legacy 回调。
 	 */
-	publishTabEvent(type: string, tabId: string | null | undefined, payload: Record<string, unknown>): boolean {
+	publishTabEvent(
+		type: string,
+		tabId: string | null | undefined,
+		payload: Record<string, unknown>,
+		options?: { legacy?: boolean; sessionId?: string | null },
+	): boolean {
 		if (!this.eventPublisher || !tabId) {
 			return false;
 		}
-		this.eventPublisher(type, tabId, payload);
+		this.eventPublisher(type, tabId, payload, options);
 		return true;
 	}
 

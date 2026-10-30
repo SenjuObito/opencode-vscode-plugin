@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeMessage, HistoryData, SubagentHistoryResponse, TaskEventMap, TodoItem } from '../types';
-import { sendHostCommand, sendSessionCommand, sendInterrupt, sendWindowCommand, cardDebugLog } from '../utils/bridge';
+import { sendHostCommand, sendInterrupt, sendWindowCommand, cardDebugLog } from '../utils/bridge';
 import { getTabStore } from '../store/tabStore';
 import { beginTransition, endTransition, isTabTransitioning } from './windowCallbacks/tabTransition';
 import { clearAllPersistedExpanded } from '../utils/expandedState';
@@ -499,7 +499,10 @@ export function useSessionManagement({
   // Update session title
   const updateHistoryTitle = useCallback((sessionId: string, newTitle: string) => {
     // The rename is a command: it names the session it renames.
-    sendSessionCommand('session.rename', sessionId, { customTitle: newTitle });
+    const tabId = getTabStore().findIdBySession(sessionId) ?? getTabStore().getActiveTabId();
+    if (tabId) {
+      sendHostCommand(tabId, 'session.rename', { customTitle: newTitle }, sessionId);
+    }
 
     // Immediately update frontend state
     if (historyData && historyData.sessions) {

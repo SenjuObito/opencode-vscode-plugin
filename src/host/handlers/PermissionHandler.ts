@@ -20,7 +20,15 @@ export interface PromptReplyResult {
 	reason?: string;
 }
 
-const SUPPORTED_TYPES = ['permission_decision', 'ask_user_question_response', 'ask_user_question_reject', 'plan_approval_response'];
+const SUPPORTED_TYPES = [
+	'permission_decision',
+	'ask_user_question_response',
+	'ask_user_question_reject',
+	'plan_approval_response',
+	'permission.reply',
+	'question.reply',
+	'plan.reply',
+];
 
 interface PendingPermission {
 	sessionId: string | null;

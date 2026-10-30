@@ -2,7 +2,7 @@
 
 > 配套方案：[`docs/opencode-idea-gui-sync-plan.md`](./opencode-idea-gui-sync-plan.md)（v2.1）
 > 更新规则：每完成一个阶段或功能域，更新本文件；方案的目标态描述不在本文件重复。
-> 最后更新：2026-10-29（P9-A31：彻底修复会话标题断流、模式大小写与多语言、切Tab弹窗保持、文件上下文持久性与撤销/恢复消息对齐；全量对齐 IDEA 蓝图，双端全量测试 100% 通过）
+> 最后更新：2026-10-30（P9-A32：宿主命令面按 IDEA 架构完成窗口级迁移：固定 bootstrap `tab-1`、`session.*` 交给窗口 dispatcher、删除 tab 自动补建与命令白名单；双端全量测试 100% 通过）
 >
 > 对比基线：`opencode-idea-gui` HEAD `b27d9bf`（release 0.3.0，方案基线 `4a5b42a` 之后仅 3 个提交：
 > 消息背景分级、README、checkstyle），`opencode-vscode-plugin` 分支 `feature/opencode-v2` HEAD `ea954a3`。
@@ -31,7 +31,7 @@
   `opencode.fork` / `opencode.summarize` / `opencode.shareSession` / `opencode.unshareSession` /
   `opencode.revert` / `opencode.unrevert`，并补齐 fork 目标 tab 绑定、revert 指针回写、
   compact/share 结果事件；webview 的 fork/compact/revert/share/unshare 从 legacy
-  `*_session` 切换到 `sendHostCommand` / `sendSessionCommand`，结果走命名事件。
+  `*_session` 切换到显式 `sendHostCommand(tabId, …)`，结果走命名事件。
 - **提示答复失败回传闭环（本轮 A26）**：
   - `PermissionHandler.handleReplyCommand` 补齐 `PromptReplyResult` 校验返回；
   - `ChatWindow` 对未知 prompt 或归属 mismatch 的答复投递目标 tab 的 `command.rejected` 事件；
@@ -40,7 +40,7 @@
 - **验收门已全绿**：
   - `pnpm run compile` ✅（`tsc --noEmit` + `eslint src` + esbuild）；
   - `webview pnpm run build` ✅（单文件 `dist/webview/index.html` 同步生成）；
-  - webview `vitest` **178 文件 / 1491 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅ 0 错；
+  - webview `vitest` **178 文件 / 1498 项**全绿；`tsc -p tsconfig.test.json --noEmit` ✅ 0 错；
   - 宿主 `pnpm test`（`pretest` 先清理 `out/`）**121 passing / 0 failing**。
 - 整体完成度估算：宿主架构 100%、webview 架构 ≈99%、14 项功能域 **14/14**、多视图一致性 100%。
 
@@ -54,7 +54,7 @@
 | **P1** | core pin `v1.0.0`、L0 env、`engine_status`、`daemon.status.engine` | ✅ | core pin 与 `engine_status` 已通；`StatusNoticeBar` 在 `unknown/blocking` 时出告警条 + 重新检测，`EnvironmentTab` 展示状态/CLI 版本/来源/路径/API 版本/原因（G9） |
 | **P2** | `TabRegistry` / `TabRecord` / `TabSessionActor` / `TabStreamRouter` / `PendingSend` | ✅ | 16 个文件齐；会话数据走命名 `TabEvent` + per-tab lane，`TabScopedSink` 已删除 |
 | **P3** | `ChatWindow` / `ViewRegistry` / `PromptRegistry` / 单实例装配 | ✅ | 宿主类与装配完成；接线 `view.ready/focus/navigate`、`tab.*` 广播消费、prompt host 选举定位（G1） |
-| **P4** | `HostCommand` / LRU 去重 / `command.rejected` / batch | ✅ | v2 信封、LRU、rejected、`host.events` 批量均完成；缺 tabId 的 tab 级命令直接拒绝（仅 `agents.list`/`commands.refresh`/`session.new` 允许），`PermissionHandler` 不再借用活跃会话，并有 `unattributed` 计数（G11/INV-7）；数据面已命名事件化（G8） |
+| **P4** | `HostCommand` / LRU 去重 / `command.rejected` / batch | ✅ | v2 信封、LRU、rejected、`host.events` 批量均完成；`HostCommand` 统一把信封 `tabId/sessionId` 合并进 payload；tab 路由只处理 tab 生命周期与平台增强命令，`session.*`/`commands.refresh`/`context.refresh`/prompt 答复交给窗口 dispatcher；删除 tab 自动补建与命令白名单；`unattributed` 计数保留（G11/INV-7） |
 | **P5** | webview 30 个架构文件 + store + `useSessionTabs` | ✅ | `store/*` 8 个、`hooks/sessionTabs/*` 4 个、`utils/*` 9 个、`windowCallbacks/*` 3 个均在 |
 | **P6** | webview B 类合并 | ✅ | 25 个重点文件已合并；删除 `TabStatusStore`，tab 记录成为唯一状态载体（G2）；数据面按 `envelope.tabId` 路由，legacy `window.<fn>` 仅保留未迁移的窗口级事件 |
 | **P7** | 标签栏 UI、菜单、拖拽、快捷键、i18n | ✅ | 标签栏/菜单与 idea 一致；`role=tablist/tab`、`aria-selected`、Alt+T/W/1-9/←→、F2/Delete、焦点随 ←→ 移动（G12）；拖拽排序写入宿主并广播（G1）；全部 10 个语言包 key 100% 补齐（A26） |
@@ -73,7 +73,7 @@
 | §3.1 规则 4（`view.ready → tab.resync`） | 视图重建恢复 | ✅ | 视图挂载即发 `view.ready` → 宿主 `resyncView` + 主动推 agent 目录 |
 | §3.4 不变式 | INV-1…INV-9 | ✅ | INV-4：tab 级命令缺 tabId 直接拒绝（窗口级白名单）；INV-7：`ChatWindow.unattributedCount`；INV-9：删除 `TabStatusStore`，tab 记录单一写入；其余不变式原实现保留 |
 | §4.1 宿主模块 | tab/window/prompt/router | ✅ | 文件齐全；`TabStreamRouter` 存在但 delta 未走它 |
-| §4.4 命令路由 | 缺 tab 拒绝、不回落 | ✅ | 仅 `agents.list` / `commands.refresh` / `session.new` 允许无 tabId；其余回 `MISSING_TAB_ID` |
+| §4.4 命令路由 | 缺 tab 拒绝、不回落 | ✅ | tab 级命令缺 tabId 直接 `MISSING_TAB_ID`，不再回落活跃 tab；`session.send/interrupt/restart` 由窗口 `SessionHandler` 按 payload 身份解析，`agents.list` 为显式窗口命令 |
 | §4.5 数据面 | 每会话 parser/sink + lane | ✅ | 每会话命名 `TabEvent` + `TabEventRouter` per-tab lane；后台 tab 的事件写入自己的记录/消息库，不再丢弃；delta 在 lane 内按 `turnId` 合并 |
 | §4.6 生命周期 | daemon 重启收 `turn.ended{daemon_restart}` | ✅ | `ChatWindow.handleDaemonDied()` 清所有 tab loading/streaming，活跃视图收 `onStreamEnd{reason:daemon_restart}`；`extension.ts` 的 `onDaemonDied` 已接线 |
 | §4.8 PromptRegistry | 三类表 + 三重校验 | ✅ | 三表归属、关 tab 拒绝、`forget` 已完成；回复按 `requestId`/`channelId` 查表后校验 pending 的 tab/session，串 tab 或过期答复发布 `command.rejected` 失败回执（A26） |
@@ -110,7 +110,7 @@
 | 10.10 | 添加附件 | ✅ | `TabAttachmentStore`（32MB、分块顺序、按 tab 落盘、关 tab `releaseTab`）；发送只带 `attachmentId`；切 tab 由 `tabDraftStore.attachments` + `useTabSessionBinder` 恢复 |
 | 10.11 | 引用文件 `@` | ✅ | `files.list`（按目标 tab cwd）→ `files.listed`；`useFileTags.restoreFileTags` 切 tab 重建 chip |
 | 10.12 | 文件上下文 | ✅ | `autoOpenFileEnabled` 三态 + `autoOpenFileEnabledResolver` 按 tab 注入；`context.refresh` 落 `TabSettings`；`ChatWindow.createSessionForTab` 注入 `contextEnabledResolver`，关闭 Context Bar 即停止注入活动文件/选区 |
-| 10.13 | bash `!` | ✅ | `TabSessionSendHandler` 的 `!cmd` 分支取目标 tab 的 cwd；legacy `SessionHandler` 保留兜底 |
+| 10.13 | bash `!` | ✅ | 窗口级 `SessionHandler` 的 `!cmd` 分支取目标 tab 的 cwd；发送/中断/重启均已按 `tabId + sessionId` 解析 |
 | 10.14 | opencode `/` | ✅ | `commands.refresh` 按 tab cwd + `slash.commands` 按 tab 投递 + 前端 `commandsByTab`；未知命令回退普通消息（`KnownCommands`）；`SHARE_MENU_ENABLED=false` |
 
 ---
@@ -121,7 +121,7 @@
 |---|---|
 | `pnpm run compile`（tsc + eslint + esbuild） | ✅ 0 error |
 | `cd webview && pnpm run build`（tsc + vite + copy-dist） | ✅（9.73MB 单文件，自动同步） |
-| `webview: npx vitest run` | ✅ **178 文件 / 1488 项**全部通过 |
+| `webview: npx vitest run` | ✅ **178 文件 / 1498 项**全部通过 |
 | `webview: tsc -p tsconfig.test.json --noEmit` | ✅ 0 错 |
 | `pnpm test`（宿主，`pretest` 先 `clean:out`） | ✅ **121 passing / 0 failing** |
 | 依赖检查（`package.json`） | ✅ `"opencode-buddy-core": "github:SenjuObito/opencode-buddy-core#v1.0.0"`，无本地 link 残留 |
@@ -132,7 +132,14 @@
 
 | 日期 | 变更 |
 |---|---|
-| 2026-10-29 | **P9-A30（本轮）**：**全面清理旧架构 Window 裸事件侵入与推理胶水代码，以 IDEA 架构为蓝图重构通道事件化体系**：
+| 2026-10-30 | **P9-A32（本轮）**：**宿主命令面完成 IDEA 式窗口级迁移，彻底移除旧 vscode 混合命令框架胶水**：
+1. **启动契约对齐**：`ChatWindow.ensureInitialTab()` 固定创建 `tab-1` + provisional session，与 webview 初始身份一致，启动期 `commands.refresh` / 首次 `session.send` 不再落入 `TAB_NOT_FOUND` 窗口；
+2. **窗口级命令归位**：`HostCommand` 统一把信封 `tabId/sessionId` 合并进 payload；删除 `WINDOW_SCOPED_COMMANDS`、`SESSION_GUARDED_COMMANDS` 与逐命令注入；`session.send` / `session.interrupt` / `session.restart` 迁回窗口级 `SessionHandler`；`commands.refresh` / `context.refresh` 迁回 `WindowEventHandler`；`permission.reply` / `question.reply` / `plan.reply` 迁回 `PermissionHandler`；
+3. **删除旧路径**：删除 `TabSessionSendHandler`、`TabContextCommandHandler`；`TabCommandRouter` 只保留 tab 生命周期、fork/share/revert/compact 与明确的 vscode 平台增强命令；删除 `session.*` 未知 tab 自动补建；
+4. **Webview 去胶水**：删除 `sendSessionCommand` 按 session 反查 tab 的实现，分享/撤销/压缩/重命名/设置/子代理历史等调用点显式传目标 tab；`syncPermissionModeTo` 改为 `(tabId, sessionId, mode)`；
+5. **事件身份**：tab 级语义事件统一携带 epoch/sessionId；错误与终止事件使用 named-only (`legacy:false`) 投递，避免 legacy 回调拿到 JSON 字符串重复提示。
+6. **验证**：宿主 **121 passing / 0 failing**；webview **178 文件 / 1498 项**；`pnpm run compile`、webview `tsc` 与 `pnpm run build` 全绿。 |
+| 2026-10-29 | **P9-A30**：**全面清理旧架构 Window 裸事件侵入与推理胶水代码，以 IDEA 架构为蓝图重构通道事件化体系**：
 1. **用户核心发现与架构重构要求**：
    - 用户在深度审查中敏锐指出关键架构偏离：“*怎么新建会话调用的是 window 的事件，还有弹窗怎么也是 window 的事件，window 除了设置类都已经被重构了通道事件*”；
    - 用户同时指出多项与 IDEA 逻辑脱节的严重缺陷：输入框文件上下文与设置不同步、切换模型后推理力度恒为 low、`@` 无法呼出子代理模式、会话目录与 VS Code 工作区脱节、撤回消息后会话列表消失、多会话弹窗切换 tab 后丢失；

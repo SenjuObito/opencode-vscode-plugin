@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendHostCommand, sendSessionCommand, sendWindowCommand } from './utils/bridge';
+import { sendHostCommand, sendWindowCommand } from './utils/bridge';
 import { createTabId, getTabStore } from './store/tabStore';
 import { registerHostEvents, unregisterHostEvents } from './utils/hostEventRegistry';
 import { copyViaHost } from './utils/copyUtils';
@@ -415,12 +415,17 @@ const App = () => {
     // No premature success toast here: the share URL only becomes copyable
     // when the host round-trips onShareSuccess. Feedback happens there.
     setSharePending(true);
-    sendSessionCommand('session.share', currentSessionId);
+    const tabId = getTabStore().findIdBySession(currentSessionId) ?? getTabStore().getActiveTabId();
+    if (tabId) {
+      sendHostCommand(tabId, 'session.share', {}, currentSessionId);
+    }
   }, [currentSessionId, sharePending, shareHidden]);
 
   const handleUnshare = useCallback(async () => {
     if (!currentSessionId) return;
-    sendSessionCommand('session.unshare', currentSessionId);
+    const tabId = getTabStore().findIdBySession(currentSessionId) ?? getTabStore().getActiveTabId();
+    if (!tabId) return;
+    sendHostCommand(tabId, 'session.unshare', {}, currentSessionId);
     setIsShared(false);
     setShareUrl(null);
   }, [currentSessionId]);
@@ -530,12 +535,20 @@ const App = () => {
     if (!id) {
       // live 消息尚未回填 opencode id —— 让宿主通过 listMessages 解析最后一条用户消息
       console.warn('[App] undo: message has no id; falling back to backend latest-user resolution');
-      sendSessionCommand('session.revert', sid, { messageId: 'latest' });
+      const tabId = sid
+        ? getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId()
+        : getTabStore().getActiveTabId();
+      if (!tabId) return;
+      sendHostCommand(tabId, 'session.revert', { messageId: 'latest' }, sid ?? null);
       applyRevertState(true, 'latest');
       return;
     }
     console.debug('[App] undo: reverting to message', id);
-    sendSessionCommand('session.revert', sid, { messageId: id });
+    const tabId = sid
+      ? getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId()
+      : getTabStore().getActiveTabId();
+    if (!tabId) return;
+    sendHostCommand(tabId, 'session.revert', { messageId: id }, sid ?? null);
     // Optimistic: boundary is the undone user message; the host's
     // onRevertStateUpdate push carries the authoritative pointer.
     applyRevertState(true, id);
@@ -561,7 +574,12 @@ const App = () => {
       return;
     }
     const sid = currentSessionIdRef.current;
-    sendSessionCommand('session.unrevert', sid, {});
+    const tabId = sid
+      ? getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId()
+      : getTabStore().getActiveTabId();
+    if (tabId) {
+      sendHostCommand(tabId, 'session.unrevert', {}, sid ?? null);
+    }
     applyRevertState(false);
     if (sid) {
       loadHistorySession(sid);
@@ -937,7 +955,13 @@ const App = () => {
     if (pending.op === 'undo') {
       dispatchRevert(pending.target);
     } else {
-      sendSessionCommand('session.unrevert', currentSessionIdRef.current);
+      const sid = currentSessionIdRef.current;
+      const tabId = sid
+        ? getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId()
+        : getTabStore().getActiveTabId();
+      if (tabId) {
+        sendHostCommand(tabId, 'session.unrevert', {}, sid ?? null);
+      }
       applyRevertState(false);
     }
   }, [pendingRevert, interruptSession, dispatchRevert, applyRevertState, currentSessionIdRef]);
@@ -994,7 +1018,13 @@ const App = () => {
   // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    sendSessionCommand('session.compact', currentSessionIdRef.current);
+    const sid = currentSessionIdRef.current;
+    const tabId = sid
+      ? getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId()
+      : getTabStore().getActiveTabId();
+    if (tabId) {
+      sendHostCommand(tabId, 'session.compact', {}, sid ?? null);
+    }
     setIsCompacting(true);
     setCompactingStartTime(Date.now());
   }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime, currentSessionIdRef]);

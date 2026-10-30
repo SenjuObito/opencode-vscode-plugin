@@ -20,7 +20,7 @@ import { isKnownSlashCommand } from './KnownCommands';
 import { isAdvertisedCommand } from '../util/SlashCommandCatalog';
 import type { ChatMessage, PermissionRequest, SessionCallback } from './types';
 
-/** webview send_message / send_message_with_attachments 的 payload。 */
+/** webview `session.send` 的 payload。 */
 export interface SendMessagePayload {
 	text: string;
 	attachments?: Array<{

@@ -154,7 +154,20 @@ export class HostCommand {
 			}
 		}
 
+		// The envelope owns routing identity. Merge it into the payload once so a
+		// handler can never be talked into acting on a different tab/session than
+		// the one the command names (idea HostCommand does the same).
 		const payload = (wire.payload && typeof wire.payload === 'object' ? wire.payload : wire) as Record<string, unknown>;
+		const merged: Record<string, unknown> = { ...payload };
+		if (tabId) {
+			merged.tabId = tabId.value;
+		}
+		if (sessionId) {
+			merged.sessionId = sessionId.value;
+		}
+		if (!('requestId' in merged) || merged.requestId === null || merged.requestId === '') {
+			merged.requestId = requestId;
+		}
 
 		return {
 			command: new HostCommand(
@@ -163,7 +176,7 @@ export class HostCommand {
 				requestId,
 				tabId,
 				sessionId,
-				payload,
+				merged,
 			),
 		};
 	}

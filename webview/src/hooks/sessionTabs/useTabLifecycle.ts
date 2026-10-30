@@ -57,7 +57,7 @@ export interface UseTabLifecycleOptions extends Pick<
   saveCurrentTabSnapshot: () => void;
   selectTab: (tabId: string, options?: { fromHost?: boolean }) => void;
   syncHostActiveTabTo: (tabId: string | null | undefined) => void;
-  syncPermissionModeTo: (sessionId: string | null | undefined, mode: string) => void;
+  syncPermissionModeTo: (tabId: string | null | undefined, sessionId: string | null | undefined, mode: string) => void;
 }
 
 export function useTabLifecycle(options: UseTabLifecycleOptions) {
@@ -308,7 +308,7 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
 
     const nextMode = nextActive.permissionMode || 'default';
     setPermissionMode?.(nextMode);
-    syncPermissionModeTo(nextActive.sessionId, nextMode);
+    syncPermissionModeTo(nextActive.id, nextActive.sessionId, nextMode);
 
     const nextEffort = nextActive.reasoningEffort || 'default';
     setReasoningEffort?.(nextEffort);

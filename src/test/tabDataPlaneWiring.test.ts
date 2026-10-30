@@ -4,6 +4,7 @@ import { ChatWindow } from '../host/window/ChatWindow';
 import { SessionCallbackAdapter } from '../host/session/SessionCallbackAdapter';
 import { SessionState } from '../host/session/SessionState';
 import { TabId } from '../host/tab/TabId';
+import { attachWindowCommands } from './windowDispatcherHarness';
 import type { OpenCodeSession, SendMessagePayload } from '../host/session/OpenCodeSession';
 import type { WebviewChannel } from '../host/router/HandlerContext';
 import type { JsTarget } from '../host/session/SessionCallbackAdapter';
@@ -50,6 +51,7 @@ suite('Tab data plane wiring', () => {
 				return session;
 			},
 		});
+		chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
 		const channel = new RawChannel();
 		chatWindow.registerView('view-1', channel);
 

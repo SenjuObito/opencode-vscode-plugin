@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ChatWindow } from '../host/window/ChatWindow';
 import { TabId } from '../host/tab/TabId';
+import { attachWindowCommands } from './windowDispatcherHarness';
 import { TabAttachmentStore, MAX_ATTACHMENT_BYTES, sanitizeFileName } from '../host/attachments/TabAttachmentStore';
 import { SessionState } from '../host/session/SessionState';
 import { SessionCallbackAdapter } from '../host/session/SessionCallbackAdapter';
@@ -135,7 +136,8 @@ suite('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 		const sessions: OpenCodeSession[] = [];
 		let root = '';
 
-		const makeChatWindow = (): ChatWindow => new ChatWindow({
+		const makeChatWindow = (): ChatWindow => {
+			const chatWindow = new ChatWindow({
 			settings: {} as never,
 			daemon: {} as never,
 			fileOps: {} as never,
@@ -159,7 +161,10 @@ suite('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 				sessions.push(session);
 				return session;
 			},
-		});
+			});
+			chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
+			return chatWindow;
+		};
 
 		const run = async (
 			chatWindow: ChatWindow,

@@ -19,7 +19,6 @@ vi.mock('../utils/bridge', async (importOriginal) => {
       bridgeMocks.sendTabCommand(tabId, command, payload);
     },
     sendHostCommand: vi.fn(),
-    sendSessionCommand: vi.fn(),
   };
 });
 

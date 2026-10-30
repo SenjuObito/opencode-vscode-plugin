@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { TFunction } from 'i18next';
-import { sendBridgeEvent, sendSessionCommand } from '../utils/bridge';
+import { sendBridgeEvent, sendHostCommand } from '../utils/bridge';
+import { getTabStore } from '../store/tabStore';
 import {
   OPENCODE_DEFAULT_MODEL_ID,
   type PermissionMode,
@@ -111,17 +112,26 @@ export function useModelProviderState({
     [isSdkInstalled, currentProvider],
   );
 
+  const sendSettingsToActiveTab = useCallback(
+    (type: string, sessionId: string, payload: Record<string, unknown>) => {
+      const tabId = getTabStore().getActiveTabId();
+      if (!tabId) return;
+      sendHostCommand(tabId, type, payload, sessionId);
+    },
+    [],
+  );
+
   const handleModeSelect = useCallback((mode: PermissionMode) => {
     setPermissionMode(mode);
     setOpenCodePermissionMode(mode);
     localStorage.setItem('opencode.permissionMode', mode);
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     // Unbound tab: the mode has no host target yet. It travels with the first
-    // send_message payload, so writing it to "the window's current session"
+    // session.send payload, so writing it to "the window's current session"
     // would rewrite the previously active tab instead.
     if (!sessionId) return;
-    sendSessionCommand('settings.mode', sessionId, { mode });
-  }, [setOpenCodePermissionMode, currentSessionId, currentSessionIdRef]);
+    sendSettingsToActiveTab('settings.mode', sessionId, { mode });
+  }, [setOpenCodePermissionMode, currentSessionId, currentSessionIdRef, sendSettingsToActiveTab]);
 
   /**
    * `silent` marks a value that a tab switch is restoring, not a user choice.
@@ -136,8 +146,8 @@ export function useModelProviderState({
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     // No session yet: keep it local; the model is sent with the first message.
     if (!sessionId) return;
-    sendSessionCommand('settings.model', sessionId, buildModelSelectionPayload(modelId, options));
-  }, [setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
+    sendSettingsToActiveTab('settings.model', sessionId, buildModelSelectionPayload(modelId, options));
+  }, [setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef, sendSettingsToActiveTab]);
 
   const handleProviderSelect = useCallback((providerId: string) => {
     setCurrentProvider(providerId);
@@ -145,16 +155,16 @@ export function useModelProviderState({
     setPermissionMode(openCodePermissionMode);
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     if (!sessionId) return;
-    sendSessionCommand('settings.mode', sessionId, { mode: openCodePermissionMode });
-    sendSessionCommand('settings.model', sessionId, buildModelSelectionPayload(selectedOpenCodeModel));
-  }, [openCodePermissionMode, selectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
+    sendSettingsToActiveTab('settings.mode', sessionId, { mode: openCodePermissionMode });
+    sendSettingsToActiveTab('settings.model', sessionId, buildModelSelectionPayload(selectedOpenCodeModel));
+  }, [openCodePermissionMode, selectedOpenCodeModel, currentSessionId, currentSessionIdRef, sendSettingsToActiveTab]);
 
   const handleReasoningChange = useCallback((effort: ReasoningEffort) => {
     setReasoningEffort(effort);
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     if (!sessionId) return;
-    sendSessionCommand('settings.reasoning', sessionId, buildReasoningEffortPayload(effort));
-  }, [setReasoningEffort, currentSessionId, currentSessionIdRef]);
+    sendSettingsToActiveTab('settings.reasoning', sessionId, buildReasoningEffortPayload(effort));
+  }, [setReasoningEffort, currentSessionId, currentSessionIdRef, sendSettingsToActiveTab]);
 
   const { cliModels, cliDefaultModel, cliCatalogHasEntries } = useCliModels(currentProvider);
   const availableModels = useMemo(() => {
@@ -173,9 +183,9 @@ export function useModelProviderState({
       const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
       // Unbound tab: keep it local; the model travels with the first message.
       if (!sessionId) return;
-      sendSessionCommand('settings.model', sessionId, buildModelSelectionPayload(targetModel));
+      sendSettingsToActiveTab('settings.model', sessionId, buildModelSelectionPayload(targetModel));
     }
-  }, [currentProvider, availableModels, cliDefaultModel, setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef]);
+  }, [currentProvider, availableModels, cliDefaultModel, setSelectedOpenCodeModel, currentSessionId, currentSessionIdRef, sendSettingsToActiveTab]);
 
   return {
     ...openCode,

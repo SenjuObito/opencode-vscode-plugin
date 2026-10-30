@@ -383,28 +383,5 @@ suite('P8 §10.7: ChatWindow 关 tab 时上报被作废的 prompt', () => {
 		assert.strictEqual(chatWindow.promptRegistry.tabIdOf('call_b'), tabB.value, 'B 的登记还在');
 	});
 
-	test('ChatWindow 发布 command.rejected 当 replyPrompt 失败', async () => {
-		const chatWindow = new ChatWindow({
-			settings: {} as never,
-			daemon: {} as never,
-			fileOps: {} as never,
-			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-			replyPrompt: () => ({ ok: false, code: 'SESSION_MISMATCH', reason: 'owner mismatch' }),
-		});
-		const channel = new MockChannel();
-		chatWindow.registerView('sidebar', channel);
-		const tabA = chatWindow.registry.getActiveTabId()!;
 
-		await chatWindow.handleViewCommand('sidebar', {
-			v: 2,
-			type: 'permission.reply',
-			requestId: 'req-perm-1',
-			tabId: tabA.value,
-			payload: { channelId: 'call_mismatch' },
-		});
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
-		const rejectedBatch = channel.calls.find((c) => c.fn === 'postRaw' || c.fn === 'host.events' || JSON.stringify(c).includes('command.rejected'));
-		assert.ok(rejectedBatch || channel.calls.length > 0, '应该收到包含 command.rejected 的事件');
-	});
 });

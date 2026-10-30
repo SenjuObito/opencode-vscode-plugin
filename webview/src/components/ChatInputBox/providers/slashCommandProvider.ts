@@ -340,7 +340,7 @@ function waitForSlashCommands(signal: AbortSignal, timeoutMs: number): Promise<v
   });
 }
 
-function requestRefresh(): boolean {
+function requestRefresh(windowLevel = false): boolean {
   const now = Date.now();
   const tabId = getTabStore().getActiveTabId() ?? '';
 
@@ -359,11 +359,12 @@ function requestRefresh(): boolean {
 
   const attempt = retryCount + 1;
   // 按 tab 刷新：命令列表依赖目标 tab 的 cwd（自定义命令/skill 是按目录发现的）。
-  // 没有活跃 tab（启动早期）时退回窗口级命令，宿主用默认目录列举。
+  // 启动预加载没有可信 tab 身份（webview 的 tab-1 可能只是占位），走窗口级；
+  // 其余调用仍按目标 tab 刷新。
   const activeTabId = getTabStore().getActiveTabId();
-  const sent = activeTabId
-    ? sendHostCommand(activeTabId, 'commands.refresh')
-    : sendWindowCommand('commands.refresh');
+  const sent = windowLevel || !activeTabId
+    ? sendWindowCommand('commands.refresh')
+    : sendHostCommand(activeTabId, 'commands.refresh');
   if (!sent) {
     debugLog('[SlashCommand] Bridge not available yet, refresh not sent');
     return false;
@@ -550,7 +551,7 @@ export function preloadSlashCommands(): void {
   setupSlashCommandsCallback();
 
   // Request refresh -- built-in deduplication protection
-  requestRefresh();
+  requestRefresh(true);
 }
 
 export default slashCommandProvider;

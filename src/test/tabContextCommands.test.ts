@@ -5,6 +5,7 @@ import { WebviewBroadcaster } from '../host/router/WebviewBroadcaster';
 import type { WebviewChannel } from '../host/router/HandlerContext';
 import type { TabRecord } from '../host/tab/TabRecord';
 import { TabId } from '../host/tab/TabId';
+import { attachWindowCommands } from './windowDispatcherHarness';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
@@ -29,12 +30,14 @@ class MockChannel implements WebviewChannel {
 }
 
 function makeChatWindow(daemon: Record<string, unknown>): ChatWindow {
-	return new ChatWindow({
+	const chatWindow = new ChatWindow({
 		settings: {} as never,
 		daemon: daemon as never,
 		fileOps: {} as never,
 		fallbackWorkingDirectoryResolver: () => '/mock/workspace',
 	});
+	chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, daemon));
+	return chatWindow;
 }
 
 /** 走 v2 命令信封，与 webview `sendHostCommand` 完全一致。 */

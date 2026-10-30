@@ -75,7 +75,7 @@ interface MessageListProps {
   messageKeys: readonly string[];
   streamingActive: boolean;
   isThinking: boolean;
-  loading: boolean;
+  loading?: boolean;
   loadingStartTime: number | null;
   isCompacting?: boolean;
   compactingStartTime?: number | null;
@@ -123,7 +123,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   messageKeys,
   streamingActive,
   isThinking,
-  loading,
+  loading = false,
   loadingStartTime,
   isCompacting,
   compactingStartTime,

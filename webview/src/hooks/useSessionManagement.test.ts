@@ -377,7 +377,7 @@ describe('useSessionManagement', () => {
     expect(window.__openNewSessionTab).toHaveBeenCalledTimes(1);
 
     const calls = (window.sendToJava as ReturnType<typeof vi.fn>).mock.calls.map(
-      (c: unknown[]) => c[0]
+      (c: unknown[]) => c[0] as string
     );
     expect(calls.filter((c) => c.startsWith('host_command:') && c.includes('session.interrupt'))).toHaveLength(1);
     expect(calls.filter((c) => c === 'create_new_session:')).toHaveLength(0);

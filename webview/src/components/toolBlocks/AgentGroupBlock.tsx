@@ -2,7 +2,8 @@ import { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ClaudeContentBlock, ToolResultBlock } from '../../types';
 import { normalizeToolName } from '../../utils/toolConstants';
-import { sendSessionCommand } from '../../utils/bridge';
+import { sendHostCommand } from '../../utils/bridge';
+import { getTabStore } from '../../store/tabStore';
 import { getPersistedExpanded, setPersistedExpanded } from '../../utils/expandedState';
 import {
   extractResultText,
@@ -134,14 +135,16 @@ const AgentGroupBlock = memo(function AgentGroupBlock({
     const key = `${currentSessionId}:${toolId}`;
     if (requestedHistoryRef.current === key) return;
     requestedHistoryRef.current = key;
-    sendSessionCommand('subagent.history', currentSessionId, {
+    const tabId = getTabStore().findIdBySession(currentSessionId) ?? getTabStore().getActiveTabId();
+    if (!tabId) return;
+    sendHostCommand(tabId, 'subagent.history', {
       sessionId: currentSessionId,
       provider: currentProvider,
       agentId,
       agentPath,
       description: typeof summary === 'string' ? summary : undefined,
       toolUseId: toolId,
-    });
+    }, currentSessionId);
   }, [
     agentId,
     agentPath,

@@ -8,6 +8,7 @@ import {
 } from '../host/util/SlashCommandCatalog';
 import type { WebviewChannel } from '../host/router/HandlerContext';
 import { TabId } from '../host/tab/TabId';
+import { attachWindowCommands } from './windowDispatcherHarness';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
@@ -114,6 +115,7 @@ suite('P8-A18: §10.14 斜杠命令 —— 列表按 tab、未知命令回退普
 				fileOps: {} as never,
 				fallbackWorkingDirectoryResolver: () => '/mock/workspace',
 			});
+			chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, daemon));
 			const view = new MockChannel();
 			chatWindow.registerView('sidebar', view);
 

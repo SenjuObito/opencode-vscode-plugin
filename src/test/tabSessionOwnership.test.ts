@@ -8,6 +8,7 @@ import type { OpenCodeSession, SendMessagePayload } from '../host/session/OpenCo
 import type { WebviewChannel } from '../host/router/HandlerContext';
 import type { JsTarget } from '../host/session/SessionCallbackAdapter';
 import type { TabEventSink } from '../host/tab/TabEvent';
+import { attachWindowCommands } from './windowDispatcherHarness';
 
 class MockChannel implements WebviewChannel {
 	public calls: Array<{ fn: string; args: string[] }> = [];
@@ -80,13 +81,15 @@ function makeSessionFactory(): { create: (sink: JsTarget, eventSink?: TabEventSi
 }
 
 function makeChatWindow(factory: ReturnType<typeof makeSessionFactory>): ChatWindow {
-	return new ChatWindow({
+	const chatWindow = new ChatWindow({
 		settings: {} as never,
 		daemon: {} as never,
 		fileOps: {} as never,
 		fallbackWorkingDirectoryResolver: () => '/mock/workspace',
 		createSession: (sink, _auto, _ctx, eventSink) => factory.create(sink, eventSink),
 	});
+	chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
+	return chatWindow;
 }
 
 async function sendCommand(
@@ -170,17 +173,35 @@ suite('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(session.sent.length, 0, '`!` 内容不能当 prompt 发出去');
 	});
 
-	test('首次发送时按需创建会话（tab 没有会话也能发）', async () => {
+	test('bootstrap tab 预建会话，首次发送复用它', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);
 		chatWindow.registerView('sidebar', new MockChannel());
 
 		const tabA = chatWindow.registry.getActiveTabId()!;
-		assert.strictEqual(chatWindow.registry.get(tabA)!.getSession(), null);
+		assert.strictEqual(tabA.value, 'tab-1', 'bootstrap tab 必须是 webview 的初始身份');
+		const bootstrapSession = chatWindow.registry.get(tabA)!.getSession();
+		assert.ok(bootstrapSession, 'idea bootstrap tab 必须有 provisional session');
+		assert.strictEqual(factory.all.length, 1);
 
 		await sendCommand(chatWindow, 'sidebar', 'session.send', tabA.value, { text: 'first' });
-		assert.ok(chatWindow.registry.get(tabA)!.getSession());
-		assert.strictEqual(factory.all.length, 1);
+		assert.strictEqual(chatWindow.registry.get(tabA)!.getSession(), bootstrapSession);
+		assert.strictEqual(factory.all.length, 1, '首次发送不能重建会话');
+	});
+
+	test('unknown tab 被拒绝，不再由宿主自动补建', async () => {
+		const factory = makeSessionFactory();
+		const chatWindow = makeChatWindow(factory);
+		const view = new MockChannel();
+		chatWindow.registerView('sidebar', view);
+
+		await sendCommand(chatWindow, 'sidebar', 'session.send', 'tab-missing', { text: 'nope' });
+
+		assert.strictEqual(chatWindow.registry.get(TabId.of('tab-missing')), null);
+		const rejected = view.raw
+			.flatMap((message) => (Array.isArray(message.batch) ? message.batch : []))
+			.find((event: any) => event?.type === 'command.rejected');
+		assert.ok(rejected, '必须回 command.rejected');
 	});
 
 	test('服务端分配 sessionId 后绑定到 tab，可按会话反查', async () => {

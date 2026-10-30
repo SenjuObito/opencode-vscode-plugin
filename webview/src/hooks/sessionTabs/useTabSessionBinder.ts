@@ -6,7 +6,7 @@ import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabPromptStore } from '../../store/tabPromptStore';
 import type { PermissionMode, ReasoningEffort } from '../../components/ChatInputBox/types';
 import { resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
-import { sendSessionCommand, sendHostCommand, sendTabCommand, cardDebugLog } from '../../utils/bridge';
+import { sendHostCommand, sendTabCommand, cardDebugLog } from '../../utils/bridge';
 import { observeHostEpoch, resetHostDispatcherEpochs } from '../../utils/hostDispatcher';
 import { hostEventHandler, registerHostEvents, unregisterHostEvents } from '../../utils/hostEventRegistry';
 import { getViewId, setPromptHostViewId } from '../../utils/viewIdentity';
@@ -240,9 +240,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
   }, []);
 
   const syncPermissionModeTo = useCallback(
-    (sessionId: string | null | undefined, mode: string) => {
-      if (!sessionId) return;
-      sendSessionCommand('settings.mode', sessionId, { mode });
+    (tabId: string | null | undefined, sessionId: string | null | undefined, mode: string) => {
+      if (!tabId || !sessionId) return;
+      sendHostCommand(tabId, 'settings.mode', { mode }, sessionId);
     },
     [],
   );
@@ -523,7 +523,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       const targetMode = targetTab.permissionMode || 'default';
       setPermissionMode?.(targetMode);
       if (!fromHost) {
-        syncPermissionModeTo(targetTab.sessionId, targetMode);
+        syncPermissionModeTo(targetTab.id, targetTab.sessionId, targetMode);
       }
 
       const targetEffort = targetTab.reasoningEffort || 'default';
@@ -932,7 +932,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         setSelectedModel?.(resolvedModel, { silent: true });
       }
       setPermissionMode?.(resolvedMode);
-      syncPermissionModeTo(sessionId, resolvedMode);
+      syncPermissionModeTo(activeTabIdRef.current, sessionId, resolvedMode);
       setReasoningEffort?.(resolvedEffort);
 
       setLoadingStartTime?.(null);

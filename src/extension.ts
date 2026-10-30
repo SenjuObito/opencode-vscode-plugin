@@ -195,14 +195,18 @@ export function activate(context: vscode.ExtensionContext) {
 		listFiles: (query, directory) => instance.listFiles(query, directory),
 		// 子代理 transcript（v2 `subagent.history`）：复用 HistoryHandler 的提取逻辑。
 		loadSubagentHistory: (payload) => instance.loadSubagentHistory(payload),
-		replyPrompt: (type, payload, tabId) => instance.permissionHandler.handleReplyCommand(type, payload, tabId),
+		// Window-level v2 commands (session.send/interrupt, commands.refresh,
+		// context.refresh, prompt replies) go through the idea-shaped dispatcher.
+		dispatchWindowCommand: (type, payload) => instance.dispatcher.dispatch(type, JSON.stringify(payload)),
 	});
 	chatWindowRef = chatWindow;
 	// 让 handlers 的 `context.getSession()` 解析到活跃 tab 自己的会话。
 	chatWindow.bindSessionManager(instance.sessionManager);
+	// Window-level handlers resolve tab-owned sessions through this context.
+	instance.context.setTabSessionContext(chatWindow.createTabSessionContext());
 	// 语义事件按 tab 投递（files.undo 等）：结果回到发起请求的那个 tab。
-	instance.setEventPublisher((type, tabId, payload) => {
-		chatWindow.publishTabEvent(type, tabId, payload);
+	instance.setEventPublisher((type, tabId, payload, options) => {
+		chatWindow.publishTabEvent(type, tabId, payload, options);
 	});
 	// 未决弹窗的 tab 归属：关 tab 时按 tab 拒绝（会话层先建，只能后注入）。
 	instance.attachPromptRegistry(
