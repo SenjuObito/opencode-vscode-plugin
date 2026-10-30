@@ -853,46 +853,6 @@ describe('useSessionTabs - history session loading', () => {
     expect(setCustomTitle).not.toHaveBeenCalled();
   });
 
-  it('lets a new tab inherit the active tab selection instead of hard-coded defaults', () => {
-    const { result } = renderHook(() =>
-      useSessionTabs({
-        currentSessionId: null,
-        sessionTitle: '',
-        setCustomSessionTitle: vi.fn(),
-        updateHistoryTitle: vi.fn(),
-        messages: emptyMessages,
-        setMessages: vi.fn(),
-        loading: false,
-        streamingActive: false,
-        isShared: false,
-        forceCreateNewSession: vi.fn(),
-        loadHistorySession: vi.fn(),
-        selectedModel: 'opencode/deepseek-v4',
-        permissionMode: 'plan',
-        reasoningEffort: 'high',
-        t: mockT,
-      } as any),
-    );
-
-    expect(result.current.tabs[0]).toMatchObject({
-      selectedModel: 'opencode/deepseek-v4',
-      permissionMode: 'plan',
-      reasoningEffort: 'high',
-    });
-
-    act(() => {
-      result.current.createTab();
-    });
-
-    const fresh = result.current.tabs[result.current.tabs.length - 1];
-    expect(fresh).toMatchObject({
-      selectedModel: 'opencode/deepseek-v4',
-      permissionMode: 'plan',
-      reasoningEffort: 'high',
-    });
-    expect(fresh.sessionId).toBeNull();
-  });
-
   it('keeps the StatusPanel expanded/page selection on each tab', () => {
     const { result } = renderHook(() => {
       const [sessionId, setSessionId] = useState<string | null>(null);

@@ -207,36 +207,28 @@ export class SessionHandler extends BaseMessageHandler {
 	}
 
 	private applyTabSettings(payload: SendMessagePayload, tabId: string, session: OpenCodeSession): void {
+		const settings = this.context.getSendSettings(tabId);
 		const state = session.state;
 		const cwd = this.context.getCwdForTab(tabId);
 		if (cwd && cwd !== state.getCwd()) {
 			state.setCwd(cwd);
 		}
 
-		// `payload` 是本次发送的快照；没有快照字段时沿用会话已有状态。
-		// TabSettings 不再参与发送解析：它只是未绑定 tab 的暂存，而新 tab
-		// 从创建起就有 provisional session，SessionState 才是唯一权威。
-		const mode = payload.permissionMode ?? state.getPermissionMode();
+		const mode = payload.permissionMode ?? settings?.permissionMode ?? null;
 		if (mode && isValidPermissionMode(mode)) {
 			state.setPermissionMode(mode);
 		}
 
-		const model = payload.model ?? state.getModel();
+		const model = payload.model ?? settings?.model ?? null;
 		if (model && model !== state.getModel()) {
 			state.setModel(model);
 			session.republishUsageAfterModelChange();
 		}
 
-		const effort = payload.reasoningEffort ?? state.getReasoningEffort();
+		const effort = payload.reasoningEffort ?? settings?.reasoningEffort ?? null;
 		if (effort) {
 			state.setReasoningEffort(effort);
 		}
-
-		PluginFileLogger.info(
-			'SessionHandler',
-			`send selection tab=${tabId} model=${state.getModel() ?? '(default)'}`
-			+ ` mode=${state.getPermissionMode()} effort=${state.getReasoningEffort() ?? '(default)'}`,
-		);
 	}
 
 	/** Materialize tab-staged attachments; a missing one aborts the send. */

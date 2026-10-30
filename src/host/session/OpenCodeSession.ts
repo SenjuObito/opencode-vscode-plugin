@@ -197,9 +197,17 @@ export class OpenCodeSession {
 			messageToSend = (text ? text : '') + contextAppend;
 		}
 
-		// 会话配置（model / permissionMode / reasoningEffort）由 SessionHandler
-		// 在进入会话层之前解析并写入 state；send 只读取 state，避免同一份
-		// 选择在 payload / TabSettings / SessionState 之间被重复应用。
+		// 更新会话配置（model / permissionMode / reasoningEffort 来自 payload）
+		if (payload.model) {
+			this.state.setModel(payload.model);
+		}
+		if (payload.permissionMode) {
+			this.state.setPermissionMode(payload.permissionMode);
+		}
+		if (payload.reasoningEffort != null) {
+			this.state.setReasoningEffort(payload.reasoningEffort);
+		}
+
 		const attachments = buildAttachments(payload);
 
 		// cc-gui `SessionSendService.updateSessionStateForSend`：先把用户消息入状态

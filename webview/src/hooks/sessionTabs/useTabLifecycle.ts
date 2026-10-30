@@ -4,7 +4,8 @@ import { createTabId } from '../../store/tabStore';
 import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { TabPromptStore } from '../../store/tabPromptStore';
-import { resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
+import { getFirstPreferredModelId, resolveSessionModel } from '../../components/ChatInputBox/modelSelectUtils';
+import { getRecommendedReasoningEffort } from '../../components/ChatInputBox/types';
 import { sendHostCommand, sendInterrupt, sendTabCommand } from '../../utils/bridge';
 import { clearSessionSequenceBarrier } from '../windowCallbacks/sequenceBarrier';
 import { clearTransition } from '../windowCallbacks/tabTransition';
@@ -38,9 +39,6 @@ export interface UseTabLifecycleOptions extends Pick<
   | 'setSelectedModel'
   | 'setPermissionMode'
   | 'setReasoningEffort'
-  | 'selectedModel'
-  | 'permissionMode'
-  | 'reasoningEffort'
   | 'setContextInfo'
   | 'setLoadingStartTime'
   | 'setUsagePercentage'
@@ -86,9 +84,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setSelectedModel,
     setPermissionMode,
     setReasoningEffort,
-    selectedModel,
-    permissionMode,
-    reasoningEffort,
     setContextInfo,
     setLoadingStartTime,
     setUsagePercentage,
@@ -117,24 +112,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     closeTabRef,
   } = tabBar;
 
-  /**
-   * 新 tab 继承的会话选择。
-   *
-   * idea 的 `createSessionForTab` 会把当前会话的模型与权限模式复制进新会话；
-   * webview 必须做同样的选择，否则首条消息会带上硬编码的默认值，静默覆盖
-   * 用户刚刚看到的模型 / 模式 / 推理力度。
-   *
-   * 全局状态是当前界面正在显示的值，优先用它；tab 记录作为切换过程中的兜底。
-   */
-  const inheritedSelection = useCallback(() => {
-    const active = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
-    return {
-      selectedModel: selectedModel || active?.selectedModel || '',
-      permissionMode: permissionMode ?? active?.permissionMode ?? 'default',
-      reasoningEffort: reasoningEffort ?? active?.reasoningEffort ?? 'default',
-    };
-  }, [tabsRef, activeTabIdRef, selectedModel, permissionMode, reasoningEffort]);
-
   const createTab = useCallback(() => {
     saveCurrentTabSnapshot();
 
@@ -144,7 +121,15 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
       return;
     }
 
-    const inherited = inheritedSelection();
+    const defaultModel = getFirstPreferredModelId(
+      currentProvider || 'opencode',
+      availableModels || [],
+    ) || '';
+
+    const selectedModelInfo = availableModels?.find(
+      (m) => m.id === defaultModel || m.id.endsWith('/' + defaultModel) || defaultModel.endsWith('/' + m.id)
+    );
+    const defaultEffort = getRecommendedReasoningEffort(selectedModelInfo?.variants) || 'default';
 
     const newId = createTabId();
     sendTabCommand(newId, 'tab.create');
@@ -163,9 +148,9 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
       pendingPermissions: [],
       pendingQuestions: [],
       autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
-      selectedModel: inherited.selectedModel,
-      permissionMode: inherited.permissionMode,
-      reasoningEffort: inherited.reasoningEffort,
+      selectedModel: defaultModel,
+      permissionMode: 'default',
+      reasoningEffort: defaultEffort,
       filteredFileChanges: [],
       contextInfo: null,
     };
@@ -197,11 +182,11 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setSubagentHistories?.({});
     setFilteredFileChanges?.([]);
 
-    if (inherited.selectedModel) {
-      setSelectedModel?.(inherited.selectedModel, { silent: true });
+    if (defaultModel) {
+      setSelectedModel?.(defaultModel);
     }
-    setPermissionMode?.(inherited.permissionMode);
-    setReasoningEffort?.(inherited.reasoningEffort);
+    setPermissionMode?.('default');
+    setReasoningEffort?.(defaultEffort);
 
     setLoadingStartTime?.(null);
     window.__turnStartedAt = undefined;
@@ -220,8 +205,9 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     saveCurrentTabSnapshot,
     tabsRef,
     selectTab,
+    currentProvider,
+    availableModels,
     t,
-    inheritedSelection,
     defaultAutoOpenFileEnabled,
     activeTabIdRef,
     setTabs,
@@ -395,7 +381,14 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
   ]);
 
   const createAndActivateFreshTab = useCallback((): SessionTabData => {
-    const inherited = inheritedSelection();
+    const defaultModel = getFirstPreferredModelId(
+      currentProvider || 'opencode',
+      availableModels || [],
+    ) || '';
+    const selectedModelInfo = availableModels?.find(
+      (m) => m.id === defaultModel || m.id.endsWith('/' + defaultModel) || defaultModel.endsWith('/' + m.id)
+    );
+    const defaultEffort = getRecommendedReasoningEffort(selectedModelInfo?.variants) || 'default';
     const freshTab: SessionTabData = {
       id: createTabId(),
       sessionId: null,
@@ -404,9 +397,9 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
       messages: [],
       isShared: false,
       autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
-      selectedModel: inherited.selectedModel,
-      permissionMode: inherited.permissionMode,
-      reasoningEffort: inherited.reasoningEffort,
+      selectedModel: defaultModel,
+      permissionMode: 'default',
+      reasoningEffort: defaultEffort,
       filteredFileChanges: [],
       contextInfo: null,
     };
@@ -431,11 +424,11 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setSseTodos?.(null);
     setSubagentHistories?.({});
     setFilteredFileChanges?.([]);
-    if (inherited.selectedModel) {
-      setSelectedModel?.(inherited.selectedModel, { silent: true });
+    if (defaultModel) {
+      setSelectedModel?.(defaultModel);
     }
-    setPermissionMode?.(inherited.permissionMode);
-    setReasoningEffort?.(inherited.reasoningEffort);
+    setPermissionMode?.('default');
+    setReasoningEffort?.(defaultEffort);
     setLoadingStartTime?.(null);
     window.__turnStartedAt = undefined;
     setUsagePercentage?.(0);
@@ -444,8 +437,10 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setSessionLoading?.(false);
     return freshTab;
   }, [
+    currentProvider,
+    availableModels,
     t,
-    inheritedSelection,
+    defaultAutoOpenFileEnabled,
     sendTabCommand,
     setActiveTabId,
     activeTabIdRef,

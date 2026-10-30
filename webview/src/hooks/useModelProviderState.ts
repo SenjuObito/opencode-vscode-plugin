@@ -143,9 +143,6 @@ export function useModelProviderState({
    */
   const handleModelSelect = useCallback((modelId: string, options?: { silent?: boolean }) => {
     setSelectedOpenCodeModel(modelId);
-    // `silent` 表示切 tab 时只是把宿主权威状态回放到界面；此时写回会把
-    // 正在离开的旧选择重新塞进刚激活的会话。
-    if (options?.silent) return;
     const sessionId = resolveBoundSessionId(currentSessionId, currentSessionIdRef);
     // No session yet: keep it local; the model is sent with the first message.
     if (!sessionId) return;
