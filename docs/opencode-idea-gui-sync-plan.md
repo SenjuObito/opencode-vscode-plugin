@@ -20,7 +20,7 @@
 | 1 | 把"分享会话"列入 tab 右键菜单与 i18n 交付项 | opencode 服务端 v2.1.4 已移除 share 端点；idea 用 `SHARE_MENU_ENABLED = false` 隐藏入口，宿主 handler 保留但不暴露 | 本仓库必须同样隐藏（头部 share 按钮也要去掉），不能当新功能搬 |
 | 2 | "以 idea webview 整树覆盖" | 两仓 webview 共 **658 个文件**：**354 个完全一致**（源码 276 / 测试 78）、**225 个同名分叉**（源码 159 / 测试 66）、**73 个 idea 独有**（源码 36 / 测试 37）、**6 个 vscode 独有**；idea 独有的 36 个源码文件中 6 个是 VS Code 没有的功能（命令管理、模式配色、错误边界、Aero 图标等） | 整树覆盖会把 IDEA-only 功能与死 UI 一起带进来；改为"架构文件照搬 + 25 个重分叉文件逐个人工合并" |
 | 3 | 协议写成 `{v, type, tabId, sessionId, turnId, seq, payload:{delta}}` | 真实信封是 `{v:2, type, fn, tabId, epoch, sessionId?, turnId?, seq?, payload:{args:[...]}}`（位置参数事件）或命名 payload（`TabEvent`）；批次上限 64 条 / 32k 字符，active:background = 3:1 | 协议实现必须按真实结构，否则事件全部落空 |
-| 4 | 事件名自行发明（`prompt.rejected`、`tab.reordered`、`tab.created` …） | 权威目录是 `EventCatalog`（**140** 个语义键，每个带 legacy `fn`），例如 `session.cleared`、`message.prepended`、`turn.settled`、`prompt.question.closed`、`tab.state` | 少一个键就是一条静默丢失的事件 |
+| 4 | 事件名自行发明（`prompt.rejected`、`tab.reordered`、`tab.created` …） | 权威目录是 `EventCatalog`（**148** 个语义键，每个带 legacy `fn`；与 webview `SEMANTIC_HANDLERS` 双向 parity），例如 `session.cleared`、`message.prepended`、`turn.settled`、`prompt.question.closed`、`tab.state` | 少一个键就是一条静默丢失的事件 |
 | 5 | 命令清单含 `session.hydrate`、`tab.reorder`、`permission.reply` | 实际无 `session.hydrate`（后台 tab 走 `session.load`）、无 `tab.reorder`（排序仅前端本地）、权限回复是 `permission_decision` / `ask_user_question_response` / `ask_user_question_reject` / `plan_approval_response` | 命令发出去没人接 |
 | 6 | "contexts 降为纯 UI"、"运行态全 per-tab store"、"不做快照交换" | 现状：`MessagesContext` 已是 `TabStore` 的投影；流式运行态是 `useStreamingMessages` 里的 per-tab map；**状态标量（loading/streaming/usage/revert…）仍是 React state + 切 tab 时 `TabStatusStore` 快照交换** | 多视图下快照交换会分叉，必须改成 TabStore 权威（本仓库必要偏离，见 §5.4） |
 | 7 | "删除 `applyBackendTabState`" | `tab.state → applyBackendTabState` 仍在目录中，用于恢复该 tab 的 model/mode/reasoning | 删了会导致刷新后模型/模式丢 |
@@ -310,6 +310,7 @@ done                        → 按 id 结算请求（不参与数据归属）
 - 唯一入口：`window.__opencodeDispatch(type, args)` / `window.__opencodeDispatchBatch(batch)`；`hostEventRegistry` 是唯一路由表，**没有 `window.<fn>` 回退**（未注册事件进队列，TTL 30s / 上限 2000，React 挂载后 flush）。
 - VS Code 传输：宿主 `postMessage({ type: 'host.events', batch })`；`vscodeBridge.ts` 增加该分支调用 `__opencodeDispatchBatch`。
 - 入站信封兼容三种 payload：`payload.args`（位置参数事件）、命名 payload（`TabEvent`）、单字段 `{data}` 包装。
+- **现状偏离**：宿主仍会对部分事件额外调用一次 `callJavaScript(fn, json)`，webview 也仍保留 `window[fn]` 分发（`vscodeBridge.dispatchHostMessage`）。这是 tab 化之前的旧通道，退场计划见 §5.6。
 
 ### 5.3 消息与运行态
 
@@ -356,6 +357,57 @@ done                        → 按 id 结算请求（不参与数据归属）
 | `set_custom_model_pricing` / `set_thinking_enabled` | 删除（无实现） |
 | `write_clipboard` | 删除（复制走宿主 `copy_to_clipboard` 通道） |
 | `open_browser` | **先确认**：外链若依赖它，则补 handler；否则删除 |
+
+---
+
+### 5.6 旧窗口级回调总线（legacy）退场（待做）
+
+**定义**：tab 化之前的投递通道 —— 宿主 `callJavaScript(fn, json)` → 通道 `postMessage({ type: fn, args })` → webview `vscodeBridge.dispatchHostMessage` 里的 `window[fn]`。tab 化后的数据面走 §5.2 的 `host.events` 批次；旧通道目前只剩两类用途：迁移期 fallback（`TabEvent.legacy`）与窗口级功能（设置 / 字体 / 文件 / agent / MCP / 通知音…）。
+
+**判定标准**：某个 legacy 函数名还有没有人收 —— `grep -rE "window\.<fn>\s*=" webview/src`。没有 = 宿主发了没人接的死调用。
+
+**现状实测（2026-10-30）**：
+
+| 指标 | 数量 |
+|---|---|
+| `EventCatalog` 语义事件 | 148 |
+| legacy 函数名在 webview 无消费方（死流量） | 43 |
+| 仍有 `window.<fn>` 消费方 | 105（会话类多已由 `SessionCallbackAdapter.emit` 置 `legacy:false`；窗口级功能仍在用） |
+
+43 条死调用（宿主对外投递、webview 无对应 `window.<fn>`）：
+
+| 分组 | 事件 → 旧函数名 |
+|---|---|
+| tab 生命周期 | `tab.resync→onTabResync`、`tab.created→onTabCreated`、`tab.closed→onTabClosed`、`tab.activated→onTabActivated`、`tab.reordered→onTabReordered`、`tab.draft.changed→onTabDraftChanged`、`tab.create.requested→createSessionTab` |
+| 视图 | `view.ready→onViewReady`、`view.focus→onViewFocus`、`view.navigate→onViewNavigate`、`prompt.host.changed→onPromptHostChanged` |
+| 提示 / 弹窗 | `permission.requested→showPermissionDialog`、`question.requested→showAskUserQuestionDialog`、`question.answered→onQuestionAnswered`、`question.invalidated→invalidateQuestionCard`、`plan.requested→showPlanApprovalDialog`、`prompt.closed→forceClosePermissionDialog`、`prompt.question.closed→forceCloseAskUserQuestionDialog`、`prompt.plan.closed→forceClosePlanApprovalDialog`、`command.rejected→commandRejected`、`attachment.failed→onAttachmentFailed` |
+| 回合 | `turn.settled→onTurnEnd`、`turn.error→onTerminalError` |
+| 会话 | `session.fork.bound→onForkBound`、`session.hydrated→onSessionHydrated`、`session.unshare.failed→onUnshareError`、`session.unshare.done→onUnshareSuccess` |
+| 命令 / MCP / 设置 | `commands.deleted/listed/detail/saved→onCommands*`、`mcp.toggled→mcpServerToggled`、`settings.streaming/commit.generation/ai.title.generation/statusbar.widget/commit.prompt/project.commit.prompt/prompt.enhancer/commit.ai→update*` |
+| Node（D7 不搬） | `node.path→updateNodePath`、`node.processes→updateNodeProcesses`、`node.process.killed→nodeProcessKillResult` |
+
+**步骤 A：删死流量（行为等价，0.5d，先做）**
+
+1. `TabEvent` 的 `legacy` 默认值改为 `false`（`src/host/tab/TabEvent.ts`）。
+2. 删除 `TabEventRouter.broadcastBatch` 里的 legacy 循环（`src/host/window/TabEventRouter.ts` 中按 `item.legacy !== false` 调用 `channel.callJavaScript` 的那段），连同 `TabEventEnvelope.legacy` 与 `TabEvent.legacy` 字段。
+3. `ChatWindow.createLegacyTarget()` 收敛为“仅窗口级未迁移功能可用”，并在步骤 B 收尾时删除。
+4. 护栏（`src/test/multiSessionGuardrails.test.ts`）新增断言：
+   - `src/host` 内不得对 `EventCatalog` 里的事件再走 `callJavaScript`；
+   - `webview/src` 不得新增 `window.<fn> =` 赋值；
+   - `eventCatalogParity` / `semanticEvents.parity` 继续双向一致。
+5. 执行前核对脚本：对 `src/host` 每个 `publishTabEvent('<type>')`，确认 webview 已 `registerHostEvents({ '<type>': ... })`；**只对已有 v2 handler 的事件**关闭 legacy 投递（没有 handler 的事件先把 handler 补上，否则功能会变哑）。
+6. 验收：`pnpm run compile` 绿；宿主 + webview 全量单测绿；VS Code 通道不再出现 `{ type: 'onXxx' }` 报文（加日志断言或单测覆盖）。
+
+**步骤 B：窗口级功能迁 v2（独立工程，1.5d）**
+
+1. 逐个迁移仍走旧通道的窗口级功能（`EventCatalog` 增条目 + `publishTabEvent` / 全局 lane + webview `registerHostEvents`）：设置（commit / statusbar / streaming / prompt enhancer）、agents / skills、字体 / 主题 / 语言、文件（list / path / diff / undo）、MCP、通知音 / 剪贴板 / 导出。
+2. 全部迁完后删除 webview 的 `window.<fn>` 赋值、`vscodeBridge.dispatchHostMessage` 的 `window[fn]` 分支、宿主 `callJavaScript` 与 `createLegacyTarget`。
+3. 注意：部分 `window.<fn>` 目前被 v2 handler **内部复用**（如 `todos.updated` 的语义 handler 内部调用 `window.onTodoUpdated`）。删除时要先把实现提成普通函数再改调用点，不能只删赋值。
+
+**边界**
+
+- 不能只在 webview 删 `window.<fn>`：`opencode-idea-gui`（JCEF）与本仓库共享同一份 `EventCatalog` 映射，跨仓 parity 测试以 catalog 为准；步骤 A 只改 **VS Code 宿主的投递策略**，不动映射本身。
+- 未迁移完成前不得关闭 legacy：43 条死调用可以安全删，105 条里有真实消费方（窗口级功能），必须随步骤 B 一起走。
 
 ---
 
@@ -591,6 +643,8 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 | 关闭最后一个 | 立即新建空 tab（不恢复旧会话） |
 | 关闭流式中 tab | 先 `session.interrupt`，前端即刻清 loading，再释放 |
 | 关闭视图 | 不动 tab |
+
+关闭命令的所有权与 idea 一致：`tab.close` 在宿主只做删除并广播 `tab.closed`，**宿主不补建 tab、不代选 next active**；补建由发起视图发 `tab.create`（最后一个 tab 关闭时），next active 由发起视图发 `tab.activate`。宿主在 `tab.close` 里补建会与视图的补建并存，导致「关闭全部」后前台出现两个空白会话。
 
 ### 7.11 多视图与弹窗
 
@@ -944,8 +998,9 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 | **P7 多会话 UI** | tab 栏 + 四档响应式 + 菜单 + 拖拽 + 快捷键 + i18n | 3d | §7.15 十项 |
 | **P8 功能回归** | 按 §10 逐项：启动页/图标/空态背景、模式/模型/推理力度、权限/问题弹窗、状态面板三子页、附件/引用文件/文件上下文、bash `!`、opencode `/`、fork/revert/compact、分享入口隐藏核对 | 5d | §10 各节验收 + 功能矩阵"只影响目标 tab" |
 | **P9 生命周期+性能+发布** | resync、daemon 重启、释放清单、lane 预算、基准、core pin 打包验证 | 2d | reload 流式恢复；1000 次开关无泄漏；6 tab/3 流达标 |
+| **P10 旧回调总线退场** | 见 §5.6：A 删 43 条死 legacy 投递（`TabEvent.legacy` 默认 `false` + 删 `TabEventRouter` fallback 循环 + 护栏）；B 窗口级功能迁 v2 后删 `window.<fn>` / `callJavaScript` / `createLegacyTarget` | 0.5d + 1.5d | 护栏 grep 绿；`eventCatalogParity` 绿；宿主 + webview 全量单测绿；VS Code 通道无 `{type:'onXxx'}` 报文 |
 
-合计约 **24.5 人日**（"逐文件合并" + "多视图一致性" + "14 项功能域验收"）。
+合计约 **26.5 人日**（"逐文件合并" + "多视图一致性" + "14 项功能域验收" + "P10 2 人日"）。
 
 ---
 

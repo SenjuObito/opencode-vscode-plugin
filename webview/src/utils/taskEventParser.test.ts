@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTaskEventForSession, parseTaskNotification } from './taskEventParser';
+import { isTaskEventForSession, parseSubagentStatusEvent, parseTaskNotification } from './taskEventParser';
 
 describe('parseTaskNotification', () => {
   it('parses a complete task_notification with usage', () => {
@@ -114,6 +114,44 @@ describe('parseTaskNotification', () => {
       output_file: '',
     });
     expect(ev?.outputFilePath).toBeUndefined();
+  });
+});
+
+describe('parseSubagentStatusEvent', () => {
+  it('maps core subagent.status onto the canonical TaskEvent shape', () => {
+    expect(parseSubagentStatusEvent({
+      parentSessionId: 'ses_parent',
+      toolUseId: 'call_1',
+      childSessionId: 'ses_child',
+      status: 'completed',
+      description: '查找 liyibo',
+      summary: '没有找到',
+    })).toEqual({
+      toolUseId: 'call_1',
+      status: 'completed',
+      agentId: 'ses_child',
+      summary: '没有找到',
+    });
+  });
+
+  it('keeps failed/stopped terminal statuses for the shared mapper', () => {
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'failed' })?.status).toBe('failed');
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'stopped' })?.status).toBe('stopped');
+  });
+
+  it('rejects non-terminal and malformed payloads', () => {
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'running' })).toBeNull();
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'weird' })).toBeNull();
+    expect(parseSubagentStatusEvent({ status: 'completed' })).toBeNull();
+    expect(parseSubagentStatusEvent(null)).toBeNull();
+    expect(parseSubagentStatusEvent('completed')).toBeNull();
+  });
+
+  it('omits optional fields when core did not provide them', () => {
+    expect(parseSubagentStatusEvent({ toolUseId: 'call_1', status: 'completed' })).toEqual({
+      toolUseId: 'call_1',
+      status: 'completed',
+    });
   });
 });
 

@@ -171,6 +171,15 @@ interface Window {
   onTaskEvent?: (eventJson: string) => void;
 
   /**
+   * Canonical terminal state for a subagent run, pushed by core.
+   * Payload: { parentSessionId, toolUseId, childSessionId, status, description?, summary? }
+   * with status in completed|failed|stopped. opencode v1 `task` and v2
+   * `subagent` both arrive here; this is the single live status source for
+   * inline and background calls alike.
+   */
+  onSubagentStatus?: (eventJson: string) => void;
+
+  /**
    * opencode todo.updated SSE event callback.
    * Payload: { sessionID: string, todos: Array<{content, status, priority}> }.
    */

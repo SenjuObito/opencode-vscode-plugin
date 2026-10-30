@@ -112,4 +112,26 @@ describe('useSessionTabs batch close operations', () => {
     expect(result.current.tabs).toHaveLength(1);
     expect(result.current.tabs[0].sessionId).toBeNull();
   });
+
+  it('closeAllTabs sends one tab.close per tab and exactly one tab.create', () => {
+    const result = setupThreeTabs();
+    const closingIds = result.current.tabs.map((tab) => tab.id);
+    bridgeMocks.sendTabCommand.mockClear();
+
+    act(() => {
+      result.current.closeAllTabs();
+    });
+
+    const calls = bridgeMocks.sendTabCommand.mock.calls as Array<[string, string]>;
+    const closedIds = calls.filter(([, command]) => command === 'tab.close').map(([tabId]) => tabId);
+    const createdIds = calls.filter(([, command]) => command === 'tab.create').map(([tabId]) => tabId);
+
+    // The host only deletes on tab.close; the replacement tab is the view's
+    // single tab.create. A second creator (e.g. the host recreating its
+    // bootstrap tab) would surface as two empty sessions after "close all".
+    expect(closedIds).toEqual(closingIds);
+    expect(createdIds).toHaveLength(1);
+    expect(result.current.tabs.map((tab) => tab.id)).toEqual(createdIds);
+    expect(result.current.activeTabId).toBe(createdIds[0]);
+  });
 });

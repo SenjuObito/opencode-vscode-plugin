@@ -611,9 +611,10 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setTabs(next);
       draftStore.delete(tabId);
       if (activeTabIdRef.current === tabId) {
-        // Do NOT switch to a neighbour here: the host publishes `tab.activated`
-        // right after `tab.closed`, and that handler must run a full restore.
-        // Pre-selecting the neighbour would make it a no-op (same id).
+        // Do NOT pick a neighbour here: the next active tab is the initiating
+        // view's decision, announced by its `tab.activate` (the host only
+        // deletes on `tab.close` and broadcasts whatever that view asks for).
+        // Pre-selecting one would fight that broadcast with a local guess.
         activeTabIdRef.current = '';
         setActiveTabId('');
       }

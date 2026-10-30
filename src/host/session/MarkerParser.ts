@@ -248,6 +248,17 @@ export function processOutputLine(
 		callback.onMessage('todo_updated', payload);
 		return;
 	}
+
+	if (line.startsWith('[SUBAGENT_STATUS]')) {
+		// Authoritative terminal state for a subagent session, tagged with the
+		// PARENT session identity by core. It reaches this tab even when the
+		// parent is idle and not streaming, so it must be routed like a todo
+		// update rather than like a turn-scoped delta.
+		const payload = decodeJsonStringPayload(line.substring('[SUBAGENT_STATUS]'.length).trim());
+		logDiagnostic(`[MarkerParser] SUBAGENT_STATUS payload=${payload.substring(0, 300)}`);
+		callback.onMessage('subagent_status', isJsonObjectLiteral(payload) ? payload : line.substring('[SUBAGENT_STATUS]'.length).trim());
+		return;
+	}
 }
 
 /** 解码被 JSON 字符串包裹的载荷（如 [CONTENT_DELTA] 后跟 JSON 字符串）。 */

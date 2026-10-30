@@ -396,6 +396,12 @@ export class HistoryHandler extends BaseMessageHandler {
 			tasks.push(this.requestSessionState(daemon, session, sessionId));
 		}
 		await Promise.all(tasks);
+		// A persisted transcript only carries the launch acknowledgement. Reconcile
+		// once per load so a session reopened after the child finished does not
+		// show a permanent spinner. Fire-and-forget: it never changes the load
+		// result and forwards terminal states through the same callback chain as
+		// the live `[SUBAGENT_STATUS]` event.
+		void this.reconcileSubagentStates(daemon, session, sessionId);
 		this.callJavaScript('historyLoadComplete');
 	}
 
@@ -585,6 +591,71 @@ export class HistoryHandler extends BaseMessageHandler {
 		});
 		if (!ok) {
 			finish();
+		}
+	}
+
+	/**
+	 * 询问 core 本会话每个后台子代理的权威状态，把已终态的条目补发成与实时
+	 * 事件相同的 `subagent.status`。
+	 *
+	 * <p>这是一个有界的一次性请求，不轮询；core 已经归一化 v1 `task` / v2
+	 * `subagent` 的差异，因此这里没有任何引擎分支。</p>
+	 */
+	private reconcileSubagentStates(
+		daemon: NonNullable<ReturnType<HandlerContext['getDaemon']>>,
+		session: OpenCodeSession,
+		sessionId: string,
+	): void {
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		const chunks: string[] = [];
+		const ok = daemon.request('opencode.getSessionSubagents', { sessionId, directory, limit: 20 }, {
+			onLine: (line) => chunks.push(line),
+			onError: () => {
+				// A transient bridge error must not turn a still-running subagent
+				// into a false terminal state; the live event remains authoritative.
+			},
+			onComplete: (success) => {
+				if (!success) {
+					return;
+				}
+				const payload = this.extractJsonObject(chunks.join('\n'));
+				const list = payload?.subagents;
+				if (!Array.isArray(list)) {
+					return;
+				}
+				for (const item of list) {
+					if (!item || typeof item !== 'object') {
+						continue;
+					}
+					const entry = item as Record<string, unknown>;
+					if (entry.terminal !== true) {
+						continue;
+					}
+					const toolUseId = typeof entry.toolUseId === 'string' ? entry.toolUseId.trim() : '';
+					const rawStatus = typeof entry.status === 'string' ? entry.status.trim() : '';
+					if (!toolUseId || !rawStatus) {
+						continue;
+					}
+					session.notifySubagentStatus({
+						parentSessionId: sessionId,
+						toolUseId,
+						childSessionId: typeof entry.childSessionId === 'string' ? entry.childSessionId : null,
+						// Core's batch vocabulary is completed|error|running; the event
+						// contract is completed|failed|stopped.
+						status: rawStatus === 'error' ? 'failed' : rawStatus,
+						...(typeof entry.description === 'string' && entry.description
+							? { description: entry.description }
+							: {}),
+						...(typeof entry.summary === 'string' && entry.summary
+							? { summary: entry.summary }
+							: {}),
+					});
+				}
+			},
+		});
+		if (!ok) {
+			// The daemon is not accepting requests; the parent tool result remains
+			// the replay/bootstrap source and the live event path is unaffected.
 		}
 	}
 

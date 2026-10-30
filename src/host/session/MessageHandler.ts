@@ -145,6 +145,9 @@ export class MessageHandler implements MessageCallback {
 			case 'node_log':
 				this.callbackHandler.notifyNodeLog(content);
 				break;
+			case 'subagent_status':
+				this.callbackHandler.notifySubagentStatus(content);
+				break;
 		case 'permission_request':
 			logDiagnostic(`[MessageHandler] permission_request content=${content.substring(0, 200)}`);
 			this.handlePermissionRequest(content, false);

@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import type { ClaudeMessage, ClaudeRawMessage, ClaudeContentBlock, ToolResultBlock, SubagentHistoryResponse, SubagentInfo, SubagentStatus, TaskEvent, TaskEventMap } from '../types';
+import type { ClaudeMessage, ClaudeRawMessage, ClaudeContentBlock, ToolResultBlock, SubagentInfo, SubagentStatus, TaskEvent, TaskEventMap } from '../types';
 import { normalizeToolInput } from '../utils/toolInputNormalization';
-import { normalizeToolName } from '../utils/toolConstants';
-import { extractResultText, isAsyncAgentInput, parseSpawnAgentMeta, readToolUseStatus, resolveSubagentRunState } from '../utils/subagentResult';
+import { AGENT_TOOL_NAMES, isToolName, normalizeToolName } from '../utils/toolConstants';
+import { extractResultText, isAsyncAgentInput, parseSpawnAgentMeta, readAgentType, readToolUseStatus, resolveSubagentRunState } from '../utils/subagentResult';
 import { useTaskEvents } from '../contexts/SubagentContext';
 
 type GetToolResultRawFn = (toolUseId: string) => ClaudeRawMessage | null;
@@ -12,7 +12,6 @@ interface UseSubagentsParams {
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];
   findToolResult: (toolUseId?: string, messageIndex?: number) => ToolResultBlock | null;
   getToolResultRaw: GetToolResultRawFn;
-  subagentHistories?: Record<string, SubagentHistoryResponse>;
 }
 
 /**
@@ -93,8 +92,10 @@ export function extractSubagentsFromMessages(
 
       const toolName = normalizeToolName(block.name ?? '');
 
-      // Only process task/agent-style subagent tool calls.
-      if (toolName !== 'task' && toolName !== 'agent' && toolName !== 'spawn_agent') return;
+      // Only process task/agent-style subagent tool calls. `subagent` is the
+      // opencode v2 name for the v1 `task` tool; accepting both keeps the list
+      // working on v1 and v2 without an engine branch at this layer.
+      if (!isToolName(block.name, AGENT_TOOL_NAMES)) return;
 
       const rawInput = block.input as Record<string, unknown> | undefined;
       const input = rawInput ? normalizeToolInput(block.name, rawInput) as Record<string, unknown> : undefined;
@@ -102,16 +103,9 @@ export function extractSubagentsFromMessages(
 
       // Defensive: ensure all string values are actually strings
       const id = String(block.id ?? `task-${messageIndex}-${subagents.length}`);
-      // Align with normalizeSpawnAgentInput (toolInputNormalization.ts): check
-      // both subagent_type/subagentType and agent_type/agentType aliases so the
-      // StatusPanel always shows a meaningful label instead of hard-coded "Unknown".
-      const subagentType = String(
-        (input.subagent_type as string) ??
-        (input.subagentType as string) ??
-        (input.agent_type as string) ??
-        (input.agentType as string) ??
-        '',
-      );
+      // Shared with TaskExecutionBlock / AgentGroupBlock: v1 reads
+      // subagent_type / agent_type, opencode v2 renamed the argument to `agent`.
+      const subagentType = readAgentType(input);
       const description = String((input.description as string) ?? '');
       const prompt = String((input.prompt as string) ?? '');
 
@@ -149,38 +143,30 @@ export function extractSubagentsFromMessages(
   return subagents;
 }
 
-export function applySubagentHistoryCompletion(
-  subagents: SubagentInfo[],
-  subagentHistories: Record<string, SubagentHistoryResponse>,
-): SubagentInfo[] {
-  return subagents.map((subagent) => {
-    if (!subagent.isAsync || subagent.status !== 'running') return subagent;
-    const history = subagentHistories[subagent.id]
-      ?? (subagent.agentId ? subagentHistories[subagent.agentId] : undefined);
-    if (history?.status === 'error') return { ...subagent, status: 'error' as const };
-    return history?.completed ? { ...subagent, status: 'completed' as const } : subagent;
-  });
-}
-
 /**
  * Hook to extract subagent information from Task tool calls.
+ *
+ * <p>Status comes only from the canonical `subagent.status` event (stored in
+ * TaskEventMap) and the parent tool result. Child transcripts are detail data
+ * and deliberately do not participate in status derivation: a transcript
+ * snapshot can be older than the run and must not pin or prematurely complete
+ * the spinner.</p>
  */
 export function useSubagents({
   messages,
   getContentBlocks,
   findToolResult,
   getToolResultRaw,
-  subagentHistories = {},
 }: UseSubagentsParams): SubagentInfo[] {
   const taskEvents = useTaskEvents();
-  return useMemo(() => {
-    const extracted = extractSubagentsFromMessages(
+  return useMemo(
+    () => extractSubagentsFromMessages(
       messages,
       getContentBlocks,
       findToolResult,
       getToolResultRaw,
       taskEvents,
-    );
-    return applySubagentHistoryCompletion(extracted, subagentHistories);
-  }, [messages, getContentBlocks, findToolResult, getToolResultRaw, taskEvents, subagentHistories]);
+    ),
+    [messages, getContentBlocks, findToolResult, getToolResultRaw, taskEvents],
+  );
 }

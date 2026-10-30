@@ -73,3 +73,27 @@ export function parseTaskNotification(raw: unknown): TaskEvent | null {
     outputFilePath: typeof ev.output_file === 'string' && ev.output_file ? ev.output_file : undefined,
   };
 }
+
+/**
+ * Parse opencode's engine-neutral `subagent.status` payload into a TaskEvent.
+ *
+ * Core has already resolved the child session and decided the terminal state
+ * (v1 `task` and v2 `subagent` both land there, inline and background alike),
+ * so this is a straight field mapping: no engine branches and no status
+ * inference. The child session id doubles as `agentId` because it is the
+ * key that locates the sidechain transcript.
+ */
+export function parseSubagentStatusEvent(raw: unknown): TaskEvent | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const ev = raw as Record<string, unknown>;
+  const toolUseId = typeof ev.toolUseId === 'string' ? ev.toolUseId : '';
+  if (!toolUseId || !isTaskEventStatus(ev.status)) return null;
+  const childSessionId = typeof ev.childSessionId === 'string' ? ev.childSessionId : '';
+  const summary = typeof ev.summary === 'string' ? ev.summary : '';
+  return {
+    toolUseId,
+    status: ev.status,
+    ...(childSessionId ? { agentId: childSessionId } : {}),
+    ...(summary ? { summary } : {}),
+  };
+}

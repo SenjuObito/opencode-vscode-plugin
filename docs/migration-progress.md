@@ -132,6 +132,12 @@
 
 | 日期 | 变更 |
 |---|---|
+| 2026-10-30 | **P9-A37（本轮）**：**「关闭全部标签页」后宿主与视图各补建一个 tab，前台出现两个空白会话**：
+1. **现象**：右键 tab 标题 → 关闭所有标签页（或关闭最后一个 tab）后，tab 条上同时存在两个「新会话」，其中一个是已被关闭的 `tab-1` 复活品。
+2. **根因**：`tab.close` 是“双所有者”——宿主 `ChatWindow` 在注册表清空时 `ensureInitialTab()` 复活保留身份 `tab-1` 并广播 `tab.created/activated`，同时 webview `closeTabsBatch`/`closeTab` 也会 `createAndActivateFreshTab()` 发 `tab.create`。日志证据：`17:04:14.063 tab.close tab-dd66…` → `14.065 tab.create tab-7d56…` → `15.831 tab.activate tab=tab-1`（用户点到了复活出来的那个）。
+3. **修复（对齐 idea `closeSession()`，只改宿主）**：`ChatWindow.tab.close` 只做 `registry.close()` + 广播 `tab.closed`，**不再补建、不再代选 active**（next active 由发起视图的 `tab.activate` / `tab.create` 下发）；`TabRegistry.close` 的 active 回落改为 idea 的规则（左邻 → 右邻 → `null`），使宿主镜像与视图即将下发的选择一致。
+4. **测试**：`multiViewWindow` 原“关闭后自动新建默认 tab”断言改为“关闭后注册表为空 + active 为 null”，新增“关闭全部不复活 bootstrap tab，只有视图 `tab.create` 产生唯一替代 tab”；webview 新增“closeAllTabs 每个旧 tab 一条 `tab.close`、恰好一条 `tab.create`”。
+5. **验证**：`pnpm run compile` ✅；宿主相关套件 45 passing；webview tab 相关 31 + ChatHeader/windowCallbacks 125 passing。方案文档 §7.10 同步写死关闭命令所有权；旧窗口级回调总线（legacy）退场计划见方案 §5.6 / P10（待做）。 |
 | 2026-10-30 | **P9-A36（本轮）**：**权限弹窗边框/圆角修复（双端同步）**：
 1. **现象**：权限弹窗左上圆角、右侧边框缺失、左下/右下直角，右边和下边没有边框；30 秒警告描边也缺下半圈。
 2. **根因**：`styles/less/components/permission.less` 里残留了整段旧版 `.permission-dialog-v3*` 样式（`border-radius: 12px 12px 0 0; width: 100%`）。生产包里全局 LESS 排在组件 `PermissionDialog.css` 之后，同优先级覆盖了新的 `8px` 圆角与 `width: auto`；旧副本没写 `margin`，组件里的 `margin: 0 8px 8px` 仍生效，总宽变成容器 +16px，右侧被视口裁掉，于是只剩左上圆角和顶边。

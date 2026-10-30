@@ -26,7 +26,7 @@ vi.mock('../../contexts/SubagentContext', () => ({
   useTaskEvent: (toolUseId: string | undefined) => mockUseTaskEvent(toolUseId),
 }));
 
-describe('TaskExecutionBlock polling', () => {
+describe('TaskExecutionBlock subagent status', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockSendBridgeEvent.mockReset();
@@ -46,7 +46,7 @@ describe('TaskExecutionBlock polling', () => {
     vi.useRealTimers();
   });
 
-  it('continues polling an unresolved agent after the main turn settles', () => {
+  it('loads the transcript once on expand without starting a status poll', () => {
     const setIntervalSpy = vi.spyOn(window, 'setInterval');
 
     const { container } = render(
@@ -64,7 +64,12 @@ describe('TaskExecutionBlock polling', () => {
 
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
 
-    expect(setIntervalSpy).toHaveBeenCalled();
+    expect(mockSendBridgeEvent).toHaveBeenCalledTimes(1);
+    expect(mockSendBridgeEvent).toHaveBeenCalledWith(
+      'load_subagent_session',
+      expect.stringContaining('"toolUseId":"task-1"'),
+    );
+    expect(setIntervalSpy).not.toHaveBeenCalled();
   });
 
   it('expands the task details when the header is clicked', () => {
@@ -86,10 +91,8 @@ describe('TaskExecutionBlock polling', () => {
     expect(container.querySelector('.task-details')).toBeTruthy();
   });
 
-  it('stops polling once a tool result marks the agent task completed', () => {
-    const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
-
-    const { container, rerender } = render(
+  it('does not poll again after the transcript request resolves', () => {
+    const { container } = render(
       <TaskExecutionBlock
         name="Task"
         toolId="task-1"
@@ -103,29 +106,7 @@ describe('TaskExecutionBlock polling', () => {
 
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
 
-    act(() => {
-      vi.advanceTimersByTime(2_000);
-    });
-
-    expect(mockSendBridgeEvent).toHaveBeenCalledWith(
-      'load_subagent_session',
-      expect.stringContaining('"toolUseId":"task-1"'),
-    );
-
-    rerender(
-      <TaskExecutionBlock
-        name="Task"
-        toolId="task-1"
-        isStreaming={true}
-        result={{ type: 'tool_result', tool_use_id: 'task-1', content: 'done' } as any}
-        input={{
-          description: 'Inspect render path',
-          subagent_type: 'Explore',
-        }}
-      />,
-    );
-
-    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(mockSendBridgeEvent).toHaveBeenCalledTimes(1);
 
     mockSendBridgeEvent.mockClear();
     act(() => {
@@ -180,7 +161,10 @@ describe('TaskExecutionBlock polling', () => {
     expect(indicator?.className).not.toContain('completed');
   });
 
-  it('marks an async agent completed when sidechain history ends normally', () => {
+  it('does not treat a completed transcript snapshot as the run status', () => {
+    // The transcript is detail-only: a snapshot read while the child was still
+    // running must not drive the card. Only core's `subagent.status` completes
+    // the run.
     mockUseTaskEvent.mockReturnValue(undefined);
     mockHistories = { 'agent-async': { success: true, completed: true, messages: [] } };
 
@@ -198,8 +182,8 @@ describe('TaskExecutionBlock polling', () => {
     );
 
     const indicator = container.querySelector('.tool-status-indicator');
-    expect(indicator?.className).toContain('completed');
-    expect(indicator?.className).not.toContain('pending');
+    expect(indicator?.className).toContain('pending');
+    expect(indicator?.className).not.toContain('completed');
   });
 
   it('flips an async agent to completed when a task_notification arrives', () => {
@@ -273,13 +257,14 @@ describe('TaskExecutionBlock polling', () => {
     expect(indicator?.className).not.toContain('pending');
   });
 
-  it('stops polling when an async agent fails', () => {
-    const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+  it('never starts a poll for a failed async agent', () => {
+    const setIntervalSpy = vi.spyOn(window, 'setInterval');
+    mockUseTaskEvent.mockReturnValue({
+      toolUseId: 'agent-poll-fail',
+      status: 'failed',
+    } as any);
 
-    // Start with no task_event: the card is pending and begins polling.
-    mockUseTaskEvent.mockReturnValue(undefined);
-
-    const { container, rerender } = render(
+    const { container } = render(
       <TaskExecutionBlock
         name="Agent"
         toolId="agent-poll-fail"
@@ -294,42 +279,35 @@ describe('TaskExecutionBlock polling', () => {
 
     fireEvent.click(container.querySelector('.task-header') as HTMLElement);
 
-    act(() => {
-      vi.advanceTimersByTime(2_000);
-    });
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    expect(container.querySelector('.tool-status-indicator')?.className).toContain('error');
+  });
 
-    expect(mockSendBridgeEvent).toHaveBeenCalledWith(
-      'load_subagent_session',
-      expect.stringContaining('"toolUseId":"agent-poll-fail"'),
-    );
-
-    // A failure notification arrives - the card must stop polling.
+  it('renders an opencode v2 subagent card and completes it from subagent.status', () => {
     mockUseTaskEvent.mockReturnValue({
-      toolUseId: 'agent-poll-fail',
-      status: 'failed',
+      toolUseId: 'subagent-v2',
+      status: 'completed',
+      summary: '没有找到',
+      agentId: 'ses_child',
     } as any);
 
-    rerender(
+    const { container } = render(
       <TaskExecutionBlock
-        name="Agent"
-        toolId="agent-poll-fail"
-        isStreaming={true}
+        name="subagent"
+        toolId="subagent-v2"
+        isStreaming={false}
         input={{
-          description: 'background research',
-          subagent_type: 'research',
-          run_in_background: true,
+          agent: 'explore',
+          description: '查找 liyibo',
+          prompt: '在仓库中查找 liyibo',
+          background: true,
         } as any}
       />,
     );
 
-    expect(clearIntervalSpy).toHaveBeenCalled();
-
-    mockSendBridgeEvent.mockClear();
-    act(() => {
-      vi.advanceTimersByTime(4_000);
-    });
-
-    expect(mockSendBridgeEvent).not.toHaveBeenCalled();
+    const indicator = container.querySelector('.tool-status-indicator');
+    expect(indicator?.className).toContain('completed');
+    expect(container.textContent).toContain('explore');
   });
 
   it('renders task_event usage in SubagentProcessDetails for a completed async agent', () => {

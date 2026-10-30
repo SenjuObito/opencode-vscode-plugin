@@ -172,16 +172,66 @@ suite('P3: Single Instance Multi-View (ChatWindow, ViewRegistry, TabEventRouter)
 			const order = chatWindow.registry.getOrder().map((t) => t.value);
 			assert.deepStrictEqual(order, [t3Id, t1Id, t2Id]);
 
-			// Close t3 -> activeTab should fall back
+			// Close t3 -> activeTab falls back to its neighbour (left first, else right)
 			await chatWindow.handleViewCommand('v', { type: 'tab.close', tabId: t3Id });
 			assert.strictEqual(chatWindow.registry.size(), 2);
 			assert.strictEqual(chatWindow.registry.getActiveTabId()?.value, t1Id);
 
-			// Close remaining tabs -> should auto-create a fresh default tab
+			// Close the rest -> the registry really empties: the host never
+			// materialises a replacement tab (idea's closeSession only deletes).
 			await chatWindow.handleViewCommand('v', { type: 'tab.close', tabId: t1Id });
 			await chatWindow.handleViewCommand('v', { type: 'tab.close', tabId: t2Id });
-			assert.strictEqual(chatWindow.registry.size(), 1);
-			assert.notStrictEqual(chatWindow.registry.getActiveTabId()?.value, t2Id);
+			assert.strictEqual(chatWindow.registry.size(), 0);
+			assert.strictEqual(chatWindow.registry.getActiveTabId(), null);
+
+			chatWindow.eventRouter.dispose();
+		});
+
+		test('closing every tab never resurrects the bootstrap tab', async () => {
+			const chatWindow = new ChatWindow(dummyOptions);
+			const ch = new MockChannel();
+			chatWindow.registerView('v', ch);
+
+			const ids = [
+				chatWindow.registry.getActiveTabId()!.value,
+				TabId.create().value,
+				TabId.create().value,
+			];
+			for (const id of ids.slice(1)) {
+				await chatWindow.handleViewCommand('v', { type: 'tab.create', tabId: id });
+			}
+			ch.messages.length = 0;
+
+			// The webview's "close all" sends one tab.close per tab, then one
+			// tab.create for the single replacement tab.
+			for (const id of ids) {
+				await chatWindow.handleViewCommand('v', { type: 'tab.close', tabId: id });
+			}
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const events = ch.messages
+				.flatMap((m: any) => (m?.type === 'host.events' && Array.isArray(m.batch) ? m.batch : []))
+				.map((e: any) => ({ type: e.type as string, tabId: e.tabId as string }));
+			const closedIds = events.filter((e) => e.type === 'tab.closed').map((e) => e.tabId);
+			assert.deepStrictEqual(closedIds, ids);
+			assert.deepStrictEqual(
+				events.filter((e) => e.type === 'tab.created' || e.type === 'tab.activated'),
+				[],
+				'closing tabs must not create or activate anything',
+			);
+			assert.strictEqual(chatWindow.registry.size(), 0);
+
+			const freshId = TabId.create().value;
+			await chatWindow.handleViewCommand('v', { type: 'tab.create', tabId: freshId });
+			assert.strictEqual(chatWindow.registry.size(), 1, 'exactly one replacement tab');
+			assert.strictEqual(chatWindow.registry.getActiveTabId()?.value, freshId);
+			assert.notStrictEqual(freshId, 'tab-1', 'the bootstrap identity must not come back');
+
+			const later = ch.messages
+				.flatMap((m: any) => (m?.type === 'host.events' && Array.isArray(m.batch) ? m.batch : []))
+				.filter((e: any) => e.type === 'tab.created')
+				.map((e: any) => e.tabId);
+			assert.deepStrictEqual(later, [freshId], 'only the view-supplied tab is created');
 
 			chatWindow.eventRouter.dispose();
 		});

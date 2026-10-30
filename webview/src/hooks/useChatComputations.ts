@@ -213,7 +213,6 @@ export function useChatComputations({
     getContentBlocks,
     findToolResult,
     getToolResultRaw,
-    subagentHistories,
   });
 
   const subagents = useMemo(

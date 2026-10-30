@@ -363,6 +363,17 @@ export class OpenCodeSession {
 		processOutputLine(line, this.messageHandler, this.streamCtx);
 	}
 
+	/**
+	 * 历史恢复后补发子代理终态。
+	 *
+	 * <p>持久化 transcript 只保留启动 ack，重开会话时子代理可能早已结束。
+	 * core 的 `getSessionSubagents` 给出权威终态，这里把它交给与实时事件完全
+	 * 相同的 callback 链，避免在 webview 里再写一套恢复逻辑。</p>
+	 */
+	notifySubagentStatus(payload: Record<string, unknown>): void {
+		this.callbackHandler.notifySubagentStatus(JSON.stringify(payload));
+	}
+
 	/** 流式 turn 结束时的宿主侧回调（可在会话层面做延迟工作）。 */
 	private onTurnEnded(): void {
 		this.state.setBusy(false);

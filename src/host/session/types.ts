@@ -65,6 +65,12 @@ export interface SessionCallback {
 	onUserMessageUuidPatched(content: string, uuid: string): void;
 	onTaskEvent?(eventJson: string): void;
 	/**
+	 * 子代理运行的权威终态（core 的 `[SUBAGENT_STATUS]`）。opencode v1 `task`
+	 * 与 v2 `subagent`、同步与后台调用都走这一条事件；webview 只认它，不再
+	 * 从 transcript 推断状态。
+	 */
+	onSubagentStatus?(jsonContent: string): void;
+	/**
 	 * revert 指针变化。messageId 是服务端指针指向的用户消息 id（无 revert 时为
 	 * null），webview 据此把转录切在正确的边界上。
 	 */

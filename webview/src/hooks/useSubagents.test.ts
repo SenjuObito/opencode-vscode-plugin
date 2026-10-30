@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClaudeContentBlock, ClaudeMessage, ToolResultBlock } from '../types';
-import { applySubagentHistoryCompletion, extractSubagentsFromMessages } from './useSubagents';
+import { extractSubagentsFromMessages } from './useSubagents';
 
 const assistantWithAgent = (toolUseId: string): ClaudeMessage => ({
   type: 'assistant',
@@ -251,32 +251,77 @@ describe('extractSubagentsFromMessages', () => {
     expect(subagents[0].status).toBe('error');
   });
 
-  it('finalizes only async agents whose sidechain history ends in end_turn', () => {
-    const messages = [assistantWithAsyncAgent('tu_spawn'), launchAckResult('tu_spawn')];
-    const extracted = extractSubagentsFromMessages(
+  // opencode v2 renamed the v1 `task` tool to `subagent`, its type argument to
+  // `agent`, and its async switch to `background`. The status panel must accept
+  // the v2 shape without an engine branch.
+  const assistantWithV2Subagent = (
+    toolUseId: string,
+    background = true,
+  ): ClaudeMessage => ({
+    type: 'assistant',
+    content: '',
+    raw: {
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: toolUseId,
+            name: 'subagent',
+            input: {
+              agent: 'explore',
+              description: '查找 liyibo 相关信息',
+              prompt: '在仓库中查找 liyibo',
+              ...(background ? { background: true } : {}),
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  it('recognizes opencode v2 subagent and reads its agent type', () => {
+    const messages = [assistantWithV2Subagent('tu_v2')];
+
+    const subagents = extractSubagentsFromMessages(
       messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), {},
     );
 
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, completed: false, messages: [] },
-    })[0].status).toBe('running');
-
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, completed: true, messages: [] },
-    })[0].status).toBe('completed');
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0]).toMatchObject({
+      id: 'tu_v2',
+      type: 'explore',
+      description: '查找 liyibo 相关信息',
+      isAsync: true,
+      status: 'running',
+    });
   });
 
-  it('does not overwrite a task_notification error with sidechain completion', () => {
-    const messages = [assistantWithAsyncAgent('tu_spawn')];
+  it('completes a v2 subagent from core subagent.status, not a transcript', () => {
+    const messages = [assistantWithV2Subagent('tu_v2'), launchAckResult('tu_v2')];
     const taskEvents = {
-      tu_spawn: { toolUseId: 'tu_spawn', status: 'failed' as const },
+      tu_v2: { toolUseId: 'tu_v2', status: 'completed' as const, agentId: 'ses_child' },
     };
-    const extracted = extractSubagentsFromMessages(
+
+    const subagents = extractSubagentsFromMessages(
       messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), taskEvents,
     );
 
-    expect(applySubagentHistoryCompletion(extracted, {
-      tu_spawn: { success: true, completed: true, messages: [] },
-    })[0].status).toBe('error');
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0]).toMatchObject({
+      id: 'tu_v2',
+      status: 'completed',
+      agentId: 'ses_child',
+    });
+  });
+
+  it('leaves a background v2 subagent running while only the launch ack has landed', () => {
+    const messages = [assistantWithV2Subagent('tu_v2'), launchAckResult('tu_v2')];
+
+    const subagents = extractSubagentsFromMessages(
+      messages, getContentBlocks, findToolResult(messages), getToolResultRaw(messages), {},
+    );
+
+    expect(subagents).toHaveLength(1);
+    expect(subagents[0].status).toBe('running');
   });
 });

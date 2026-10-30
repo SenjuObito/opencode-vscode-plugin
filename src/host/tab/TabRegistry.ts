@@ -241,12 +241,19 @@ export class TabRegistry {
 			this.sessionIndex.delete(sessionId.value);
 		}
 
+		const closedIndex = this.tabOrder.findIndex((id) => id.equals(tabId));
+
 		record.close();
 		this.tabs.delete(tabId.value);
 		this.tabOrder = this.tabOrder.filter((id) => !id.equals(tabId));
 
 		if (this.activeTabId && this.activeTabId.equals(tabId)) {
-			this.activeTabId = this.tabOrder.length > 0 ? this.tabOrder[0] : null;
+			// 与 idea 的 closeTab/closeTabsBatch 同一规则：优先左邻，没有则右邻，
+			// 全空则为 null。宿主镜像的 active 必须与视图即将下发的 tab.activate
+			// 一致，否则多视图会在关闭瞬间各选一个邻居。
+			this.activeTabId = this.tabOrder.length === 0
+				? null
+				: this.tabOrder[Math.max(0, Math.min(closedIndex - 1, this.tabOrder.length - 1))];
 		}
 
 		return record;

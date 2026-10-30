@@ -92,6 +92,15 @@ export class CallbackHandler {
 		this.callback?.onTaskEvent?.(eventJson);
 	}
 
+	/**
+	 * 后台子代理的权威终态（core 的 `[SUBAGENT_STATUS]`）。
+	 *
+	 * @param jsonContent `{ parentSessionId, toolUseId, childSessionId, status, summary? }`
+	 */
+	notifySubagentStatus(jsonContent: string): void {
+		this.callback?.onSubagentStatus?.(jsonContent);
+	}
+
 	notifyRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {
 		this.callback?.onRevertStateUpdate?.(hasRevert, messageId);
 	}

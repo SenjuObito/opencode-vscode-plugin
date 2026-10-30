@@ -252,56 +252,22 @@ export class ChatWindow {
 			this.bindingUnsubs.delete(tabId.value);
 			this.attachments.releaseTab(tabId.value);
 			const closed = this.registry.close(tabId);
-			if (closed) {
-				this.eventRouter.publish(
-					new TabEvent({
-						type: 'tab.closed',
-						tabId: tabId.value,
-						epoch: closed.epoch,
-						payload: { tabId: tabId.value },
-					}),
-				);
-
-				if (this.registry.size() === 0) {
-					const next = this.ensureInitialTab();
-					this.registry.activate(next.getTabId());
-					this.eventRouter.setActiveTabId(next.getTabId().value);
-					this.eventRouter.publish(
-						new TabEvent({
-							type: 'tab.created',
-							tabId: next.getTabId().value,
-							epoch: next.epoch,
-							payload: { tabId: next.getTabId().value, title: next.getTitle() },
-						}),
-					);
-					this.eventRouter.publish(
-						new TabEvent({
-							type: 'tab.activated',
-							tabId: next.getTabId().value,
-							epoch: next.epoch,
-							payload: { tabId: next.getTabId().value },
-						}),
-					);
-					setTimeout(() => this.replayTab(next), 0);
-				} else {
-					const active = this.registry.getActiveTabId();
-					if (active) {
-						this.eventRouter.setActiveTabId(active.value);
-						this.eventRouter.publish(
-							new TabEvent({
-								type: 'tab.activated',
-								tabId: active.value,
-								epoch: this.registry.get(active)?.epoch || 0,
-								payload: { tabId: active.value },
-							}),
-						);
-						const nextRecord = this.registry.get(active);
-						if (nextRecord) {
-							setTimeout(() => this.replayTab(nextRecord), 0);
-						}
-					}
-				}
+			if (!closed) {
+				return;
 			}
+			this.eventRouter.publish(
+				new TabEvent({
+					type: 'tab.closed',
+					tabId: tabId.value,
+					epoch: closed.epoch,
+					payload: { tabId: tabId.value },
+				}),
+			);
+			// 关闭只删记录（与 idea 的 closeSession 一致）：宿主不补建 tab，也不
+			// 代选下一个 active。补建与切换都由发起视图下发（`tab.create` /
+			// `tab.activate`）；否则「关闭全部」会同时产生宿主补建的 tab 与 webview
+			// 补建的新 tab，前台出现两个空白会话。
+			this.eventRouter.setActiveTabId(this.registry.getActiveTabId()?.value ?? null);
 		});
 
 		// tab.title.set

@@ -1,14 +1,16 @@
 import { memo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
-import { normalizeToolName } from '../../utils/toolConstants';
+import { AGENT_TOOL_NAMES, isToolName, normalizeToolName } from '../../utils/toolConstants';
 import { sendBridgeEvent } from '../../utils/bridge';
 import {
   extractResultText,
   isAsyncAgentInput,
   parseAgentToolMeta,
   parseSpawnAgentMeta,
+  readAgentType,
   readToolUseStatus,
+  resolveSubagentRunState,
 } from '../../utils/subagentResult';
 import {
   useSubagentHistories,
@@ -51,11 +53,10 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
   // defined for tool_use blocks in practice; the guard keeps hook order stable.
   const normalizedName = input ? normalizeToolName(name ?? '') : '';
   const isSpawnAgent = normalizedName === 'spawn_agent';
-  const isAgentTool = normalizedName === 'agent' || normalizedName === 'task' || normalizedName === 'spawn_agent';
+  const isAgentTool = isToolName(name, AGENT_TOOL_NAMES);
   const {
     description,
     prompt,
-    subagent_type: subagentType,
     model: _model,
     reasoning_effort: _reasoningEffort,
     reasoningEffort: _reasoningEffortCamel,
@@ -73,38 +74,38 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
   const agentToolMeta = !isSpawnAgent && input ? parseAgentToolMeta(getToolResultRaw, toolId) : {};
   const agentId = spawnMeta.agentId ?? agentToolMeta.agentId;
   const agentPath = spawnMeta.agentPath;
-  const identityLabel = spawnMeta.nickname || (typeof subagentType === 'string' && subagentType ? subagentType : undefined);
+  // Shared with useSubagents / AgentGroupBlock: v1 reads subagent_type /
+  // agent_type, opencode v2 renamed the argument to `agent`.
+  const identityLabel = spawnMeta.nickname || readAgentType(input) || undefined;
   const modelSummary = [spawnMeta.model, spawnMeta.reasoningEffort].filter(Boolean).join(' ');
   const shortAgentId = shortenAgentId(agentId);
 
   // A background (run_in_background) Agent only gets a launch acknowledgment
-  // tool_result; its real terminal status arrives later via a task_notification
-  // event, so the card must stay "running" until that event lands and must not
-  // flip to completed on the launch ack alone. Sync agents run inline, so a
-  // tool_result means done. A failed launch (validation error before the task
-  // was registered) returns an is_error tool_result and never emits a
-  // task_notification, so treat that as an error instead of staying stuck.
-  // isAsyncAgentInput centralizes the strict === true check shared with
-  // useSubagents and AgentGroupBlock. The launch ack text and tool-use status
-  // are passed as fallbacks so an agent spawned without run_in_background is
-  // still recognized as async.
+  // tool_result; its real terminal status arrives later via core's
+  // `subagent.status` event, so the card must stay "running" until that event
+  // lands and must not flip to completed on the launch ack alone. Sync agents
+  // run inline, so a tool_result means done. A failed launch (validation error
+  // before the task was registered) returns an is_error tool_result and never
+  // emits an event, so treat that as an error instead of staying stuck.
+  //
+  // One status rule for the whole UI (shared with the StatusPanel and
+  // AgentGroupBlock): core's `subagent.status` event is the live authority for
+  // inline and background runs alike; the parent tool result is the
+  // replay/bootstrap source. The child transcript is detail data only — a
+  // `running` snapshot can be older than the run and must not pin the spinner.
   const isAsync = input
     ? isAsyncAgentInput(input, normalizedName, result, readToolUseStatus(toolId ? getToolResultRaw(toolId) : null))
     : false;
   const hasTerminalResult = result !== undefined && result !== null;
-  const taskFailed = taskEvent?.status === 'failed' || taskEvent?.status === 'stopped';
-  // Async completion has two authoritative sources: the live task_notification,
-  // and (after reload/polling) a sidechain transcript that ends in
-  // assistant/end_turn. A settled main turn alone proves only that the launch
-  // turn ended; the background sidechain may still be running.
   const history = (toolId ? histories[toolId] : undefined) ?? (agentId ? histories[agentId] : undefined);
-  const historyFailed = history?.status === 'error';
-  const isCompleted = isAsync
-    ? (taskEvent ? !taskFailed : history?.completed === true)
-    : hasTerminalResult;
-  const isError = isAsync
-    ? (taskEvent ? taskFailed : historyFailed || result?.is_error === true)
-    : hasTerminalResult && result?.is_error === true;
+  const status = resolveSubagentRunState({
+    isAsync,
+    hasTerminalResult,
+    resultIsError: result?.is_error === true,
+    terminalEvent: taskEvent,
+  });
+  const isCompleted = status === 'completed';
+  const isError = status === 'error';
 
   // For background agents the task_notification carries the authoritative usage
   // and summary (the launch ack has none); prefer it over toolUseResult. Sync
@@ -127,34 +128,8 @@ const TaskExecutionBlock = memo(function TaskExecutionBlock({ name, input, resul
     }));
   }, [input, agentId, agentPath, currentProvider, currentSessionId, description, expanded, history, isAgentTool, toolId]);
 
-  // Poll while an expanded async Agent is unresolved, including after a main
-  // turn settles. This lets a reloaded session observe the sidechain's terminal
-  // end_turn without relying on the live-only task_notification event. Stop once
-  // the agent reaches a terminal state (completed or error) so a failed
-  // background agent does not leak an interval forever.
-  const shouldPollHistory = expanded
-    && isAgentTool
-    && Boolean(currentSessionId)
-    && Boolean(toolId)
-    && !isCompleted
-    && !isError;
-
-  useEffect(() => {
-    if (!input || !shouldPollHistory || !currentSessionId || !toolId) return;
-    const timer = window.setInterval(() => {
-      sendBridgeEvent('load_subagent_session', JSON.stringify({
-        sessionId: currentSessionId,
-        provider: currentProvider,
-        agentId,
-        agentPath,
-        description: typeof description === 'string' ? description : undefined,
-        toolUseId: toolId,
-        // 轮询标记：宿主按 tail 窗口解析，避免每 2s 全量拉取+转换整段会话。
-        poll: true,
-      }));
-    }, 2_000);
-    return () => window.clearInterval(timer);
-  }, [input, agentId, agentPath, currentProvider, currentSessionId, description, shouldPollHistory, toolId]);
+  // No status polling here: core pushes `subagent.status` for both launch
+  // modes, and the request above only fills the expanded detail view.
 
   if (!input) {
     return null;

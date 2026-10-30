@@ -4,24 +4,30 @@
 export type SubagentStatus = 'running' | 'completed' | 'error';
 
 /**
- * Terminal status carried by a Claude Code task_notification SDK event.
- * Maps onto SubagentStatus: failed/stopped -> error, completed -> completed.
+ * Terminal status carried by a subagent run event.
+ *
+ * <p>Two producers feed it: a Claude Code task_notification SDK event (legacy
+ * async Agent) and core's engine-neutral `subagent.status` (opencode v1 `task`
+ * and v2 `subagent`, inline and background alike). Maps onto SubagentStatus:
+ * failed/stopped -> error, completed -> completed.</p>
  */
 export type TaskEventStatus = 'completed' | 'failed' | 'stopped';
 
 /**
- * A task_* SDK system event for a background (async Agent) subagent — one
- * invoked via the Agent/Task tool with run_in_background:true. The mainstream
- * only carries these lightweight events; the agent's detailed messages live in
- * a background sidechain. task_notification arrives once the agent finishes and
- * carries the result summary plus usage.
+ * The canonical terminal event for a subagent run.
+ *
+ * <p>Historically shaped like Claude Code's task_notification (hence the name),
+ * but it is now the single live status source for every subagent call: core
+ * publishes `subagent.status` for inline calls too. `summary`/usage fields are
+ * filled when the producer knows them; consumers must not infer completion from
+ * a launch acknowledgement or a child transcript snapshot.</p>
  */
 export interface TaskEvent {
-  /** tool_use_id of the background Agent call; matches SubagentInfo.id */
+  /** tool_use_id of the subagent call; matches SubagentInfo.id */
   toolUseId: string;
-  /** Runtime agent id (SDK task_id); locates the sidechain transcript */
+  /** Runtime agent/child session id; locates the sidechain transcript */
   agentId?: string;
-  /** Terminal status reported by task_notification */
+  /** Terminal status of the run */
   status: TaskEventStatus;
   /** Human-readable result summary */
   summary?: string;

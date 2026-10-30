@@ -472,6 +472,33 @@ export class SessionCallbackAdapter implements SessionCallback {
 		});
 	}
 
+	/**
+	 * 子代理运行的权威终态，由 core 的 `[SUBAGENT_STATUS]` 驱动。
+	 *
+	 * <p>与 `onTaskEvent` 一样补齐会话归属：事件属于 PARENT 会话，后台 tab
+	 * 必须在自己的记录里更新，不能写进当前活跃 tab。opencode v1 `task` 与
+	 * v2 `subagent` 在这里已无差别。</p>
+	 */
+	onSubagentStatus(jsonContent: string): void {
+		if (this.isInactive() || !jsonContent || jsonContent.trim() === '') {
+			return;
+		}
+		let payload = jsonContent;
+		if (this.sessionId) {
+			try {
+				const parsed = JSON.parse(jsonContent) as Record<string, unknown>;
+				if (parsed && typeof parsed === 'object' && !('parentSessionId' in parsed)) {
+					payload = JSON.stringify({ ...parsed, parentSessionId: this.sessionId });
+				}
+			} catch {
+				// 非 JSON 载荷原样转发，前端会自行丢弃
+			}
+		}
+		this.emit('subagent.status', { subagent: payload }, () => {
+			this.jsTarget.callJavaScript('onSubagentStatus', payload);
+		});
+	}
+
 	onRevertStateUpdate(hasRevert: boolean, messageId: string | null = null): void {
 		if (this.isInactive()) {
 			return;

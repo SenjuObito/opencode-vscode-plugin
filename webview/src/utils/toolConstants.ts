@@ -21,8 +21,12 @@ export const BASH_TOOL_NAMES = new Set(['bash', 'run_terminal_cmd', 'exec_comman
 // Search/grep/glob tools
 export const SEARCH_TOOL_NAMES = new Set(['grep', 'glob', 'search', 'find', 'search_files']);
 
-// Agent/subagent spawning tools
-export const AGENT_TOOL_NAMES = new Set(['task', 'agent', 'spawn_agent']);
+// Agent/subagent spawning tools.
+// `subagent` is the opencode v2 name for the v1 `task` tool (v1 kept for
+// backwards compatibility): v2 renamed the tool and its arguments
+// (`subagent_type` -> `agent`, `run_in_background` -> `background`), but the
+// transport is unchanged — the call still arrives as a main-session tool_use.
+export const AGENT_TOOL_NAMES = new Set(['task', 'agent', 'spawn_agent', 'subagent']);
 
 // Task management tools (new structured Task API)
 export const TASK_MANAGE_TOOL_NAMES = new Set(['taskcreate', 'taskupdate', 'taskget', 'tasklist']);

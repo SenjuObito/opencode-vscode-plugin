@@ -13,12 +13,12 @@
 import type { MutableRefObject } from 'react';
 import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
-import { isTaskEventForSession, parseTaskNotification } from '../../utils/taskEventParser';
+import { isTaskEventForSession, parseSubagentStatusEvent, parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
 import { normalizeTodoStatus } from '../../utils/todoShared';
 import { getTabStore } from '../../store/tabStore';
 import type { SubagentHistoryResponse } from '../../types/subagent';
-import type { TodoItem } from '../../types';
+import type { TaskEvent, TodoItem } from '../../types';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -205,39 +205,68 @@ export function registerWindowCallbacks(
   //      不筛就会把后台 tab 的子代理完成通知写进当前 tab 的列表。
   //   2. beginSessionTransition（useSessionManagement）切会话时清空 taskEvents。
   //   3. tool_use_id 全局唯一，迟到的同会话事件只会更新它自己的条目。
+  // Single writer for the tab's TaskEventMap. Both transports end here so the
+  // subagent list and the inline Agent cards can never disagree on a run's
+  // state: core's engine-neutral `subagent.status` (opencode v1 `task` / v2
+  // `subagent`, inline and background) and the legacy Claude-shaped
+  // `task.event`.
+  const applyTaskEvent = (taskEvent: TaskEvent) => {
+    if (!options.setTaskEvents) return;
+    const { toolUseId } = taskEvent;
+    options.setTaskEvents((prev) => {
+      const existing = prev[toolUseId];
+      // Dedup: skip the state update when no observable field changed. Include
+      // agentId/outputFilePath so a follow-up event that adds the sidechain
+      // transcript path still lands (task_notification is terminal, but a
+      // late output_file attachment would otherwise be swallowed).
+      if (existing
+        && existing.status === taskEvent.status
+        && existing.summary === taskEvent.summary
+        && existing.totalTokens === taskEvent.totalTokens
+        && existing.totalToolUseCount === taskEvent.totalToolUseCount
+        && existing.totalDurationMs === taskEvent.totalDurationMs
+        && existing.agentId === taskEvent.agentId
+        && existing.outputFilePath === taskEvent.outputFilePath) {
+        return prev;
+      }
+      return { ...prev, [toolUseId]: taskEvent };
+    });
+  };
+
   window.onTaskEvent = (eventJson: string) => {
     try {
-      if (!options.setTaskEvents) return;
       const parsed = JSON.parse(eventJson) as unknown;
       if (!isTaskEventForSession(parsed, options.currentSessionIdRef.current)) {
         return;
       }
       const taskEvent = parseTaskNotification(parsed);
-      if (!taskEvent) return;
-      const { toolUseId } = taskEvent;
-      options.setTaskEvents((prev) => {
-        const existing = prev[toolUseId];
-        // Dedup: skip the state update when no observable field changed. Include
-        // agentId/outputFilePath so a follow-up event that adds the sidechain
-        // transcript path still lands (task_notification is terminal, but a
-        // late output_file attachment would otherwise be swallowed).
-        if (existing
-          && existing.status === taskEvent.status
-          && existing.summary === taskEvent.summary
-          && existing.totalTokens === taskEvent.totalTokens
-          && existing.totalToolUseCount === taskEvent.totalToolUseCount
-          && existing.totalDurationMs === taskEvent.totalDurationMs
-          && existing.agentId === taskEvent.agentId
-          && existing.outputFilePath === taskEvent.outputFilePath) {
-          return prev;
-        }
-        return { ...prev, [toolUseId]: taskEvent };
-      });
+      if (taskEvent) applyTaskEvent(taskEvent);
     } catch {
       // Ignore malformed task event payloads. A task_notification is terminal,
       // so a dropped event is not retried - but a later task_progress /
       // task_notification for the same tool_use_id will still land and update
       // the entry, so the subagent list is not permanently stuck.
+    }
+  };
+
+  // Canonical terminal state for a subagent run, pushed by core. In the tabbed
+  // path `streamingCallbacks` routes it by envelope; this window callback is the
+  // legacy/no-tab fallback of SessionCallbackAdapter.emit. The payload carries
+  // the parent session, so a delayed event can never land on another session.
+  window.onSubagentStatus = (eventJson: string) => {
+    try {
+      const parsed = JSON.parse(eventJson) as Record<string, unknown>;
+      const parentSessionId = typeof parsed.parentSessionId === 'string'
+        ? parsed.parentSessionId
+        : '';
+      if (parentSessionId && parentSessionId !== options.currentSessionIdRef.current) {
+        return;
+      }
+      const taskEvent = parseSubagentStatusEvent(parsed);
+      if (taskEvent) applyTaskEvent(taskEvent);
+    } catch {
+      // Ignore malformed status payloads; the parent tool result remains the
+      // replay/bootstrap source for the card.
     }
   };
 

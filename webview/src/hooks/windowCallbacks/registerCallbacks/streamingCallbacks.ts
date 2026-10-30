@@ -15,7 +15,7 @@ import { getStreamEndHandlingMode } from '../messageSync';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { isTabTransitioning, activeTabId } from '../tabTransition';
 import { registerHostEvents } from '../../../utils/hostEventRegistry';
-import { parseTaskNotification } from '../../../utils/taskEventParser';
+import { parseSubagentStatusEvent, parseTaskNotification } from '../../../utils/taskEventParser';
 import { onTerminalErrorFromHost } from '../../../components/StatusNoticeBar';
 import type { HostEventEnvelope } from '../../../utils/hostEventTypes';
 import {
@@ -1132,6 +1132,19 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         if (task) tab.taskEvents = { ...(tab.taskEvents ?? {}), [task.toolUseId]: task };
       })) return;
       window.onTaskEvent?.(eventJson);
+    },
+    // Core's engine-neutral terminal state for a subagent run. Both opencode
+    // v1 (`task`) and v2 (`subagent`) arrive here, for inline and background
+    // calls alike. Routing by the envelope session keeps a background tab's
+    // state in its own record; the active tab updates the live TaskEventMap.
+    'subagent.status': (payload: unknown, env?: HostEventEnvelope) => {
+      const raw = payloadOf(payload).subagent;
+      const json = typeof raw === 'string' ? raw : JSON.stringify(raw ?? {});
+      if (updateBackgroundTab(env, (tab) => {
+        const task = parseSubagentStatusEvent(parseEventJson(json));
+        if (task) tab.taskEvents = { ...(tab.taskEvents ?? {}), [task.toolUseId]: task };
+      })) return;
+      window.onSubagentStatus?.(json);
     },
     'session.cleared': (payload: unknown, env?: HostEventEnvelope) => {
       const barrier = payloadOf(payload).barrier;
