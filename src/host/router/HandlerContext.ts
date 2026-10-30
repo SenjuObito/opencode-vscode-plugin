@@ -43,11 +43,6 @@ export interface TabSessionContext {
 	getSessionBySessionId(sessionId: string): OpenCodeSession | null;
 	getTabIdForSession(sessionId: string): string | null;
 	getCwdForTab(tabId: string): string | null;
-	getSendSettings(tabId: string): {
-		model?: string | null;
-		permissionMode?: string | null;
-		reasoningEffort?: string | null;
-	} | null;
 	resolveAttachment(tabId: string, attachmentId: string): {
 		data: string;
 		fileName: string;
@@ -109,14 +104,6 @@ export class HandlerContext {
 
 	getCwdForTab(tabId: string): string | null {
 		return this.tabSessionContext?.getCwdForTab(tabId) ?? null;
-	}
-
-	getSendSettings(tabId: string): {
-		model?: string | null;
-		permissionMode?: string | null;
-		reasoningEffort?: string | null;
-	} | null {
-		return this.tabSessionContext?.getSendSettings(tabId) ?? null;
 	}
 
 	resolveAttachment(tabId: string, attachmentId: string): {

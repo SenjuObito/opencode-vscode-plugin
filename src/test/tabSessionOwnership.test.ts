@@ -189,6 +189,26 @@ suite('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.strictEqual(factory.all.length, 1, '首次发送不能重建会话');
 	});
 
+	test('tab.create 让新 tab 继承当前会话的模型 / 模式 / 推理力度', async () => {
+		const factory = makeSessionFactory();
+		const chatWindow = makeChatWindow(factory);
+		chatWindow.registerView('sidebar', new MockChannel());
+
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		const sessionA = chatWindow.registry.get(tabA)!.getSession()!;
+		sessionA.state.setModel('opencode/deepseek-v4');
+		sessionA.state.setPermissionMode('plan');
+		sessionA.state.setReasoningEffort('high');
+
+		await sendCommand(chatWindow, 'sidebar', 'tab.create', 'tab-b', {});
+
+		const sessionB = chatWindow.registry.get(TabId.of('tab-b'))!.getSession()!;
+		assert.strictEqual(sessionB.state.getModel(), 'opencode/deepseek-v4');
+		assert.strictEqual(sessionB.state.getPermissionMode(), 'plan');
+		assert.strictEqual(sessionB.state.getReasoningEffort(), 'high');
+		assert.notStrictEqual(sessionB, sessionA, '新 tab 必须有自己的会话');
+	});
+
 	test('unknown tab 被拒绝，不再由宿主自动补建', async () => {
 		const factory = makeSessionFactory();
 		const chatWindow = makeChatWindow(factory);

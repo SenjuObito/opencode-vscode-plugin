@@ -189,7 +189,23 @@ export class ChatWindow {
 		this.commandRouter.register('tab.create', (command) => {
 			const tabId = command.tabId;
 			const cwd = this.fallbackWorkingDirectoryResolver() || '';
+			// 对齐 idea 的 `createSessionForTab`：新 tab 立即拿到 provisional
+			// session，并继承用户当前所在 tab 的模型 / 权限模式 / 推理力度。
+			// 没有 session 时，首条消息之前到达的 settings.* 无处可写，首条发送
+			// 就会退回硬编码默认值。
+			const previousTabId = this.registry.getActiveTabId();
+			const previousSession = previousTabId ? this.registry.get(previousTabId)?.getSession() : null;
 			const record = this.registry.create(tabId, cwd);
+			this.sessionFactory.prepare(tabId, cwd, (session) => {
+				if (!previousSession) {return;}
+				const previous = previousSession.state;
+				const model = previous.getModel();
+				if (model) {
+					session.state.setModel(model);
+				}
+				session.state.setPermissionMode(previous.getPermissionMode());
+				session.state.setReasoningEffort(previous.getReasoningEffort());
+			});
 			this.registry.activate(tabId);
 			this.eventRouter.setActiveTabId(tabId.value);
 
@@ -554,16 +570,6 @@ export class ChatWindow {
 			getSessionBySessionId: (sessionId) => this.registry.findBySession(sessionId)?.getSession() ?? null,
 			getTabIdForSession: (sessionId) => this.registry.findBySession(sessionId)?.getTabId().value ?? null,
 			getCwdForTab: (tabId) => recordOf(tabId)?.getCwd() ?? null,
-			getSendSettings: (tabId) => {
-				const record = recordOf(tabId);
-				if (!record) { return null; }
-				const settings = record.getSettings();
-				return {
-					model: settings.getModel(),
-					permissionMode: settings.getPermissionMode(),
-					reasoningEffort: settings.getReasoningEffort(),
-				};
-			},
 			resolveAttachment: (tabId, attachmentId) => {
 				const resolved = this.attachments.resolve(tabId, attachmentId);
 				const data = this.attachments.readBase64(tabId, attachmentId);
