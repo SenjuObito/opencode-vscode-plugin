@@ -747,11 +747,13 @@ export class HistoryHandler extends BaseMessageHandler {
 	/**
 	 * Load a subagent's transcript via the OpenCode daemon.
 	 *
-	 * OpenCode does NOT expose subagent sidechains as separate sessions (the
-	 * sessionId carried by the webview is the *parent* session). The subagent's
-	 * invocation and result live inside the parent session as a `tool_use` block
-	 * (id === toolUseId, for the task/skill tool) and its `tool_result`. So we
-	 * fetch the parent session's messages from the daemon, then extract the
+	 * OpenCode persists each subagent sidechain as a real child session (a
+	 * session row whose `parentID` points at the parent), and core deliberately
+	 * hides those children from the history list. The webview still hands this
+	 * handler the *parent* session id for a subagent block: the invocation and
+	 * result are mirrored inside the parent transcript as a `tool_use` block
+	 * (id === toolUseId, for the task/subagent tool) plus its `tool_result`. So
+	 * we fetch the parent session's messages from the daemon, then extract the
 	 * subagent's portion by toolUseId and push it to the webview.
 	 *
 	 * On success the response is `completed: true` (stopping the UI poll); while

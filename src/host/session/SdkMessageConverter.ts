@@ -102,13 +102,12 @@ export function convertSdkMessages(entries: SdkMessageEntry[]): ChatMessage[] {
  * Extract a single subagent's transcript from an already-converted parent
  * session message list.
  *
- * OpenCode does NOT persist subagent sidechains as separate opencode sessions
- * (unlike Claude Code's ~/.claude/projects/…/subagents/*.jsonl). Instead the
- * subagent's invocation and result live inside the parent session as a
- * `tool_use` block (id === toolUseId, for the task/skill tool) followed by its
- * `tool_result`. This walks the converted messages, locates that tool_use, and
- * rebuilds the subagent's portion so it can be pushed to the webview as a
- * `SubagentHistoryResponse`.
+ * OpenCode persists each subagent sidechain as a real child session (a session
+ * row with a non-empty `parentID`), but it also mirrors the invocation and
+ * result inside the parent transcript as a `tool_use` block (id === toolUseId,
+ * for the task/subagent tool) followed by its `tool_result`. Core keeps those
+ * child sessions out of the history list; this walks the parent transcript so a
+ * subagent block can be opened without an extra child-session round trip.
  *
  * @returns the raw messages (ClaudeRawMessage shape, ready for `messages[]`)
  *   plus the recovered result text, or empty arrays when the subagent is not
