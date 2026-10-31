@@ -52,6 +52,26 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 
 const UI_PREFERENCES_KEY = 'uiPreferences';
 
+/**
+ * opencode 二进制路径的权威存储键。
+ *
+ * 历史包袱：早期 SettingsHandler 同时写 `opencode.tuiPath` 和 `opencodeCliPath`，
+ * 而注入 daemon 只读前者——设置页可能展示一个实际没被启动的路径。现在单一
+ * 权威键 + 旧键只读回落，写入也只写这一处。
+ */
+export const OPENCODE_CLI_PATH_KEY = 'opencode.tuiPath';
+
+/**
+ * 「这个路径是插件自己探测出来的」标记。
+ *
+ * 用户手填的值必须保持「打错字就报错」的阻塞语义；自动填的值不能——它是
+ * 插件自己的猜测，二进制升级/迁移后就该被丢弃并重新探测，而不是把引擎锁死。
+ */
+export const OPENCODE_CLI_PATH_AUTO_KEY = 'opencode.tuiPathAutoDetected';
+
+/** 旧版本写入过的键，只读兼容，不再写。 */
+const OPENCODE_CLI_PATH_LEGACY_KEY = 'opencodeCliPath';
+
 export class SettingsService {
 	private workspaceRoots: string[];
 
@@ -100,6 +120,45 @@ export class SettingsService {
 			}
 		}
 		return projectPath;
+	}
+
+	// ── opencode 二进制路径（全局）─────────────────────────────────────────
+
+	/**
+	 * 已配置的 opencode 二进制路径。
+	 *
+	 * 自动回填与用户手填写的是同一个键，靠 {@link getOpencodeCliPathAutoDetected}
+	 * 区分来源；旧键只作为回落，避免老用户的值在升级后凭空消失。
+	 */
+	getOpencodeCliPath(): string | null {
+		const value = this.store.getGlobal(OPENCODE_CLI_PATH_KEY)
+			?? this.store.getGlobal(OPENCODE_CLI_PATH_LEGACY_KEY);
+		return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+	}
+
+	/** 用户手填：接管这个值，同时丢掉自动检测标记。 */
+	setOpencodeCliPath(path: string | null): void {
+		const value = path?.trim() ?? '';
+		this.store.setGlobal(OPENCODE_CLI_PATH_KEY, value);
+		this.store.setGlobal(OPENCODE_CLI_PATH_LEGACY_KEY, '');
+		this.store.setGlobal(OPENCODE_CLI_PATH_AUTO_KEY, false);
+	}
+
+	/**
+	 * daemon 自己解析出来的路径（用户从未配置）。
+	 *
+	 * 打上标记后，宿主在注入 L0 前可以判断「这个值不是用户的选择」，二进制
+	 * 消失时直接丢弃让 daemon 重新扫描，而不是以 settings-invalid 阻塞启动。
+	 */
+	setOpencodeCliPathAutoDetected(path: string | null): void {
+		const value = path?.trim() ?? '';
+		this.store.setGlobal(OPENCODE_CLI_PATH_KEY, value);
+		this.store.setGlobal(OPENCODE_CLI_PATH_LEGACY_KEY, '');
+		this.store.setGlobal(OPENCODE_CLI_PATH_AUTO_KEY, value !== '');
+	}
+
+	getOpencodeCliPathAutoDetected(): boolean {
+		return this.store.getGlobal(OPENCODE_CLI_PATH_AUTO_KEY) === true;
 	}
 
 	// ── 布尔开关 ─────────────────────────────────────────────────────────

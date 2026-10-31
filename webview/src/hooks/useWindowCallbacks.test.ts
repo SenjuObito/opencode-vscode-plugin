@@ -318,6 +318,9 @@ describe('useWindowCallbacks integration', () => {
   // ===== AI title path uses applyHistoryTitleLocal (no backend round-trip) =====
 
   it('updateSessionTitle routes AI titles through applyHistoryTitleLocal, not updateHistoryTitle', () => {
+    // The header title belongs to the tab on screen: that tab must own the
+    // session before its AI title may drive the header.
+    seedTabStore([{ id: 'tab-active', sessionId: 'sess-123' }], 'tab-active');
     const opts = createOptions({
       currentSessionIdRef: { current: 'sess-123' },
     });
@@ -335,6 +338,7 @@ describe('useWindowCallbacks integration', () => {
   });
 
   it('updateSessionTitle for a stale session updates only the history list, not the header title', () => {
+    seedTabStore([{ id: 'tab-active', sessionId: 'sess-current' }], 'tab-active');
     const opts = createOptions({
       currentSessionIdRef: { current: 'sess-current' },
     });

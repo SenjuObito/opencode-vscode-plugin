@@ -130,4 +130,20 @@ export class CallbackHandler {
 	notifyRetryStatus(payload: string): void {
 		this.callback?.onRetryStatus?.(payload);
 	}
+
+	notifyCompactionStarted(payload: string): void {
+		this.callback?.onCompactionStarted?.(payload);
+	}
+
+	notifyCompactionDelta(payload: string): void {
+		this.callback?.onCompactionDelta?.(payload);
+	}
+
+	notifyCompactionEnded(payload: string): void {
+		this.callback?.onCompactionEnded?.(payload);
+	}
+
+	notifyCompactionFailed(payload: string): void {
+		this.callback?.onCompactionFailed?.(payload);
+	}
 }

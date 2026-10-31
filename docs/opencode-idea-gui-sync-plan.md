@@ -726,12 +726,14 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 ### 8.1 链路
 
 ```
-设置（Memento: opencode.tuiPath）
-  → 宿主 CliSpecResolver：绝对路径，不探测版本
+设置（Memento: opencode.tuiPath + opencode.tuiPathAutoDetected）
+  → 宿主 CliPathAutoFill.resolveCliPathForInjection：绝对路径，不探测版本；
+      自动探测填进去的值若已失效则丢弃并清空（手填值保持阻断语义）
     → 注入 OPENCODEBUDDY_CLI_PATH / OPENCODEBUDDY_NODE_BIN(process.execPath) / OPENCODEBUDDY_CONFIG_DIR
       → core cli-resolver（L0→L4）→ engine-probe（/api/info、/global/health）
         → engine-registry（pending|v1|v2|unknown，验证通过才锁）
           → engine_status → 宿主快照 → daemon.status.payload.engine → UI
+          ↳ CliPathAutoFill.applyAutoFill：设置为空时把 cliPath 回填进设置
 ```
 
 ### 8.2 宿主改动
@@ -741,7 +743,8 @@ busy:      该 tab 有活跃 turn（turn.started 未 turn.ended）
 | env | `OPENCODEBUDDY_CLI_PATH`（设置原值，L0 无效即阻断）+ `OPENCODEBUDDY_NODE_BIN=process.execPath` + `OPENCODEBUDDY_CONFIG_DIR`；保留 `OPENCODE_BIN` 兼容 |
 | 事件 | `handleDaemonEvent` 增 `engine_status`；`ready` 头字段折叠为初始快照；daemon 重启清空 |
 | 载荷 | `DaemonStatusPayload` 增 `engine`；**保留** `phase/code/detail/installCmd`（VS Code 版优于 idea，不回退） |
-| 校验 | 设置保存时 `existsSync` 校验 CLI 路径（VS Code 无 WSL 命名空间问题，比 idea 更严） |
+| 回填 | `engine_status.cliPath/cliSource` → `CliPathAutoFill`（只在设置为空、`source≠settings`、是真实路径时写入；打 `opencode.tuiPathAutoDetected` 标记）。写成功才广播 `updateOpencodeCliPath`，设置页实时刷新 |
+| 校验 | 设置保存时与 idea 对齐：去引号、展开 `~`、相对路径锚在 home、Windows 补 `.exe/.cmd/.bat/.ps1`、**WSL 路径（win32 且以 `/` 开头）跳过宿主存在性检查** |
 
 ### 8.3 UI
 

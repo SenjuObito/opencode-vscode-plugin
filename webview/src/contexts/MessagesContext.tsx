@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, useSyncExter
 import type { ClaudeMessage, SubagentHistoryResponse, TodoItem } from '../types';
 import { getTabStore } from '../store/tabStore';
 import { isTabTurnActive } from '../store/tabRuntime';
+import type { HistoryWindowState } from '../store/historyWindow';
 import type { CompactNoticeData } from '../components/ChatHeader/types';
 
 export const DEFAULT_STATUS = 'ready';
@@ -45,6 +46,13 @@ export interface MessagesContextValue {
   /** Last compact result of this tab, shown until the next user message. */
   compactNotice: CompactNoticeData | null;
   setCompactNotice: React.Dispatch<React.SetStateAction<CompactNoticeData | null>>;
+  /**
+   * How much of the transcript the host has read back for this tab.
+   *
+   * <p>The loaded page may contain no user turns at all, so the "load earlier"
+   * affordance is driven by this host snapshot, never by `messages`.</p>
+   */
+  historyWindow: HistoryWindowState | null;
 }
 
 const MessagesContext = createContext<MessagesContextValue | null>(null);
@@ -205,6 +213,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const isCompacting = activeTab.isCompacting ?? false;
   const compactingStartTime = activeTab.compactingStartTime ?? null;
   const compactNotice = activeTab.compactNotice ?? null;
+  const historyWindow = activeTab.historyWindow ?? null;
 
   const value = useMemo<MessagesContextValue>(
     () => ({
@@ -233,6 +242,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       setCompactingStartTime,
       compactNotice,
       setCompactNotice,
+      historyWindow,
     }),
     [
       messages,
@@ -259,6 +269,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       setCompactingStartTime,
       compactNotice,
       setCompactNotice,
+      historyWindow,
     ],
   );
 

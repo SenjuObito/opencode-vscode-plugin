@@ -115,8 +115,9 @@
     "attachmentsUploaded": "[添付ファイルがアップロードされました]",
     "streamingConnected": "質問を理解しています…",
     "showEarlierMessages": "以前の{{count}}件のメッセージを表示",
-    "showEarlierTurns": "前の{{count}}ターンを表示（読み込み済み残り{{remaining}}ターン）",
-    "loadEarlierTurns": "ディスクから前の{{count}}ターンを読み込む（全{{total}}ターン中、残り{{remaining}}ターン）",
+    "showEarlierTurns": "前の{{count}}ターンを表示（残り{{remaining}}ターン）",
+
+    "showEarlierConversation": "前の会話を表示",
     "loadEarlierMessages": "前の{{count}}件のメッセージを読み込む（全{{total}}件中、残り{{remaining}}件）",
     "loadingEarlierTurns": "以前の会話を読み込み中",
     "totalDuration": "今回の応答時間",
@@ -168,6 +169,7 @@
     "retryCopy": "再コピー",
     "subagentsSection": "サブエージェント",
     "filesSection": "ファイル",
+    "filesEmpty": "一致するファイルが見つかりません",
     "renderError": "メッセージの描画に失敗しました",
     "renameSession": "名前を変更",
     "forkSession": "セッションをフォーク",
@@ -320,18 +322,18 @@
         "hint": "有効にすると、OpenCode が質問した時に設定済みのアラート音を再生します。下のサウンド選択とフォーカス規則を使用します。"
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "IDE がフォーカスされていない時だけシステム通知を表示",
+        "label": "VS Code がフォーカスされていない時だけシステム通知を表示",
         "enabled": "有効",
         "disabled": "無効",
-        "hint": "有効にすると、タスク完了と質問のシステム通知は IDE がフォーカスされていない時だけ表示されます。"
+        "hint": "有効にすると、タスク完了と質問のシステム通知は VS Code がフォーカスされていない時だけ表示されます。"
       },
       "soundNotification": {
         "label": "タスク完了アラート音",
         "enabled": "有効",
         "disabled": "無効",
         "hint": "有効にすると、AI タスクが完了した時に通知音を再生します。画面から離れていても完了に気づけます。",
-        "onlyWhenUnfocused": "IDE がフォーカスされていない時だけアラート音を再生",
-        "onlyWhenUnfocusedHint": "有効にすると、タスク完了と質問のアラート音は IDE がフォーカスされていない時だけ再生されます。",
+        "onlyWhenUnfocused": "VS Code がフォーカスされていない時だけアラート音を再生",
+        "onlyWhenUnfocusedHint": "有効にすると、タスク完了と質問のアラート音は VS Code がフォーカスされていない時だけ再生されます。",
         "selectSound": "通知音",
         "soundDefault": "デフォルト",
         "soundChime": "チャイム",

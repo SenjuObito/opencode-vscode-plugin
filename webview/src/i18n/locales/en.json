@@ -144,8 +144,8 @@
     "attachmentsUploaded": "[Attachments Uploaded]",
     "streamingConnected": "Understanding your question…",
     "showEarlierMessages": "Show {{count}} earlier messages",
-    "showEarlierTurns": "Show {{count}} earlier turns ({{remaining}} loaded turns remaining)",
-    "loadEarlierTurns": "Load {{count}} earlier turns from disk ({{remaining}} of {{total}} remaining)",
+    "showEarlierTurns": "Show {{count}} earlier turns ({{remaining}} remaining)",
+    "showEarlierConversation": "Show earlier conversation",
     "loadEarlierMessages": "Load {{count}} earlier messages ({{remaining}} of {{total}} remaining)",
     "loadingEarlierTurns": "Loading earlier turns",
     "totalDuration": "This reply took",
@@ -197,7 +197,9 @@
     "retryCopy": "Copy again",
     "subagentsSection": "Subagents",
     "filesSection": "Files",
-    "renderError": "Message rendering failed"
+    "filesEmpty": "No matching files",
+    "renderError": "Message rendering failed",
+    "autoCompacting": "Auto-compacting conversation tokens..."
   },
   "settings": {
     "title": "Settings",
@@ -345,10 +347,10 @@
         "hint": "When enabled, plays the configured alert sound when opencode asks you a question. Uses the sound selection and focus rules below."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "Show system notifications only when IDE is unfocused",
+        "label": "Show system notifications only when VS Code is unfocused",
         "enabled": "Enabled",
         "disabled": "Disabled",
-        "hint": "When enabled, task completion and question system notifications are shown only while the IDE is unfocused."
+        "hint": "When enabled, task completion and question system notifications are shown only while VS Code is unfocused."
       },
       "sendShortcut": {
         "label": "Send Shortcut",
@@ -390,8 +392,8 @@
         "enabled": "Enabled",
         "disabled": "Disabled",
         "hint": "When enabled, a notification sound will play when AI completes a task, so you'll know even when away from the screen.",
-        "onlyWhenUnfocused": "Play alert sounds only when IDE is unfocused",
-        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while the IDE is unfocused.",
+        "onlyWhenUnfocused": "Play alert sounds only when VS Code is unfocused",
+        "onlyWhenUnfocusedHint": "When enabled, task completion and question alert sounds play only while VS Code is unfocused.",
         "selectSound": "Notification Sound",
         "soundDefault": "Default",
         "soundChime": "Chime",

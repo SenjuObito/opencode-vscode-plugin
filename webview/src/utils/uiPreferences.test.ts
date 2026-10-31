@@ -141,4 +141,23 @@ describe('uiPreferences', () => {
     dispose();
     expect(window.applyUiPreferences).toBeUndefined();
   });
+
+  it('provides diffExpandedPreference that syncs with updates and notifies subscribers', async () => {
+    const m = await loadModule();
+    expect(m.diffExpandedPreference.get()).toBe(false);
+
+    let notifyCount = 0;
+    const unsubscribe = m.diffExpandedPreference.subscribe(() => {
+      notifyCount++;
+    });
+
+    m.updateUiPreferences({ diffExpandedByDefault: true });
+    expect(m.diffExpandedPreference.get()).toBe(true);
+    expect(notifyCount).toBe(1);
+
+    unsubscribe();
+    m.updateUiPreferences({ diffExpandedByDefault: false });
+    expect(m.diffExpandedPreference.get()).toBe(false);
+    expect(notifyCount).toBe(1);
+  });
 });

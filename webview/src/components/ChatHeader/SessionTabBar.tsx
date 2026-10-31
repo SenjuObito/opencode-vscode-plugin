@@ -631,6 +631,10 @@ export const SessionTabBar: React.FC<SessionTabBarProps> = ({
                 aria-selected={isActive}
                 tabIndex={isActive ? 0 : -1}
                 onKeyDown={(e) => {
+                  // While renaming, the inline input owns every key. Only Enter and
+                  // Escape are handled there; leaving the rest to the tab handler
+                  // would swallow spaces and let Backspace close the tab.
+                  if (editingTabId === tab.id) return;
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     onSelectTab(tab.id);

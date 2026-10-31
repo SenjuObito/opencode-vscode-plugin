@@ -5,6 +5,7 @@ node_modules
 *.vsix
 .workbuddy/
 .claude/
+.openchamber/
 AGENTS.md
 CLAUDE.md
 .DS_Store

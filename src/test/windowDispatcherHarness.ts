@@ -1,6 +1,7 @@
 import { HandlerContext } from '../host/router/HandlerContext';
 import { MessageHandler } from '../host/router/MessageHandler';
 import { SessionHandler } from '../host/handlers/SessionHandler';
+import { TabSender } from '../host/handlers/TabSender';
 import { WindowEventHandler } from '../host/handlers/WindowEventHandler';
 import { PermissionHandler } from '../host/handlers/PermissionHandler';
 import type { ChatWindow } from '../host/window/ChatWindow';
@@ -42,8 +43,10 @@ export function createWindowCommandHandlers(
 	context.setTabSessionContext(chatWindow.createTabSessionContext());
 	context.setEventPublisher((type, tabId, payload, options) => chatWindow.publishTabEvent(type, tabId, payload, options));
 	const permissionHandler = new PermissionHandler(context);
+	const tabSender = new TabSender(context);
+	chatWindow.setTabSender(tabSender);
 	const handlers: MessageHandler[] = [
-		new SessionHandler(context),
+		new SessionHandler(context, tabSender),
 		new WindowEventHandler(context),
 		permissionHandler,
 	];

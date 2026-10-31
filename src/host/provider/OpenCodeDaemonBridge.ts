@@ -302,6 +302,13 @@ export interface OpenCodeDaemonBridgeOptions {
 	onLog?: (message: string) => void;
 	/** spawn daemon 时叠加的额外环境变量（如用户自定义的 OPENCODE_BIN）。 */
 	additionalEnv?: () => Record<string, string | undefined>;
+	/**
+	 * 每次 daemon 报告引擎解析结果时调用（`engine_status`）。
+	 *
+	 * 宿主据此把 daemon 自己解析出的 CLI 路径回填进设置（见 `CliPathAutoFill`）。
+	 * bridge 只负责转发快照，不认识设置服务。
+	 */
+	engineStatusListener?: (status: DaemonEngineStatus) => void;
 }
 
 export class OpenCodeDaemonBridge {
@@ -310,6 +317,7 @@ export class OpenCodeDaemonBridge {
 	private readonly lifecycleListener?: DaemonLifecycleListener;
 	private readonly onLog?: (message: string) => void;
 	private readonly additionalEnv?: () => Record<string, string | undefined>;
+	private readonly engineStatusListener?: (status: DaemonEngineStatus) => void;
 	private readonly eventListeners = new Set<DaemonEventListener>();
 
 	private daemonContext: DaemonGeneration | null = null;
@@ -337,6 +345,7 @@ export class OpenCodeDaemonBridge {
 		this.lifecycleListener = options.lifecycleListener;
 		this.onLog = options.onLog;
 		this.additionalEnv = options.additionalEnv;
+		this.engineStatusListener = options.engineStatusListener;
 	}
 
 	getEngineStatus(): DaemonEngineStatus | null {
@@ -1082,6 +1091,14 @@ export class OpenCodeDaemonBridge {
 				};
 				this.log(`[engine_status] state=${this.currentEngineStatus.state}, locked=${this.currentEngineStatus.locked}, blocking=${this.currentEngineStatus.blocking}`);
 				this.broadcastStatusSnapshot();
+				// daemon 刚报告了它真正解析出的二进制。用户从未配置过时把它落盘，
+				// 设置就不再说谎。列表器内部吞异常；这里再兜一层，任何回填问题
+				// 都不该影响 daemon 事件流。
+				try {
+					this.engineStatusListener?.(this.currentEngineStatus);
+				} catch (err) {
+					this.log(`engineStatusListener threw: ${(err as Error).message}`);
+				}
 				break;
 			}
 			case 'startup_failed':

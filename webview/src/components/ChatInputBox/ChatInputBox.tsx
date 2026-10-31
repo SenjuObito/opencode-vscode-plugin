@@ -112,7 +112,10 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       sessionLoading,
       addToast,
       messageQueue,
+      queuePaused,
+      queueError,
       onRemoveFromQueue,
+      onResumeQueue,
       autoOpenFileEnabled,
       onAutoOpenFileEnabledChange,
       onCompactClick,
@@ -647,7 +650,10 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           statusPanelExpanded={statusPanelExpanded}
           onToggleStatusPanel={onToggleStatusPanel}
           messageQueue={messageQueue}
+          queuePaused={queuePaused}
+          queueError={queueError}
           onRemoveFromQueue={onRemoveFromQueue}
+          onResumeQueue={onResumeQueue}
           autoOpenFileEnabled={autoOpenFileEnabled}
           onRequestEnableFileContext={handleRequestEnableFileContext}
           onCompactClick={onCompactClick}

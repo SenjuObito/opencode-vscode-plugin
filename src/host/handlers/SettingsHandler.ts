@@ -19,7 +19,9 @@
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { SettingsService, DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS } from '../settings/SettingsService';
+import { NotificationService } from '../notifications/NotificationService';
 import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
+import { resolveValidCliPath } from '../provider/CliPathAutoFill';
 import * as vscode from 'vscode';
 import { isAbsolute, resolve } from 'path';
 import { existsSync, statSync } from 'fs';
@@ -50,6 +52,7 @@ const SUPPORTED_TYPES = [
 	'set_selected_sound',
 	'set_custom_sound_path',
 	'browse_sound_file',
+	'test_sound',
 	'get_task_completion_notification_enabled',
 	'set_task_completion_notification_enabled',
 	'get_ask_user_question_notification_enabled',
@@ -64,15 +67,12 @@ const SUPPORTED_TYPES = [
 	'set_pinned_models',
 ];
 
-/** opencode TUI 自定义二进制路径的全局存储键（wire 协议名仍为 claude_cli_path）。 */
-const CLI_PATH_STORAGE_KEY = 'opencode.tuiPath';
-
 export class SettingsHandler extends BaseMessageHandler {
+	private notificationService: NotificationService | null = null;
+
 	constructor(context: HandlerContext) {
 		super(context);
-	}
-
-	getSupportedTypes(): string[] {
+	}	getSupportedTypes(): string[] {
 		return SUPPORTED_TYPES;
 	}
 
@@ -149,6 +149,9 @@ export class SettingsHandler extends BaseMessageHandler {
 		case 'browse_sound_file':
 			this.handleBrowseSoundFile();
 			return true;
+		case 'test_sound':
+			this.handleTestSound(content);
+			return true;
 		case 'get_task_completion_notification_enabled':
 			this.handleGetTaskCompletionNotificationEnabled();
 			return true;
@@ -194,6 +197,14 @@ export class SettingsHandler extends BaseMessageHandler {
 
 	private settings(): SettingsService {
 		return this.context.getSettingsService();
+	}
+
+	/** 试听音走与真实通知同一条下发路径，懒建即可（无状态）。 */
+	private notifications(): NotificationService {
+		if (!this.notificationService) {
+			this.notificationService = new NotificationService(this.context);
+		}
+		return this.notificationService;
 	}
 
 	private projectPath(): string | null {
@@ -254,11 +265,14 @@ export class SettingsHandler extends BaseMessageHandler {
 	}
 
 	// ── opencode CLI 路径（wire 协议支持 get_opencode_cli_path / get_claude_cli_path）──
+	//
+	// 存储唯一权威在 SettingsService（`opencode.tuiPath`）；这里只做协议适配。
+	// daemon 自己解析出的路径也会经 CliPathAutoFill 落到同一个键，靠
+	// `opencode.tuiPathAutoDetected` 区分来源：手填的值失效 → 报错阻塞，自动填
+	// 的值失效 → 丢弃重扫。
 
 	private getCliPathSetting(): string {
-		const value = this.settings().getStore().getGlobal('opencodeCliPath')
-			?? this.settings().getStore().getGlobal(CLI_PATH_STORAGE_KEY);
-		return typeof value === 'string' ? value : '';
+		return this.settings().getOpencodeCliPath() ?? '';
 	}
 
 	private handleGetCliPath(): void {
@@ -269,20 +283,25 @@ export class SettingsHandler extends BaseMessageHandler {
 	}
 
 	private handleSetCliPath(content: string): void {
-		let path = '';
+		let rawPath = '';
 		try {
 			const json = JSON.parse(content ?? '') as { path?: unknown };
 			if (typeof json?.path === 'string') {
-				path = json.path.trim();
+				rawPath = json.path;
 			}
 		} catch {
 			if (typeof content === 'string') {
-				path = content.trim();
+				rawPath = content;
 			}
 		}
 
-		if (path !== '' && !existsSync(path)) {
-			this.callJavaScript('showError', `OpenCode binary not found: ${path}`);
+		// 去空白/引号、展开 ~、Windows 补 .exe/.cmd/.bat/.ps1；WSL 路径原样放行
+		// （宿主 fs 看不到 WSL 命名空间，判断必错）。与 IDEA 的
+		// OpenCodeCliPathHandler.resolveValidCliPath 对齐。
+		const trimmed = rawPath.trim();
+		const path = trimmed === '' ? '' : (resolveValidCliPath(trimmed) ?? '');
+		if (trimmed !== '' && path === '') {
+			this.callJavaScript('showError', `OpenCode binary not found: ${trimmed}`);
 			const current = this.getCliPathSetting();
 			const payload = JSON.stringify({ path: current });
 			this.callJavaScript('updateOpencodeCliPath', payload);
@@ -290,8 +309,8 @@ export class SettingsHandler extends BaseMessageHandler {
 			return;
 		}
 
-		this.settings().getStore().setGlobal(CLI_PATH_STORAGE_KEY, path);
-		this.settings().getStore().setGlobal('opencodeCliPath', path);
+		// 手填即接管：清除自动检测标记，之后 daemon 的 engine_status 不再覆盖它。
+		this.settings().setOpencodeCliPath(path === '' ? null : path);
 
 		const payload = JSON.stringify({ path });
 		this.callJavaScript('updateOpencodeCliPath', payload);
@@ -305,7 +324,7 @@ export class SettingsHandler extends BaseMessageHandler {
 				: 'OpenCode path cleared. Restarting daemon to auto-detect...',
 		);
 
-		// 重启 daemon 使注入的 OPENCODE_BIN 生效（懒式：下次请求时重新拉起 serve）。
+		// 重启 daemon 使注入的 L0 路径生效（懒式：下次请求时重新拉起 serve）。
 		const daemon = this.context.getDaemon();
 		if (daemon) {
 			daemon.stop();
@@ -551,6 +570,27 @@ export class SettingsHandler extends BaseMessageHandler {
 				customSoundPath: this.settings().getCustomSoundPath(),
 			}, true);
 		} catch { /* 静默忽略 */ }
+	}
+
+	/** 设置页"试听"：宿主读自定义音频后下发，或直接下发内置 soundId。 */
+	private handleTestSound(content: string): void {
+		let soundId = 'default';
+		let path: string | null = null;
+		try {
+			const json = JSON.parse(content ?? '') as Record<string, unknown>;
+			if (typeof json?.soundId === 'string') {
+				soundId = json.soundId;
+			}
+			if (typeof json?.path === 'string' && json.path.trim() !== '') {
+				path = json.path;
+			}
+		} catch {
+			// content 本身即 soundId
+			if (typeof content === 'string' && content.trim() !== '') {
+				soundId = content.trim();
+			}
+		}
+		this.notifications().playTestSound(soundId, path);
 	}
 
 	/** 自定义声音"浏览"：原生文件选择对话框，选完回填 webview 输入框（不落盘）。 */

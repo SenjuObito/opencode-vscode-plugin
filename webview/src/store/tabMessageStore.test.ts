@@ -74,6 +74,36 @@ describe('TabMessageStore', () => {
     expect(result[2].content).toBe('c2');
   });
 
+  it('prepends an older page in front of the transcript', () => {
+    const store = new TabMessageStore();
+    store.applySnapshot([user('c', 'u3'), assistant('d', 'u4')]);
+
+    const result = store.applyPrepend([user('a', 'u1'), assistant('b', 'u2')]);
+
+    expect(result.map((m) => m.content)).toEqual(['a', 'b', 'c', 'd']);
+    expect(store.size()).toBe(4);
+  });
+
+  it('skips the overlap between a page and the transcript', () => {
+    const store = new TabMessageStore();
+    store.applySnapshot([user('c', 'u3'), assistant('d', 'u4')]);
+
+    // The server pages by record, not by turn: the boundary record repeats.
+    const result = store.applyPrepend([user('a', 'u1'), user('c', 'u3')]);
+
+    expect(result.map((m) => m.content)).toEqual(['a', 'c', 'd']);
+    expect(store.size()).toBe(3);
+  });
+
+  it('leaves the transcript untouched for an empty page', () => {
+    const store = new TabMessageStore();
+    store.applySnapshot([user('a', 'u1')]);
+
+    const result = store.applyPrepend([]);
+
+    expect(result.map((m) => m.content)).toEqual(['a']);
+  });
+
   it('replaces the whole transcript when the tail is longer than it', () => {
     const store = new TabMessageStore();
     store.applySnapshot([user('a', 'u1')]);

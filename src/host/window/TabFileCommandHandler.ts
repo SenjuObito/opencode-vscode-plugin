@@ -4,8 +4,12 @@ import type { TabCommand } from '../tab/TabCommand';
 import type { TabRecord } from '../tab/TabRecord';
 
 export interface TabFileCommandHandlerOptions {
-	/** 列举候选文件（daemon findFiles 优先，失败回退本地扫描）。 */
-	listFiles: (query: string, directory: string | undefined) => Promise<FileEntry[]>;
+	/** 列举候选文件（空 query → opencode `fs.list`，非空 → `fs.find`）。 */
+	listFiles: (
+		query: string,
+		currentPath: string,
+		directory: string | undefined,
+	) => Promise<FileEntry[]>;
 	/** 把结果作为 `files.listed` 事件推给目标 tab。 */
 	publish: (tabId: string, epoch: number, payload: Record<string, unknown>) => void;
 }
@@ -32,16 +36,24 @@ export class TabFileCommandHandler {
 			return;
 		}
 		const query = command.string('query') ?? '';
+		const currentPath = command.string('currentPath') ?? '';
 		const requestId = command.number('requestId');
+		// 多 tab：cwd 取**目标 tab** 的，不是当前活跃 tab / 窗口设置。
 		const cwd = record.getCwd() || undefined;
 
 		let files: FileEntry[] = [];
 		try {
-			files = await this.options.listFiles(query, cwd);
+			files = await this.options.listFiles(query, currentPath, cwd);
 		} catch (err) {
 			PluginFileLogger.warn('TabFileCommandHandler', `files.list failed: ${String(err)}`);
 			files = [];
 		}
+
+		PluginFileLogger.info(
+			'TabFileCommandHandler',
+			`files.list tab=${record.getTabId().value} query="${query}" path="${currentPath}" `
+				+ `cwd=${cwd ?? '-'} n=${files.length}`,
+		);
 
 		// 必须始终回包：否则前端会挂到 5s 超时才清 loading。
 		const payload = requestId != null ? { files, requestId } : { files };

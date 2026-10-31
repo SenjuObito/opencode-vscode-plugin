@@ -244,6 +244,23 @@ export class SessionState {
 	}
 
 	/**
+	 * 把更早的一页历史前插到转录开头（磁盘分页）。
+	 *
+	 * <p>与 {@link addMessage} 走同一套 raw 准入截断：被前插的页同样会长期
+	 * 驻留在 state 里，不能成为内存放大的旁路。</p>
+	 *
+	 * @returns 实际前插的条目（raw 已按准入规则截断，可安全推给 webview）
+	 */
+	prependMessages(messages: ChatMessage[]): ChatMessage[] {
+		if (messages.length === 0) {
+			return [];
+		}
+		const stored = messages.map(truncateMessageRawForState);
+		this.messages.unshift(...stored);
+		return stored;
+	}
+
+	/**
 	 * 把迟到的回合失败原因落到转录里。
 	 *
 	 * 本地 180s 兜底超时已经报过一次失败，所以这条修正必须**改写**那一行而不是

@@ -45,6 +45,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'message.snapshot': 'updateMessages',
   'message.tail': 'updateMessageTail',
   'message.prepended': 'updateMessagesPrepend',
+  'history.window': 'onHistoryWindowInfo',
   'message.added': 'addUserMessage',
   'message.history': 'addHistoryMessage',
   'message.removed': 'onMessagesRemoved',
@@ -77,6 +78,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'subagent.status': 'onSubagentStatus',
   'subagent.history': 'onSubagentHistoryLoaded',
   'revert.changed': 'onRevertStateUpdate',
+  'tab.queue.changed': 'onTabQueueChanged',
 
   // ── webview 回调事件（A3 全量迁移） ─────────────────────────────
   'agents.import.preview': 'agentImportPreviewResult',
@@ -95,6 +97,7 @@ export const SEMANTIC_HANDLERS: Record<string, string> = {
   'commands.saved': 'onCommandsSaved',
   'session.compact.failed': 'onCompactError',
   'session.compact.done': 'onCompactSuccess',
+  'session.compact.started': 'onCompactStarted',
   'context.usage.error': 'onContextUsageError',
   'clipboard.copied': 'onCopyToClipboardResult',
   'font.editor.received': 'onEditorFontConfigReceived',

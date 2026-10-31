@@ -11,6 +11,7 @@ import { CallbackHandler } from './CallbackHandler';
 import { MessageHandler } from './MessageHandler';
 import { MarkerStreamContext, processOutputLine } from './MarkerParser';
 import { SessionCallbackAdapter, JsTarget } from './SessionCallbackAdapter';
+import { SessionHistoryWindow } from './SessionHistoryWindow';
 import { MessageType } from './types';
 import { extractContextTokens, findLastUsageFromMessages } from '../util/TokenUsageUtils';
 import { getModelContextLimit } from '../util/ModelContextLimits';
@@ -94,6 +95,13 @@ export interface TurnCompletedInfo {
 
 export class OpenCodeSession {
 	readonly state = new SessionState();
+	/**
+	 * 本标签页从服务端读回了多少历史（opencode 2.x 分页）。
+	 *
+	 * <p>会话与 tab 一一对应，所以游标属于会话：两个 tab 打开同一份历史时
+	 * 各自翻页，不会把对方的游标带到自己的转录上。</p>
+	 */
+	readonly historyWindow = new SessionHistoryWindow();
 	private readonly context: HandlerContext;
 	private readonly daemon: OpenCodeDaemonBridge;
 	private readonly callbackHandler: CallbackHandler;
@@ -464,6 +472,8 @@ export class OpenCodeSession {
 		const seq = this.adapter.coalescer.resetStreamState();
 		this.adapter.notifyMessagesCleared(seq);
 		this.state.clearMessages();
+		// 新对话没有历史窗口：带着旧窗口会让「还有更早」按钮继续指向旧会话。
+		this.historyWindow.reset(null);
 		this.messageHandler.resetTurnState();
 		this.state.setSessionId(null);
 		this.state.setBusy(false);
@@ -489,6 +499,27 @@ export class OpenCodeSession {
 
 		// 恢复历史 Token 统计
 		this.republishUsageFromHistory();
+	}
+
+	/**
+	 * 前插一页更早的历史，并且只把这**一页**推给 webview。
+	 *
+	 * <p>不发整份快照是有意的：整表替换会让滚动位置失去锚点。webview 侧按
+	 * message key 去重后前插，滚动调整交给它自己。</p>
+	 *
+	 * @returns 实际前插的条数（0 = 该页被服务端过滤成空）
+	 */
+	prependHistoryMessages(messages: unknown[]): number {
+		const stored = this.state.prependMessages(messages as ChatMessage[]);
+		if (stored.length > 0) {
+			this.adapter.onMessagesPrepended(stored);
+		}
+		return stored.length;
+	}
+
+	/** 把本 tab 的历史窗口状态推给 webview（`history.window`）。 */
+	publishHistoryWindow(): void {
+		this.adapter.onHistoryWindowChanged(this.historyWindow.snapshot(this.state.getSessionId()));
 	}
 
 	/**

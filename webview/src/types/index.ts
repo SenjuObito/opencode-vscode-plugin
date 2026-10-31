@@ -52,7 +52,7 @@ export type ClaudeContentBlock =
   | { type: 'attachment'; fileName?: string; mediaType?: string }
   | { type: 'task_notification'; icon: string; summary: string; status: string; detail?: string }
   | { type: 'compact_notification'; headerText: string; items: CompactNotificationItem[]; status?: 'success' | 'failure'; detail?: string }
-  | { type: 'compact_summary'; title: string; content: string; metadata?: CompactSummaryMetadata };
+  | { type: 'compact_summary'; title: string; content: string; metadata?: CompactSummaryMetadata; compactStatus?: 'in_progress' | 'success' | 'failure'; startTime?: number };
 
 export interface ToolResultBlock {
   type: 'tool_result';
@@ -73,6 +73,10 @@ export interface ClaudeRawMessage {
   isMeta?: boolean;
   toolUseResult?: unknown;
   isCompactSummary?: boolean;
+  compactStatus?: 'in_progress' | 'success' | 'failure';
+  compactMetadata?: CompactSummaryMetadata;
+  trigger?: string;
+  startTime?: number;
   [key: string]: unknown;
 }
 

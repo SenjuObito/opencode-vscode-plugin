@@ -105,9 +105,28 @@ export class NotificationService {
 		void show(copy[key]);
 	}
 
+	/**
+	 * 设置页"试听"：不管开关与聚焦门控，直接播一次。
+	 *
+	 * 与 IDEA `SoundNotificationService#testPlaySound` 同语义：custom 读用户
+	 * 选的音频文件（读不到回退 default），内置音直接下发 soundId。
+	 */
+	playTestSound(soundId: string | null | undefined, customPath?: string | null): void {
+		const id = (soundId ?? '').trim() || 'default';
+		if (id === 'custom') {
+			const path = customPath ?? this.settings().getCustomSoundPath();
+			const data = this.readCustomSoundBase64(path);
+			this.pushSound(
+				data ? { soundId: 'custom', customDataBase64: data } : { soundId: 'default' },
+				'test',
+			);
+			return;
+		}
+		this.pushSound({ soundId: id }, 'test');
+	}
+
 	/** 声音门控：对应开关 + （默认用全局"声音仅未聚焦时"，可用参数覆盖）。 */
-	private playSoundIfEnabled(kind: SoundKind, enabled: boolean, onlyWhenUnfocusedOverride?: boolean): void {
-		if (!enabled) {
+	private playSoundIfEnabled(kind: SoundKind, enabled: boolean, onlyWhenUnfocusedOverride?: boolean): void {		if (!enabled) {
 			logDiagnostic(`[Notification] sound skipped kind=${kind} reason=switchOff`);
 			return;
 		}
@@ -137,7 +156,7 @@ export class NotificationService {
 	}
 
 	/** 统一下发播放指令并留痕，便于在输出通道定位"没响"的环节。 */
-	private pushSound(payload: Record<string, unknown>, kind: SoundKind): void {
+	private pushSound(payload: Record<string, unknown>, kind: SoundKind | 'test'): void {
 		const json = JSON.stringify(payload);
 		logDiagnostic(`[Notification] sound push kind=${kind} payload=${json.slice(0, 140)}`);
 		this.context.callJavaScript('playNotificationSound', json);

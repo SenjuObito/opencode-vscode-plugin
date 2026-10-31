@@ -54,6 +54,17 @@ export interface TabSessionContext {
 		mediaType: string;
 	} | null;
 	setContextEnabled(tabId: string, enabled: boolean): void;
+	/** User stopped the turn: hold this tab's queue until it is resumed. */
+	pauseQueue(tabId: string): void;
+	/**
+	 * The history of this session finished loading into its tab.
+	 *
+	 * <p>Loading a session binds the tab and parks it in
+	 * {@code LOADING_HISTORY}; the message pump refuses to send while it stays
+	 * there. The handler must say when the transcript is in, exactly like idea's
+	 * {@code markHistoryLoaded}.</p>
+	 */
+	markHistoryLoaded(sessionId: string): void;
 }
 
 export class HandlerContext {
@@ -129,6 +140,15 @@ export class HandlerContext {
 
 	setTabContextEnabled(tabId: string, enabled: boolean): void {
 		this.tabSessionContext?.setContextEnabled(tabId, enabled);
+	}
+
+	pauseTabQueue(tabId: string): void {
+		this.tabSessionContext?.pauseQueue(tabId);
+	}
+
+	/** Tell the window a tab's history load is finished (see {@link TabSessionContext}). */
+	markHistoryLoaded(sessionId: string): void {
+		this.tabSessionContext?.markHistoryLoaded(sessionId);
 	}
 
 	getFileOps(): FileOps {

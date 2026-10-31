@@ -342,6 +342,19 @@ export function isCompactRelatedMessage(message: ClaudeMessage): boolean {
 }
 
 /**
+ * Check whether a message is the summary produced by a compaction.
+ *
+ * Both the persisted history shape (`role: user` with `raw.isCompactSummary`)
+ * and the rendered notification keep this flag, so the renderer can recognise
+ * the summary regardless of the message type it was mapped to.
+ */
+export function isCompactSummaryMessage(message: ClaudeMessage): boolean {
+  const raw = message.raw;
+  return !!raw && typeof raw === 'object'
+    && 'isCompactSummary' in raw && (raw as Record<string, unknown>).isCompactSummary === true;
+}
+
+/**
  * Check if a message is a compact-boundary system line. The CLI writes the real
  * compaction metadata ({ trigger, preTokens, postTokens, durationMs, … }) on a
  * separate `type: 'system', subtype: 'compact_boundary'` JSONL line, NOT on the
@@ -724,10 +737,12 @@ export function getContentBlocks(
 
       // Pass i18n key as `title`; the renderer resolves it via t().
       // Keeps localization concerns out of this pure data helper.
+      const compactStatus = (rawObj.compactStatus as 'in_progress' | 'success' | 'failure' | undefined) || 'success';
+      const startTime = typeof rawObj.startTime === 'number' ? rawObj.startTime : undefined;
       const title = meta && typeof meta.messagesSummarized === 'number'
         ? 'chat.compactSummary.summarizedConversation'
         : 'chat.compactSummary.compactSummary';
-      return [{ type: 'compact_summary', title, content: summaryText, metadata: meta }];
+      return [{ type: 'compact_summary', title, content: summaryText, metadata: meta, compactStatus, startTime }];
     }
   }
 

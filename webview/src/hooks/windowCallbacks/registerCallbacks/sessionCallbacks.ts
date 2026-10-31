@@ -159,10 +159,17 @@ export function registerSessionCallbacks(
     const cleanTitle = title.trim();
     if (isEnginePlaceholderTitle(cleanTitle)) return;
 
-    if (currentSessionIdRef.current === sessionId) {
+    // Only the session that is actually on screen may drive the header title.
+    // An empty tab strip has no tab to compare, so fall back to the view's
+    // session. This is the same rule idea's webview uses.
+    const tabStore = getTabStore();
+    const isForeground = tabStore.size() === 0
+      ? currentSessionIdRef.current === sessionId
+      : (tabId ? tabStore.isActiveTab(tabId) : tabStore.isActiveSession(sessionId));
+    if (isForeground) {
       setCustomSessionTitle(cleanTitle);
     }
-    getTabStore().updateTabTitle(sessionId, cleanTitle, tabId);
+    tabStore.updateTabTitle(sessionId, cleanTitle, tabId);
     applyHistoryTitleLocal(sessionId, cleanTitle);
   };
 

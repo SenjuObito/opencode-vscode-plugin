@@ -85,8 +85,10 @@ export class ExportHandler extends BaseMessageHandler {
 			const collector = new ListMessagesCollector();
 
 			// 1. 从 daemon 获取会话的所有消息
+			// 导出本来就是「整份 transcript」场景：一页只有 50/200 条，必须让
+			// core 顺着 cursor 翻完，否则导出的 json 只有最新一页。
 			await new Promise<void>((resolve, reject) => {
-				const ok = daemon.request('opencode.listMessages', { sessionId, directory }, {
+				const ok = daemon.request('opencode.listMessages', { sessionId, directory, all: true }, {
 					onLine: (line) => collector.onLine(line),
 					onError: (err) => reject(new Error(typeof err === 'string' ? err : 'listMessages failed')),
 					onComplete: (success) => {

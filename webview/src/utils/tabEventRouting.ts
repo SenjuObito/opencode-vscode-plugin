@@ -115,8 +115,17 @@ export function applySnapshotToTab(tab: SessionTabData, messages: ClaudeMessage[
   }
 }
 
-/** Apply a tail update to a tab's transcript (background tab). */
-export function applyTailToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
+/** Prepend an older page to a tab's transcript. */
+export function applyPrependToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
+  if (messages.length === 0) return;
+  if (tab.messageStore) {
+    tab.messages = tab.messageStore.applyPrepend(messages);
+  } else {
+    tab.messages = [...messages, ...(tab.messages ?? [])];
+  }
+}
+
+/** Apply a tail update to a tab's transcript (background tab). */export function applyTailToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
   if (tab.messageStore) {
     tab.messages = tab.messageStore.applyTail(messages);
   } else {

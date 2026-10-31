@@ -40,25 +40,6 @@ interface Window {
     sequence?: string | number,
     targetSessionId?: string | null,
   ) => void;
-  /**
-   * Prepend an earlier history page (opencode restore paging / live window
-   * recall) to the top of the message list, preserving scroll position.
-   * `pageStart` is the global message ordinal of page[0].
-   */
-  updateMessagesPrepend?: (json: string, pageStart?: string | number) => void;
-  /**
-   * Backend push describing the message window: whether older pages exist
-   * (hasEarlier), the earliest loaded ordinal (windowStart), and the total
-   * host-side message count.
-   */
-  onHistoryWindowInfo?: (json: string) => void;
-  /** Latest restore-window state pushed by the host (see onHistoryWindowInfo). */
-  __opencodeHistoryWindow?: {
-    sessionId: string | null;
-    hasEarlier: boolean;
-    windowStart: number;
-    total: number;
-  };
   /** Global message ordinal of the webview list's first entry (window paging). */
   __opencodeListStart?: number;
   /** Whether a revert/undo boundary is currently active on the frontend. */
@@ -757,12 +738,22 @@ interface Window {
   /**
    * Compact (summarize) session success callback
    */
-  onCompactSuccess?: (targetSessionId?: string) => void;
+  onCompactSuccess?: (targetSessionId?: string | unknown, envelope?: { tabId?: string }) => void;
 
   /**
    * Compact (summarize) session failure callback (detail = daemon error text)
    */
-  onCompactError?: (targetSessionId?: string, detail?: string) => void;
+  onCompactError?: (targetSessionId?: string | unknown, detail?: string, envelope?: { tabId?: string }) => void;
+
+  /**
+   * Compact (summarize) really started on the host (it left the queue).
+   */
+  onCompactStarted?: (payload?: unknown, envelope?: { tabId?: string }) => void;
+
+  /**
+   * Compact (summarize) delta streaming callback.
+   */
+  onCompactDelta?: (payload?: unknown, envelope?: { tabId?: string }) => void;
 
   /**
    * Update project info

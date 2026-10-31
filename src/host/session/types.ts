@@ -102,4 +102,8 @@ export interface SessionCallback {
 	 * payload 为 JSON 对象字符串。
 	 */
 	onRetryStatus?(payload: string): void;
+	onCompactionStarted?(payload: string): void;
+	onCompactionDelta?(payload: string): void;
+	onCompactionEnded?(payload: string): void;
+	onCompactionFailed?(payload: string): void;
 }

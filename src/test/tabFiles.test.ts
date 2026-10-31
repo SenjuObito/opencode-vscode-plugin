@@ -70,15 +70,23 @@ const entry = (name: string): FileEntry => ({
 });
 
 suite('P8-A15: §10.11 files.list —— @ 候选按 tab 列举并事件化', () => {
-	test('按目标 tab 的 cwd 列举，结果作为 files.listed 事件回到那个 tab', async () => {
-		const calls: Array<{ query: string; directory: string | undefined }> = [];
+	test('按目标 tab 的 cwd 与 currentPath 列举，结果作为 files.listed 事件回到那个 tab', async () => {
+		const calls: Array<{
+			query: string;
+			currentPath: string;
+			directory: string | undefined;
+		}> = [];
 		const chatWindow = new ChatWindow({
 			settings: {} as never,
 			daemon: {} as never,
 			fileOps: {} as never,
 			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-			listFiles: async (query: string, directory: string | undefined) => {
-				calls.push({ query, directory });
+			listFiles: async (
+				query: string,
+				currentPath: string,
+				directory: string | undefined,
+			) => {
+				calls.push({ query, currentPath, directory });
 				return [entry('a.ts')];
 			},
 		});
@@ -90,12 +98,14 @@ suite('P8-A15: §10.11 files.list —— @ 候选按 tab 列举并事件化', ()
 
 		await sendCommand(chatWindow, 'sidebar', 'files.list', tabB.value, {
 			query: 'a',
+			currentPath: 'src/',
 			requestId: 42,
 		});
 
 		// 目录必须来自**目标 tab**，不是窗口级设置目录。
 		assert.strictEqual(calls.length, 1);
 		assert.strictEqual(calls[0].query, 'a');
+		assert.strictEqual(calls[0].currentPath, 'src/', '@dir/ 的目录前缀必须透传');
 		assert.strictEqual(calls[0].directory, '/mock/other-cwd');
 
 		const events = collectEvents(view, 'files.listed');

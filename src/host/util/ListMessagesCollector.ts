@@ -4,9 +4,12 @@
  * daemon 侧（opencode-channel.js）按逐条消息输出 NDJSON：
  *   {"success":true,...,"messagesStart":true,"count":N}
  *   {"success":true,...,"messageEntry":{info,parts}}   × N
- *   {"success":true,...,"messagesDone":true,"count":N}
+ *   {"success":true,...,"messagesDone":true,"count":N,
+ *    "nextCursor":"…","previousCursor":"…","hasEarlier":true}
  *
- * 全量收集会话的所有消息条目（与 IDEA 插件对齐），由前端统一进行轮数折叠分页。
+ * 收集**一页**消息条目 + 该页的游标。opencode 2.x 的消息接口是分页的，
+ * 「一页」不等于「全部」：调用方必须保留 `nextCursor`，否则长会话会被
+ * 截断到最新一页而毫无提示。
  */
 import type { SdkMessageEntry } from '../session/SdkMessageConverter';
 
@@ -16,6 +19,11 @@ export class ListMessagesCollector {
 	private readonly fallbackRaw: string[] = [];
 	private done = false;
 	private sawNewProtocol = false;
+	/** 服务端 `cursor.next`：更早一页的游标（默认顺序为「新→旧」）。 */
+	private nextCursor: string | null = null;
+	/** 服务端 `cursor.previous`：更新一页的游标。 */
+	private previousCursor: string | null = null;
+	private hasEarlier = false;
 
 	onLine(line: string): void {
 		const trimmed = line.trim();
@@ -33,6 +41,13 @@ export class ListMessagesCollector {
 				if (obj.messagesDone === true) {
 					this.done = true;
 					this.sawNewProtocol = true;
+					this.nextCursor = typeof obj.nextCursor === 'string' && obj.nextCursor ? obj.nextCursor : null;
+					this.previousCursor = typeof obj.previousCursor === 'string' && obj.previousCursor ? obj.previousCursor : null;
+					// `hasEarlier` 由 daemon 依据游标算出；旧 daemon 不回该字段时
+					// 退化为「有游标即有更早一页」。
+					this.hasEarlier = typeof obj.hasEarlier === 'boolean'
+						? obj.hasEarlier
+						: Boolean(this.nextCursor);
 					return;
 				}
 				if (obj.messagesStart === true) {
@@ -64,6 +79,25 @@ export class ListMessagesCollector {
 
 	getTotalMessageCount(): number {
 		return this.entries.length;
+	}
+
+	/**
+	 * Cursor of the next older page, or null when this page is the oldest.
+	 *
+	 * <p>On any page a `next` cursor may point past the real end (the filtered
+	 * `type=user` pages do this), so callers must stop on the first empty page
+	 * as well — never on the cursor alone.</p>
+	 */
+	getNextCursor(): string | null {
+		return this.nextCursor;
+	}
+
+	getPreviousCursor(): string | null {
+		return this.previousCursor;
+	}
+
+	getHasEarlier(): boolean {
+		return this.hasEarlier;
 	}
 
 	getFirstRetainedMessageIndex(): number {

@@ -50,14 +50,22 @@ describe('mentionProvider', () => {
     expect(items[1]).toMatchObject({ kind: 'file', name: 'index.ts' });
   });
 
-  it('handles backend failure gracefully with empty array', async () => {
+  it('keeps the file section with a non-selectable notice when both backends fail', async () => {
     vi.spyOn(fileReferenceProviderModule, 'fileReferenceProvider').mockRejectedValue(new Error('Backend error'));
     vi.spyOn(agentProviderModule, 'subagentMentionProvider').mockRejectedValue(new Error('Agent error'));
 
     const controller = new AbortController();
     const items = await mentionProvider('', controller.signal);
 
-    expect(items).toEqual([]);
+    // A silent empty dropdown reads as "the feature is broken": keep the
+    // section header and explain that nothing matched instead.
+    expect(items).toEqual([
+      { kind: 'section', label: '文件' },
+      { kind: 'info', label: 'chat.filesEmpty' },
+    ]);
+    const notice = mentionToDropdownItem(items[1]);
+    expect(notice.id).toBe('__info__');
+    expect(notice.type).toBe('info');
   });
 
   it('mentionToDropdownItem converts sections, subagents, and files properly', () => {

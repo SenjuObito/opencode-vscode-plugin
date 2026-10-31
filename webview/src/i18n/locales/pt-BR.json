@@ -115,8 +115,9 @@
     "attachmentsUploaded": "[Anexos Enviados]",
     "streamingConnected": "Entendendo sua pergunta…",
     "showEarlierMessages": "Mostrar {{count}} mensagens anteriores",
-    "showEarlierTurns": "Mostrar {{count}} turnos anteriores (restam {{remaining}} carregados)",
-    "loadEarlierTurns": "Carregar {{count}} turnos anteriores do disco (restam {{remaining}} de {{total}})",
+    "showEarlierTurns": "Mostrar {{count}} turnos anteriores (restam {{remaining}})",
+
+    "showEarlierConversation": "Mostrar conversa anterior",
     "loadEarlierMessages": "Carregar {{count}} mensagens anteriores (restam {{remaining}} de {{total}})",
     "loadingEarlierTurns": "Carregando turnos anteriores",
     "totalDuration": "Esta resposta levou",
@@ -168,6 +169,7 @@
     "retryCopy": "Copiar novamente",
     "subagentsSection": "Subagentes",
     "filesSection": "Arquivos",
+    "filesEmpty": "Nenhum arquivo correspondente",
     "renderError": "Falha ao renderizar a mensagem",
     "renameSession": "Renomear",
     "forkSession": "Bifurcar sessão",
@@ -320,10 +322,10 @@
         "hint": "Quando ativado, reproduz o som de alerta configurado quando o OpenCode faz uma pergunta. Usa a seleção de som e as regras de foco abaixo."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "Mostrar notificações do sistema somente quando a IDE não estiver em foco",
+        "label": "Mostrar notificações do sistema somente quando o VS Code não estiver em foco",
         "enabled": "Ativado",
         "disabled": "Desativado",
-        "hint": "Quando ativado, as notificações do sistema de conclusão de tarefa e pergunta aparecem somente quando a IDE não estiver em foco."
+        "hint": "Quando ativado, as notificações do sistema de conclusão de tarefa e pergunta aparecem somente quando o VS Code não estiver em foco."
       },
       "sendShortcut": {
         "label": "Atalho de Envio",
@@ -365,8 +367,8 @@
         "enabled": "Ativado",
         "disabled": "Desativado",
         "hint": "Quando ativado, um som de notificação será reproduzido quando a IA concluir uma tarefa, para você saber mesmo estando longe da tela.",
-        "onlyWhenUnfocused": "Reproduzir sons de alerta apenas quando a IDE não estiver em foco",
-        "onlyWhenUnfocusedHint": "Quando ativado, os sons de alerta de conclusão de tarefa e pergunta são reproduzidos somente quando a IDE não estiver em foco.",
+        "onlyWhenUnfocused": "Reproduzir sons de alerta apenas quando o VS Code não estiver em foco",
+        "onlyWhenUnfocusedHint": "Quando ativado, os sons de alerta de conclusão de tarefa e pergunta são reproduzidos somente quando o VS Code não estiver em foco.",
         "selectSound": "Som de Notificação",
         "soundDefault": "Padrão",
         "soundChime": "Chime",

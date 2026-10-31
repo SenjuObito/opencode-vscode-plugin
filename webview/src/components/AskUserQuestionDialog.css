@@ -125,9 +125,56 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* 倒计时进入警告窗口（≤30s）：黄色描边 + 外圈脉动。
+ * 与权限弹窗同一套节奏与几何：只脉动外圈光晕，边框颜色保持稳定，
+ * 不对整个弹窗做 opacity 动画，避免文字和选项跟着闪烁。 */
 .ask-user-question-dialog.time-warning {
   border-color: var(--text-warning);
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--text-warning);
+  animation: question-warning-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes question-warning-pulse {
+  0%,
+  100% {
+    box-shadow: var(--shadow-lg),
+                0 0 0 1px var(--text-warning),
+                0 0 0 1px rgba(204, 167, 0, 0.45);
+  }
+  50% {
+    box-shadow: var(--shadow-lg),
+                0 0 0 1px var(--text-warning),
+                0 0 0 5px rgba(204, 167, 0, 0.18);
+  }
+}
+
+/* 最小化后仍要提醒：折叠条同样描黄边并脉动。 */
+.permission-dialog-overlay.warning-mode .ask-user-question-dialog-minimized {
+  border-color: var(--text-warning);
+  animation: question-warning-pulse-minimized 1.4s ease-in-out infinite;
+}
+
+@keyframes question-warning-pulse-minimized {
+  0%,
+  100% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2),
+                0 0 0 1px rgba(204, 167, 0, 0.45);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2),
+                0 0 0 4px rgba(204, 167, 0, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-user-question-dialog.time-warning {
+    animation: none;
+    box-shadow: var(--shadow-lg), 0 0 0 1px var(--text-warning);
+  }
+  .permission-dialog-overlay.warning-mode .ask-user-question-dialog-minimized {
+    animation: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2),
+                0 0 0 1px var(--text-warning);
+  }
 }
 
 .ask-user-question-dialog-progress-row {

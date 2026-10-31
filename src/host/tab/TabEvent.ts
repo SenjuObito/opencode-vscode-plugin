@@ -78,6 +78,30 @@ export class TabEvent {
 		};
 	}
 
+	/**
+	 * Re-address the event to the tab that really owns it.
+	 *
+	 * <p>Legacy publishers only know the session; the publish choke point
+	 * resolves the owner tab and rewrites the id so the webview never has to
+	 * guess "the tab on screen". Everything else is preserved.</p>
+	 */
+	withTabId(tabId: string): TabEvent {
+		if (!tabId || tabId === this.tabId) {
+			return this;
+		}
+		return new TabEvent({
+			type: this.type,
+			fn: this.fn,
+			tabId,
+			epoch: this.epoch,
+			sessionId: this.sessionId,
+			turnId: this.turnId,
+			seq: this.seq,
+			payload: this.payload,
+			legacy: this.legacy,
+		});
+	}
+
 	/** Stamp the current binding epoch (the router/lane already knows the lane). */
 	withEpoch(epoch: number): TabEvent {
 		if (!Number.isFinite(epoch) || epoch === this.epoch) {

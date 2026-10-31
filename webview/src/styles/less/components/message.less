@@ -7,7 +7,8 @@
     overscroll-behavior-y: contain;
     overflow-anchor: none; /* 手动跟随到底时禁用锚定，避免和程序滚动抢控制权 */
     padding: 0;
-    background: var(--bg-chat);
+    /* 透明：由 .chat-screen-shell 统一绘制画布底色与空态极光 */
+    background: transparent;
 }
 
 .messages-container.scroll-anchor-enabled {

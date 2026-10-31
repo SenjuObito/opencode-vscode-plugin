@@ -15,6 +15,12 @@ export interface TabSessionCommandHandlerOptions {
 	resolveCwd: () => string | undefined;
 	/** Bind the forked session to the tab the webview reserved for it. */
 	onForkBound?: (targetTabId: string, newSessionId: string) => void;
+	/**
+	 * Publish a result event. The window uses this to feed the queue: a queued
+	 * command stays in flight until its own result passes the same choke point
+	 * every other tab event uses.
+	 */
+	publishEvent?: (event: TabEvent) => void;
 }
 
 interface Target {
@@ -46,14 +52,14 @@ export class TabSessionCommandHandler {
 		const sourceTabId = command.tabId.value;
 		const targetTabId = command.string('targetTabId');
 		if (!targetTabId) {
-			this.publishForkFailure(sourceTabId, null, 'the fork must name its target tab');
+			this.publishForkFailure(sourceTabId, null, 'the fork must name its target tab', command.requestId);
 			return;
 		}
 
 		const sourceRecord = this.options.registry.get(command.tabId);
 		const sourceSessionId = sourceRecord?.getSessionIdString();
 		if (!sourceRecord || !sourceSessionId) {
-			this.publishForkFailure(sourceTabId, sourceSessionId ?? null, 'the source tab has no session to fork');
+			this.publishForkFailure(sourceTabId, sourceSessionId ?? null, 'the source tab has no session to fork', command.requestId);
 			return;
 		}
 
@@ -61,11 +67,11 @@ export class TabSessionCommandHandler {
 		const messageId = requested && requested !== 'full' ? requested : null;
 		if (messageId) {
 			this.withMessageId(sourceSessionId, messageId,
-				(resolvedId) => this.requestFork(sourceSessionId, resolvedId, sourceTabId, targetTabId),
-				(error) => this.publishForkFailure(sourceTabId, sourceSessionId, error));
+				(resolvedId) => this.requestFork(sourceSessionId, resolvedId, sourceTabId, targetTabId, command.requestId),
+				(error) => this.publishForkFailure(sourceTabId, sourceSessionId, error, command.requestId));
 			return;
 		}
-		this.requestFork(sourceSessionId, null, sourceTabId, targetTabId);
+		this.requestFork(sourceSessionId, null, sourceTabId, targetTabId, command.requestId);
 	}
 
 	private requestFork(
@@ -73,6 +79,7 @@ export class TabSessionCommandHandler {
 		messageId: string | null,
 		sourceTabId: string,
 		targetTabId: string,
+		requestId: string,
 	): void {
 		const params: Record<string, unknown> = {
 			sessionId: sourceSessionId,
@@ -84,13 +91,13 @@ export class TabSessionCommandHandler {
 
 		this.request('fork', params, (success, chunks) => {
 			if (!success) {
-				this.publishForkFailure(sourceTabId, sourceSessionId, 'fork session failed');
+				this.publishForkFailure(sourceTabId, sourceSessionId, 'fork session failed', requestId);
 				return;
 			}
 			const payload = extractJsonObjectFromRaw(chunks.join('\n'));
 			const newSessionId = typeof payload?.newSessionId === 'string' ? payload.newSessionId : '';
 			if (!newSessionId) {
-				this.publishForkFailure(sourceTabId, sourceSessionId, 'fork returned no session id');
+				this.publishForkFailure(sourceTabId, sourceSessionId, 'fork returned no session id', requestId);
 				return;
 			}
 			this.options.onForkBound?.(targetTabId, newSessionId);
@@ -99,12 +106,18 @@ export class TabSessionCommandHandler {
 				sessionId: newSessionId,
 				sourceTabId,
 				sourceSessionId,
+				requestId,
 			});
-		}, (error) => this.publishForkFailure(sourceTabId, sourceSessionId, error));
+		}, (error) => this.publishForkFailure(sourceTabId, sourceSessionId, error, requestId));
 	}
 
-	private publishForkFailure(sourceTabId: string, sourceSessionId: string | null, error: string): void {
-		this.publish('session.fork.failed', sourceTabId, sourceSessionId, { data: error, error });
+	private publishForkFailure(
+		sourceTabId: string,
+		sourceSessionId: string | null,
+		error: string,
+		requestId?: string,
+	): void {
+		this.publish('session.fork.failed', sourceTabId, sourceSessionId, { data: error, error, requestId });
 	}
 
 	// ── Share / unshare ──────────────────────────────────────────────────
@@ -112,40 +125,63 @@ export class TabSessionCommandHandler {
 	share(command: TabCommand): void {
 		const target = this.resolve(command);
 		if (!target) {
-			this.publish('session.share.failed', command.tabId.value, null, { data: 'tab has no session' });
+			this.publish('session.share.failed', command.tabId.value, null, {
+				data: 'tab has no session',
+				requestId: command.requestId,
+			});
 			return;
 		}
 		this.request('shareSession', this.sessionParams(target.sessionId), (success, chunks) => {
 			if (!success) {
-				this.publishShareFailure(target, 'share failed');
+				this.publishShareFailure(target, 'share failed', command.requestId);
 				return;
 			}
 			const url = extractShareUrl(extractJsonObjectFromRaw(chunks.join('\n')));
 			if (!url) {
-				this.publishShareFailure(target, 'share returned no url');
+				this.publishShareFailure(target, 'share returned no url', command.requestId);
 				return;
 			}
-			this.publish('session.share.done', target.tabId, target.sessionId, { data: url, url });
-		}, (error) => this.publishShareFailure(target, error));
+			this.publish('session.share.done', target.tabId, target.sessionId, {
+				data: url,
+				url,
+				requestId: command.requestId,
+			});
+		}, (error) => this.publishShareFailure(target, error, command.requestId));
 	}
 
 	unshare(command: TabCommand): void {
 		const target = this.resolve(command);
 		if (!target) {
-			this.publish('session.unshare.failed', command.tabId.value, null, { data: 'tab has no session' });
+			this.publish('session.unshare.failed', command.tabId.value, null, {
+				data: 'tab has no session',
+				requestId: command.requestId,
+			});
 			return;
 		}
 		this.request('unshareSession', this.sessionParams(target.sessionId), (success) => {
 			if (!success) {
-				this.publish('session.unshare.failed', target.tabId, target.sessionId, { data: 'unshare failed' });
+				this.publish('session.unshare.failed', target.tabId, target.sessionId, {
+					data: 'unshare failed',
+					requestId: command.requestId,
+				});
 				return;
 			}
-			this.publish('session.unshare.done', target.tabId, target.sessionId, { data: '' });
-		}, (error) => this.publish('session.unshare.failed', target.tabId, target.sessionId, { data: error }));
+			this.publish('session.unshare.done', target.tabId, target.sessionId, {
+				data: '',
+				requestId: command.requestId,
+			});
+		}, (error) => this.publish('session.unshare.failed', target.tabId, target.sessionId, {
+			data: error,
+			requestId: command.requestId,
+		}));
 	}
 
-	private publishShareFailure(target: Target, error: string): void {
-		this.publish('session.share.failed', target.tabId, target.sessionId, { data: error, error });
+	private publishShareFailure(target: Target, error: string, requestId?: string): void {
+		this.publish('session.share.failed', target.tabId, target.sessionId, {
+			data: error,
+			error,
+			requestId,
+		});
 	}
 
 	// ── Revert / unrevert ────────────────────────────────────────────────
@@ -153,7 +189,7 @@ export class TabSessionCommandHandler {
 	revert(command: TabCommand): void {
 		const target = this.resolve(command);
 		if (!target) {
-			this.publishRevertFailure(command.tabId.value, null, 'undo', 'tab has no session');
+			this.publishRevertFailure(command.tabId.value, null, 'undo', 'tab has no session', command.requestId);
 			return;
 		}
 		const requested = command.string('messageId') ?? command.string('messageID');
@@ -163,7 +199,7 @@ export class TabSessionCommandHandler {
 				params.messageID = resolvedId;
 				this.request('revert', params, (success, chunks) => {
 					if (!success) {
-						this.publishRevertFailure(target.tabId, target.sessionId, 'undo', 'revert failed');
+						this.publishRevertFailure(target.tabId, target.sessionId, 'undo', 'revert failed', command.requestId);
 						return;
 					}
 					const state = parseRevertState(extractJsonObjectFromRaw(chunks.join('\n')), resolvedId);
@@ -172,32 +208,40 @@ export class TabSessionCommandHandler {
 					);
 					this.publish('revert.changed', target.tabId, target.sessionId, {
 						state: JSON.stringify(state),
+						requestId: command.requestId,
 					});
-				}, (error) => this.publishRevertFailure(target.tabId, target.sessionId, 'undo', error));
+				}, (error) => this.publishRevertFailure(target.tabId, target.sessionId, 'undo', error, command.requestId));
 			},
-			(error) => this.publishRevertFailure(target.tabId, target.sessionId, 'undo', error));
+			(error) => this.publishRevertFailure(target.tabId, target.sessionId, 'undo', error, command.requestId));
 	}
 
 	unrevert(command: TabCommand): void {
 		const target = this.resolve(command);
 		if (!target) {
-			this.publishRevertFailure(command.tabId.value, null, 'redo', 'tab has no session');
+			this.publishRevertFailure(command.tabId.value, null, 'redo', 'tab has no session', command.requestId);
 			return;
 		}
 		this.request('unrevert', this.sessionParams(target.sessionId), (success) => {
 			if (!success) {
-				this.publishRevertFailure(target.tabId, target.sessionId, 'redo', 'unrevert failed');
+				this.publishRevertFailure(target.tabId, target.sessionId, 'redo', 'unrevert failed', command.requestId);
 				return;
 			}
 			target.record.getSession()?.state.setRevertState(null);
 			this.publish('revert.changed', target.tabId, target.sessionId, {
 				state: JSON.stringify({ hasRevert: false, messageId: null }),
+				requestId: command.requestId,
 			});
-		}, (error) => this.publishRevertFailure(target.tabId, target.sessionId, 'redo', error));
+		}, (error) => this.publishRevertFailure(target.tabId, target.sessionId, 'redo', error, command.requestId));
 	}
 
-	private publishRevertFailure(tabId: string, sessionId: string | null, op: 'undo' | 'redo', error: string): void {
-		this.publish('session.revert.failed', tabId, sessionId, { op, error, data: error });
+	private publishRevertFailure(
+		tabId: string,
+		sessionId: string | null,
+		op: 'undo' | 'redo',
+		error: string,
+		requestId?: string,
+	): void {
+		this.publish('session.revert.failed', tabId, sessionId, { op, error, data: error, requestId });
 	}
 
 	// ── Compact ──────────────────────────────────────────────────────────
@@ -205,7 +249,11 @@ export class TabSessionCommandHandler {
 	compact(command: TabCommand): void {
 		const target = this.resolve(command);
 		if (!target) {
-			this.publish('session.compact.failed', command.tabId.value, null, { error: 'tab has no session', data: '' });
+			this.publish('session.compact.failed', command.tabId.value, null, {
+				error: 'tab has no session',
+				data: '',
+				requestId: command.requestId,
+			});
 			return;
 		}
 		const params = this.sessionParams(target.sessionId);
@@ -218,16 +266,19 @@ export class TabSessionCommandHandler {
 				this.publish('session.compact.failed', target.tabId, target.sessionId, {
 					error: 'compact failed',
 					data: target.sessionId,
+					requestId: command.requestId,
 				});
 				return;
 			}
 			this.publish('session.compact.done', target.tabId, target.sessionId, {
 				data: target.sessionId,
 				sessionId: target.sessionId,
+				requestId: command.requestId,
 			});
 		}, (error) => this.publish('session.compact.failed', target.tabId, target.sessionId, {
 			error,
 			data: target.sessionId,
+			requestId: command.requestId,
 		}));
 	}
 
@@ -271,7 +322,10 @@ export class TabSessionCommandHandler {
 		}
 
 		const params = this.sessionParams(sessionId);
-		this.request('listMessages', params, (success, chunks) => {
+		// 只取最后一条 user 消息：`type=user&order=desc&limit=1`。
+		// 拉全量再在宿主里找最后一条既慢又会踩到服务端分页（默认 50 条里
+		// 可能一条 user 都没有），把 fork/revert 的边界算错。
+		this.request('listMessages', { ...params, type: 'user', order: 'desc', limit: 1 }, (success, chunks) => {
 			if (!success) {
 				onError('listMessages failed');
 				return;
@@ -320,16 +374,19 @@ export class TabSessionCommandHandler {
 
 	private publish(type: string, tabId: string, sessionId: string | null, payload: Record<string, unknown>): void {
 		const record = this.options.registry.get(TabId.of(tabId));
-		this.options.eventRouter.publish(
-			new TabEvent({
-				type,
-				tabId,
-				epoch: record?.epoch ?? 0,
-				sessionId,
-				payload,
-				legacy: false,
-			}),
-		);
+		const event = new TabEvent({
+			type,
+			tabId,
+			epoch: record?.epoch ?? 0,
+			sessionId,
+			payload,
+			legacy: false,
+		});
+		if (this.options.publishEvent) {
+			this.options.publishEvent(event);
+			return;
+		}
+		this.options.eventRouter.publish(event);
 	}
 }
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useSyncExternalStore, memo } from 'react';
+import { useState, useEffect, useCallback, useSyncExternalStore, memo } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeContentBlock, ToolResultBlock, CompactSummaryMetadata } from '../../types';
 
@@ -95,12 +95,14 @@ interface CompactSummaryBlockProps {
     title: string;
     content: string;
     metadata?: CompactSummaryMetadata;
+    compactStatus?: 'in_progress' | 'success' | 'failure';
+    startTime?: number;
   };
   t: TFunction;
 }
 
 /**
- * Compact summary block - collapsed by default, click/Enter/Space to expand.
+ * Compact summary block - in-progress spinning state, or collapsed success card with expand/collapse.
  * Memoized to prevent state reset on parent re-renders during streaming.
  * `block.title` is an i18n key resolved via t() at render time.
  */
@@ -113,6 +115,78 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
       setExpanded(prev => !prev);
     }
   }, []);
+
+  const isInProgress = block.compactStatus === 'in_progress';
+  const isFailure = block.compactStatus === 'failure';
+
+  const [dotCount, setDotCount] = useState(1);
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (block.startTime) {
+      return Math.max(0, Math.floor((Date.now() - block.startTime) / 1000));
+    }
+    return 0;
+  });
+
+  useEffect(() => {
+    if (!isInProgress) return;
+    const timer = setInterval(() => {
+      setDotCount(prev => (prev % 3) + 1);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isInProgress]);
+
+  useEffect(() => {
+    if (!isInProgress) return;
+    const timer = setInterval(() => {
+      if (block.startTime) {
+        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - block.startTime) / 1000)));
+      } else {
+        setElapsedSeconds(prev => prev + 1);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isInProgress, block.startTime]);
+
+  const dots = '.'.repeat(dotCount);
+  const formatTime = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
+  };
+
+  if (isInProgress) {
+    return (
+      <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
+        <div className="compact-card compact-card--compacting">
+          <div className="compact-card__spinner-dual">
+            <div className="compact-card__spinner-outer" />
+            <div className="compact-card__spinner-inner" />
+          </div>
+          <span className="compact-card__text">
+            {t('chat.compactSummary.autoCompacting', '正在自动压缩会话上下文...')}
+            <span className="compact-card__dots">{dots}</span>
+          </span>
+          <span className="compact-card__time-badge">{formatTime(elapsedSeconds)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFailure) {
+    return (
+      <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
+        <div className="compact-card compact-card--compact-pill compact-card--failure">
+          <i className="codicon codicon-error compact-card__pill-icon" />
+          <span className="compact-card__pill-title">{t('chat.compactFailed')}</span>
+          {block.content && (
+            <span className="compact-card__pill-detail">{block.content}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const meta = block.metadata;
   const hasCountMeta = meta && typeof meta.messagesSummarized === 'number';
   const compactionStats = meta ? formatCompactionStats(meta) : null;

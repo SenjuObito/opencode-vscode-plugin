@@ -34,6 +34,8 @@ import { registerSessionCallbacks } from './registerCallbacks/sessionCallbacks';
 import { registerUsageModeCallbacks } from './registerCallbacks/usageModeCallbacks';
 import { registerPermissionCallbacks } from './registerCallbacks/permissionCallbacks';
 import { registerAgentAndSelectionCallbacks } from './registerCallbacks/agentCallbacks';
+import { registerQueueCallbacks } from './registerCallbacks/queueCallbacks';
+import { registerHistoryCallbacks } from './registerCallbacks/historyCallbacks';
 
 function areSubagentMessagesEquivalent(previousMessages: unknown[] | undefined, nextMessages: unknown[] | undefined): boolean {
   if (previousMessages === nextMessages) return true;
@@ -172,6 +174,8 @@ export function registerWindowCallbacks(
   registerUsageModeCallbacks(options);
   registerPermissionCallbacks(options);
   registerAgentAndSelectionCallbacks(options);
+  registerQueueCallbacks(options);
+  registerHistoryCallbacks(options);
 
   window.onSubagentHistoryChunk = appendSubagentHistoryChunk;
 

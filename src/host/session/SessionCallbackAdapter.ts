@@ -11,6 +11,7 @@ import { ChatMessage, PermissionRequest, SessionCallback } from './types';
 import { StreamDeltaThrottler } from './StreamDeltaThrottler';
 import { StreamMessageCoalescer } from './StreamMessageCoalescer';
 import { buildUsageSnapshot } from '../util/MessageJsonConverter';
+import type { HistoryWindowSnapshot } from './SessionHistoryWindow';
 import { TabEvent, TabEventSink } from '../tab/TabEvent';
 
 const DELTA_THROTTLE_MS = 33;
@@ -154,7 +155,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 		type: string,
 		payload: Record<string, unknown>,
 		legacy?: () => void,
-		extras?: { seq?: number | null; turnId?: number | null },
+		extras?: { seq?: number | null; turnId?: number | null; sessionId?: string | null },
 	): void {
 		if (this.tabId && this.eventSink) {
 			this.eventSink(new TabEvent({
@@ -162,7 +163,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 				tabId: this.tabId,
 				// The registry stamps the current epoch before routing.
 				epoch: 0,
-				sessionId: this.sessionId,
+				sessionId: extras?.sessionId ?? this.sessionId,
 				turnId: extras?.turnId ?? this.activeTurnId,
 				seq: extras?.seq ?? null,
 				payload,
@@ -244,7 +245,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 		// must not lose the title that arrives during the switch.
 		this.emit('tab.title.changed', { title, sessionId }, () => {
 			this.jsTarget.callJavaScript('updateSessionTitle', sessionId, title);
-		});
+		}, { sessionId });
 	}
 
 	onPermissionRequested(request: PermissionRequest): void {
@@ -283,6 +284,30 @@ export class SessionCallbackAdapter implements SessionCallback {
 		this.emit('session.summary', { summary }, () => {
 			this.jsTarget.callJavaScript('showSummary', summary);
 		});
+	}
+
+	/**
+	 * 一页更早的历史已前插到宿主转录（`message.prepended`）。
+	 *
+	 * <p>Named-only：转录属于某个 tab，这个事件没有窗口级含义。webview 按
+	 * `tabId` 写入该 tab 的 store，后台 tab 自己吸收，不动当前视图。</p>
+	 */
+	onMessagesPrepended(messages: ChatMessage[]): void {
+		if (this.isInactive() || messages.length === 0) {
+			return;
+		}
+		this.emit('message.prepended', { messages });
+	}
+
+	/**
+	 * 本 tab 的历史窗口状态（`history.window`）：还有没有更早的页、已加载
+	 * 多少轮 / 总共多少轮。同样是 named-only 的 tab 事件。
+	 */
+	onHistoryWindowChanged(info: HistoryWindowSnapshot): void {
+		if (this.isInactive()) {
+			return;
+		}
+		this.emit('history.window', { ...info });
 	}
 
 	// ===== 流式回调 =====
@@ -532,6 +557,66 @@ export class SessionCallbackAdapter implements SessionCallback {
 		}
 		this.emit('todos.updated', { todos: payload }, () => {
 			this.jsTarget.callJavaScript('onTodoUpdated', payload);
+		});
+	}
+
+	onCompactionStarted(payload: string): void {
+		if (this.isInactive() || !payload) {
+			return;
+		}
+		let parsed: unknown = payload;
+		try {
+			parsed = JSON.parse(payload);
+		} catch {
+			// keep string
+		}
+		this.emit('session.compact.started', { data: parsed }, () => {
+			this.jsTarget.callJavaScript('onCompactStarted', payload);
+		});
+	}
+
+	onCompactionDelta(payload: string): void {
+		if (this.isInactive() || !payload) {
+			return;
+		}
+		let parsed: unknown = payload;
+		try {
+			parsed = JSON.parse(payload);
+		} catch {
+			// keep string
+		}
+		this.emit('session.compact.delta', { data: parsed }, () => {
+			this.jsTarget.callJavaScript('onCompactDelta', payload);
+		});
+	}
+
+	onCompactionEnded(payload: string): void {
+		if (this.isInactive() || !payload) {
+			return;
+		}
+		let parsed: unknown = payload;
+		try {
+			parsed = JSON.parse(payload);
+		} catch {
+			// keep string
+		}
+		this.emit('session.compact.done', { data: parsed }, () => {
+			this.jsTarget.callJavaScript('onCompactSuccess', payload);
+		});
+	}
+
+	onCompactionFailed(payload: string): void {
+		if (this.isInactive() || !payload) {
+			return;
+		}
+		let parsed: unknown = payload;
+		try {
+			parsed = JSON.parse(payload);
+		} catch {
+			// keep string
+		}
+		this.emit('session.compact.failed', { data: parsed }, () => {
+			this.jsTarget.callJavaScript('onCompactError', payload);
 		});
 	}
 

@@ -116,6 +116,25 @@ interface MessageListProps {
    * 否则同一屏里「指示器」和「通知条」会用两套口径判断回合是否在跑。
    */
   turnActive: boolean;
+  /**
+   * The host still holds older pages of this session on disk.
+   *
+   * <p>This is not a control of its own: the list has exactly one "earlier"
+   * entry, which reveals turns already in memory and only then asks the host
+   * for another page. Keeping both on screen made the newest page look like
+   * two different kinds of history.</p>
+   */
+  hasEarlierHistory?: boolean;
+  /** Records the host holds for this tab; grows by one page per request. */
+  historyLoadedCount?: number;
+  /** User turns inside the loaded window (host truth). */
+  loadedTurns?: number;
+  /** User turns in the whole session; null while the host is still counting. */
+  totalTurns?: number | null;
+  /** A host page request is in flight. */
+  historyWindowLoading?: boolean;
+  /** Ask the host for one older page from disk. */
+  onLoadEarlierHistory?: () => void;
 }
 
 export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListProps>(function MessageList({
@@ -144,6 +163,12 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   onFork,
   forkDisabled = false,
   turnActive,
+  hasEarlierHistory = false,
+  historyLoadedCount = 0,
+  loadedTurns = 0,
+  totalTurns = null,
+  historyWindowLoading = false,
+  onLoadEarlierHistory,
 }, ref) {
 
   const [revealedTurnCount, setRevealedTurnCount] = useState(0);
@@ -152,6 +177,10 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const loadingStartTimeRef = useRef(0);
   const revealTimeoutRef = useRef<number | null>(null);
   const pendingScrollAdjustRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  /** A host page was requested from the single "earlier" entry. */
+  const awaitingDiskPageRef = useRef(false);
+  const historyWindowLoadingRef = useRef(false);
+  const previousLoadedCountRef = useRef(historyLoadedCount);
 
   const [detailedOutputEnabled, setDetailedOutputEnabled] = useState(() =>
     getDetailedOutputEnabled()
@@ -202,6 +231,12 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       setRevealedTurnCount(0);
       setLoadingEarlierHistory(false);
       loadingEarlierHistoryRef.current = false;
+      // An id-less caller (tests, isolated use) can only be recognised by the
+      // first-message boundary, which a prepended page also changes; the
+      // window itself tells us when a page really arrived.
+      if (currentSessionId != null) {
+        awaitingDiskPageRef.current = false;
+      }
       pendingScrollAdjustRef.current = null;
       if (revealTimeoutRef.current !== null) {
         clearTimeout(revealTimeoutRef.current);
@@ -281,7 +316,6 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   const hiddenTurnCount = userTurnStartIndexes.length - visibleTurnCount;
   const collapsedCount = hiddenTurnCount > 0 ? userTurnStartIndexes[hiddenTurnCount] : 0;
   const shouldCollapse = collapsedCount > 0;
-  const nextTurnCount = Math.min(REVEAL_TURN_PAGE_SIZE, hiddenTurnCount);
 
   useEffect(() => {
     cardDebugLog('[MessageList] Pagination state:', {
@@ -305,7 +339,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       userTurnStartIndexesCount: userTurnStartIndexes.length,
     });
 
-    if (loadingEarlierHistoryRef.current) {
+    if (loadingEarlierHistoryRef.current || historyWindowLoadingRef.current) {
       cardDebugLog('[MessageList] handleRevealMore: already loading, ignore click');
       return;
     }
@@ -345,8 +379,68 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
         revealTimeoutRef.current = null;
         cardDebugLog('[MessageList] in-memory reveal: loading state finished');
       }, MIN_LOADING_DISPLAY_MS);
+      return;
     }
-  }, [currentSessionId, getScrollContainer, hiddenTurnCount, userTurnStartIndexes.length]);
+
+    // 内存里已经没有可展开的轮次，但服务端还有更早的页：同一个入口继续
+    // 往前翻一页。用户不需要知道「内存 / 磁盘」这层区别。
+    if (!hasEarlierHistory || !onLoadEarlierHistory) {
+      return;
+    }
+    const diskContainer = getScrollContainer();
+    if (diskContainer) {
+      pendingScrollAdjustRef.current = {
+        scrollHeight: diskContainer.scrollHeight,
+        scrollTop: diskContainer.scrollTop,
+      };
+    }
+    awaitingDiskPageRef.current = true;
+    historyWindowLoadingRef.current = true;
+    onLoadEarlierHistory();
+  }, [
+    currentSessionId,
+    getScrollContainer,
+    hasEarlierHistory,
+    hiddenTurnCount,
+    onLoadEarlierHistory,
+    userTurnStartIndexes.length,
+  ]);
+
+  // ── 更早的轮次：一个入口，两种来源 ────────────────────────────────────
+  // 轮次还在内存里就地展开；翻到内存边界、服务端还有更早的页时，同一个入口
+  // 向 host 要一页。界面上永远只有一个「更早」，不会并排出现两个按钮。
+  useEffect(() => {
+    if (!historyWindowLoading) {
+      historyWindowLoadingRef.current = false;
+    }
+  }, [historyWindowLoading]);
+
+  // 一页到达（host 的 loadedCount 增长）后把它算进下一次展开：用户点的是
+  // 「更早」，翻到的页必须看得见，而不是又被内存折叠立刻裁掉。
+  useEffect(() => {
+    const previous = previousLoadedCountRef.current;
+    previousLoadedCountRef.current = historyLoadedCount;
+    if (historyLoadedCount < previous) {
+      // The window was reset (new transcript): the page we were waiting for
+      // belongs to the previous session.
+      awaitingDiskPageRef.current = false;
+      return;
+    }
+    if (historyLoadedCount <= previous || !awaitingDiskPageRef.current) {
+      return;
+    }
+    awaitingDiskPageRef.current = false;
+    cardDebugLog('[MessageList] disk page arrived: revealing the new turns');
+    setRevealedTurnCount((prev) => prev + REVEAL_TURN_PAGE_SIZE);
+  }, [historyLoadedCount]);
+
+  const diskTurnsRemaining = totalTurns != null
+    ? Math.max(0, totalTurns - loadedTurns)
+    : 0;
+  // 「更早」还有多少轮：内存里被折叠的 + 服务端还没取回的。
+  const remainingEarlierTurns = hiddenTurnCount + diskTurnsRemaining;
+  const canRevealEarlier = hiddenTurnCount > 0 || hasEarlierHistory;
+  const earlierBusy = loadingEarlierHistory || historyWindowLoading;
 
   // Imperative API so the in-page search can expand everything before scanning.
   // Returns the number of messages that were just revealed (0 when nothing
@@ -431,22 +525,25 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
           ]}
         />
       )}
-      {shouldCollapse && (
+      {canRevealEarlier && (
         <div
-          className={`collapsed-messages-indicator ${loadingEarlierHistory ? 'is-loading loading' : ''}`}
-          onClick={loadingEarlierHistory ? undefined : handleRevealMore}
+          className={`collapsed-messages-indicator ${earlierBusy ? 'is-loading loading' : ''}`}
+          data-testid="load-earlier"
+          onClick={earlierBusy ? undefined : handleRevealMore}
         >
-          {loadingEarlierHistory ? (
+          {earlierBusy ? (
             <span className="collapsed-messages-loading-wrapper">
               <span className="codicon codicon-loading codicon-modifier-spin" />
               <span>{t('chat.loadingEarlierTurns')}</span>
             </span>
-          ) : (
+          ) : remainingEarlierTurns > 0 ? (
             t('chat.showEarlierTurns', {
-              count: nextTurnCount,
-              remaining: hiddenTurnCount,
-              total: userTurnStartIndexes.length,
+              count: Math.min(REVEAL_TURN_PAGE_SIZE, remainingEarlierTurns),
+              remaining: remainingEarlierTurns,
+              total: userTurnStartIndexes.length + diskTurnsRemaining,
             })
+          ) : (
+            t('chat.showEarlierConversation')
           )}
         </div>
       )}

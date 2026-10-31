@@ -338,7 +338,9 @@ export async function fileReferenceProvider(
       });
     }
 
-    // Timeout: resolve empty rather than hang forever
+    // Timeout: resolve empty rather than hang forever. opencode does the file
+    // work (fs.list / fs.find) over the daemon, so allow a little more than a
+    // pure in-process lookup would need on a cold daemon.
     setTimeout(() => {
       if (!pendingById.has(requestId)) {
         return;
@@ -346,7 +348,7 @@ export async function fileReferenceProvider(
       pendingById.delete(requestId);
       debugWarn('[fileReferenceProvider] list_files timed out', { requestId, searchQuery });
       resolve(filterFiles(DEFAULT_FILES, searchQuery));
-    }, 5000);
+    }, 8000);
   });
 }
 

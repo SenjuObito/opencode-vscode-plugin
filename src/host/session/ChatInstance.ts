@@ -43,6 +43,7 @@ export function seedSessionFromPersistedSelection(settings: SettingsService, ses
 }
 
 import { SessionHandler } from '../handlers/SessionHandler';
+import { TabSender } from '../handlers/TabSender';
 import { FontConfigHandler } from '../handlers/FontConfigHandler';
 import { ModelProviderHandler } from '../handlers/ModelProviderHandler';
 import { SettingsHandler } from '../handlers/SettingsHandler';
@@ -77,6 +78,8 @@ export interface ChatInstance {
 	dispatcher: MessageDispatcher;
 	session: OpenCodeSession;
 	sessionManager: SessionManager;
+	/** Shared tab sender (direct sends and the queue pump both use it). */
+	tabSender: TabSender;
 	historyHandler: HistoryHandler;
 	permissionHandler: PermissionHandler;
 	fontConfigHandler: FontConfigHandler;
@@ -94,6 +97,8 @@ export interface ChatInstance {
 	): OpenCodeSession;
 	/** 把某个历史会话加载进活跃 tab（v2 `session.load`）。 */
 	loadSessionById(sessionId: string): void;
+	/** 把某个会话更早的一页历史前插到它所属的 tab（v2 `session.loadEarlier`）。 */
+	loadEarlierMessages(sessionId: string): void;
 	/** 重新向 daemon 枚举 agent 目录并推送（v2 `agents.list`）。 */
 	refreshAgents(): void;
 	/**
@@ -108,8 +113,12 @@ export interface ChatInstance {
 	rejectPrompts(requestIds: string[]): void;
 	/** 把文本存到用户选定文件（v2 `save_json`）。 */
 	saveText(content: string, filename: string): Promise<boolean>;
-	/** 列举候选文件（v2 `files.list`）：目录由宿主按目标 tab 的 cwd 给出。 */
-	listFiles(query: string, directory: string | undefined): Promise<FileEntry[]>;
+	/** 列举候选文件（v2 `files.list`）：空 query 走 `fs.list`，非空走 `fs.find`。 */
+	listFiles(
+		query: string,
+		currentPath: string,
+		directory: string | undefined,
+	): Promise<FileEntry[]>;
 	/** 读取子代理 transcript（v2 `subagent.history`）。 */
 	loadSubagentHistory(payload: string): void;
 	/**
@@ -136,7 +145,8 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 	const dispatcher = new MessageDispatcher();
 	const permissionHandler = new PermissionHandler(context);
 	const fontConfigHandler = new FontConfigHandler(context);
-	dispatcher.registerHandler(new SessionHandler(context));
+	const tabSender = new TabSender(context);
+	dispatcher.registerHandler(new SessionHandler(context, tabSender));
 	dispatcher.registerHandler(new ModelProviderHandler(context));
 	dispatcher.registerHandler(new SettingsHandler(context));
 	dispatcher.registerHandler(fontConfigHandler);
@@ -197,6 +207,7 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		dispatcher,
 		session: sessionManager.getActiveSession(),
 		sessionManager,
+		tabSender,
 		historyHandler,
 		permissionHandler,
 		fontConfigHandler,
@@ -208,13 +219,15 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 				eventSink,
 			}),
 		loadSessionById: (sessionId) => historyHandler.loadSessionById(sessionId),
+		loadEarlierMessages: (sessionId) => historyHandler.loadEarlierById(sessionId),
 		refreshAgents: () => agentHandler.refresh(),
 		attachPromptRegistry: (registry, resolveTabId) => {
 			permissionHandler.attachPromptRegistry(registry, resolveTabId);
 		},
 		rejectPrompts: (requestIds) => permissionHandler.rejectPrompts(requestIds),
 		saveText: (content, filename) => exportHandler.saveText(content, filename),
-		listFiles: (query, directory) => fileHandler.listFiles(query, directory),
+		listFiles: (query, currentPath, directory) =>
+			fileHandler.listFiles(query, currentPath, directory),
 		loadSubagentHistory: (payload) => historyHandler.handleLoadSubagentSession(payload),
 		setEventPublisher: (publisher) => context.setEventPublisher(publisher),
 		dispose: () => sessionManager.dispose(),

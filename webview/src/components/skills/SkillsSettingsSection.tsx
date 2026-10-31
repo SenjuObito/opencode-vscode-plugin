@@ -10,6 +10,19 @@ interface SkillsSettingsSectionProps {
   currentProvider?: string;
 }
 
+/** 按磁盘标识去重，保留先出现的那条（host 已按来源优先级排序）。 */
+function dedupeBySkillId(list: Skill[]): Skill[] {
+  const seen = new Set<string>();
+  const result: Skill[] = [];
+  for (const skill of list) {
+    const key = skill.skillId || skill.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(skill);
+  }
+  return result;
+}
+
 /**
  * Skills settings component
  * Manages OpenCode Skills (global/local scopes)
@@ -50,12 +63,14 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
   };
 
   // Compute Skills lists (OpenCode uses global/local)
+  // 同一个 skillId 可能同时出现在多个活动目录（.claude / .agents / .opencode），
+  // 宿主已按优先级去重，这里再兜一层，防止旧的宿主版本把重复项画两遍。
   const primarySkillList = useMemo(
-    () => Object.values(skills.global ?? {}),
+    () => dedupeBySkillId(Object.values(skills.global ?? {})),
     [skills.global]
   );
   const secondarySkillList = useMemo(
-    () => Object.values(skills.local ?? {}),
+    () => dedupeBySkillId(Object.values(skills.local ?? {})),
     [skills.local]
   );
   const allSkillList = useMemo(() => [...primarySkillList, ...secondarySkillList], [primarySkillList, secondarySkillList]);
@@ -82,6 +97,7 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
       const query = searchQuery.toLowerCase();
       list = list.filter(s =>
         s.name.toLowerCase().includes(query) ||
+        (s.skillId || '').toLowerCase().includes(query) ||
         s.path.toLowerCase().includes(query) ||
         (s.description && s.description.toLowerCase().includes(query))
       );
@@ -193,10 +209,10 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
         // Remove in-progress state
         setTogglingSkills(prev => {
           const newSet = new Set(prev);
-          if (result.name) {
-            // Try to remove possible ID variants
+          const key = result.skillId || result.name;
+          if (key) {
             newSet.forEach(id => {
-              if (id.includes(result.name)) {
+              if (id.endsWith(`-${key}`) || id.endsWith(`-${key}-disabled`)) {
                 newSet.delete(id);
               }
             });
@@ -291,7 +307,9 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
   const confirmDelete = () => {
     if (deletingSkill) {
       sendToJava('delete_skill', {
+        skillId: deletingSkill.skillId || deletingSkill.name,
         name: deletingSkill.name,
+        path: deletingSkill.path,
         scope: deletingSkill.scope,
         enabled: deletingSkill.enabled,
       });
@@ -318,7 +336,9 @@ export function SkillsSettingsSection({ currentProvider: _currentProvider }: Ski
 
     setTogglingSkills(prev => new Set(prev).add(skill.id));
     sendToJava('toggle_skill', {
+      skillId: skill.skillId || skill.name,
       name: skill.name,
+      path: skill.path,
       scope: skill.scope,
       enabled: skill.enabled,
     });

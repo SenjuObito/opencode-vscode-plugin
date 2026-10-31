@@ -115,8 +115,9 @@
     "attachmentsUploaded": "[Pièces jointes téléchargées]",
     "streamingConnected": "En train de comprendre votre question…",
     "showEarlierMessages": "Afficher {{count}} messages précédents",
-    "showEarlierTurns": "Afficher les {{count}} tours précédents ({{remaining}} tours chargés restants)",
-    "loadEarlierTurns": "Charger {{count}} tours précédents depuis le disque ({{remaining}} sur {{total}} restants)",
+    "showEarlierTurns": "Afficher {{count}} tours précédents ({{remaining}} restants)",
+
+    "showEarlierConversation": "Afficher la conversation précédente",
     "loadEarlierMessages": "Charger {{count}} messages précédents ({{remaining}} sur {{total}} restants)",
     "loadingEarlierTurns": "Chargement des tours précédents",
     "totalDuration": "Cette réponse a pris",
@@ -168,6 +169,7 @@
     "retryCopy": "Copier à nouveau",
     "subagentsSection": "Sous-agents",
     "filesSection": "Fichiers",
+    "filesEmpty": "Aucun fichier correspondant",
     "renderError": "Erreur de rendu du message",
     "renameSession": "Renommer",
     "forkSession": "Dupliquer la session",
@@ -320,18 +322,18 @@
         "hint": "Lorsque activé, joue le son d'alerte configuré lorsque OpenCode vous pose une question. Utilise la sélection du son et les règles de focus ci-dessous."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "Afficher les notifications système uniquement lorsque l'IDE n'est pas au premier plan",
+        "label": "Afficher les notifications système uniquement lorsque VS Code n'est pas au premier plan",
         "enabled": "Activé",
         "disabled": "Désactivé",
-        "hint": "Lorsque activé, les notifications système de fin de tâche et de question s'affichent uniquement lorsque l'IDE n'est pas au premier plan."
+        "hint": "Lorsque activé, les notifications système de fin de tâche et de question s'affichent uniquement lorsque VS Code n'est pas au premier plan."
       },
       "soundNotification": {
         "label": "Son d'alerte de fin de tâche",
         "enabled": "Activé",
         "disabled": "Désactivé",
         "hint": "Lorsque activé, un son de notification est joué lorsque l'IA termine une tâche, afin que vous le sachiez même loin de l'écran.",
-        "onlyWhenUnfocused": "Jouer les sons d'alerte uniquement lorsque l'IDE n'est pas au premier plan",
-        "onlyWhenUnfocusedHint": "Lorsque activé, les sons d'alerte de fin de tâche et de question sont joués uniquement lorsque l'IDE n'est pas au premier plan.",
+        "onlyWhenUnfocused": "Jouer les sons d'alerte uniquement lorsque VS Code n'est pas au premier plan",
+        "onlyWhenUnfocusedHint": "Lorsque activé, les sons d'alerte de fin de tâche et de question sont joués uniquement lorsque VS Code n'est pas au premier plan.",
         "selectSound": "Son de notification",
         "soundDefault": "Par défaut",
         "soundChime": "Carillon",

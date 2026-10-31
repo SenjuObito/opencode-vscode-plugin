@@ -26,6 +26,7 @@ const FUNCTION_BY_TYPE: Record<string, string> = {
 	'message.snapshot': 'updateMessages',
 	'message.tail': 'updateMessageTail',
 	'message.prepended': 'updateMessagesPrepend',
+	'history.window': 'onHistoryWindowInfo',
 	'message.added': 'addUserMessage',
 	'message.history': 'addHistoryMessage',
 	'message.removed': 'onMessagesRemoved',
@@ -58,6 +59,8 @@ const FUNCTION_BY_TYPE: Record<string, string> = {
 	'subagent.status': 'onSubagentStatus',
 	'subagent.history': 'onSubagentHistoryLoaded',
 	'revert.changed': 'onRevertStateUpdate',
+	/** Projection of one tab's host-owned message queue. */
+	'tab.queue.changed': 'onTabQueueChanged',
 
 	// ── webview 回调事件 ──────────────────────────────────────────────
 	'agents.import.preview': 'agentImportPreviewResult',
@@ -76,6 +79,8 @@ const FUNCTION_BY_TYPE: Record<string, string> = {
 	'commands.saved': 'onCommandsSaved',
 	'session.compact.failed': 'onCompactError',
 	'session.compact.done': 'onCompactSuccess',
+	'session.compact.started': 'onCompactStarted',
+	'session.compact.delta': 'onCompactDelta',
 	'context.usage.error': 'onContextUsageError',
 	'clipboard.copied': 'onCopyToClipboardResult',
 	'font.editor.received': 'onEditorFontConfigReceived',

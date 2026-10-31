@@ -38,11 +38,24 @@ function computeSelectableIndices<T>(
   const idx: number[] = [];
   for (let i = 0; i < raw.length; i++) {
     const di = toDropdownItem(raw[i]);
-    if (di.type !== 'separator' && di.type !== 'section-header') {
+    if (!isNonSelectable(di)) {
       idx.push(i);
     }
   }
   return idx;
+}
+
+/**
+ * Headers/separators and notice rows (`__loading__` / `__info__`) never take
+ * part in keyboard or mouse selection.
+ */
+function isNonSelectable(item: DropdownItemData): boolean {
+  return (
+    item.type === 'separator' ||
+    item.type === 'section-header' ||
+    item.id === '__loading__' ||
+    item.id === '__info__'
+  );
 }
 
 interface CompletionDropdownOptions<T> {
@@ -376,10 +389,8 @@ export function useCompletionDropdown<T>({
     if (!currentState.isOpen) return false;
 
     const { items } = currentState;
-    // Filter selectable items (exclude separators and headers)
-    const selectableCount = items.filter(
-      i => i.type !== 'separator' && i.type !== 'section-header'
-    ).length;
+    // Filter selectable items (exclude separators, headers and notice rows)
+    const selectableCount = items.filter(i => !isNonSelectable(i)).length;
 
     switch (e.key) {
       case 'ArrowDown':

@@ -20,13 +20,58 @@
   flex-direction: column;
 }
 
-/* 倒计时进入警告窗口（≤30s）：与问题弹窗同一套黄色描边提醒。
- * 1px 边框 + 1px 外圈 = 视觉 2px，四边四角完全一致；
- * 不做脉动：问题弹窗是静态描边，两边保持一致，也避免闪烁时视觉粗细变化。 */
+/* 倒计时进入警告窗口（≤30s）：黄色描边 + 外圈脉动。
+ * 1px 边框 + 1px 外圈 = 视觉 2px，四边四角完全一致。
+ * 脉动只作用于外圈光晕（box-shadow 的扩散范围与透明度），边框颜色保持稳定；
+ * 不对整个弹窗做 opacity 动画，避免文字和选项跟着闪烁。 */
 .permission-dialog-v3.time-warning {
   border-color: var(--text-warning);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15),
-              0 0 0 1px var(--text-warning);
+  animation: permission-warning-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes permission-warning-pulse {
+  0%,
+  100% {
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15),
+                0 0 0 1px var(--text-warning),
+                0 0 0 1px rgba(204, 167, 0, 0.45);
+  }
+  50% {
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15),
+                0 0 0 1px var(--text-warning),
+                0 0 0 5px rgba(204, 167, 0, 0.18);
+  }
+}
+
+/* 最小化后仍要提醒：折叠条同样描黄边并脉动。 */
+.permission-dialog-overlay.warning-mode .permission-dialog-minimized {
+  border-color: var(--text-warning);
+  animation: permission-warning-pulse-minimized 1.4s ease-in-out infinite;
+}
+
+@keyframes permission-warning-pulse-minimized {
+  0%,
+  100% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2),
+                0 0 0 1px rgba(204, 167, 0, 0.45);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2),
+                0 0 0 4px rgba(204, 167, 0, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .permission-dialog-v3.time-warning {
+    animation: none;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15),
+                0 0 0 1px var(--text-warning);
+  }
+  .permission-dialog-overlay.warning-mode .permission-dialog-minimized {
+    animation: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2),
+                0 0 0 1px var(--text-warning);
+  }
 }
 
 .permission-dialog-v3-resize-handle {

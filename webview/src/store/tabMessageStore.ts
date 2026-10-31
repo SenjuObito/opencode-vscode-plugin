@@ -85,9 +85,35 @@ export class TabMessageStore {
     return this.toArray();
   }
 
+  /**
+   * Prepend an older page of the transcript.
+   *
+   * <p>A page and the transcript overlap at the boundary (the server pages by
+   * record, not by turn), so a message already present is skipped instead of
+   * being rendered twice. The existing order is otherwise untouched: prepending
+   * is the only operation that changes the head.</p>
+   *
+   * @returns the reconciled list
+   */
+  applyPrepend(messages: ClaudeMessage[]): ClaudeMessage[] {
+    if (messages.length === 0) return this.toArray();
+    const known = new Set(this.order);
+    const prependOrder: string[] = [];
+    const prependById = new Map<string, ClaudeMessage>();
+    messages.forEach((message, index) => {
+      const key = messageKey(message, index);
+      if (known.has(key) || prependById.has(key)) return;
+      prependOrder.push(key);
+      prependById.set(key, message);
+    });
+    if (prependOrder.length === 0) return this.toArray();
+    this.order = [...prependOrder, ...this.order];
+    prependById.forEach((message, key) => this.byId.set(key, message));
+    return this.toArray();
+  }
+
   /** Remove messages by id. */
-  removeByIds(ids: string[]): ClaudeMessage[] {
-    if (ids.length === 0) return this.toArray();
+  removeByIds(ids: string[]): ClaudeMessage[] {    if (ids.length === 0) return this.toArray();
     const removed = new Set(ids);
     this.order = this.order.filter((key) => !removed.has(key));
     ids.forEach((id) => this.byId.delete(id));

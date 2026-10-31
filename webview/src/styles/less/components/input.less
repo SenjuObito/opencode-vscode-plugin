@@ -1,9 +1,14 @@
 /* Input Area Styles */
 .input-area {
     padding: 9px 8px 8px;
-    background: var(--bg-chat);
-    border-top: 1px solid var(--bg-tertiary);
+    /* 透明：让 .chat-screen-shell 的画布（含空态极光）一直贯到底 */
+    background: transparent;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
     flex-shrink: 0;
+
+    [data-theme="light"] & {
+        border-top: 1px solid rgba(0, 0, 0, 0.06);
+    }
 }
 
 .input-container {

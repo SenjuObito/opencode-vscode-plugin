@@ -63,34 +63,31 @@
       fileReferenceProvider(query, signal).catch(() => []),
       subagentMentionProvider(query, signal).catch(() => []),
     ]);
-    // 渲染带有分组标题（Section Header）的统一列表：先展示子代理，后展示文件
+    // 渲染带有分组标题（Section Header）的统一列表：先展示子代理，后展示文件。
+    // 文件通道为空时保留「文件」分组并追加一条不可选中的提示行，
+    // 避免整段消失被误判为功能失效。
   }
   ```
 
 ---
 
-### 2.3 宿主端文件获取机制 (VS Code vs IDEA)
+### 2.3 文件候选来源（两个插件统一：opencode API）
 
-#### ① VS Code 插件（优先 OpenCode SDK）
-- **实现位置**：`src/host/handlers/FileHandler.ts` 与 `ai-bridge/services/opencode/opencode-sdk-client.js`
-- **主通道（OpenCode SDK）**：
-  1. Webview 发送 `list_files` 请求；
-  2. 宿主向 Daemon 发起 `opencode.findFiles` RPC；
-  3. `ai-bridge` 经由 `@opencode-ai/sdk/v2` 调用标准方法：
-     ```javascript
-     const result = await getClient().find.files({ query, limit, directory });
-     ```
-  4. OpenCode Serve 侧内置的 fff / ripgrep 引擎返回已按照**使用频次（frecency）与模糊度**排序的文件列表。
-- **本地兜底通道**：
-  - 若 Daemon 未启动或 OpenCode 服务离线，自动降级至本地 `vscode.workspace.findFiles` 结合当前打开的 Editor Tabs 进行快速收集。
+插件定位是 opencode 的 GUI，**不自己实现文件能力**。`@` 候选只有两个服务端端点：
 
-#### ② IDEA 插件（IntelliJ 平台原生索引）
-- **实现位置**：`FileHandler.java`
-- **收集流水线**：
-  - **Priority 0**：活跃 Terminals 与 Running Services；
-  - **Priority 1**：当前在编辑器中打开的文件（`FileEditorManager`）；
-  - **Priority 2**：最近打开的文件历史（`EditorHistoryManager`）；
-  - **Priority 3**：基于 IntelliJ VirtualFileManager 与 FileIndex 的本地文件树检索。
+| 输入 | 判定 | 宿主 RPC | 服务端端点 |
+|---|---|---|---|
+| `@` | 无搜索文本 | `opencode.listFiles` | `GET /api/fs/list?path=` |
+| `@src/` | 有目录、无搜索文本 | `opencode.listFiles`（`path=src`） | `GET /api/fs/list?path=src` |
+| `@src/ho` | 有搜索文本 | `opencode.findFiles`（`query=src/ho`） | `GET /api/fs/find?query=src/ho` |
+
+关键点：
+
+1. **空 query 不能走 `fs.find`**：它是模糊搜索，空串没有可匹配对象，服务端返回 `{"data":[]}`（这曾导致 `@` 只有子代理、没有文件）。目录浏览必须用 `fs.list`。
+2. **目录作用域**：服务端只认 `x-opencode-directory` 请求头（`directory` 查询参数会被忽略）。core 按**目标 tab 的 cwd** 设置该头，两个 tab 各自看各自的项目，不串目录。
+3. **路径规范化**：`fs.list` 返回相对目录的路径，Windows 下形如 `src\host\`。宿主统一转成 POSIX 并去掉尾分隔符，再拼出 `absolutePath` 与 `extension`。
+4. **事件回包**：结果作为 `files.listed` 事件投递到发起请求的 tab，载荷 `{files, requestId}`；`requestId` 用于乱序对齐。
+5. **自研采集器保留但停用**：VS Code 的 `collectEntries`/`scanDirectories`/`rankEntries`、IDEA 的 `OpenFileCollector`/`RecentFileCollector`/`FileSystemCollector`/`RuntimeContextCollector` 都还在代码里，由 `LOCAL_COLLECTORS_ENABLED = false` 关闭。产品路径不调用它们；daemon/服务不可用时返回空列表并由前端提示，而不是用本地快照冒充成功。
 
 ---
 
@@ -177,16 +174,17 @@ sequenceDiagram
         Coord->>Host: 获取 Agents 列表
         Host-->>Coord: 返回 Subagent 数组
     and 获取文件列表
-        Coord->>Host: 发送 list_files
-        alt VS Code 插件
-            Host->>Daemon: daemon.request('opencode.findFiles')
-            Daemon->>Server: SDK: client.find.files(...)
-            Server-->>Daemon: 排序文件数组 (fff engine)
-            Daemon-->>Host: 结果回包
-        else IDEA 插件
-            Host->>Host: 基于 IntelliJ 索引检索
+        Coord->>Host: files.list { query, currentPath, requestId }
+        alt 无搜索文本（"@" 或 "@src/"）
+            Host->>Daemon: opencode.listFiles(path)
+            Daemon->>Server: GET /api/fs/list?path=  (x-opencode-directory)
+        else 有搜索文本（"@src/ho"）
+            Host->>Daemon: opencode.findFiles(query=src/ho)
+            Daemon->>Server: GET /api/fs/find?query=src/ho  (x-opencode-directory)
         end
-        Host-->>Coord: window.onFileListResult(files)
+        Server-->>Daemon: 条目数组 [{path,type}]
+        Daemon-->>Host: 结果回包
+        Host-->>Coord: files.listed { files, requestId }（投递到目标 tab）
     end
     Coord-->>Input: 渲染分组下拉菜单 (子代理 + 文件)
     User->>Input: 选中目标文件
@@ -218,11 +216,14 @@ sequenceDiagram
 
 ## 6. 常见问题排查与 FAQ
 
-### Q1: VS Code 中输入 `@` 只有子代理，没有文件列表？
-- **排查点**：
-  1. 查看控制台日志中是否有 `[FileHandler][ai-bridge]` 相关报错。
-  2. 确认 `ai-bridge/services/opencode/opencode-sdk-client.js` 中是否使用了标准 `getClient().find.files(...)`，而非已废弃的 `getClient().v2.fs.find`。
-  3. 确认 OpenCode Serve 守护进程是否正常存活且端口（默认 4096）可达。
+### Q1: 输入 `@` 只有子代理、没有文件列表？
+- **根因**：`@` 时搜索文本为空，旧实现把它送进 `opencode.findFiles`（`GET /api/fs/find?query=`）。该端点是**模糊搜索**，空串没有可匹配对象，服务端返回 `{"data":[]}`；而本地采集器只在**请求抛异常**时才兜底，正常返回空数组不会触发，于是「文件」分组整体消失，只剩子代理。
+- **修复**：空搜索文本改走 `GET /api/fs/list?path=`（VS Code `opencode.listFiles`，IDEA 同名桥接），`@src/` 用 `path=src`；只有真正输入了文本才用 `fs.find`，并把目录前缀拼进 query（`src/ho`）。两个插件都不再在失败时用本地快照冒充成功。
+- **自查**：
+  1. 控制台应看到 `files.list tab=… query="" path="" cwd=… n=N`（VS Code `[TabFileCommandHandler]` / IDEA `[TabFileCommandHandler]`）。
+  2. `n=0` 时确认 daemon 存活、`cwd` 是目标 tab 的项目目录；前端会显示「未找到匹配的文件」而不是静默无分组。
+  3. 需要确认服务端行为时直接请求：`/api/fs/list?path=` 正常、`/api/fs/find?query=` 为空属预期。
+  4. 若日志出现 `Unknown command: opencode.listFiles`，说明打包用的 core 版本过旧（老 core 不认识该命令），需要用同级 `../opencode-buddy-core` 或新版本 core。
 
 ### Q2: 选中的文件在输入框内显示为纯文本而非蓝色 Chip？
 - **排查点**：

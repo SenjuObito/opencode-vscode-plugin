@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import HistoryView from './components/history/HistoryView';
 import SettingsView from './components/settings';
-import { sendHostCommand, sendWindowCommand } from './utils/bridge';
+import { sendBridgeEvent, sendHostCommand, sendWindowCommand } from './utils/bridge';
 import { createTabId, getTabStore } from './store/tabStore';
+import { uploadAttachments } from './utils/attachmentTransport';
+import { expandQuoteTokens } from './components/ChatInputBox/utils/quoteRegistry';
 import { registerHostEvents, unregisterHostEvents } from './utils/hostEventRegistry';
 import { copyViaHost } from './utils/copyUtils';
 import { preloadSlashCommands } from './components/ChatInputBox/providers';
@@ -35,11 +37,11 @@ import {
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
-import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
+import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved, MESSAGE_TYPES } from './utils/messageUtils';
 import { parseRevertStateEvent } from './utils/revertStateEvent';
-import type { ClaudeMessage } from './types';
+import type { ClaudeMessage, CompactSummaryMetadata } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
-import type { SessionTabData } from './components/ChatHeader/types';
+import type { CompactNoticeData, SessionTabData } from './components/ChatHeader/types';
 import { ToastContainer } from './components/Toast';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatScreen } from './components/ChatScreen';
@@ -90,6 +92,7 @@ const App = () => {
     sseTodos,
     isCompacting, setIsCompacting,
     compactingStartTime, setCompactingStartTime,
+    compactNotice, setCompactNotice,
   } = useMessages();
 
   // task_events live in TaskEventProvider (SubagentContext) so their updates do
@@ -215,7 +218,7 @@ const App = () => {
     handleReasoningChange,
     handleSendShortcutChange,
     handleAutoOpenFileEnabledChange,
-  } = useModelProviderState({ addToast, t, currentSessionId, currentSessionIdRef });
+  } = useModelProviderState({ currentSessionId, currentSessionIdRef });
 
   // ── Global drag event interception ──
   useEffect(() => {
@@ -447,6 +450,7 @@ const App = () => {
   const hasRevertStateRef = useRef(false);
   const revertBoundaryIdRef = useRef<string | null>(null);
   const lastLoadedRevertStateRef = useRef<string>('');
+  const compactSummaryDeltaRef = useRef<Record<string, string>>({});
 
   /**
    * 同步更新 revert 状态的 ref 与 boundary（ref 供回调内做变更检测，避开闭包旧值）。
@@ -604,21 +608,6 @@ const App = () => {
     sendHostCommand(sourceTabId, 'session.fork', { sourceTabId, targetTabId, messageId: id });
   }, [streamingActive, addToast, t, getMessageId, currentSessionId, currentSessionIdRef]);
 
-  /** 全量 fork（Header 按钮 + 斜杠 /fork）：复制整个会话，不带 messageID。 */
-  const handleForkFull = useCallback(() => {
-    if (streamingActive) {
-      addToast(t('chat.forkDisabledTooltip'), 'warning');
-      return;
-    }
-    const sid = currentSessionIdRef.current ?? currentSessionId;
-    const sourceTabId = getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId() ?? '';
-    if (!sourceTabId) return;
-    sendHostCommand(sourceTabId, 'session.fork', {
-      sourceTabId,
-      targetTabId: createTabId(),
-    });
-  }, [streamingActive, addToast, t, currentSessionId, currentSessionIdRef]);
-
   // Latest user message id, used by the builtin /undo slash command.
   const findLatestUserMessageId = useCallback((): string | undefined => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -629,6 +618,55 @@ const App = () => {
     }
     return undefined;
   }, [messages, getMessageId]);
+
+  /**
+   * Mark the compacting spinner on the tab that owns it.
+   *
+   * <p>The spinner is tab state, not window state: a compact that started in a
+   * background tab must stay visible when the user switches back.</p>
+   */
+  const setTabCompacting = useCallback((
+    tabId: string | null | undefined,
+    compacting: boolean,
+    startedAt: number | null,
+  ) => {
+    if (!tabId) return;
+    getTabStore().updateTab(tabId, (tab) => ({
+      ...tab,
+      isCompacting: compacting,
+      compactingStartTime: startedAt,
+    }));
+  }, []);
+
+  /**
+   * Store a compact result on the tab that owns the session.
+   *
+   * <p>A background tab has no visible transcript to append to, and a
+   * foreground tab loses an appended message when the history reload that
+   * follows the compaction replaces the transcript. Writing the result on the
+   * tab keeps one source of truth: it is rendered while the tab is active and
+   * cleared by the next user message.</p>
+   */
+  const applyCompactNotice = useCallback((
+    tabId: string | null | undefined,
+    notice: CompactNoticeData,
+  ) => {
+    const merge = (prev: CompactNoticeData | null | undefined): CompactNoticeData => (
+      prev && prev.status === 'failure' && notice.status === 'failure' && !prev.detail && notice.detail
+        ? { ...prev, detail: notice.detail }
+        : notice
+    );
+    if (tabId) {
+      getTabStore().updateTab(tabId, (tab) => ({
+        ...tab,
+        isCompacting: false,
+        compactingStartTime: null,
+        compactNotice: merge(tab.compactNotice),
+      }));
+    } else {
+      setCompactNotice((prev) => merge(prev));
+    }
+  }, [setCompactNotice]);
 
   // Register bridge callbacks for share / fork / revert / compact results
   useEffect(() => {
@@ -776,26 +814,237 @@ const App = () => {
     window.onMessagesRemoved = (json: string) => {
       handleMessagesRemovedEvent(json);
     };
-    window.onCompactSuccess = (targetSessionId?: string) => {
-      if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
+    const resolveCompactTab = (targetSessionId?: string | null, envTabId?: string): string | null => {
+      const store = getTabStore();
+      return envTabId
+        || (targetSessionId ? store.findIdBySession(targetSessionId) : null)
+        || store.getActiveTabId()
+        || null;
+    };
+    const isForegroundCompact = (targetSessionId?: string | null): boolean => (
+      !targetSessionId
+      || getTabStore().size() === 0
+      || getTabStore().isActiveSession(targetSessionId)
+    );
+    const onCompactSuccess = (arg0?: unknown, env?: { tabId?: string }) => {
+      const body = arg0 && typeof arg0 === 'object' ? arg0 as Record<string, unknown> : {};
+      const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+      const targetSessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        || (typeof arg0 === 'string' ? arg0 : undefined)
+        || currentSessionIdRef.current;
+      const ownerTabId = resolveCompactTab(targetSessionId, env?.tabId);
+      const isForeground = isForegroundCompact(targetSessionId);
+
+      const summaryText = typeof data.summary === 'string'
+        ? data.summary
+        : (targetSessionId ? compactSummaryDeltaRef.current[targetSessionId] || '' : '');
+      const reason = typeof data.reason === 'string' ? data.reason : 'auto';
+      const tokens = typeof data.tokens === 'object' && data.tokens !== null ? data.tokens as Record<string, unknown> : undefined;
+
+      const meta: CompactSummaryMetadata = {
+        trigger: reason,
+        preTokens: typeof tokens?.preTokens === 'number' ? tokens.preTokens : (typeof tokens?.before === 'number' ? tokens.before : undefined),
+        postTokens: typeof tokens?.postTokens === 'number' ? tokens.postTokens : (typeof tokens?.after === 'number' ? tokens.after : undefined),
+        durationMs: typeof tokens?.durationMs === 'number' ? tokens.durationMs : undefined,
+      };
+
+      const updateListWithSuccess = (list: ClaudeMessage[]): ClaudeMessage[] => {
+        const inProgressIdx = list.findIndex(
+          (m) => m.raw && typeof m.raw === 'object' && m.raw.isCompactSummary && m.raw.compactStatus === 'in_progress'
+        );
+        if (inProgressIdx !== -1) {
+          const updated = [...list];
+          const old = updated[inProgressIdx];
+          updated[inProgressIdx] = {
+            ...old,
+            content: summaryText,
+            raw: {
+              ...(typeof old.raw === 'object' ? old.raw : {}),
+              isCompactSummary: true,
+              compactStatus: 'success',
+              compactMetadata: meta,
+            },
+          };
+          return updated;
+        }
+        if (summaryText) {
+          return [
+            ...list,
+            {
+              id: `compact_${Date.now()}`,
+              type: MESSAGE_TYPES.NOTIFICATION,
+              content: summaryText,
+              raw: {
+                isCompactSummary: true,
+                compactStatus: 'success',
+                compactMetadata: meta,
+              },
+            },
+          ];
+        }
+        return list;
+      };
+
+      if (!isForeground && targetSessionId) {
+        getTabStore().updateBackgroundTab(targetSessionId, (t) => {
+          t.messages = updateListWithSuccess(t.messages ?? []);
+        });
+      } else {
+        setMessages((prev) => updateListWithSuccess(prev));
+      }
+
+      if (targetSessionId) {
+        delete compactSummaryDeltaRef.current[targetSessionId];
+      }
+
+      // Record the result before the foreground check: a compact that finishes
+      // in a background tab must still show its pill when the user switches back.
+      applyCompactNotice(ownerTabId, { status: 'success', at: Date.now() });
+      if (!isForeground) {
         return;
       }
       setIsCompacting(false);
       setCompactingStartTime(null);
-      setMessages((prev) => [...prev, createCompactSuccessNotice(t('chat.compactSuccess'))]);
+      setTabCompacting(ownerTabId, false, null);
       // Force scroll to bottom after compact completes
       requestAnimationFrame(() => {
         scrollToBottom();
       });
+      // 重新拉一次历史：压缩后的转录以服务端为准，提示条挂在 tab 状态上，
+      // 不会随这次刷新消失（只有用户发下一条消息才清）。
+      const activeSessionId = targetSessionId || currentSessionIdRef.current;
+      if (activeSessionId) {
+        void loadHistorySession(activeSessionId);
+      }
     };
-    window.onCompactError = (targetSessionId?: string, detail?: string) => {
-      if (targetSessionId && currentSessionIdRef.current && targetSessionId !== currentSessionIdRef.current) {
+
+    const onCompactError = (arg0?: unknown, detailArg?: unknown, env?: { tabId?: string }) => {
+      const body = arg0 && typeof arg0 === 'object' ? arg0 as Record<string, unknown> : {};
+      const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+      const targetSessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        || (typeof arg0 === 'string' ? arg0 : undefined)
+        || currentSessionIdRef.current;
+      const detail = typeof data.error === 'string'
+        ? data.error
+        : (typeof detailArg === 'string' ? detailArg : undefined);
+      const ownerTabId = resolveCompactTab(targetSessionId, env?.tabId);
+      const isForeground = isForegroundCompact(targetSessionId);
+
+      const updateListWithError = (list: ClaudeMessage[]): ClaudeMessage[] => {
+        const inProgressIdx = list.findIndex(
+          (m) => m.raw && typeof m.raw === 'object' && m.raw.isCompactSummary && m.raw.compactStatus === 'in_progress'
+        );
+        if (inProgressIdx !== -1) {
+          const updated = [...list];
+          const old = updated[inProgressIdx];
+          updated[inProgressIdx] = {
+            ...old,
+            raw: {
+              ...(typeof old.raw === 'object' ? old.raw : {}),
+              isCompactSummary: true,
+              compactStatus: 'failure',
+              compactDetail: detail,
+            },
+          };
+          return updated;
+        }
+        return list;
+      };
+
+      if (!isForeground && targetSessionId) {
+        getTabStore().updateBackgroundTab(targetSessionId, (t) => {
+          t.messages = updateListWithError(t.messages ?? []);
+        });
+      } else {
+        setMessages((prev) => updateListWithError(prev));
+      }
+
+      applyCompactNotice(ownerTabId, { status: 'failure', detail, at: Date.now() });
+      if (!isForeground) {
         return;
       }
       setIsCompacting(false);
       setCompactingStartTime(null);
-      setMessages((prev) => [...prev, createCompactFailureNotice(t('chat.compactFailed'), detail)]);
+      setTabCompacting(ownerTabId, false, null);
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
     };
+
+    const onCompactStarted = (payload?: unknown, env?: { tabId?: string }) => {
+      const body = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+      const sessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        || (typeof payload === 'string' ? payload : undefined);
+      const startedAt = typeof data.startedAt === 'number' ? data.startedAt : Date.now();
+      const reason = typeof data.reason === 'string' ? data.reason : 'auto';
+      const store = getTabStore();
+      const tabId = env?.tabId
+        || (sessionId ? store.findIdBySession(sessionId) : null)
+        || store.getActiveTabId()
+        || null;
+      setTabCompacting(tabId, true, startedAt);
+      if (!tabId || store.isActiveTab(tabId)) {
+        setIsCompacting(true);
+        setCompactingStartTime(startedAt);
+      }
+      if (sessionId) {
+        compactSummaryDeltaRef.current[sessionId] = '';
+      }
+
+      const inProgressMsg: ClaudeMessage = {
+        id: `compact_${Date.now()}`,
+        type: MESSAGE_TYPES.NOTIFICATION,
+        content: '',
+        raw: {
+          isCompactSummary: true,
+          compactStatus: 'in_progress',
+          trigger: reason,
+          startTime: startedAt,
+        },
+      };
+
+      const isForeground = !sessionId || store.size() === 0 || store.isActiveSession(sessionId);
+      if (!isForeground && sessionId) {
+        store.updateBackgroundTab(sessionId, (t) => {
+          const list = t.messages ?? [];
+          const exists = list.some((m) => m.raw && typeof m.raw === 'object' && m.raw.isCompactSummary && m.raw.compactStatus === 'in_progress');
+          if (!exists) {
+            t.messages = [...list, inProgressMsg];
+          }
+        });
+      } else {
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.raw && typeof m.raw === 'object' && m.raw.isCompactSummary && m.raw.compactStatus === 'in_progress');
+          if (exists) return prev;
+          return [...prev, inProgressMsg];
+        });
+        requestAnimationFrame(() => scrollToBottom());
+      }
+    };
+
+    const onCompactDelta = (payload?: unknown) => {
+      const data = payload && typeof payload === 'object'
+        ? (('data' in (payload as Record<string, unknown>) && typeof (payload as Record<string, unknown>).data === 'object')
+            ? (payload as Record<string, unknown>).data as Record<string, unknown>
+            : payload as Record<string, unknown>)
+        : {};
+      const targetSessionId = (typeof data.sessionId === 'string' ? data.sessionId : undefined)
+        || (typeof payload === 'string' ? payload : undefined)
+        || currentSessionIdRef.current;
+      const text = typeof data.text === 'string' ? data.text : (typeof (payload as Record<string, unknown>)?.delta === 'string' ? (payload as Record<string, unknown>).delta as string : '');
+      if (targetSessionId && text) {
+        compactSummaryDeltaRef.current[targetSessionId] = (compactSummaryDeltaRef.current[targetSessionId] || '') + text;
+      }
+    };
+
+    window.onCompactSuccess = onCompactSuccess;
+    window.onCompactError = onCompactError;
+    window.onCompactStarted = onCompactStarted;
+    window.onCompactDelta = onCompactDelta;
+
     // Named command results (G8 command plane): the host publishes these with
     // legacy:false, so the window.<fn> assignments above are only the fallback
     // for a view that has not mounted this effect yet.
@@ -844,11 +1093,17 @@ const App = () => {
       },
       'revert.changed': handleRevertStateEvent,
       'message.removed': handleMessagesRemovedEvent,
-      'session.compact.done': (payload: Record<string, unknown>) => {
-        window.onCompactSuccess?.(String(payload.data ?? payload.sessionId ?? ''));
+      'session.compact.done': (payload: Record<string, unknown>, env?: { tabId?: string }) => {
+        onCompactSuccess(payload, env);
       },
-      'session.compact.failed': (payload: Record<string, unknown>) => {
-        window.onCompactError?.(String(payload.data ?? ''), String(payload.error ?? ''));
+      'session.compact.failed': (payload: Record<string, unknown>, env?: { tabId?: string }) => {
+        onCompactError(payload, undefined, env);
+      },
+      'session.compact.started': (payload: Record<string, unknown>, env?: { tabId?: string }) => {
+        onCompactStarted(payload, env);
+      },
+      'session.compact.delta': (payload: Record<string, unknown>) => {
+        onCompactDelta(payload);
       },
     });
 
@@ -860,7 +1115,8 @@ const App = () => {
         'session.revert.failed',
         'revert.changed',
         'message.removed',
-        'session.compact.done', 'session.compact.failed',
+        'session.compact.done', 'session.compact.failed', 'session.compact.started',
+        'session.compact.delta',
       ]);
       delete window.onForkSuccess;
       delete window.onForkError;
@@ -871,8 +1127,10 @@ const App = () => {
       delete window.onMessagesRemoved;
       delete window.onCompactSuccess;
       delete window.onCompactError;
+      delete window.onCompactStarted;
+      delete window.onCompactDelta;
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setIsCompacting, setCompactingStartTime, scrollToBottom, customSessionTitleRef]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setTabCompacting, applyCompactNotice, scrollToBottom, customSessionTitleRef]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
@@ -910,15 +1168,25 @@ const App = () => {
   });
 
   // ── Message processing ──
+  // Compact feedback is tab state, not a transcript entry. Injecting it here
+  // keeps one success/failure pill across the history reload and tab switches
+  // that follow a compaction; the next user message clears it.
+  const messagesWithCompactNotice = useMemo(() => {
+    if (!compactNotice) return messages;
+    const notice = compactNotice.status === 'failure'
+      ? createCompactFailureNotice(t('chat.compactFailed'), compactNotice.detail)
+      : createCompactSuccessNotice(t('chat.compactSuccess'));
+    return [...messages, notice];
+  }, [messages, compactNotice, t]);
+
   const {
     getMessageText, getContentBlocks,
     mergedMessages, sentAttachmentsRef,
-  } = useMessageProcessing({ messages, currentSessionId, t });
+  } = useMessageProcessing({ messages: messagesWithCompactNotice, currentSessionId, t });
 
   // ── Message sender ──
   const {
     handleSubmit: hookHandleSubmit,
-    executeMessage,
     interruptSession,
   } = useMessageSender({
     t, addToast,
@@ -967,12 +1235,18 @@ const App = () => {
     setPendingRevert(null);
   }, []);
 
-  // ── Message queue ──
+  // ── Message queue (host-owned projection) ──
+  // The host owns the per-tab queue and its single consumer. This hook only
+  // sends commands and renders the snapshot; switching tabs cannot send here.
   const {
     queue: messageQueue,
+    paused: messageQueuePaused,
+    lastError: messageQueueError,
     enqueue: enqueueMessage,
+    enqueueCommand,
     dequeue: dequeueMessage,
-  } = useMessageQueue({ isLoading: loading, isCompacting, onExecute: executeMessage });
+    resumeQueue: resumeMessageQueue,
+  } = useMessageQueue();
 
   /**
    * 发送真实消息前消费 revert 边界。与 opencode 服务端语义一致：
@@ -1012,19 +1286,13 @@ const App = () => {
     applyRevertState(false);
   }, [messages, getMessageId, applyRevertState, setMessages]);
 
-  // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才真正发送 ──
+  // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才入队 ──
   const doCompact = useCallback(() => {
     consumeRevertBoundary();
-    const sid = currentSessionIdRef.current;
-    const tabId = sid
-      ? getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId()
-      : getTabStore().getActiveTabId();
-    if (tabId) {
-      sendHostCommand(tabId, 'session.compact', {}, sid ?? null);
-    }
-    setIsCompacting(true);
-    setCompactingStartTime(Date.now());
-  }, [consumeRevertBoundary, setIsCompacting, setCompactingStartTime, currentSessionIdRef]);
+    // The indicator only lights when the host really starts the command
+    // (`session.compact.started`), never while it still waits in the queue.
+    enqueueCommand('/compact');
+  }, [consumeRevertBoundary, enqueueCommand]);
   const { showCompactConfirm, requestCompact, handleCompactConfirmed, handleCancelCompact } =
     useCompactConfirm(doCompact);
 
@@ -1043,36 +1311,48 @@ const App = () => {
 
   // Handle opencode builtin session commands typed as slash commands
   // (mirror the TUI: /compact /undo /redo /fork /share /unshare).
+  // They join the same per-tab FIFO as prompts: a command typed while a turn
+  // is running runs after the messages already queued ahead of it.
   const handleBuiltinCommand = useCallback((command: string) => {
     switch (command) {
       case '/compact':
-        // 先弹确认框；确认后 doCompact 才发送（不可撤销操作）。
+        // 先弹确认框；确认后 doCompact 才入队（不可撤销操作）。
         requestCompact();
         break;
       case '/undo': {
+        // Freeze the current newest user message now: queued messages ahead of
+        // this command must not move the undo target.
         const id = findLatestUserMessageId();
-        if (id) {
-          handleUndoMessage({ type: 'user', id } as ClaudeMessage);
-        } else {
-          // 本地无 id —— 交给宿主通过 listMessages 解析
-          handleUndoMessage({ type: 'user' } as ClaudeMessage);
-        }
+        enqueueCommand('/undo', id ? { messageId: id } : undefined);
         break;
       }
       case '/redo':
-        handleRedoMessage();
+        enqueueCommand('/redo');
         break;
-      case '/fork':
-        handleForkFull();
+      case '/fork': {
+        const sid = currentSessionIdRef.current ?? currentSessionId;
+        const sourceTabId = getTabStore().findIdBySession(sid) ?? getTabStore().getActiveTabId();
+        if (!sourceTabId) return;
+        // Reserve the destination tab now so the fork cannot open an orphan.
+        enqueueCommand('/fork', { targetTabId: createTabId() });
         break;
+      }
       case '/share':
-        void handleShare();
+        if (shareHidden) return;
+        enqueueCommand('/share');
         break;
       case '/unshare':
-        void handleUnshare();
+        enqueueCommand('/unshare');
         break;
     }
-  }, [requestCompact, handleUndoMessage, handleRedoMessage, handleForkFull, handleShare, handleUnshare]);
+  }, [
+    requestCompact,
+    findLatestUserMessageId,
+    enqueueCommand,
+    currentSessionId,
+    currentSessionIdRef,
+    shareHidden,
+  ]);
 
   // Reset share / compact-confirm state on session switch
   // 切换会话时不再抹杀 revert 状态，因为各 Tab 拥有自己独立的 revertBoundaryId
@@ -1124,15 +1404,76 @@ const App = () => {
         return;
       }
     }
-    // 普通消息 / 队列消息 / !shell —— 服务端 prompt 前都会 cleanup revert
-    consumeRevertBoundary();
-    // If loading or compacting, add to queue
-    if (loading || isCompacting) {
-      enqueueMessage(content, attachments);
+    // 普通消息 / 队列消息 / !shell：
+    // 入队前把 quote chip 展开成完整引用（registry 会被 prune，排队消息不能再
+    // 依赖发送时刻的 registry），附件先按**当前 tab** 上传，宿主只收 id。
+    // 之后由宿主的单消费者决定立即发还是等本 tab 的 turn 结束——webview 不再
+    // 读 loading 判断，也不会在切 tab 后用别的会话/模型/附件发送。
+    const expanded = expandQuoteTokens(content).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (!expanded && !hasAttachments) return;
+    // A new intent dismisses the previous compact result pill.
+    setCompactNotice(null);
+    const tabId = getTabStore().getActiveTabId();
+    if (!tabId) {
+      addToast(t('chat.sendFailedNoTab', { defaultValue: '发送失败：找不到当前标签页' }), 'error');
       return;
     }
-    hookHandleSubmit(content, attachments, fileTags);
-  }, [loading, isCompacting, enqueueMessage, hookHandleSubmit, forceCreateNewSession, currentProvider, handleModeSelect, setCurrentView, addToast, t, handleBuiltinCommand, consumeRevertBoundary]);
+
+    const uploaded = uploadAttachments(tabId, attachments);
+    const resolvedFileTags = (fileTags && fileTags.length > 0)
+      ? fileTags
+      : (chatInputRef.current?.getFileTags() ?? []);
+
+    // Keep non-image attachment metadata for rendering the user bubble the
+    // host will push back (the message itself is built on the host).
+    const nonImageAttachments = (attachments ?? []).filter(
+      (attachment) => !attachment.mediaType?.startsWith('image/'),
+    );
+    if (nonImageAttachments.length > 0) {
+      const MAX_ATTACHMENT_CACHE_SIZE = 100;
+      if (sentAttachmentsRef.current.size >= MAX_ATTACHMENT_CACHE_SIZE) {
+        const firstKey = sentAttachmentsRef.current.keys().next().value;
+        if (firstKey !== undefined) {
+          sentAttachmentsRef.current.delete(firstKey);
+        }
+      }
+      sentAttachmentsRef.current.set(expanded, nonImageAttachments.map((attachment) => ({
+        fileName: attachment.fileName,
+        mediaType: attachment.mediaType,
+      })));
+    }
+
+    // Providers are a window-level setting; keep the legacy sync before a send.
+    sendBridgeEvent('set_provider', currentProvider);
+
+    enqueueMessage({
+      content: expanded,
+      attachments: uploaded,
+      fileTags: resolvedFileTags.map((tag) => ({
+        displayPath: tag.displayPath,
+        absolutePath: tag.absolutePath,
+      })),
+      model: selectedModel ?? null,
+      permissionMode,
+      reasoningEffort,
+    });
+  }, [
+    enqueueMessage,
+    hookHandleSubmit,
+    forceCreateNewSession,
+    currentProvider,
+    selectedModel,
+    permissionMode,
+    reasoningEffort,
+    chatInputRef,
+    sentAttachmentsRef,
+    handleModeSelect,
+    setCurrentView,
+    addToast,
+    t,
+    handleBuiltinCommand,
+    setCompactNotice,
+  ]);
 
   // ── Chat-view computations (stage 5 of TASK-P1-01) ──
   const {
@@ -1142,7 +1483,7 @@ const App = () => {
   } = useChatComputations({
     t, messages, mergedMessages, subagentHistories, customSessionTitle, streamingActive, currentProvider,
     currentSessionId, currentSessionIdRef,
-    getMessageText, getContentBlocks, sseTodos,
+    getContentBlocks, sseTodos,
   });
 
   const { handleUndoFile, handleDiscardAll: handleDiscardAllRaw, handleKeepAll } = fileChangeMgmt;
@@ -1376,7 +1717,10 @@ const App = () => {
               onReasoningChange={handleReasoningChange}
               onAutoOpenFileEnabledChange={setActiveTabAutoOpenFileEnabled}
               messageQueue={messageQueue}
+              queuePaused={messageQueuePaused}
+              queueError={messageQueueError}
               onRemoveFromQueue={dequeueMessage}
+              onResumeQueue={resumeMessageQueue}
             />
           </div>
           {currentView === 'history' && (

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import type { TFunction } from 'i18next';
 import { sendBridgeEvent, sendHostCommand } from '../utils/bridge';
 import { getTabStore } from '../store/tabStore';
 import {
@@ -19,8 +18,6 @@ import { useModelStatePersistence } from './providers/useModelStatePersistence';
 export type ViewMode = 'chat' | 'history' | 'settings';
 
 export interface UseModelProviderStateOptions {
-  addToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
-  t: TFunction;
   /** Current tab's sessionId, so the change is scoped to the right tab session. */
   currentSessionId?: string | null;
   /** Ref to the current tab's sessionId (always fresh). */
@@ -69,8 +66,6 @@ function resolveBoundSessionId(
  * Orchestrates provider/model/permission state for OpenCode.
  */
 export function useModelProviderState({
-  addToast,
-  t,
   currentSessionId,
   currentSessionIdRef,
 }: UseModelProviderStateOptions) {
@@ -87,7 +82,7 @@ export function useModelProviderState({
 
   const openCode = useOpenCodeProvider();
   const { isSdkInstalled, isSdkStatusKnown, ...usage } = useUsageTracking();
-  const settings = useProviderSettings({ addToast, t });
+  const settings = useProviderSettings();
 
   const {
     selectedOpenCodeModel, setSelectedOpenCodeModel,

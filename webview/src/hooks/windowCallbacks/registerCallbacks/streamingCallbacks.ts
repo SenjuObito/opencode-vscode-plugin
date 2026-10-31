@@ -1036,16 +1036,6 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       if (updateBackgroundTab(env, (tab) => { tab.sessionId = sessionId || null; })) return;
       window.setSessionId?.(sessionId);
     },
-    'tab.title.changed': (payload: unknown, env?: HostEventEnvelope) => {
-      const data = payloadOf(payload);
-      const title = typeof data.title === 'string' ? data.title : '';
-      const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
-      if (!title) return;
-      if (updateBackgroundTab(env, (tab) => {
-        if (!tab.isCustomTitle) tab.title = title;
-      })) return;
-      if (sessionId) window.updateSessionTitle?.(sessionId, title);
-    },
     'status.updated': (payload: unknown, env?: HostEventEnvelope) => {
       const status = String(payloadOf(payload).status ?? '');
       if (updateBackgroundTab(env, (tab) => { tab.status = status; })) return;
@@ -1152,6 +1142,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
         tab.messages = [];
         tab.messageStore?.applySnapshot([]);
         tab.streamingActive = false;
+        // The tab lost its transcript: the older pages it could still read
+        // belong to a session it no longer shows.
+        tab.historyWindow = null;
       })) return;
       window.clearMessages?.(String(barrier ?? 0));
     },

@@ -28,6 +28,7 @@ import {
   isTabTransitioning,
   transitionTargetOfSession,
 } from '../tabTransition';
+import { getTabStore } from '../../../store/tabStore';
 import { parseSequence } from '../parseSequence';
 import { reconstructTurnMetadata } from '../../../utils/turnMetadataReconstruction';
 import { collectUnresolvedToolUseIds } from './streamingCallbacks';
@@ -63,7 +64,6 @@ export function registerMessageCallbacks(
     patchAssistantForStreaming,
     updateContextUsageData,
     closeContextUsageDialog,
-    currentSessionIdRef,
   } = options;
 
   const ensureStreamingAssistantPreserved = (prevList: ClaudeMessage[], resultList: ClaudeMessage[]): ClaudeMessage[] => {
@@ -579,79 +579,6 @@ export function registerMessageCallbacks(
 
   window.updateMessageTail = processMessageTail;
 
-  // ── opencode 恢复分页/回源：前插更早的历史页 ──
-  // 宿主窗口（恢复或活跃会话逐出）之外的历史经 `load_earlier_messages` 回源，
-  // 宿主回推本回调前插。第二个参数是页起点全局序号：webview 用它维护
-  // __opencodeListStart（列表首条的全局序号），后续窗口快照据此拼接。
-  // __prependedHistoryMessageCount 同步累加：基址不变的同代快照走 legacy
-  // 合并路径时，靠它保留已前插的页（Codex 既有机制）。
-  window.updateMessagesPrepend = (json, pageStartArg) => {
-    if (isActiveTabTransitioning()) return;
-    if (isStreamingRef.current) return;
-    let parsed: ClaudeMessage[];
-    try {
-      parsed = JSON.parse(json) as ClaudeMessage[];
-    } catch (error) {
-      console.error('[Frontend] Failed to parse earlier messages page:', error);
-      return;
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0) return;
-    const pageStart = pageStartArg != null && pageStartArg !== ''
-      ? Number(pageStartArg)
-      : null;
-    const container = messagesContainerRef.current;
-    const oldScrollHeight = container?.scrollHeight ?? 0;
-    const oldScrollTop = container?.scrollTop ?? 0;
-
-    // ── 分页累积上限：页区域超过 MAX_PAGED_MESSAGES 时丢最老的页 ──
-    // 大型会话用户连点分页会让 webview state 无界增长；被裁掉的区间经
-    // set_earlier_cursor 回报宿主回滚游标，下次「加载更早」可重新回源，
-    // 不产生取不到的空档。
-    const MAX_PAGED_MESSAGES = 800;
-    let drop = 0;
-    let newStart = pageStart != null && Number.isSafeInteger(pageStart) && (pageStart as number) >= 0
-      ? pageStart as number
-      : (window.__opencodeListStart ?? 0);
-    const windowBase = window.__messageBaseIndex ?? 0;
-    if (windowBase > newStart) {
-      const pagedCount = windowBase - newStart;
-      if (pagedCount > MAX_PAGED_MESSAGES) {
-        drop = pagedCount - MAX_PAGED_MESSAGES;
-        newStart += drop;
-      }
-    }
-
-    setMessages((prev) => (drop > 0 ? [...parsed, ...prev].slice(drop) : [...parsed, ...prev]));
-    window.__opencodeListStart = newStart;
-    const prevPrepended = window.__prependedHistoryMessageCount;
-    window.__prependedHistoryMessageCount =
-      Math.max(0, (typeof prevPrepended === 'number' ? prevPrepended : 0) + parsed.length - drop);
-    if (drop > 0) {
-      sendBridgeEvent('set_earlier_cursor', JSON.stringify({
-        sessionId: currentSessionIdRef.current,
-        cursor: newStart,
-      }));
-    }
-    if (container) {
-      requestAnimationFrame(() => {
-        const currentContainer = messagesContainerRef.current;
-        if (!currentContainer) return;
-        currentContainer.scrollTop = oldScrollTop + currentContainer.scrollHeight - oldScrollHeight;
-      });
-    }
-  };
-
-  window.onHistoryWindowInfo = (json) => {
-    try {
-      window.__opencodeHistoryWindow = JSON.parse(json) as NonNullable<Window['__opencodeHistoryWindow']>;
-      window.dispatchEvent(new CustomEvent('opencode-history-window-info', {
-        detail: window.__opencodeHistoryWindow,
-      }));
-    } catch (error) {
-      console.error('[Frontend] Failed to parse history window info:', error);
-    }
-  };
-
 
   const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;
   if (typeof pendingMessages === 'string' && pendingMessages.length > 0) {
@@ -828,7 +755,6 @@ export function registerMessageCallbacks(
       window.__pendingUpdateSequence = null;
     }
     window.__deniedToolIds?.clear();
-    window.__opencodeHistoryWindow = undefined;
     window.__opencodeListStart = 0;
     window.__prependedHistoryMessageCount = 0;
     window.__messageBaseIndex = 0;
@@ -837,6 +763,14 @@ export function registerMessageCallbacks(
     window.__historySurfaceRefreshEpoch = (window.__historySurfaceRefreshEpoch ?? 0) + 1;
     resetTransientUiState();
     closeContextUsageDialog();
+    // The transcript is gone, so the tab's paging window is too: a stale
+    // `hasEarlier` would point the disk button at the previous session.
+    const tabId = activeTabId();
+    if (tabId) {
+      getTabStore().updateTab(tabId, (tab) => {
+        tab.historyWindow = null;
+      });
+    }
     setMessages([]);
   };
 

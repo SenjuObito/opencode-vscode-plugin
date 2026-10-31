@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { Attachment, QueuedMessage } from './types.js';
+import type { Attachment, QueuedMessage, TabQueueErrorView } from './types.js';
 import type { ClaudeMessage } from '../../types';
 import { AttachmentList } from './AttachmentList.js';
 import { ContextBar } from './ContextBar.js';
@@ -25,7 +25,10 @@ export function ChatInputBoxHeader({
   statusPanelExpanded,
   onToggleStatusPanel,
   messageQueue,
+  queuePaused,
+  queueError,
   onRemoveFromQueue,
+  onResumeQueue,
   autoOpenFileEnabled,
   onRequestEnableFileContext,
   onCompactClick,
@@ -50,7 +53,10 @@ export function ChatInputBoxHeader({
   statusPanelExpanded: boolean;
   onToggleStatusPanel?: () => void;
   messageQueue?: QueuedMessage[];
+  queuePaused?: boolean;
+  queueError?: TabQueueErrorView | null;
   onRemoveFromQueue?: (id: string) => void;
+  onResumeQueue?: () => void;
   autoOpenFileEnabled?: boolean;
   onRequestEnableFileContext?: () => void;
   onCompactClick?: () => void;
@@ -95,13 +101,16 @@ export function ChatInputBoxHeader({
         </div>
       )}
 
-      {/* Message queue */}
-      {messageQueue && messageQueue.length > 0 && (
+      {/* Message queue (waiting items + paused/error state) */}
+      {(messageQueue?.length ?? 0) > 0 || queueError ? (
         <MessageQueue
-          queue={messageQueue}
+          queue={messageQueue ?? []}
+          paused={queuePaused ?? false}
+          error={queueError ?? null}
           onRemove={onRemoveFromQueue ?? (() => {})}
+          onResume={onResumeQueue}
         />
-      )}
+      ) : null}
 
       {/* Attachment list */}
       {attachments.length > 0 && (

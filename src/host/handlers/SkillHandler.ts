@@ -115,14 +115,25 @@ export class SkillHandler extends BaseMessageHandler {
 	// ── delete_skill ──────────────────────────────────────────────────────
 
 	private async handleDeleteSkill(content: string): Promise<void> {
-		let name = '';
+		let skillId = '';
+		let displayName = '';
+		let skillPath: string | null = null;
 		let scope: SkillScope = 'global';
 		let enabled = true;
 
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
+			// skillId 是磁盘标识；旧的 name 字段兼容保留
+			if (typeof json.skillId === 'string' && json.skillId.trim() !== '') {
+				skillId = json.skillId;
+			} else if (typeof json.name === 'string') {
+				skillId = json.name;
+			}
 			if (typeof json.name === 'string') {
-				name = json.name;
+				displayName = json.name;
+			}
+			if (typeof json.path === 'string' && json.path.trim() !== '') {
+				skillPath = json.path;
 			}
 			if (typeof json.scope === 'string') {
 				scope = json.scope as SkillScope;
@@ -134,17 +145,17 @@ export class SkillHandler extends BaseMessageHandler {
 			// invalid payload
 		}
 
-		if (!name) {
+		if (!skillId) {
 			this.callJavaScript('skillDeleteResult', JSON.stringify({
 				success: false,
-				error: 'Missing skill name',
+				error: 'Missing skill id',
 			}));
 			return;
 		}
 
 		// Confirm deletion
 		const confirm = await vscode.window.showWarningMessage(
-			`Delete skill "${name}"? This cannot be undone.`,
+			`Delete skill "${displayName || skillId}"? This cannot be undone.`,
 			{ modal: true },
 			'Delete',
 		);
@@ -159,7 +170,7 @@ export class SkillHandler extends BaseMessageHandler {
 
 		try {
 			const workspaceRoot = this.context.resolveEffectiveWorkingDirectory();
-			const result = await SkillService.deleteSkill(name, scope, enabled, workspaceRoot);
+			const result = await SkillService.deleteSkill(skillId, scope, enabled, workspaceRoot, skillPath);
 			this.callJavaScript('skillDeleteResult', JSON.stringify(result));
 
 			// Refresh skill list after deletion
@@ -178,14 +189,25 @@ export class SkillHandler extends BaseMessageHandler {
 	// ── toggle_skill ──────────────────────────────────────────────────────
 
 	private async handleToggleSkill(content: string): Promise<void> {
-		let name = '';
+		let skillId = '';
+		let displayName = '';
+		let skillPath: string | null = null;
 		let scope: SkillScope = 'global';
 		let currentEnabled = true;
 
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
+			// skillId 是磁盘标识；旧的 name 字段兼容保留
+			if (typeof json.skillId === 'string' && json.skillId.trim() !== '') {
+				skillId = json.skillId;
+			} else if (typeof json.name === 'string') {
+				skillId = json.name;
+			}
 			if (typeof json.name === 'string') {
-				name = json.name;
+				displayName = json.name;
+			}
+			if (typeof json.path === 'string' && json.path.trim() !== '') {
+				skillPath = json.path;
 			}
 			if (typeof json.scope === 'string') {
 				scope = json.scope as SkillScope;
@@ -197,20 +219,21 @@ export class SkillHandler extends BaseMessageHandler {
 			// invalid payload
 		}
 
-		if (!name) {
+		if (!skillId) {
 			this.callJavaScript('skillToggleResult', JSON.stringify({
 				success: false,
-				error: 'Missing skill name',
+				error: 'Missing skill id',
 			}));
 			return;
 		}
 
 		try {
 			const workspaceRoot = this.context.resolveEffectiveWorkingDirectory();
-			const result = await SkillService.toggleSkill(name, scope, currentEnabled, workspaceRoot);
+			const result = await SkillService.toggleSkill(skillId, scope, currentEnabled, workspaceRoot, skillPath);
 			this.callJavaScript('skillToggleResult', JSON.stringify({
 				...result,
-				name,
+				skillId,
+				name: displayName || skillId,
 				enabled: !currentEnabled,
 			}));
 

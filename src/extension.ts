@@ -13,6 +13,7 @@ import { dirname, join } from 'path';
 import { OpenCodeViewProvider } from './host/webview/OpenCodeViewProvider.js';
 import { FileOps } from './host/router/HandlerContext.js';
 import { OpenCodeDaemonBridge } from './host/provider/OpenCodeDaemonBridge.js';
+import { applyAutoFill, resolveCliPathForInjection } from './host/provider/CliPathAutoFill.js';
 import { MementoSettingsStore, SettingsService } from './host/settings/SettingsService.js';
 import { WebviewBroadcaster } from './host/router/WebviewBroadcaster.js';
 import { BroadcastWebviewChannel } from './host/webview/BroadcastWebviewChannel.js';
@@ -61,11 +62,13 @@ export function activate(context: vscode.ExtensionContext) {
 	let chatWindowRef: ChatWindow | null = null;
 	const daemon = new OpenCodeDaemonBridge({
 		daemonScriptPath,
-		// 用户自定义的 opencode TUI 路径（设置页）→ 注入 OPENCODE_BIN，
+		// 用户自定义的 opencode TUI 路径（设置页）→ 注入 OPENCODEBUDDY_CLI_PATH（L0），
 		// ai-bridge 的 cli-path / serve-manager 解析器会优先使用它。
+		// 自动探测填进去的值若已失效，这里就地丢弃（并清空设置）——否则 L0 缺失
+		// 会以 settings-invalid 阻塞启动，而那不是用户的选择。两个变量必须同时
+		// 不注入：只丢 L0 时，L1 的 OPENCODE_BIN 会带着死路径赢过 PATH 扫描。
 		additionalEnv: () => {
-			const value = store.getGlobal('opencode.tuiPath');
-			const cliPath = typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
+			const cliPath = resolveCliPathForInjection(settings) ?? undefined;
 			const configDir = context.globalStorageUri?.fsPath;
 			return {
 				...(cliPath ? { OPENCODEBUDDY_CLI_PATH: cliPath, OPENCODE_BIN: cliPath } : {}),
@@ -80,6 +83,9 @@ export function activate(context: vscode.ExtensionContext) {
 			onDaemonReady: () => {
 				console.log('[extension] OpenCode daemon ready');
 				WebviewBroadcaster.broadcastJavaScript('onDaemonStatusChanged', 'true');
+				// Queued items survived the outage; the daemon being alive again is
+				// the only trigger some background tab will ever get.
+				chatWindowRef?.handleDaemonReady();
 			},
 			onDaemonDied: () => {
 				// error 级：daemon 意外死亡与自动重启在生产包也必须可见
@@ -89,6 +95,20 @@ export function activate(context: vscode.ExtensionContext) {
 			},
 		},
 		onLog: (message) => logDiagnostic(message),
+		// daemon 报告它真正解析出的二进制时回填设置：设置页就不再展示空值、也不再
+		// 与实际启动的二进制脱节。只在真的写入时广播一次（用户正在输入时不打扰）。
+		engineStatusListener: (status) => {
+			const { applied } = applyAutoFill(settings, status.cliPath, status.cliSource);
+			if (!applied) {
+				return;
+			}
+			logDiagnostic(`[extension] Auto-filled opencode CLI path: ${applied} (source=${status.cliSource ?? 'n/a'})`);
+			// Memento 写入是异步的：广播用刚写入的值，不要回读。
+			WebviewBroadcaster.broadcastJavaScript(
+				'updateOpencodeCliPath',
+				JSON.stringify({ path: applied }),
+			);
+		},
 	});
 
 	// ── 3. 宿主注入：文件操作 / 兜底工作目录 ─────────────────────────────────
@@ -181,6 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
 			logDiagnostic(`[Session] tab=${tabId} bound to session=${sessionId}`);
 		},
 		loadSession: (sessionId) => instance.loadSessionById(sessionId),
+		loadEarlierMessages: (sessionId) => instance.loadEarlierMessages(sessionId),
 		// 附件按 tab 落在扩展的 globalStorage 下，关 tab 时释放（临时文件不跨会话留存）。
 		attachmentsRoot: context.globalStorageUri
 			? join(context.globalStorageUri.fsPath, 'attachments')
@@ -192,7 +213,9 @@ export function activate(context: vscode.ExtensionContext) {
 			void instance.saveText(content, filename);
 		},
 		// @ 文件候选：目录由宿主按目标 tab 的 cwd 给出（多 tab 各按各的目录）。
-		listFiles: (query, directory) => instance.listFiles(query, directory),
+		// 空 query / `@dir/` 走 opencode fs.list，有搜索文本走 fs.find。
+		listFiles: (query, currentPath, directory) =>
+			instance.listFiles(query, currentPath, directory),
 		// 子代理 transcript（v2 `subagent.history`）：复用 HistoryHandler 的提取逻辑。
 		loadSubagentHistory: (payload) => instance.loadSubagentHistory(payload),
 		// Window-level v2 commands (session.send/interrupt, commands.refresh,
@@ -204,6 +227,9 @@ export function activate(context: vscode.ExtensionContext) {
 	chatWindow.bindSessionManager(instance.sessionManager);
 	// Window-level handlers resolve tab-owned sessions through this context.
 	instance.context.setTabSessionContext(chatWindow.createTabSessionContext());
+	// Queue pump and direct sends share one sender (attachments, settings,
+	// tab/session ownership guard).
+	chatWindow.setTabSender(instance.tabSender);
 	// 语义事件按 tab 投递（files.undo 等）：结果回到发起请求的那个 tab。
 	instance.setEventPublisher((type, tabId, payload, options) => {
 		chatWindow.publishTabEvent(type, tabId, payload, options);

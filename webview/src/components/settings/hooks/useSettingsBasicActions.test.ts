@@ -3,6 +3,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { useSettingsBasicActions } from './useSettingsBasicActions';
 import type { CodeFontConfig } from '../../../types/uiFontConfig';
 
+vi.mock('../../../utils/notificationSound', () => ({
+  playNotificationSound: vi.fn(),
+}));
+
+// eslint-disable-next-line import/first
+import { playNotificationSound } from '../../../utils/notificationSound';
+
 describe('useSettingsBasicActions', () => {
   beforeEach(() => {
     window.sendToJava = vi.fn();
@@ -75,6 +82,39 @@ describe('useSettingsBasicActions', () => {
     );
     expect(window.sendToJava).toHaveBeenCalledWith(
       'set_code_font_config:{"mode":"named","fontFamily":"Fira Code"}'
+    );
+  });
+
+  it('previews a built-in sound through the shared notification player', () => {
+    const { result } = renderHook(() => useSettingsBasicActions({}));
+
+    act(() => {
+      result.current.handleSelectedSoundChange('chime');
+    });
+    (playNotificationSound as any).mockClear();
+
+    act(() => {
+      result.current.handleTestSound();
+    });
+
+    expect(playNotificationSound).toHaveBeenCalledWith({ soundId: 'chime' });
+  });
+
+  it('asks the host to preview a custom sound file', () => {
+    const { result } = renderHook(() => useSettingsBasicActions({}));
+
+    act(() => {
+      result.current.handleCustomSoundPathChange('/tmp/my-sound.wav');
+      result.current.handleSelectedSoundChange('custom');
+    });
+    (window.sendToJava as any).mockClear();
+
+    act(() => {
+      result.current.handleTestSound();
+    });
+
+    expect(window.sendToJava).toHaveBeenCalledWith(
+      'test_sound:{"soundId":"custom","path":"/tmp/my-sound.wav"}'
     );
   });
 });

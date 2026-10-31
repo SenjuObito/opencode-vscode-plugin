@@ -490,9 +490,11 @@ export function useMessageSender({
     currentSessionIdRef,
   ]);
 
+  // `executeMessage` stays internal: `/context` and local commands send
+  // directly. Everything else goes through the host-owned queue, so the view
+  // never sends a message itself.
   return {
     handleSubmit,
-    executeMessage,
     interruptSession,
   };
 }

@@ -1,12 +1,14 @@
-import { memo, useState, useMemo, useRef, useEffect } from 'react';
+import { memo, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolInput, ToolResultBlock } from '../../types';
 import { useIsToolDenied } from '../../hooks/useIsToolDenied';
+import { usePreferredExpanded } from '../../hooks/usePreferredExpanded';
 import { useResolvedFileLinkTooltip } from '../../hooks/useResolvedFileLinkTooltip';
 import { openFile, showDiff, refreshFile } from '../../utils/bridge';
 import { getFileIcon } from '../../utils/fileIcons';
 import { getToolLineInfo, getToolEditCount, resolveToolTarget } from '../../utils/toolPresentation';
 import { normalizeToolInput } from '../../utils/toolInputNormalization';
+import { diffExpandedPreference } from '../../utils/uiPreferences';
 import EditToolGroupBlock from './EditToolGroupBlock';
 import GenericToolBlock from './GenericToolBlock';
 
@@ -245,13 +247,7 @@ function computeDiff(oldLines: string[], newLines: string[]): DiffResult {
 
 const EditToolBlock = memo(function EditToolBlock({ items }: EditToolBlockProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(() => {
-    try {
-      return localStorage.getItem('diffExpandedByDefault') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [expanded, setExpanded] = usePreferredExpanded(diffExpandedPreference);
 
   // The inline-diff view below serves the single-item case; when there are
   // multiple items we delegate to EditToolGroupBlock. That delegation return

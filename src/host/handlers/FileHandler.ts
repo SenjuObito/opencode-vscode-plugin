@@ -3,11 +3,20 @@
  * open_file / resolve_file_path / get_linkify_capabilities / list_files。
  * 文件打开经宿主注入的 FileOps（VS Code showTextDocument）。
  *
- * list_files：@ 文件补全候选。优先走 daemon `opencode.findFiles`（opencode
- * 服务端 fs.find，与 TUI @ 列表同源，frecency+模糊已排序）；daemon 不可用时
- * 回退本地收集（打开的编辑器 + findFiles + 浅层目录扫描）。结果经
- * window.onFileListResult 回推 `{files:[{name,path,absolutePath,type,extension}], requestId}`。
- * 必须始终回包（异常也回空列表），否则前端会挂到 5s 超时才清 loading。
+ * list_files：@ 文件补全候选。**唯一来源是 opencode API**：
+ *  - 空 query（刚输入 `@`）或 `@dir/` → daemon `opencode.listFiles`
+ *    （服务端 `GET /api/fs/list`，一次一层，目录导航）；
+ *  - 有搜索文本 → daemon `opencode.findFiles`（服务端 `GET /api/fs/find`，
+ *    frecency + 模糊已排序），query 拼上 `currentPath` 前缀实现目录作用域。
+ * 二者都按**目标 tab 的 cwd** 请求（core 用 `x-opencode-directory` 固定作用域）。
+ *
+ * 插件定位是 opencode 的 GUI：候选能力全部来自 opencode 服务。历史上那套
+ * 本地采集（打开的编辑器 + workspace.findFiles + 浅层目录扫描）保留在
+ * `collectEntries` 里仅作对照/应急，由 `LOCAL_FILE_COLLECTORS_ENABLED` 关闭，
+ * 产品路径不再调用。
+ *
+ * 结果经 tab 事件 `files.listed` 回推 `{files:[{name,path,absolutePath,type,extension}], requestId}`。
+ * 必须始终回包（失败也回空列表），否则前端会挂到超时才清 loading。
  */
 import * as vscode from 'vscode';
 import { promises as fsp } from 'fs';
@@ -27,6 +36,16 @@ const EXCLUDED_DIR_NAMES = new Set([
 	'build', 'target', '.next', '.nuxt', 'coverage', '__pycache__',
 ]);
 const EXCLUDED_FILE_NAMES = new Set(['.DS_Store', 'Thumbs.db']);
+
+/**
+ * 自研文件采集器开关。
+ *
+ * 插件是 opencode 的 GUI 外壳，@ 候选必须由 opencode API 提供，因此本文件
+ * 里的本地采集流水线（`collectEntries` / `scanDirectories` / `rankEntries`）
+ * **保留但不调用**：留作服务不可用时的对照实现与回归基线，而不是产品路径。
+ * 改回 `true` 只会用于排查 opencode 的返回是否异常。
+ */
+const LOCAL_FILE_COLLECTORS_ENABLED = false;
 
 export interface FileEntry {
 	name: string;
@@ -106,32 +125,54 @@ export class FileHandler extends BaseMessageHandler {
 	/**
 	 * 列举候选文件（v2 `files.list` 命令用）。
 	 *
-	 * 与 legacy `list_files` 共用同一份实现：daemon `opencode.findFiles` 优先，
-	 * 失败回退本地收集。`directory` 由调用方给出 —— 多 tab 下候选必须按
-	 * **目标 tab 的 cwd** 来，而不是窗口级的设置目录。
+	 * 语义与 opencode TUI 的 @ 列表一致：
+	 *  - `query` 为空（刚输入 `@`，或 `@src/`）→ `/api/fs/list` 列 `currentPath`
+	 *    这一层。`fs.find("")` 返回空集，不能用它做目录导航。
+	 *  - `query` 非空 → `/api/fs/find`，query 前缀 `currentPath` 让服务端只在
+	 *    该目录（路径前缀）下匹配。
+	 * `directory` 由调用方给出 —— 多 tab 下候选必须按**目标 tab 的 cwd** 来，
+	 * 而不是窗口级的设置目录。
 	 */
-	async listFiles(query: string, directory?: string): Promise<FileEntry[]> {
+	async listFiles(
+		query: string,
+		currentPath = '',
+		directory?: string,
+	): Promise<FileEntry[]> {
+		if (LOCAL_FILE_COLLECTORS_ENABLED) {
+			return this.collectEntries(query, directory);
+		}
+
+		const dir = normalizeRelativePath(currentPath);
+		const search = (query ?? '').trim();
 		try {
-			return await this.findViaDaemon(query, directory);
+			const entries = search
+				? await this.findViaDaemon(dir ? `${dir}/${search}` : search, directory)
+				: await this.listViaDaemon(dir, directory);
+			return entries;
 		} catch (err) {
+			// GUI 不持有能力：失败就是空列表，由前端提示，而不是拿本地快照冒充成功。
 			console.warn(
-				`[FileHandler] findFiles via daemon failed (${String(err)}); falling back to local scan`,
+				`[FileHandler] opencode fs.${search ? 'find' : 'list'} failed: ${String(err)}`,
 			);
-			try {
-				return await this.collectEntries(query);
-			} catch {
-				return [];
-			}
+			return [];
 		}
 	}
 
 	private handleListFiles(content: string): void {
 		let query = '';
+		let currentPath = '';
 		let requestId: number | null = null;
 		try {
-			const json = JSON.parse(content ?? '') as { query?: unknown; requestId?: unknown };
+			const json = JSON.parse(content ?? '') as {
+				query?: unknown;
+				currentPath?: unknown;
+				requestId?: unknown;
+			};
 			if (typeof json?.query === 'string') {
 				query = json.query;
+			}
+			if (typeof json?.currentPath === 'string') {
+				currentPath = json.currentPath;
 			}
 			if (typeof json?.requestId === 'number' && Number.isFinite(json.requestId)) {
 				requestId = json.requestId;
@@ -141,19 +182,39 @@ export class FileHandler extends BaseMessageHandler {
 		}
 
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		void this.listFiles(query, directory)
+		void this.listFiles(query, currentPath, directory)
 			.then((files) => {
-				console.log(`[FileHandler] list_files query="${query}" -> ${files.length} entries`);
+				console.log(
+					`[FileHandler] list_files query="${query}" path="${currentPath}" -> ${files.length} entries`,
+				);
 				this.replyFileList(files, requestId);
 			})
 			.catch(() => this.replyFileList([], requestId));
 	}
 
+	/** 有搜索文本：官方 `fs.find`（与 opencode TUI @ 列表同源，服务端已排序）。 */
+	private findViaDaemon(query: string, directory?: string): Promise<FileEntry[]> {
+		return this.requestEntries(
+			'opencode.findFiles',
+			{ query, limit: '20', directory },
+			directory,
+		);
+	}
+
+	/** 无搜索文本 / `@dir/`：官方 `fs.list`，列一层目录。 */
+	private listViaDaemon(path: string, directory?: string): Promise<FileEntry[]> {
+		return this.requestEntries('opencode.listFiles', { path, directory }, directory);
+	}
+
 	/**
-	 * 官方 fs.find（与 opencode TUI @ 列表同源，服务端 fff 已排序）。
-	 * daemon 不可用/失败时抛错，由调用方回退到本地收集。
+	 * 通过 daemon 调一个 opencode 文件类命令，把单行 JSON 的 `entries` 映射成
+	 * `FileEntry`。失败抛错：调用方决定回空还是降级，不在这里吞掉。
 	 */
-	private async findViaDaemon(query: string, directory?: string): Promise<FileEntry[]> {
+	private async requestEntries(
+		command: 'opencode.findFiles' | 'opencode.listFiles',
+		params: Record<string, unknown>,
+		directory?: string,
+	): Promise<FileEntry[]> {
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
 			throw new Error('daemon unavailable');
@@ -161,7 +222,7 @@ export class FileHandler extends BaseMessageHandler {
 		const chunks: string[] = [];
 		let daemonError = '';
 		const success = await new Promise<boolean>((resolve) => {
-			void daemon.request('opencode.findFiles', { query, limit: '20', directory }, {
+			void daemon.request(command, params, {
 				onLine: (line) => chunks.push(line),
 				onStderr: (text) => {
 					for (const line of text.split(/\r?\n/)) {
@@ -178,10 +239,14 @@ export class FileHandler extends BaseMessageHandler {
 			});
 		});
 		if (!success) {
-			throw new Error(daemonError || 'opencode.findFiles failed');
+			throw new Error(daemonError || `${command} failed`);
 		}
 		const entries = this.extractEntries(chunks.join('\n'));
 		const baseDir = directory ?? process.cwd();
+		const label = command === 'opencode.listFiles' ? 'list' : 'find';
+		console.log(
+			`[FileHandler] ${label} ${JSON.stringify(params)} dir=${directory ?? '-'} entries=${entries.length}`,
+		);
 		return entries.map((entry) => this.toFileEntry(entry, baseDir));
 	}
 
@@ -211,14 +276,18 @@ export class FileHandler extends BaseMessageHandler {
 		entry: { path: string; type?: string },
 		baseDir: string,
 	): FileEntry {
-		const absolutePath = isAbsolute(entry.path) ? entry.path : join(baseDir, entry.path);
+		// `/api/fs/list` 返回 `src\host\` 这种混合分隔符 + 目录尾分隔符；
+		// 统一成 POSIX 风格并去掉尾部分隔符，否则 basename 会取到空串、点选后
+		// 插入的引用路径也会带多余斜杠。
+		const relPath = (entry.path ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
+		const absolutePath = isAbsolute(relPath) ? relPath : join(baseDir, relPath);
 		const type = entry.type === 'directory' ? 'directory' : 'file';
 		return {
-			name: basename(absolutePath),
-			path: entry.path.split(sep).join('/'),
+			name: basename(relPath),
+			path: relPath,
 			absolutePath,
 			type,
-			...(type === 'file' && extname(absolutePath) ? { extension: extname(absolutePath).slice(1) } : {}),
+			...(type === 'file' && extname(relPath) ? { extension: extname(relPath).slice(1) } : {}),
 		};
 	}
 
@@ -229,8 +298,12 @@ export class FileHandler extends BaseMessageHandler {
 		);
 	}
 
-	private async collectEntries(query: string): Promise<FileEntry[]> {
-		const roots = vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [];
+	private async collectEntries(query: string, directory?: string): Promise<FileEntry[]> {
+		// 只在 LOCAL_FILE_COLLECTORS_ENABLED 打开时才会被调用：保留实现仅作对照。
+		// 传目录时只在该目录下采集，与 opencode 的 directory 作用域对齐。
+		const roots = directory
+			? [directory]
+			: (vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? []);
 		if (roots.length === 0) {
 			return [];
 		}
@@ -319,6 +392,24 @@ export class FileHandler extends BaseMessageHandler {
 			await this.scanDirectories(full, depth + 1, pushEntry, hasBudget);
 		}
 	}
+}
+
+/**
+ * 规范化 @ 输入里拆出的目录前缀：
+ * `'src/'` → `'src'`、`'./src/'` → `'src'`、`'src\\host\\'` → `'src/host'`、`''` → `''`。
+ *
+ * 与 core 的 `normalizeListPath` 同规则：去掉绝对路径与 `..` 段，避免把
+ * webview 传来的路径变成越界访问（越界时降级为根目录）。
+ */
+export function normalizeRelativePath(raw: string): string {
+	const value = (raw ?? '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+	if (!value || value.startsWith('/') || /^[a-zA-Z]:/.test(value)) {
+		return '';
+	}
+	if (value.split('/').includes('..')) {
+		return '';
+	}
+	return value;
 }
 
 /** 工作区相对路径展示（POSIX 分隔符；跨 root 时取最短匹配）。 */

@@ -24,9 +24,14 @@ export type SkillScope = 'global' | 'local' | 'user' | 'repo';
  * Skill configuration
  */
 export interface Skill {
-  /** Unique identifier (format: {scope}-{name} or {scope}-{name}-disabled) */
+  /** Unique identifier (format: {scope}-{skillId} or {scope}-{skillId}-disabled) */
   id: string;
-  /** Display name */
+  /**
+   * 磁盘标识：目录名（或根级 .md 去掉扩展名）。
+   * 删除 / 启停都用它——`name` 是 frontmatter 的显示名，可能和目录名不同。
+   */
+  skillId: string;
+  /** Display name (frontmatter `name`, falls back to skillId) */
   name: string;
   /** Type: file or directory */
   type: SkillType;
@@ -36,10 +41,14 @@ export interface Skill {
   path: string;
   /** Whether enabled (true: in active directory, false: in managed directory) */
   enabled: boolean;
+  /** 该 skill 由哪个根目录扫到（只读信息） */
+  sourceDir?: string;
   /** Description (extracted from skill.md frontmatter) */
   description?: string;
   /** Skill path for Codex config.toml operations */
   skillPath?: string;
+  /** frontmatter 解析异常标记（如 invalid_frontmatter） */
+  warning?: string;
   /** Creation time */
   createdAt?: string;
   /** Modification time */

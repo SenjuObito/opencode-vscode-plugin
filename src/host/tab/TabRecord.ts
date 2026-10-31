@@ -3,6 +3,7 @@ import { SessionId } from './SessionId';
 import { TabState } from './TabState';
 import { TabSettings } from './TabSettings';
 import { TabSessionActor } from './TabSessionActor';
+import { TabQueue } from './TabQueue';
 import { TabEventSink } from './TabEvent';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import type { SessionCallbackAdapter } from '../session/SessionCallbackAdapter';
@@ -19,6 +20,8 @@ export class TabRecord {
 	readonly cwd: string;
 	readonly actor: TabSessionActor;
 	readonly settings: TabSettings = new TabSettings();
+	/** The tab's own outbox; only `TabQueuePump` consumes it. */
+	readonly queue: TabQueue = new TabQueue();
 	private eventSink: TabEventSink;
 
 	private state: TabState = TabState.NEW;

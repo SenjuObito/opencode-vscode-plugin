@@ -3,6 +3,7 @@
  * Feature: 004-refactor-input-box
  */
 import type { ClaudeMessage } from '../../types';
+import type { QueuedMessage, TabQueueErrorView } from '../../store/tabQueueStore';
 
 // ============================================================
 // Core Entity Types
@@ -506,8 +507,14 @@ export interface ChatInputBoxProps {
 
   /** Message queue items */
   messageQueue?: QueuedMessage[];
+  /** True after a stop: the queue waits for an explicit resume. */
+  queuePaused?: boolean;
+  /** Last send failure the host reported for an item it put back. */
+  queueError?: TabQueueErrorView | null;
   /** Remove message from queue callback */
   onRemoveFromQueue?: (id: string) => void;
+  /** User confirmed: continue consuming the queue. */
+  onResumeQueue?: () => void;
 
   /** Whether auto open file is enabled */
   autoOpenFileEnabled?: boolean;
@@ -630,16 +637,14 @@ export interface DropdownItemProps {
 // ============================================================
 
 /**
- * Queued message item
- * When AI is processing (loading), new messages are queued here
+ * Queued message item.
+ *
+ * <p>The queue lives on the host, keyed by tab; the view renders the
+ * projection. The type is defined in `store/tabQueueStore` so the event
+ * callback, the hook and the UI cannot disagree about its shape.</p>
  */
-export interface QueuedMessage {
-  /** Unique identifier */
-  id: string;
-  /** Message content */
-  content: string;
-  /** Attachments (optional) */
-  attachments?: Attachment[];
-  /** Timestamp when queued */
-  queuedAt: number;
-}
+export type {
+  QueuedMessage,
+  TabQueueErrorView,
+  TabQueueSnapshot,
+} from '../../store/tabQueueStore';

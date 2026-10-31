@@ -109,6 +109,30 @@ export function processOutputLine(
 		return;
 	}
 
+	if (line.startsWith('[COMPACTION_STARTED]')) {
+		const payload = line.substring('[COMPACTION_STARTED]'.length).trim();
+		callback.onMessage('compaction_started', payload);
+		return;
+	}
+
+	if (line.startsWith('[COMPACTION_DELTA]')) {
+		const payload = line.substring('[COMPACTION_DELTA]'.length).trim();
+		callback.onMessage('compaction_delta', payload);
+		return;
+	}
+
+	if (line.startsWith('[COMPACTION_ENDED]')) {
+		const payload = line.substring('[COMPACTION_ENDED]'.length).trim();
+		callback.onMessage('compaction_ended', payload);
+		return;
+	}
+
+	if (line.startsWith('[COMPACTION_FAILED]')) {
+		const payload = line.substring('[COMPACTION_FAILED]'.length).trim();
+		callback.onMessage('compaction_failed', payload);
+		return;
+	}
+
 	if (line.startsWith('[SESSION_ID]')) {
 		callback.onMessage('session_id', line.substring('[SESSION_ID]'.length).trim());
 		return;

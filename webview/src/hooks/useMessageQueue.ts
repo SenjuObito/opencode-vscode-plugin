@@ -1,107 +1,160 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Attachment } from '../components/ChatInputBox/types';
+import { useCallback, useSyncExternalStore } from 'react';
+import { getTabStore } from '../store/tabStore';
+import { EMPTY_TAB_QUEUE } from '../store/tabQueueStore';
+import type { QueuedMessage, TabQueueErrorView, TabQueueSnapshot } from '../store/tabQueueStore';
+import { sendTabCommand } from '../utils/bridge';
+import type { UploadedAttachment } from '../utils/attachmentTransport';
+import type { PermissionMode, ReasoningEffort } from '../components/ChatInputBox/types';
 
-export interface QueuedMessage {
-  id: string;
+export type { QueuedMessage, TabQueueErrorView, TabQueueSnapshot };
+
+/**
+ * A send frozen by the view before handing it to the host.
+ *
+ * <p>Everything the send needs travels with the item: the host must never
+ * re-read the active tab's model/mode/attachments, which is exactly how the
+ * old global queue delivered A's message to B.</p>
+ */
+export interface EnqueueMessageInput {
   content: string;
-  attachments?: Attachment[];
-  queuedAt: number;
-}
-
-export interface UseMessageQueueOptions {
-  /** Whether AI is currently processing */
-  isLoading: boolean;
-  /** Whether session is currently compacting */
-  isCompacting?: boolean;
-  /** Callback to execute a message */
-  onExecute: (content: string, attachments?: Attachment[]) => void;
+  /** Already uploaded under the *active* tab. */
+  attachments?: UploadedAttachment[];
+  fileTags?: Array<{ displayPath: string; absolutePath: string }>;
+  model?: string | null;
+  permissionMode?: PermissionMode | null;
+  reasoningEffort?: ReasoningEffort | null;
 }
 
 export interface UseMessageQueueReturn {
-  /** Current queue */
+  /** Items waiting for their turn. The one being sent is not part of it. */
   queue: QueuedMessage[];
-  /** Add message to queue */
-  enqueue: (content: string, attachments?: Attachment[]) => void;
-  /** Remove message from queue by id */
+  /** True after a stop: the host waits for an explicit resume. */
+  paused: boolean;
+  /** Last send failure of an item that was put back at the head. */
+  lastError: TabQueueErrorView | null;
+  /** Hand a frozen message to the host. Returns false when there is no tab. */
+  enqueue: (input: EnqueueMessageInput) => boolean;
+  /**
+   * Hand a builtin session command to the same FIFO as the user's prompts.
+   * `args` freezes what the command must act on (the undo target message, the
+   * tab a fork will open in) at enqueue time.
+   */
+  enqueueCommand: (command: string, args?: EnqueueCommandArgs) => boolean;
   dequeue: (id: string) => void;
-  /** Clear entire queue */
   clearQueue: () => void;
-  /** Whether queue has items */
-  hasQueuedMessages: boolean;
+  resumeQueue: () => void;
+}
+
+/** Context a queued command needs when it finally runs. */
+export interface EnqueueCommandArgs {
+  /** `/undo`: the user message that was newest when the command was queued. */
+  messageId?: string;
+  /** `/fork`: the tab the forked session will be bound to. */
+  targetTabId?: string;
+  /** `/compact`: the model frozen with the command when it was queued. */
+  model?: string | null;
+}
+
+function createQueueId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `queue-${crypto.randomUUID()}`;
+  }
+  return `queue-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
- * Hook for managing message queue
- * Automatically executes next message when loading completes
+ * The active tab's queue projection.
+ *
+ * <p>There is deliberately no timer, no loading transition and no send here:
+ * the host owns the queue and the single consumer. The webview only sends
+ * commands and renders the snapshot the host pushes. Switching tabs therefore
+ * changes what is displayed, never what is sent.</p>
  */
-export function useMessageQueue({
-  isLoading,
-  isCompacting = false,
-  onExecute,
-}: UseMessageQueueOptions): UseMessageQueueReturn {
-  const [queue, setQueue] = useState<QueuedMessage[]>([]);
-  const prevLoadingRef = useRef(isLoading);
-  const prevCompactingRef = useRef(isCompacting);
-  const isExecutingFromQueueRef = useRef(false);
+export function useMessageQueue(): UseMessageQueueReturn {
+  const store = getTabStore();
+  const snapshot = useSyncExternalStore(
+    store.subscribe,
+    () => store.getActiveTab().queue ?? EMPTY_TAB_QUEUE,
+    () => EMPTY_TAB_QUEUE,
+  );
 
-  // Generate unique ID
-  const generateId = useCallback(() => {
-    return `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }, []);
-
-  // Add message to queue
-  const enqueue = useCallback((content: string, attachments?: Attachment[]) => {
-    const newItem: QueuedMessage = {
-      id: generateId(),
-      content,
-      attachments,
-      queuedAt: Date.now(),
-    };
-    setQueue(prev => [...prev, newItem]);
-  }, [generateId]);
-
-  // Remove message from queue
-  const dequeue = useCallback((id: string) => {
-    setQueue(prev => prev.filter(item => item.id !== id));
-  }, []);
-
-  // Clear entire queue
-  const clearQueue = useCallback(() => {
-    setQueue([]);
-  }, []);
-
-  // Auto-execute next message when loading or compacting completes
-  useEffect(() => {
-    // Detect transition from loading to not loading
-    const wasLoading = prevLoadingRef.current;
-    prevLoadingRef.current = isLoading;
-
-    // Detect transition from compacting to not compacting
-    const wasCompacting = prevCompactingRef.current;
-    prevCompactingRef.current = isCompacting;
-
-    // If just finished loading/compacting and queue has items, execute next
-    const justFinishedProcessing = (wasLoading && !isLoading) || (wasCompacting && !isCompacting);
-    if (justFinishedProcessing && !isExecutingFromQueueRef.current && queue.length > 0) {
-      const nextMessage = queue[0];
-      isExecutingFromQueueRef.current = true;
-
-      // Remove from queue first
-      setQueue(prev => prev.slice(1));
-
-      // Execute with small delay to ensure state updates
-      setTimeout(() => {
-        onExecute(nextMessage.content, nextMessage.attachments);
-        isExecutingFromQueueRef.current = false;
-      }, 50);
+  const enqueue = useCallback((input: EnqueueMessageInput): boolean => {
+    const tabId = store.getActiveTabId();
+    if (!tabId) {
+      return false;
     }
-  }, [isLoading, isCompacting, queue, onExecute]);
+    const text = input.content ?? '';
+    const attachments = input.attachments ?? [];
+    if (!text.trim() && attachments.length === 0) {
+      return false;
+    }
+    return sendTabCommand(tabId, 'queue.enqueue', {
+      item: {
+        id: createQueueId(),
+        text,
+        attachments,
+        fileTags: input.fileTags ?? [],
+        model: input.model ?? null,
+        permissionMode: input.permissionMode ?? null,
+        reasoningEffort: input.reasoningEffort ?? null,
+        createdAt: Date.now(),
+      },
+    });
+  }, [store]);
+
+  const enqueueCommand = useCallback((command: string, args?: EnqueueCommandArgs): boolean => {
+    const tabId = store.getActiveTabId();
+    if (!tabId || !command) {
+      return false;
+    }
+    return sendTabCommand(tabId, 'queue.enqueue', {
+      item: {
+        id: createQueueId(),
+        text: command,
+        command,
+        commandArgs: args ?? {},
+        // `/compact` freezes the model with the command; the host never
+        // re-reads the tab's current model when the item finally runs.
+        model: args?.model ?? null,
+        attachments: [],
+        fileTags: [],
+        createdAt: Date.now(),
+      },
+    });
+  }, [store]);
+
+  const dequeue = useCallback((id: string) => {
+    const tabId = store.getActiveTabId();
+    if (!tabId || !id) {
+      return;
+    }
+    sendTabCommand(tabId, 'queue.remove', { itemId: id });
+  }, [store]);
+
+  const clearQueue = useCallback(() => {
+    const tabId = store.getActiveTabId();
+    if (!tabId) {
+      return;
+    }
+    sendTabCommand(tabId, 'queue.clear', {});
+  }, [store]);
+
+  const resumeQueue = useCallback(() => {
+    const tabId = store.getActiveTabId();
+    if (!tabId) {
+      return;
+    }
+    sendTabCommand(tabId, 'queue.resume', {});
+  }, [store]);
 
   return {
-    queue,
+    queue: snapshot.items,
+    paused: snapshot.paused,
+    lastError: snapshot.lastError,
     enqueue,
+    enqueueCommand,
     dequeue,
     clearQueue,
-    hasQueuedMessages: queue.length > 0,
+    resumeQueue,
   };
 }

@@ -180,6 +180,18 @@ export class MessageHandler implements MessageCallback {
 		case 'turn_end':
 			this.handleTurnEnd(content);
 			break;
+		case 'compaction_started':
+			this.handleCompactionStarted(content);
+			break;
+		case 'compaction_delta':
+			this.handleCompactionDelta(content);
+			break;
+		case 'compaction_ended':
+			this.handleCompactionEnded(content);
+			break;
+		case 'compaction_failed':
+			this.handleCompactionFailed(content);
+			break;
 		}
 	}
 
@@ -1106,5 +1118,36 @@ export class MessageHandler implements MessageCallback {
 		}
 
 		this.callbackHandler.notifyTurnEnd(content);
+	}
+
+	private handleCompactionStarted(content: string): void {
+		if (!content) {
+			return;
+		}
+		logDiagnostic(`[MessageHandler] compaction_started content=${content.substring(0, 200)}`);
+		this.callbackHandler.notifyCompactionStarted(content);
+	}
+
+	private handleCompactionDelta(content: string): void {
+		if (!content) {
+			return;
+		}
+		this.callbackHandler.notifyCompactionDelta(content);
+	}
+
+	private handleCompactionEnded(content: string): void {
+		if (!content) {
+			return;
+		}
+		logDiagnostic(`[MessageHandler] compaction_ended content=${content.substring(0, 200)}`);
+		this.callbackHandler.notifyCompactionEnded(content);
+	}
+
+	private handleCompactionFailed(content: string): void {
+		if (!content) {
+			return;
+		}
+		logDiagnostic(`[MessageHandler] compaction_failed content=${content.substring(0, 200)}`);
+		this.callbackHandler.notifyCompactionFailed(content);
 	}
 }

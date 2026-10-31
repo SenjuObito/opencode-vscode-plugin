@@ -144,8 +144,8 @@
     "attachmentsUploaded": "[已上传附件]",
     "streamingConnected": "AI 正在理解问题…",
     "showEarlierMessages": "显示之前的 {{count}} 条消息",
-    "showEarlierTurns": "显示更早的 {{count}} 轮对话（当前已加载还剩 {{remaining}} 轮）",
-    "loadEarlierTurns": "从磁盘加载更早的 {{count}} 轮（共 {{total}} 轮，尚有 {{remaining}} 轮）",
+    "showEarlierTurns": "显示更早的 {{count}} 轮对话（还剩 {{remaining}} 轮）",
+    "showEarlierConversation": "显示更早的对话",
     "loadEarlierMessages": "加载更早的 {{count}} 条消息（共 {{total}} 条，尚有 {{remaining}} 条）",
     "loadingEarlierTurns": "正在加载更早的对话",
     "totalDuration": "本次耗时",
@@ -197,7 +197,9 @@
     "retryCopy": "重试复制",
     "subagentsSection": "子代理",
     "filesSection": "文件",
-    "renderError": "消息渲染发生异常"
+    "filesEmpty": "未找到匹配的文件",
+    "renderError": "消息渲染发生异常",
+    "autoCompacting": "正在自动压缩会话上下文..."
   },
   "settings": {
     "title": "设置",
@@ -345,10 +347,10 @@
         "hint": "开启后，当 opencode 向你提问时播放已配置的提示音。会使用下方的音效选择和焦点规则。"
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "仅在 IDE 未聚焦时显示系统通知",
+        "label": "仅在 VS Code 未聚焦时显示系统通知",
         "enabled": "已开启",
         "disabled": "已关闭",
-        "hint": "开启后，仅在 IDE 窗口未聚焦时显示任务完成和提问系统通知。"
+        "hint": "开启后，仅在 VS Code 窗口未聚焦时显示任务完成和提问系统通知。"
       },
       "sendShortcut": {
         "label": "发送快捷键",
@@ -390,8 +392,8 @@
         "enabled": "已开启",
         "disabled": "已关闭",
         "hint": "开启后，AI 完成任务时会播放提示音，方便您离开屏幕时也能知道任务已完成。",
-        "onlyWhenUnfocused": "仅在 IDE 未聚焦时播放提示音",
-        "onlyWhenUnfocusedHint": "开启后，仅在 IDE 窗口未聚焦时播放任务完成和提问提示音。",
+        "onlyWhenUnfocused": "仅在 VS Code 未聚焦时播放提示音",
+        "onlyWhenUnfocusedHint": "开启后，仅在 VS Code 窗口未聚焦时播放任务完成和提问提示音。",
         "selectSound": "提示音",
         "soundDefault": "默认",
         "soundChime": "清脆铃声",

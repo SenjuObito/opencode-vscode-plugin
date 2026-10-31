@@ -12,6 +12,11 @@ import { TabSessionCommandHandler } from './TabSessionCommandHandler';
 import { TabFileCommandHandler } from './TabFileCommandHandler';
 import { TabAttachmentCommandHandler } from './TabAttachmentCommandHandler';
 import { TabAttachmentStore } from '../attachments/TabAttachmentStore';
+import { TabQueuePump } from '../queue/TabQueuePump';
+import type { TabSender } from '../handlers/TabSender';
+import type { TabQueueItem } from '../tab/TabQueue';
+import { isTabQueueCommand } from '../tab/TabQueue';
+import type { TabQueueCommand } from '../tab/TabQueue';
 import { HostCommand, RequestIdDeduplicator, CommandRejectCode } from '../router/HostCommand';
 import type { WebviewChannel, FileOps, TabSessionContext } from '../router/HandlerContext';
 import type { SettingsService } from '../settings/SettingsService';
@@ -21,6 +26,7 @@ import type { OpenCodeSession } from '../session/OpenCodeSession';
 import type { JsTarget } from '../session/SessionCallbackAdapter';
 import type { SessionManager } from '../session/SessionManager';
 import { isValidPermissionMode } from '../session/SessionState';
+import { isEnginePlaceholderTitle } from '../session/SessionTitles';
 import { convertMessagesToJson } from '../util/MessageJsonConverter';
 import { PluginFileLogger } from '../util/PluginFileLogger';
 
@@ -46,6 +52,11 @@ export interface ChatWindowOptions {
 	/** 把历史会话加载进 tab（`session.load`）：由 ChatInstance 接到 HistoryHandler。 */
 	loadSession?: (sessionId: string) => void;
 	/**
+	 * 把该会话更早的一页历史前插到它所属的 tab（`session.loadEarlier`）。
+	 * 由 ChatInstance 接到 HistoryHandler；缺省时命令被忽略（无分页能力）。
+	 */
+	loadEarlierMessages?: (sessionId: string) => void;
+	/**
 	 * 附件落盘根目录（通常是 `<globalStorage>/attachments`）。
 	 * 缺省 null：附件命令仍会注册，但 prepare 会明确报「附件目录不可用」。
 	 */
@@ -60,9 +71,14 @@ export interface ChatWindowOptions {
 	dispatchWindowCommand?: (type: string, payload: Record<string, unknown>) => boolean;
 	/**
 	 * 列举候选文件（v2 `files.list`）：由 ChatInstance 接到 FileHandler。
+	 * 空 query / `@dir/` 走 opencode `fs.list`，有搜索文本走 `fs.find`；
 	 * 目录由宿主按目标 tab 的 cwd 给出。
 	 */
-	listFiles?: (query: string, directory: string | undefined) => Promise<FileEntry[]>;
+	listFiles?: (
+		query: string,
+		currentPath: string,
+		directory: string | undefined,
+	) => Promise<FileEntry[]>;
 	/**
 	 * 关 tab 时被作废的未决 prompt id。
 	 * 宿主必须把它们 deny / rejectQuestion 掉，否则服务端一直在等。
@@ -85,11 +101,14 @@ export class ChatWindow {
 	readonly sessionFactory: TabSessionFactory;
 	readonly attachments: TabAttachmentStore;
 	readonly attachmentCommandHandler: TabAttachmentCommandHandler;
+	readonly queuePump: TabQueuePump;
 	readonly deduplicator = new RequestIdDeduplicator(2048);
 
 	private readonly options: ChatWindowOptions;
 	private readonly daemon: OpenCodeDaemonBridge;
 	private readonly fallbackWorkingDirectoryResolver: () => string | null;
+	/** Injected after construction: SessionHandler owns the HandlerContext. */
+	private tabSender: TabSender | null = null;
 	/** 会话 id 分配监听器的注销函数（关闭 tab 时清理）。 */
 	private readonly bindingUnsubs = new Map<string, () => void>();
 	private sessionManager: SessionManager | null = null;
@@ -115,11 +134,30 @@ export class ChatWindow {
 		});
 		this.eventRouter = new TabEventRouter(this.viewRegistry);
 		this.registry.setEventSink((event) => {
+			// A title belongs to the session, not to whichever adapter carried
+			// it: re-address it to the owning tab and persist it on the host
+			// record before the webview sees it (idea's `applyTitleEvent`).
+			const routed = event.type === 'tab.title.changed' ? this.applyTitleEvent(event) : event;
 			// The producing session does not know the tab binding generation;
 			// stamp the current one at the single publish choke point so a late
 			// event from before a rebind is rejected by the webview.
-			const record = this.registry.get(TabId.of(event.tabId));
-			this.eventRouter.publish(record ? event.withEpoch(record.getEpoch()) : event);
+			const record = this.registry.get(TabId.of(routed.tabId));
+			this.eventRouter.publish(record ? routed.withEpoch(record.getEpoch()) : routed);
+			// The queue consumes the next item only after a turn really ended.
+			// This is the one place every tab-owned event passes through, so a
+			// background tab settles here exactly like the visible one.
+			if (!record) {
+				return;
+			}
+			if (event.type === 'turn.settled') {
+				this.queuePump.onTabSettled(record);
+			} else if (event.type === 'session.loading') {
+				if (event.payload?.loading === false) {
+					this.queuePump.onTabIdle(record);
+				}
+			} else {
+				this.routeQueueCommandResult(record, event);
+			}
 		});
 
 		this.commandRouter = new TabCommandRouter(this.registry);
@@ -131,12 +169,15 @@ export class ChatWindow {
 			onForkBound: (targetTabId, newSessionId) => {
 				this.bindForkedSession(targetTabId, newSessionId);
 			},
+			// Command results must pass the same choke point as session events,
+			// otherwise a queued command would never leave its in-flight state.
+			publishEvent: (event) => this.publishCommandResult(event),
 		});
 
 		this.fileCommandHandler = new TabFileCommandHandler({
-			listFiles: (query, directory) =>
+			listFiles: (query, currentPath, directory) =>
 				this.options.listFiles
-					? this.options.listFiles(query, directory)
+					? this.options.listFiles(query, currentPath, directory)
 					: Promise.resolve([]),
 			publish: (tabId, epoch, payload) => {
 				this.eventRouter.publish(
@@ -160,8 +201,25 @@ export class ChatWindow {
 			store: () => this.attachments,
 			reportError: (record, message) => this.publishTabError(record, message),
 		});
+		this.queuePump = new TabQueuePump({
+			getTab: (tabId) => {
+				try {
+					return this.registry.get(TabId.of(tabId));
+				} catch {
+					return null;
+				}
+			},
+			liveTabs: () => this.registry.liveTabs(),
+			publishQueue: (record) => this.publishQueueState(record),
+			reportError: (record, message) => this.publishTabError(record, message),
+			isDaemonAlive: () => this.daemon.isAlive(),
+			hasPendingPrompt: (tabId) => this.promptRegistry.pendingForTab(tabId).length > 0,
+			sender: () => this.tabSender,
+			executeCommand: (record, item) => this.executeQueueCommand(record, item),
+		});
 
 		this.registerBuiltinTabCommands();
+		this.registerQueueCommands();
 		this.registerContextCommands();
 		this.registerSessionRuntimeCommands();
 		this.registerAttachmentCommands();
@@ -240,6 +298,10 @@ export class ChatWindow {
 		// tab.close
 		this.commandRouter.register('tab.close', (command) => {
 			const tabId = command.tabId;
+			const closing = this.registry.get(tabId);
+			if (closing) {
+				closing.queue.clearAll();
+			}
 			const rejectedPrompts = this.promptRegistry.rejectForTab(tabId.value);
 			if (rejectedPrompts.length > 0) {
 				PluginFileLogger.info(
@@ -367,6 +429,218 @@ export class ChatWindow {
 		});
 	}
 
+	/**
+	 * Tab-owned outbox commands.
+	 *
+	 * <p>The webview no longer decides when to send: it uploads the attachments
+	 * under the tab, freezes the send context, and hands the item over. The
+	 * pump sends it now or after the tab's current turn settles — never to
+	 * another tab.</p>
+	 */
+	private registerQueueCommands(): void {
+		this.commandRouter.register('queue.enqueue', (command, record) => {
+			if (!record) {
+				return;
+			}
+			const item = parseQueueItem(command.payload.item, record);
+			if (!item) {
+				this.publishTabError(record, '排队失败：消息内容无效');
+				return;
+			}
+			const queued = this.queuePump.enqueue(record, item);
+			if (!queued.ok) {
+				this.publishTabError(record, `排队失败：${queued.reason ?? '未知原因'}`);
+			}
+		});
+		this.commandRouter.register('queue.remove', (command, record) => {
+			const itemId = command.string('itemId');
+			if (!record || !itemId) {
+				return;
+			}
+			const dropped = record.queue.items().find((item) => item.id === itemId);
+			this.queuePump.remove(record, itemId);
+			this.releaseQueueAttachments(record.getTabId().value, dropped ? [dropped] : []);
+		});
+		this.commandRouter.register('queue.clear', (_command, record) => {
+			if (!record) {
+				return;
+			}
+			const dropped = [...record.queue.items()];
+			this.queuePump.clear(record);
+			this.releaseQueueAttachments(record.getTabId().value, dropped);
+		});
+		this.commandRouter.register('queue.resume', (_command, record) => {
+			if (!record) {
+				return;
+			}
+			this.queuePump.resume(record);
+		});
+	}
+
+	/** Drop uploaded bytes of items that will never be sent. */
+	private releaseQueueAttachments(tabId: string, items: TabQueueItem[]): void {
+		for (const item of items) {
+			for (const attachment of item.attachments ?? []) {
+				this.attachments.abort(tabId, attachment.attachmentId);
+			}
+		}
+	}
+
+	private publishQueueState(record: TabRecord): void {
+		this.publishRecordEvent(record, 'tab.queue.changed', {
+			tabId: record.getTabId().value,
+			sessionId: record.getSessionIdString(),
+			...record.queue.toJson(),
+		});
+	}
+
+	/**
+	 * Execute one queued session command through the same handler a direct
+	 * `session.*` command uses. The queue item stays in flight until the handler
+	 * publishes its result, so a queued prompt cannot overtake it.
+	 */
+	private executeQueueCommand(record: TabRecord, item: TabQueueItem): { ok: boolean; message?: string } {
+		const command = item.command;
+		if (!command) {
+			return { ok: false, message: '排队项不是命令' };
+		}
+		const payload: Record<string, unknown> = {};
+		if (command === '/undo' && item.commandArgs?.messageId) {
+			payload.messageId = item.commandArgs.messageId;
+		}
+		if (command === '/fork') {
+			payload.sourceTabId = record.getTabId().value;
+			payload.targetTabId = item.commandArgs?.targetTabId ?? `tab-fork-${item.id}`;
+		}
+		if (command === '/compact' && item.model) {
+			// The model was frozen when the command was queued.
+			payload.model = item.model;
+		}
+
+		const tabCommand = new TabCommand(record.getTabId(), queueCommandType(command), item.id, payload);
+		if (command === '/compact') {
+			// The view only turns on its compacting indicator when the command
+			// really starts, not while it is still waiting behind other items.
+			this.publishRecordEvent(record, 'session.compact.started', {
+				sessionId: record.getSessionIdString(),
+				startedAt: Date.now(),
+			});
+		}
+
+		switch (command) {
+			case '/compact':
+				this.sessionCommandHandler.compact(tabCommand);
+				break;
+			case '/undo':
+				this.sessionCommandHandler.revert(tabCommand);
+				break;
+			case '/redo':
+				this.sessionCommandHandler.unrevert(tabCommand);
+				break;
+			case '/fork':
+				void this.sessionCommandHandler.fork(tabCommand);
+				break;
+			case '/share':
+				this.sessionCommandHandler.share(tabCommand);
+				break;
+			case '/unshare':
+				this.sessionCommandHandler.unshare(tabCommand);
+				break;
+			default:
+				return { ok: false, message: `不支持的命令：${command}` };
+		}
+		return { ok: true };
+	}
+
+	/**
+	 * Publish one command result to the views and to the queue.
+	 *
+	 * <p>The queue item stays in flight until this event, so routing happens
+	 * before the webview is told anything; a queued prompt can only start after
+	 * the command really finished.</p>
+	 */
+	private publishCommandResult(event: TabEvent): void {
+		let record: TabRecord | null = null;
+		try {
+			record = this.registry.get(TabId.of(event.tabId));
+		} catch {
+			record = null;
+		}
+		const routed = record ? event.withEpoch(record.getEpoch()) : event;
+		this.eventRouter.publish(routed);
+		if (record) {
+			this.routeQueueCommandResult(record, routed);
+		}
+	}
+
+	/** Route one command result event to the queue item that asked for it. */
+	private routeQueueCommandResult(record: TabRecord, event: TabEvent): void {
+		const payload = event.payload ?? {};
+		const requestId = typeof payload.requestId === 'string' ? payload.requestId : undefined;
+		switch (event.type) {
+			case 'session.compact.done':
+				this.queuePump.onCommandSettled(record, ['/compact'], requestId, true);
+				break;
+			case 'session.compact.failed':
+				this.queuePump.onCommandSettled(record, ['/compact'], requestId, false, queueFailure(payload));
+				break;
+			case 'revert.changed':
+				if (requestId) {
+					this.queuePump.onCommandSettled(record, ['/undo', '/redo'], requestId, true);
+				}
+				break;
+			case 'session.revert.failed':
+				this.queuePump.onCommandSettled(record, ['/undo', '/redo'], requestId, false, queueFailure(payload));
+				break;
+			case 'session.fork.bound': {
+				const sourceId = typeof payload.sourceTabId === 'string' ? payload.sourceTabId : '';
+				const sourceRecord = sourceId ? this.registry.get(TabId.of(sourceId)) : record;
+				if (sourceRecord) {
+					this.queuePump.onCommandSettled(sourceRecord, ['/fork'], requestId, true);
+				}
+				break;
+			}
+			case 'session.fork.failed':
+				this.queuePump.onCommandSettled(record, ['/fork'], requestId, false, queueFailure(payload));
+				break;
+			case 'session.share.done':
+				this.queuePump.onCommandSettled(record, ['/share'], requestId, true);
+				break;
+			case 'session.share.failed':
+				this.queuePump.onCommandSettled(record, ['/share'], requestId, false, queueFailure(payload));
+				break;
+			case 'session.unshare.done':
+				this.queuePump.onCommandSettled(record, ['/unshare'], requestId, true);
+				break;
+			case 'session.unshare.failed':
+				this.queuePump.onCommandSettled(record, ['/unshare'], requestId, false, queueFailure(payload));
+				break;
+			default:
+				break;
+		}
+	}
+
+	/**
+	 * Wire the sender owned by the window dispatcher (SessionHandler). Until it
+	 * is set the pump keeps items queued instead of sending them elsewhere.
+	 */
+	setTabSender(sender: TabSender | null): void {
+		this.tabSender = sender;
+		this.queuePump.drainAll();
+	}
+
+	/** User hit stop: keep the queue, but wait for an explicit resume. */
+	pauseTabQueue(tabId: string): void {
+		try {
+			const record = this.registry.get(TabId.of(tabId));
+			if (record) {
+				this.queuePump.pause(record);
+			}
+		} catch {
+			// unknown tab: nothing to pause
+		}
+	}
+
 	private registerContextCommands(): void {
 		// @ 文件补全候选：结果按 tab 回到发起请求的那个 tab。
 		this.commandRouter.register('files.list', (cmd, record) => {
@@ -400,12 +674,28 @@ export class ChatWindow {
 			if (this.options.loadSession) {
 				this.options.loadSession(sessionId);
 			} else {
+				// No loader: nothing will ever report the transcript as loaded,
+				// so the tab must not stay parked in LOADING_HISTORY.
+				this.markHistoryLoaded(sessionId);
 				this.replayTab(record);
 			}
 			const title = cmd.string('title');
 			if (title) {
 				record.getSettings().applyAutoTitle(title);
 			}
+		});
+		// 磁盘分页：把该 tab 更早的一页历史前插到同一个会话。
+		// 归属只看 tab 自己绑定的会话，不看「当前活跃会话」；重复点击与过期
+		// 响应由会话侧的历史窗口（generation）拦截。
+		this.commandRouter.register('session.loadEarlier', (cmd, record) => {
+			if (!record) {
+				return;
+			}
+			const sessionId = cmd.string('sessionId') || record.getSessionIdString() || '';
+			if (!sessionId || !this.options.loadEarlierMessages) {
+				return;
+			}
+			this.options.loadEarlierMessages(sessionId);
 		});
 		// per-tab 权限模式：webview 切模式时按会话定向写入该 tab。
 		this.commandRouter.register('settings.mode', (cmd, record) => {
@@ -541,7 +831,32 @@ export class ChatWindow {
 				settings?.setAutoOpenFileEnabled(enabled);
 				settings?.setContextEnabled(enabled);
 			},
+			pauseQueue: (tabId) => this.pauseTabQueue(tabId),
+			markHistoryLoaded: (sessionId) => this.markHistoryLoaded(sessionId),
 		};
+	}
+
+	/**
+	 * The session's history is in: release the tab from {@code LOADING_HISTORY}
+	 * and let its outbox run.
+	 *
+	 * <p>Attaching a history session parks the tab in {@code LOADING_HISTORY},
+	 * and the pump refuses to send while it is there. Idea completes that
+	 * lifecycle in {@code markHistoryLoaded}; without it a message queued after
+	 * picking a session from history waited forever.</p>
+	 */
+	private markHistoryLoaded(sessionId: string): void {
+		if (!sessionId) {
+			return;
+		}
+		const record = this.registry.findBySession(sessionId);
+		if (!record || record.isClosed()) {
+			return;
+		}
+		this.registry.markBound(record.getTabId());
+		// Anything queued while the transcript was still loading may go now.
+		this.queuePump.onTabIdle(record);
+		this.publishQueueState(record);
 	}
 
 	/**
@@ -571,6 +886,41 @@ export class ChatWindow {
 		);
 	}
 
+
+	/**
+	 * Apply an engine title to the tab that owns `event.sessionId`.
+	 *
+	 * <p>Mirror of idea's `applyTitleEvent`: `applyAutoTitle` is the AUTO path,
+	 * so a late engine event can never undo a user rename. The event is then
+	 * re-addressed to the real owner so the webview updates the same tab the
+	 * host just wrote, even when the adapter that carried the title is stale.</p>
+	 */
+	private applyTitleEvent(event: TabEvent): TabEvent {
+		const rawTitle = event.payload?.title;
+		if (!event.sessionId || typeof rawTitle !== 'string') {
+			return event;
+		}
+		const title = rawTitle.replace(/[\r\n]+/g, ' ').trim();
+		if (!title || isEnginePlaceholderTitle(title)) {
+			return event;
+		}
+		// A title belongs to the session, not to whichever adapter happened to
+		// carry it. The adapter's tab id is only a fallback for a title that
+		// arrives before the session is bound.
+		const owner = this.registry.findBySession(event.sessionId)
+			?? this.registry.get(TabId.of(event.tabId));
+		if (!owner || owner.isClosed()) {
+			return event;
+		}
+		const addressed = event.withTabId(owner.getTabId().value);
+		if (owner.getSettings().applyAutoTitle(title)) {
+			PluginFileLogger.info(
+				'ChatWindow',
+				`tab.title.changed tab=${owner.getTabId().value} session=${event.sessionId} title="${title}"`,
+			);
+		}
+		return addressed;
+	}
 
 	/** Publish a named event owned by one tab (used by replay / lifecycle paths). */
 	private publishRecordEvent(record: TabRecord, type: string, payload: Record<string, unknown>): void {
@@ -705,6 +1055,9 @@ export class ChatWindow {
 
 		const previousSessionId = record.getSessionIdString();
 		if (previousSessionId && previousSessionId !== sessionId) {
+			// A late rebinding (another session took the tab over) must not
+			// deliver the previous conversation's queue into this one.
+			this.dropQueueForSessionSwitch(record);
 			this.unbindSessionSink(previousSessionId);
 			this.registry.release(tabId);
 		}
@@ -800,6 +1153,16 @@ export class ChatWindow {
 	}
 
 	/**
+	 * daemon 恢复：死亡期间保留下来的排队消息现在可以继续发送。
+	 *
+	 * <p>没有 this 触发时，队列只能等新事件（enqueue / settle / idle）才被唤醒，
+	 * 一个在 daemon 重启期间静默的 tab 会一直停在那里。</p>
+	 */
+	handleDaemonReady(): void {
+		this.queuePump.drainAll();
+	}
+
+	/**
 	 * daemon 意外退出/重启：所有进行中的 turn 都不可能再完成。
 	 *
 	 * <p>宿主会话状态先归零（replay 时不会再把 loading 带回来），活跃视图再收一次
@@ -820,6 +1183,11 @@ export class ChatWindow {
 			if (!record.getSession()) {
 				continue;
 			}
+			// The in-flight item was already accepted by the server; the turn
+			// just died with it. Pending items stay queued for the next daemon.
+			record.queue.complete();
+			record.queue.setCompacting(false);
+			this.publishQueueState(record);
 			this.publishRecordEvent(record, 'turn.ended', { reason: 'daemon_restart' });
 		}
 	}
@@ -839,6 +1207,7 @@ export class ChatWindow {
 			this.publishRecordEvent(record, 'session.loading', { loading: false });
 			this.publishRecordEvent(record, 'revert.changed', { state: JSON.stringify({ hasRevert: false }) });
 			this.publishRecordEvent(record, 'session.loaded', {});
+			this.publishQueueState(record);
 			return;
 		}
 
@@ -869,6 +1238,7 @@ export class ChatWindow {
 			state: JSON.stringify(revert ? { hasRevert: true, messageId: revert.messageID } : { hasRevert: false }),
 		});
 		this.publishRecordEvent(record, 'session.loaded', {});
+		this.publishQueueState(record);
 	}
 
 	/**
@@ -897,6 +1267,10 @@ export class ChatWindow {
 				// 已经就绑在这个会话上：不重建（重建会丢掉正在进行的流与状态）。
 				return previous;
 			}
+			// A queued message belongs to the conversation it was written in. The
+			// tab is about to show another one: drop the queue instead of
+			// delivering it into the new conversation.
+			this.dropQueueForSessionSwitch(record);
 			if (previousSessionId) {
 				this.dropBinding(tabId);
 			}
@@ -914,6 +1288,7 @@ export class ChatWindow {
 		}
 
 		// 新对话：解除绑定后挂一个全新会话。
+		this.dropQueueForSessionSwitch(record);
 		this.dropBinding(tabId);
 		const created = this.createSessionForTab(cwd, tabId);
 		if (!created) {
@@ -931,6 +1306,19 @@ export class ChatWindow {
 		this.bindingUnsubs.get(tabId.value)?.();
 		this.bindingUnsubs.delete(tabId.value);
 		this.registry.release(tabId);
+	}
+
+	/**
+	 * Drop the tab's outbox because the tab is switching conversations.
+	 * Returns true when something was actually discarded.
+	 */
+	private dropQueueForSessionSwitch(record: TabRecord): boolean {
+		const dropped = this.queuePump.clearForSessionSwitch(record);
+		if (dropped.length === 0) {
+			return false;
+		}
+		this.releaseQueueAttachments(record.getTabId().value, dropped);
+		return true;
 	}
 
 	registerView(viewId: string, channel: WebviewChannel): ViewRecord {
@@ -976,6 +1364,9 @@ export class ChatWindow {
 		if (record) {
 			this.replayTab(record);
 		}
+		// Queues are host state, so every tab's projection is restored here,
+		// not just the visible one (the tab strip shows their badges).
+		this.queuePump.publishAll();
 	}
 
 	rejectCommand(viewId: string, tabId: string, requestId: string, code: CommandRejectCode, message: string): void {
@@ -1132,4 +1523,117 @@ export class ChatWindow {
 		this.rejectCommand(viewId, command.tabId?.value || '', command.requestId,
 			CommandRejectCode.UNKNOWN_TYPE, `Unknown command type: ${type}`);
 	}
+}
+
+/**
+ * Normalize a `queue.enqueue` payload into a frozen item.
+ *
+ * <p>The tab and epoch are stamped here, not trusted from the wire: the item
+ * belongs to the tab that accepted the command.</p>
+ */
+function parseQueueItem(raw: unknown, record: TabRecord): TabQueueItem | null {
+	if (!raw || typeof raw !== 'object') {
+		return null;
+	}
+	const data = raw as Record<string, unknown>;
+	const id = typeof data.id === 'string' ? data.id.trim() : '';
+	if (!id) {
+		return null;
+	}
+	const command = data.command;
+	if (command !== undefined && command !== null) {
+		if (!isTabQueueCommand(command)) {
+			return null;
+		}
+		const args: NonNullable<TabQueueItem['commandArgs']> = {};
+		const rawArgs = data.commandArgs && typeof data.commandArgs === 'object'
+			? data.commandArgs as Record<string, unknown>
+			: {};
+		if (typeof rawArgs.messageId === 'string' && rawArgs.messageId.trim()) {
+			args.messageId = rawArgs.messageId.trim();
+		}
+		if (typeof rawArgs.targetTabId === 'string' && rawArgs.targetTabId.trim()) {
+			args.targetTabId = rawArgs.targetTabId.trim();
+		}
+		return {
+			id,
+			text: typeof data.text === 'string' && data.text.trim() ? data.text : command,
+			command,
+			commandArgs: Object.keys(args).length > 0 ? args : undefined,
+			model: typeof data.model === 'string' ? data.model : null,
+			originSessionId: record.getSessionIdString(),
+			originTabEpoch: record.getEpoch(),
+			createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.now(),
+		};
+	}
+
+	const text = typeof data.text === 'string' ? data.text : '';
+
+	const attachments: NonNullable<TabQueueItem['attachments']> = [];
+	if (Array.isArray(data.attachments)) {
+		for (const entry of data.attachments) {
+			if (!entry || typeof entry !== 'object') {
+				continue;
+			}
+			const attachment = entry as Record<string, unknown>;
+			const attachmentId = typeof attachment.attachmentId === 'string' ? attachment.attachmentId : '';
+			if (!attachmentId) {
+				continue;
+			}
+			attachments.push({
+				attachmentId,
+				fileName: typeof attachment.fileName === 'string' ? attachment.fileName : undefined,
+				mediaType: typeof attachment.mediaType === 'string' ? attachment.mediaType : undefined,
+			});
+		}
+	}
+
+	const fileTags: NonNullable<TabQueueItem['fileTags']> = [];
+	if (Array.isArray(data.fileTags)) {
+		for (const entry of data.fileTags) {
+			if (!entry || typeof entry !== 'object') {
+				continue;
+			}
+			const tag = entry as Record<string, unknown>;
+			if (typeof tag.displayPath === 'string' && typeof tag.absolutePath === 'string') {
+				fileTags.push({ displayPath: tag.displayPath, absolutePath: tag.absolutePath });
+			}
+		}
+	}
+
+	if (!text.trim() && attachments.length === 0) {
+		return null;
+	}
+
+	return {
+		id,
+		text,
+		fileTags: fileTags.length > 0 ? fileTags : undefined,
+		attachments: attachments.length > 0 ? attachments : undefined,
+		permissionMode: typeof data.permissionMode === 'string' ? data.permissionMode : null,
+		model: typeof data.model === 'string' ? data.model : null,
+		reasoningEffort: typeof data.reasoningEffort === 'string' ? data.reasoningEffort : null,
+		originSessionId: record.getSessionIdString(),
+		originTabEpoch: record.getEpoch(),
+		createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.now(),
+	};
+}
+
+/** The `session.*` command a queued command maps to. */
+const QUEUE_COMMAND_TYPES: Record<TabQueueCommand, string> = {
+	'/compact': 'session.compact',
+	'/undo': 'session.revert',
+	'/redo': 'session.unrevert',
+	'/fork': 'session.fork',
+	'/share': 'session.share',
+	'/unshare': 'session.unshare',
+};
+
+function queueCommandType(command: TabQueueCommand): string {
+	return QUEUE_COMMAND_TYPES[command];
+}
+
+function queueFailure(payload: Record<string, unknown>): string | undefined {
+	const value = payload.error ?? payload.data;
+	return typeof value === 'string' && value.trim() ? value : undefined;
 }

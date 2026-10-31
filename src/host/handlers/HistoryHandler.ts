@@ -34,9 +34,29 @@ const SUPPORTED_TYPES = [
 	'toggle_favorite',
 	'update_title',
 	'load_subagent_session',
-	'load_earlier_messages',
-	'set_earlier_cursor',
 ];
+
+/**
+ * 每页历史的消息条数。
+ *
+ * <p>opencode 2.x 的 `/api/session/{id}/message` 默认页只有 50 条，且拒绝
+ * `limit > 200`。打开会话时必须显式要满一页，否则长会话看起来只有最新 50 条。</p>
+ */
+const HISTORY_PAGE_MESSAGE_LIMIT = 200;
+
+/** 统计用户回合时最多翻多少页（防服务端游标异常导致的无限翻页）。 */
+const HISTORY_USER_TURN_PAGE_LIMIT = 50;
+
+/** 一页转录里的用户回合数（`type=user`，工具结果条不算回合）。 */
+function countUserTurns(messages: Array<{ type: string }>): number {
+	let turns = 0;
+	for (const message of messages) {
+		if (message.type === 'user') {
+			turns += 1;
+		}
+	}
+	return turns;
+}
 
 /** 与 webview ReasoningEffort 取值一致（variant → 推理力度为恒等映射）。 */
 const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -75,6 +95,109 @@ export class HistoryHandler extends BaseMessageHandler {
 			return;
 		}
 		this.handleLoadSession(JSON.stringify({ sessionId }));
+	}
+
+	/**
+	 * 磁盘分页：把该会话更早的一页前插到它所属的 tab。
+	 *
+	 * <p>与 `session.load` 一样按会话 id 解析归属，不读「当前活跃 tab」：
+	 * 事件晚到（用户已经切走）时也要写回发起请求的那个会话。</p>
+	 */
+	loadEarlierById(sessionId: string): void {
+		if (!sessionId) {
+			return;
+		}
+		const daemon = this.context.getDaemon();
+		const session = this.context.getSessionBySessionId(sessionId);
+		if (!daemon || !session) {
+			return;
+		}
+		const historyWindow = session.historyWindow;
+		const generation = historyWindow.beginEarlier();
+		if (generation == null) {
+			// 已有请求在飞 / 没有更早的页：重推一次状态，让按钮不会卡在 loading。
+			session.publishHistoryWindow();
+			return;
+		}
+		const cursor = historyWindow.getEarlierCursor();
+		session.publishHistoryWindow();
+
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		const collector = new ListMessagesCollector();
+		let settled = false;
+		const done = (): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			if (!historyWindow.isCurrent(generation)) {
+				// tab 已重新加载 / 换绑到别的会话：这一页属于旧转录，丢弃。
+				return;
+			}
+			session.publishHistoryWindow();
+		};
+
+		const ok = daemon.request(
+			'opencode.listMessages',
+			{
+				sessionId,
+				directory,
+				limit: historyWindow.getPageSize() || HISTORY_PAGE_MESSAGE_LIMIT,
+				cursor: cursor ?? undefined,
+			},
+			{
+				onLine: (line) => collector.onLine(line),
+				onError: () => {
+					historyWindow.failEarlier(generation);
+					done();
+				},
+				onComplete: (success) => {
+					if (settled) {
+						return;
+					}
+					if (!success) {
+						historyWindow.failEarlier(generation);
+						done();
+						return;
+					}
+					collector.reconcileFallback();
+					const messages = convertSdkMessages(collector.getEntries());
+					if (!historyWindow.isCurrent(generation)) {
+						settled = true;
+						return;
+					}
+					if (messages.length === 0) {
+						// 服务端把这一页过滤成空：没有更早的内容了。
+						historyWindow.finishEarlier(generation, {
+							loadedCount: 0,
+							loadedTurns: 0,
+							cursor: null,
+							hasEarlier: false,
+						});
+						done();
+						return;
+					}
+					if (session.state.getSessionId() !== sessionId) {
+						// 会话本身已换绑：不要把旧页前插到新转录。
+						historyWindow.failEarlier(generation);
+						settled = true;
+						return;
+					}
+					const added = session.prependHistoryMessages(messages);
+					historyWindow.finishEarlier(generation, {
+						loadedCount: added,
+						loadedTurns: countUserTurns(messages),
+						cursor: collector.getNextCursor(),
+						hasEarlier: collector.getHasEarlier() || Boolean(collector.getNextCursor()),
+					});
+					done();
+				},
+			},
+		);
+		if (!ok) {
+			historyWindow.failEarlier(generation);
+			done();
+		}
 	}
 
 	handle(type: string, content: string): boolean {
@@ -319,7 +442,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			if (activeSession.state.getSessionId() === sessionId) {
 				// 同会话软刷新
 				if (!daemon || activeSession.state.isBusy()) {
-					this.callJavaScript('historyLoadComplete');
+					this.completeSessionLoad(sessionId);
 					return;
 				}
 				this.callJavaScript('setSessionId', sessionId);
@@ -349,7 +472,7 @@ export class HistoryHandler extends BaseMessageHandler {
 
 		if (session.state.getSessionId() === sessionId) {
 			if (!daemon || session.state.isBusy()) {
-				this.callJavaScript('historyLoadComplete');
+				this.completeSessionLoad(sessionId);
 				return;
 			}
 			this.callJavaScript('setSessionId', sessionId);
@@ -402,7 +525,7 @@ export class HistoryHandler extends BaseMessageHandler {
 		// result and forwards terminal states through the same callback chain as
 		// the live `[SUBAGENT_STATUS]` event.
 		void this.reconcileSubagentStates(daemon, session, sessionId);
-		this.callJavaScript('historyLoadComplete');
+		this.completeSessionLoad(sessionId);
 	}
 
 	private requestMessages(
@@ -468,7 +591,15 @@ export class HistoryHandler extends BaseMessageHandler {
 					}, RETRY_DELAY_MS);
 				};
 
-				const ok = daemon.request('opencode.listMessages', { sessionId, directory }, {
+				const ok = daemon.request(
+					'opencode.listMessages',
+					{
+						sessionId,
+						directory,
+						// 显式要满一页：服务端默认页只有 50 条，长会话会被截断。
+						limit: HISTORY_PAGE_MESSAGE_LIMIT,
+					},
+					{
 					onLine: (line) => collector.onLine(line),
 					onError: (error) => {
 						failureReason = typeof error === 'string' ? error : 'listMessages failed';
@@ -480,6 +611,20 @@ export class HistoryHandler extends BaseMessageHandler {
 							const messages = convertSdkMessages(collector.getEntries());
 							if (messages.length > 0) {
 								session.restoreMessages(messages);
+								// 这一页就是该 tab 的历史窗口：游标、已加载条数/轮数
+								// 必须一起落盘，否则「还有更早」既算不出来也翻不回去。
+								session.historyWindow.applyFirstPage({
+									sessionId,
+									loadedCount: messages.length,
+									loadedTurns: countUserTurns(messages),
+									cursor: collector.getNextCursor(),
+									hasEarlier: collector.getHasEarlier() || Boolean(collector.getNextCursor()),
+									pageSize: HISTORY_PAGE_MESSAGE_LIMIT,
+								});
+								session.publishHistoryWindow();
+								// 精确的「共 N 轮」需要按 user 类型再翻一次页；它与恢复
+								// 无关，晚到也不会改变转录，所以不阻塞加载完成。
+								this.requestUserTurnTotal(daemon, session, sessionId);
 								if (!settled) {
 									settled = true;
 									resolve();
@@ -493,7 +638,8 @@ export class HistoryHandler extends BaseMessageHandler {
 						}
 						retryLater();
 					},
-				});
+					},
+				);
 				if (!ok) {
 					// 请求根本没排上队（daemon 未运行等）：同样走重试，而不是无声放弃
 					failureReason = failureReason ?? 'daemon request was not accepted';
@@ -503,6 +649,100 @@ export class HistoryHandler extends BaseMessageHandler {
 		};
 
 		return attempt(0);
+	}
+
+	/**
+	 * 统计整个会话的用户回合数，供「还有 N 轮」这类文案使用。
+	 *
+	 * <p>用 `type=user` 过滤翻页，而不是拉全量：一个 1000+ 条消息的会话只有
+	 * 十几个 user 记录。注意服务端的坑：过滤页即使已经到底，`cursor.next`
+	 * 仍可能非空，所以**终止条件是某页返回 0 条**，不是游标为空。</p>
+	 *
+	 * <p>fire-and-forget：结果只影响文案，晚到就晚到；窗口 generation 变了
+	 * （重新加载 / 换绑）则丢弃，不把旧会话的轮数写到新窗口上。</p>
+	 */
+	private requestUserTurnTotal(
+		daemon: NonNullable<ReturnType<HandlerContext['getDaemon']>>,
+		session: OpenCodeSession,
+		sessionId: string,
+	): void {
+		const historyWindow = session.historyWindow;
+		const generation = historyWindow.getGeneration();
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		let total = 0;
+
+		const finish = (): void => {
+			if (!historyWindow.isCurrent(generation)) {
+				return;
+			}
+			if (session.state.getSessionId() !== sessionId) {
+				return;
+			}
+			historyWindow.setTotalTurns(total);
+			session.publishHistoryWindow();
+		};
+
+		const requestPage = (cursor: string | null, pageIndex: number): void => {
+			if (pageIndex >= HISTORY_USER_TURN_PAGE_LIMIT) {
+				finish();
+				return;
+			}
+			const collector = new ListMessagesCollector();
+			let settled = false;
+			const settle = (): void => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+			};
+			const ok = daemon.request(
+				'opencode.listMessages',
+				{
+					sessionId,
+					directory,
+					limit: HISTORY_PAGE_MESSAGE_LIMIT,
+					type: 'user',
+					cursor: cursor ?? undefined,
+				},
+				{
+					onLine: (line) => collector.onLine(line),
+					onError: () => {
+						settle();
+						finish();
+					},
+					onComplete: (success) => {
+						if (settled) {
+							return;
+						}
+						settle();
+						if (!success) {
+							finish();
+							return;
+						}
+						collector.reconcileFallback();
+						const entries = collector.getEntries();
+						if (entries.length === 0) {
+							// 过滤页的终点：不是「游标为空」，而是「这一页是空的」。
+							finish();
+							return;
+						}
+						total += entries.length;
+						const nextCursor = collector.getNextCursor();
+						if (!nextCursor) {
+							finish();
+							return;
+						}
+						requestPage(nextCursor, pageIndex + 1);
+					},
+				},
+			);
+			if (!ok) {
+				settle();
+				finish();
+			}
+		};
+
+		requestPage(null, 0);
 	}
 
 	private requestSessionState(
@@ -535,7 +775,7 @@ export class HistoryHandler extends BaseMessageHandler {
 				done();
 				return;
 			}
-			this.callJavaScript('historyLoadComplete');
+			this.completeSessionLoad(sessionId);
 		};
 		const ok = daemon.request('opencode.getSessionInfo', { sessionId, directory }, {
 			onLine: (line) => chunks.push(line),
@@ -667,6 +907,19 @@ export class HistoryHandler extends BaseMessageHandler {
 		if (summary) {
 			this.callJavaScript('updateSessionTitle', sessionId, summary.title);
 		}
+		this.completeSessionLoad(sessionId);
+	}
+
+	/**
+	 * Finish one history load.
+	 *
+	 * <p>Two things must happen together: the tab leaves
+	 * {@code LOADING_HISTORY} (otherwise its message queue never drains) and the
+	 * webview releases its session-transition guard. Idea does the same in its
+	 * {@code markHistoryLoaded}.</p>
+	 */
+	private completeSessionLoad(sessionId: string): void {
+		this.context.markHistoryLoaded(sessionId);
 		this.callJavaScript('historyLoadComplete');
 	}
 
@@ -882,7 +1135,7 @@ export class HistoryHandler extends BaseMessageHandler {
 			send(payload);
 		};
 
-		daemon.request('opencode.listMessages', { sessionId, directory }, {
+		daemon.request('opencode.listMessages', { sessionId, directory, limit: HISTORY_PAGE_MESSAGE_LIMIT }, {
 			onLine: (line) => collector.onLine(line),
 			// request() (OpenCodeDaemonBridge) fires onError then onComplete on a
 			// terminal failure, or onError only on a synchronous failure. The

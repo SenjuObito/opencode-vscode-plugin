@@ -53,6 +53,9 @@ html {
     flex-direction: column;
     border-left: 1px solid var(--border-primary);
     overflow: hidden;
+    /* 兜底色：index.html 的首帧样式用的是 VS Code 侧边栏色，部分主题是纯黑，
+       会在状态面板等透明区域露出。这里统一改用插件自己的聊天底色。 */
+    background: var(--bg-chat);
     /* 应用字体缩放 - 使用 zoom 属性缩放整个应用，包括所有 px 单位 */
     zoom: var(--font-scale, 1);
 }

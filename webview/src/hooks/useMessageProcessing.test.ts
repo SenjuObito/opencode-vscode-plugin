@@ -237,4 +237,47 @@ describe('useMessageProcessing', () => {
     expect(result.current.mergedMessages[1].type).toBe('user');
     expect(result.current.mergedMessages[1].content).toBe('/help');
   });
+
+  it('shows the local compact notice instead of the persisted summary pill', () => {
+    const messages: ClaudeMessage[] = [
+      makeMessage('user', '', {
+        raw: { isCompactSummary: true, message: { content: 'Summary...' } },
+        timestamp: '2026-01-01T10:00:00.000Z',
+      }),
+      {
+        type: 'compact_notification',
+        content: 'chat.compactSuccess',
+        timestamp: '2026-01-01T10:00:01.000Z',
+        raw: { compactItems: [], compactStatus: 'success' },
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useMessageProcessing({ messages, currentSessionId: 'session-1', t }),
+    );
+
+    expect(result.current.mergedMessages).toHaveLength(1);
+    expect(result.current.mergedMessages[0].type).toBe('compact_notification');
+  });
+
+  it('hides a reloaded compact pill once the user sends the next message', () => {
+    const messages: ClaudeMessage[] = [
+      makeMessage('user', '', {
+        raw: { isCompactSummary: true, message: { content: 'Summary...' } },
+        timestamp: '2026-01-01T10:00:00.000Z',
+      }),
+      makeMessage('user', 'next prompt', {
+        raw: { message: { content: [{ type: 'text', text: 'next prompt' }] } },
+        timestamp: '2026-01-01T10:00:10.000Z',
+      }),
+    ];
+
+    const { result } = renderHook(() =>
+      useMessageProcessing({ messages, currentSessionId: 'session-1', t }),
+    );
+
+    expect(result.current.mergedMessages).toHaveLength(1);
+    expect(result.current.mergedMessages[0].type).toBe('user');
+    expect(result.current.mergedMessages[0].content).toBe('next prompt');
+  });
 });

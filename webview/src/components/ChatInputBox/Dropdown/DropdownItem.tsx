@@ -224,8 +224,8 @@ export const DropdownItem = ({
     );
   }
 
-  // All items are selectable (except loading indicator items)
-  const isDisabled = item.id === '__loading__';
+  // All items are selectable (except notices: loading indicator / empty-file hint)
+  const isDisabled = item.id === '__loading__' || item.id === '__info__';
 
   return (
     <>

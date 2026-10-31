@@ -115,8 +115,9 @@
     "attachmentsUploaded": "[अटैचमेंट अपलोड हो गए]",
     "streamingConnected": "आपके प्रश्न को समझ रहा है…",
     "showEarlierMessages": "{{count}} पुराने संदेश दिखाएं",
-    "showEarlierTurns": "पहले के {{count}} संवाद दौर दिखाएं ({{remaining}} लोड किए हुए शेष)",
-    "loadEarlierTurns": "डिस्क से पहले के {{count}} दौर लोड करें ({{total}} में से {{remaining}} शेष)",
+    "showEarlierTurns": "पिछले {{count}} टर्न दिखाएँ ({{remaining}} शेष)",
+
+    "showEarlierConversation": "पिछली बातचीत दिखाएँ",
     "loadEarlierMessages": "पहले के {{count}} संदेश लोड करें ({{total}} में से {{remaining}} शेष)",
     "loadingEarlierTurns": "पहले के संवाद लोड हो रहे हैं",
     "totalDuration": "इस जवाब में लगा समय",
@@ -168,6 +169,7 @@
     "retryCopy": "फिर से कॉपी करें",
     "subagentsSection": "सबएजेंट",
     "filesSection": "फ़ाइलें",
+    "filesEmpty": "कोई मेल खाती फ़ाइल नहीं मिली",
     "renderError": "संदेश प्रतिदर्शन में त्रुटि",
     "renameSession": "नाम बदलें",
     "forkSession": "सत्र कांटा",
@@ -320,18 +322,18 @@
         "hint": "सक्षम होने पर, OpenCode द्वारा प्रश्न पूछने पर कॉन्फ़िगर की गई चेतावनी ध्वनि चलती है। नीचे दिए गए ध्वनि चयन और फोकस नियमों का उपयोग करता है."
       },
       "systemNotificationOnlyWhenUnfocused": {
-        "label": "सिस्टम सूचनाएं केवल तब दिखाएं जब IDE फोकस में न हो",
+        "label": "सिस्टम सूचनाएं केवल तब दिखाएं जब VS Code फोकस में न हो",
         "enabled": "सक्षम",
         "disabled": "अक्षम",
-        "hint": "सक्षम होने पर, कार्य पूर्ण और प्रश्न सिस्टम सूचनाएं केवल तब दिखती हैं जब IDE फोकस में न हो।"
+        "hint": "सक्षम होने पर, कार्य पूर्ण और प्रश्न सिस्टम सूचनाएं केवल तब दिखती हैं जब VS Code फोकस में न हो।"
       },
       "soundNotification": {
         "label": "कार्य पूर्ण चेतावनी ध्वनि",
         "enabled": "सक्षम",
         "disabled": "अक्षम",
         "hint": "सक्षम होने पर, AI कार्य पूरा होने पर सूचना ध्वनि चलेगी, ताकि स्क्रीन से दूर होने पर भी आपको पता चल सके।",
-        "onlyWhenUnfocused": "चेतावनी ध्वनियां केवल तब चलाएं जब IDE फोकस में न हो",
-        "onlyWhenUnfocusedHint": "सक्षम होने पर, कार्य पूर्ण और प्रश्न चेतावनी ध्वनियां केवल तब चलती हैं जब IDE फोकस में न हो।",
+        "onlyWhenUnfocused": "चेतावनी ध्वनियां केवल तब चलाएं जब VS Code फोकस में न हो",
+        "onlyWhenUnfocusedHint": "सक्षम होने पर, कार्य पूर्ण और प्रश्न चेतावनी ध्वनियां केवल तब चलती हैं जब VS Code फोकस में न हो।",
         "selectSound": "सूचना ध्वनि",
         "soundDefault": "डिफ़ॉल्ट",
         "soundChime": "चाइम",

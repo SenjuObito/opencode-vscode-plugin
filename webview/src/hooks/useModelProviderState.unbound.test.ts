@@ -13,8 +13,6 @@ vi.mock('../utils/bridge', async (importOriginal) => {
   };
 });
 
-const t = ((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as any;
-
 /** The configuration commands the webview sent, as their envelopes. */
 const configCalls = () => ((window.sendToJava as unknown as ReturnType<typeof vi.fn>)?.mock?.calls ?? [])
   .map((call: unknown[]) => call[0] as string)
@@ -39,8 +37,6 @@ describe('useModelProviderState - unbound tab', () => {
     // outgoing session.
     const currentSessionIdRef = { current: null as string | null };
     const { result } = renderHook(() => useModelProviderState({
-      addToast: vi.fn(),
-      t,
       currentSessionId: 'ses_previous',
       currentSessionIdRef,
     }));
@@ -57,8 +53,6 @@ describe('useModelProviderState - unbound tab', () => {
   it('scopes the same changes once the tab is bound', () => {
     const currentSessionIdRef = { current: 'ses_bound' as string | null };
     const { result } = renderHook(() => useModelProviderState({
-      addToast: vi.fn(),
-      t,
       currentSessionId: null,
       currentSessionIdRef,
     }));

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRef, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { createRef, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactElement } from 'react';
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../types';
 import { MessageList } from './MessageList';
 import { reconcileMessageKeys, type MessageKeySnapshot } from '../utils/messageUtils';
@@ -63,9 +63,7 @@ const t = ((key: string, opts?: Record<string, unknown>) => {
   if (key === 'chat.showEarlierTurns') {
     return `Show ${opts?.count ?? 0} earlier turns (${opts?.remaining ?? 0} remaining)`;
   }
-  if (key === 'chat.loadEarlierTurns') {
-    return `Load ${opts?.count ?? 0} earlier turns (${opts?.remaining ?? 0} remaining)`;
-  }
+  if (key === 'chat.showEarlierConversation') return 'Show earlier conversation';
   if (key === 'chat.loadEarlierMessages') {
     return `Load ${opts?.count ?? 0} earlier messages (${opts?.remaining ?? 0} remaining)`;
   }
@@ -139,7 +137,10 @@ function StableMessageList({
   );
 }
 
-function renderList(messages: ClaudeMessage[]) {
+function renderList(
+  messages: ClaudeMessage[],
+  extra: Partial<ComponentProps<typeof MessageList>> = {},
+) {
   const endRef = createRef<HTMLDivElement>();
   return render(
     <MessageList
@@ -155,6 +156,7 @@ function renderList(messages: ClaudeMessage[]) {
       findToolResult={noopFindToolResult}
       extractMarkdownContent={noopExtractMd}
       messagesEndRef={endRef}
+      {...extra}
     />
   );
 }
@@ -384,6 +386,195 @@ describe('MessageList paged collapse', () => {
     expect(screen.getAllByTestId('message-item')).toHaveLength(20);
     const updatedIndicator = container.querySelector('.collapsed-messages-indicator');
     expect(updatedIndicator?.textContent).toContain('Show 5 earlier turns (10 remaining)');
+  });
+});
+
+describe('MessageList earlier turns (one entry)', () => {
+  afterEach(cleanup);
+
+  // The newest page of a long session can hold zero user turns (all records
+  // are assistant/tool output). The in-memory collapse is invisible there, yet
+  // the same entry must still be offered: it is the only way back.
+  const assistantOnlyPage = (): ClaudeMessage[] => [
+    { type: 'assistant', content: 'tail 1', id: 'tail-1' },
+    { type: 'assistant', content: 'tail 2', id: 'tail-2' },
+  ] as unknown as ClaudeMessage[];
+
+  const turn = (index: number): ClaudeMessage[] => ([
+    { type: 'user', content: `user ${index}`, id: `user-${index}` },
+    { type: 'assistant', content: `answer ${index}`, id: `answer-${index}` },
+  ] as unknown as ClaudeMessage[]);
+
+  it('offers one entry when the loaded page holds no user turns', () => {
+    renderList(assistantOnlyPage(), {
+      hasEarlierHistory: true,
+      loadedTurns: 0,
+      totalTurns: null,
+    });
+
+    const entries = document.querySelectorAll('.collapsed-messages-indicator');
+    expect(entries).toHaveLength(1);
+    expect(screen.getByTestId('load-earlier').textContent).toBe('Show earlier conversation');
+  });
+
+  it('shows how many turns are left once the host counted the session', () => {
+    renderList(assistantOnlyPage(), {
+      hasEarlierHistory: true,
+      loadedTurns: 0,
+      totalTurns: 15,
+    });
+
+    expect(screen.getByTestId('load-earlier').textContent)
+      .toBe('Show 5 earlier turns (15 remaining)');
+  });
+
+  it('never shows the in-memory and the host entries side by side', () => {
+    // Six turns loaded, five visible: one turn is folded in memory while the
+    // host still holds older pages. That was two buttons before.
+    renderList(makeMessages(12), {
+      hasEarlierHistory: true,
+      historyLoadedCount: 12,
+      loadedTurns: 6,
+      totalTurns: 30,
+    });
+
+    const entries = document.querySelectorAll('.collapsed-messages-indicator');
+    expect(entries).toHaveLength(1);
+    // The in-memory reveal wins: its turns are already here and cost nothing,
+    // but the label still reports everything that is left, disk included.
+    expect(entries[0].textContent).toBe('Show 5 earlier turns (25 remaining)');
+  });
+
+  it('does not offer an entry when the whole session is loaded', () => {
+    renderList(assistantOnlyPage(), {
+      hasEarlierHistory: false,
+      loadedTurns: 0,
+      totalTurns: 0,
+    });
+
+    expect(screen.queryByTestId('load-earlier')).toBeNull();
+  });
+
+  it('asks the host once and shows the host loading state', () => {
+    const onLoadEarlierHistory = vi.fn();
+    const { rerender } = renderList(assistantOnlyPage(), {
+      hasEarlierHistory: true,
+      loadedTurns: 0,
+      totalTurns: 3,
+      onLoadEarlierHistory,
+    });
+
+    fireEvent.click(screen.getByTestId('load-earlier'));
+    expect(onLoadEarlierHistory).toHaveBeenCalledTimes(1);
+
+    // A second click before the host answers must not duplicate the page.
+    fireEvent.click(screen.getByTestId('load-earlier'));
+    expect(onLoadEarlierHistory).toHaveBeenCalledTimes(1);
+
+    const messages = assistantOnlyPage();
+    rerender(
+      <MessageList
+        messages={messages}
+        messageKeys={keysFor(messages)}
+        streamingActive={false}
+        isThinking={false}
+        turnActive={false}
+        loadingStartTime={null}
+        t={t}
+        getMessageText={noopGetText}
+        getContentBlocks={noopGetBlocks}
+        findToolResult={noopFindToolResult}
+        extractMarkdownContent={noopExtractMd}
+        messagesEndRef={createRef<HTMLDivElement>()}
+        hasEarlierHistory
+        loadedTurns={0}
+        totalTurns={3}
+        historyWindowLoading
+        onLoadEarlierHistory={onLoadEarlierHistory}
+      />,
+    );
+
+    const button = screen.getByTestId('load-earlier');
+    expect(button.textContent).toBe('Loading earlier turns');
+    expect(button.classList.contains('is-loading')).toBe(true);
+  });
+
+  it('re-opens the entry after the host finishes a page', () => {
+    const onLoadEarlierHistory = vi.fn();
+    const messages = assistantOnlyPage();
+    const props = {
+      messages,
+      messageKeys: keysFor(messages),
+      streamingActive: false,
+      isThinking: false,
+      turnActive: false,
+      loadingStartTime: null,
+      t,
+      getMessageText: noopGetText,
+      getContentBlocks: noopGetBlocks,
+      findToolResult: noopFindToolResult,
+      extractMarkdownContent: noopExtractMd,
+      messagesEndRef: createRef<HTMLDivElement>(),
+      hasEarlierHistory: true,
+      loadedTurns: 0,
+      totalTurns: 3,
+      onLoadEarlierHistory,
+    };
+    const { rerender } = render(<MessageList {...props} />);
+
+    fireEvent.click(screen.getByTestId('load-earlier'));
+    expect(onLoadEarlierHistory).toHaveBeenCalledTimes(1);
+
+    // Host starts and then finishes the request: the guard is released.
+    rerender(<MessageList {...props} historyWindowLoading />);
+    rerender(<MessageList {...props} historyWindowLoading={false} />);
+
+    fireEvent.click(screen.getByTestId('load-earlier'));
+    expect(onLoadEarlierHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the turns of a freshly loaded page instead of folding them away', () => {
+    const onLoadEarlierHistory = vi.fn();
+    const newestTurn = turn(9);
+    const { rerender } = renderList(newestTurn, {
+      hasEarlierHistory: true,
+      historyLoadedCount: 2,
+      loadedTurns: 1,
+      totalTurns: 10,
+      onLoadEarlierHistory,
+    });
+
+    fireEvent.click(screen.getByTestId('load-earlier'));
+    expect(onLoadEarlierHistory).toHaveBeenCalledTimes(1);
+
+    // Nine older turns arrive: the page is prepended and the host window grows.
+    const withPage = [...Array.from({ length: 9 }, (_, i) => turn(i)).flat(), ...newestTurn];
+    rerender(
+      <MessageList
+        messages={withPage}
+        messageKeys={keysFor(withPage)}
+        streamingActive={false}
+        isThinking={false}
+        turnActive={false}
+        loadingStartTime={null}
+        t={t}
+        getMessageText={noopGetText}
+        getContentBlocks={noopGetBlocks}
+        findToolResult={noopFindToolResult}
+        extractMarkdownContent={noopExtractMd}
+        messagesEndRef={createRef<HTMLDivElement>()}
+        hasEarlierHistory={false}
+        historyLoadedCount={20}
+        loadedTurns={10}
+        totalTurns={10}
+        onLoadEarlierHistory={onLoadEarlierHistory}
+      />,
+    );
+
+    // The click meant "go further back", so the fetched turns are visible
+    // without a second click: every user turn of the page is on screen.
+    expect(screen.getAllByTestId('message-item')).toHaveLength(20);
+    expect(screen.getByText('user 0')).toBeTruthy();
   });
 });
 

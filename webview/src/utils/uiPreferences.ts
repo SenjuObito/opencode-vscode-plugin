@@ -277,3 +277,33 @@ export function installUiPreferencesBridge(): () => void {
     }
   };
 }
+
+/**
+ * Generic subscribable boolean preference descriptor for useSyncExternalStore.
+ */
+export interface BooleanPreference {
+  get(): boolean;
+  subscribe(onChange: () => void): () => void;
+}
+
+/**
+ * Subscribe to changes in UI preferences.
+ * Returns an unsubscribe callback.
+ */
+export function subscribeUiPreferences(onChange: () => void): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  window.addEventListener(UI_PREFERENCES_CHANGED_EVENT, onChange);
+  return () => {
+    window.removeEventListener(UI_PREFERENCES_CHANGED_EVENT, onChange);
+  };
+}
+
+/**
+ * Reactive accessor for the `diffExpandedByDefault` UI preference.
+ */
+export const diffExpandedPreference: BooleanPreference = {
+  get: () => current.diffExpandedByDefault,
+  subscribe: subscribeUiPreferences,
+};

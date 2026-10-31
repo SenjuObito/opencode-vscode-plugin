@@ -1,21 +1,51 @@
 /* Welcome Screen Styles */
 
-/* 空态底纹（§10.3）：只在「没有消息且不在加载」时挂 .is-empty-state。
-   背景挂在消息容器上而不是 body —— 否则历史/设置页也会被染。 */
-.messages-shell.is-empty-state {
+/* 抖动噪点（抗色带）：深色底上几乎不可见，但能打散渐变的 1/255 台阶。 */
+@aurora-dither-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.014 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+@aurora-dither-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.02 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+
+/* 统一聊天画布（§10.3）：状态面板、输入区与消息列表共享同一块底色。
+   底纹必须挂在整个 chat-screen-shell 上，否则面板展开后下方会露出
+   #app 的主题侧边栏色，形成横向断层（idea 03f87d7 的同款修法）。 */
+.chat-screen-shell {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
     background-color: var(--bg-chat);
-    background-image:
-        radial-gradient(circle at 50% 40%, rgba(14, 165, 233, 0.1) 0%, rgba(99, 102, 241, 0.05) 35%, transparent 65%),
-        radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-    background-size: 100% 100%, 20px 20px;
+    background-image: none;
     transition: background 0.25s ease;
+
+    /* 空态极光：形状/配色与 idea 完全一致（radial circle at 50% 40%，
+       0% → 35% → 65% 收尾），额外叠一层 140px 的极淡噪点做抖动（dither）。
+       原因：这层极光的整段色差只有 ~12 个 8bit 色阶，面板越宽，单个色阶就被
+       摊得越宽（1600px 宽时约 50~70px），深色底上会显出同心色带——idea 的
+       侧栏窄、色阶只有 20~30px 宽，所以同样 CSS 看不出来。抖动层把台阶边缘
+       打散成噪点，宽度变化时都不会再出现"一圈圈"。 */
+    &.is-empty-state {
+        background-color: var(--bg-chat, #0d0f17);
+        background-image:
+            @aurora-dither-dark,
+            radial-gradient(circle at 50% 40%,
+                rgba(14, 165, 233, 0.1) 0%,
+                rgba(99, 102, 241, 0.05) 35%,
+                transparent 65%),
+            radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 140px 140px, 100% 100%, 20px 20px;
+    }
 }
 
-[data-theme="light"] .messages-shell.is-empty-state {
+[data-theme="light"] .chat-screen-shell.is-empty-state {
     background-image:
-        radial-gradient(circle at 50% 40%, rgba(186, 230, 253, 0.45) 0%, rgba(224, 231, 255, 0.25) 35%, transparent 65%),
+        @aurora-dither-light,
+        radial-gradient(circle at 50% 40%,
+            rgba(186, 230, 253, 0.45) 0%,
+            rgba(224, 231, 255, 0.25) 35%,
+            transparent 65%),
         radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
-    background-size: 100% 100%, 20px 20px;
+    background-size: 140px 140px, 100% 100%, 20px 20px;
 }
 
 .welcome-screen {
