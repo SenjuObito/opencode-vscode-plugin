@@ -10,8 +10,7 @@ import { SessionMarkdownFormatter, ExportSessionMetadata } from '../export/Sessi
 import { logError } from '../util/DiagnosticLogger';
 
 const SUPPORTED_TYPES = [
-	'export_session',
-	'export_session_markdown',
+	'history.export',
 	'save_json',
 ];
 
@@ -25,7 +24,8 @@ export class ExportHandler extends BaseMessageHandler {
 	}
 
 	handle(type: string, content: string): boolean {
-		if (type === 'export_session' || type === 'export_session_markdown') {
+		if (type === 'history.export') {
+			// 历史行的下载按钮：会话级导出，按 payload 里的 sessionId 取整份 transcript。
 			void this.handleExportSession(content);
 			return true;
 		}
@@ -36,7 +36,7 @@ export class ExportHandler extends BaseMessageHandler {
 		return false;
 	}
 
-	/** legacy `save_json:{content,filename}`（webview 的导出/下载路径）。 */
+	/** `save_json:{content,filename}`：聊天页把已生成的 Markdown/JSON 落到用户选定的文件。 */
 	private handleSaveJson(content: string): void {
 		try {
 			const parsed = JSON.parse(content || '{}') as Record<string, unknown>;

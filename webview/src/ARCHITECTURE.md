@@ -121,15 +121,16 @@ Dialog orchestration for permission / ask-user / plan prompts. The tab record
   them while the request stays queued.
 
 ### useSessionManagement
-Handles session CRUD operations.
+Handles session CRUD operations. History operations speak the v2 dotted
+commands and are answered by `HistoryHandler` (export by `ExportHandler`).
 
 **Operations:**
-- `createNewSession()` - Create new chat session
-- `loadHistorySession()` - Load session from history
-- `deleteHistorySession()` - Delete session
-- `exportHistorySession()` - Export session to file
-- `toggleFavoriteSession()` - Toggle session favorite status
-- `updateHistoryTitle()` - Update session title
+- `createNewSession()` - Create new chat session (`session.new`)
+- `loadHistorySession()` - Load session from history (`session.load`)
+- `deleteHistorySession()` - Delete session (`history.delete` / `history.deleteMany`)
+- `exportHistorySession()` - Export session to file (`history.export`)
+- `toggleFavoriteSession()` - Toggle session favorite status (`history.favorite`)
+- `updateHistoryTitle()` - Update session title (`history.rename`)
 
 ### useRewindHandlers (~135 lines)
 Handles rewind (time travel) functionality.

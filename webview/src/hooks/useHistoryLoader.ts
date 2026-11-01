@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { sendBridgeEvent } from '../utils/bridge';
+import { sendWindowCommand } from '../utils/bridge';
 
 export interface UseHistoryLoaderOptions {
   currentView: 'chat' | 'history' | 'settings';
@@ -58,7 +58,8 @@ export function useHistoryLoader(options: UseHistoryLoaderOptions): () => void {
    */
   const requestHistoryData = useCallback(() => {
     if (window.sendToJava) {
-      sendBridgeEvent('load_history_data', currentProvider);
+      // 历史域只有 v2 命令：宿主 HistoryHandler 属主 `history.refresh`。
+      sendWindowCommand('history.refresh', { provider: currentProvider });
       return;
     }
     if (historyRetryCountRef.current < MAX_HISTORY_RETRIES) {

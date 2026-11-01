@@ -1,11 +1,19 @@
 /**
- * HistoryHandler — port of cc-gui `handler/history/HistoryHandler.java`
+ * HistoryHandler — port of idea `handler/history/HistoryHandler.java`
  * (opencode-only subset). History is a host-side index over sessions the
  * extension created via the persistent daemon.
  *
- *   load_history_data → `window.setHistoryData({ success, sessions, total })`
- *   load_session       → reset current session（SDK listMessages 全量恢复在 Phase 4）
- *   delete_session(s) / toggle_favorite / update_title → 更新索引
+ * <p>The history view speaks the v2 dotted commands; this handler owns them,
+ * exactly like idea's `HistoryHandler` owns `history.delete` /
+ * `history.deleteMany` / `history.favorite` / `history.rename`. Export lives
+ * in `ExportHandler` (`history.export`). The legacy snake_case names
+ * (`delete_session`, `toggle_favorite`, ...) are gone: one command name per
+ * operation, no aliases.</p>
+ *
+ *   history.refresh / history.deepSearch → `window.setHistoryData({ success, sessions, total })`
+ *   history.delete / history.deleteMany  → daemon `opencode.deleteSession` + reload
+ *   history.favorite                     → daemon `opencode.toggleFavorite` + reload
+ *   history.rename                       → daemon `opencode.updateSessionTitle` + `tab.title.changed`
  */
 import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
@@ -15,26 +23,28 @@ import { ListMessagesCollector } from '../util/ListMessagesCollector';
 import { logError, logWarn } from '../util/DiagnosticLogger';
 import type { OpenCodeSession } from '../session/OpenCodeSession';
 import {
-	getFavorites,
 	getSessions,
-	pushHistoryData,
 	setSessions as storeSessions,
-	setFavorites as storeFavorites,
 	upsertSessionSummary,
 	type HistorySessionSummary,
 } from '../session/SessionHistoryStore';
 
 const SUPPORTED_TYPES = [
-	'load_history_data',
+	'history.refresh',
 	'history.deepSearch',
-	'deep_search_history',
-	'load_session',
-	'delete_session',
-	'delete_sessions',
-	'toggle_favorite',
-	'update_title',
+	'history.delete',
+	'history.deleteMany',
+	'history.favorite',
+	'history.rename',
 	'load_subagent_session',
 ];
+
+/**
+ * 会话 id 白名单：只允许 opencode 生成的 id 字符集。
+ * 与 idea `HistoryDeleteService#isValidSessionId` 一致——id 会进入 SDK 的 URL
+ * 路径，`../foo` 这类 payload 不能透传。
+ */
+const SESSION_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 /**
  * 每页历史的消息条数。
@@ -73,7 +83,7 @@ const HISTORY_MAX_ATTEMPTS = 3;
 const HISTORY_RETRY_DELAY_MS = 600;
 
 export class HistoryHandler extends BaseMessageHandler {
-	/** 历史列表加载序列：每次 load_history_data 递增，用于顶掉过期的重试与回包。 */
+	/** 历史列表加载序列：每次 history.refresh 递增，用于顶掉过期的重试与回包。 */
 	private historyLoadSeq = 0;
 
 	constructor(context: HandlerContext) {
@@ -87,8 +97,8 @@ export class HistoryHandler extends BaseMessageHandler {
 	/**
 	 * v2 `session.load` 的入口（无 legacy 报文可解析）。
 	 *
-	 * 与 `load_session` 完全同一条实现：绑定到目标 tab 的会话由
-	 * `SessionManager` 的多 tab 解析器负责，这里只做「加载并回放」。
+	 * 绑定到目标 tab 的会话由 `SessionManager` 的多 tab 解析器负责，
+	 * 这里只做「加载并回放」。
 	 */
 	loadSessionById(sessionId: string): void {
 		if (!sessionId) {
@@ -202,29 +212,29 @@ export class HistoryHandler extends BaseMessageHandler {
 
 	handle(type: string, content: string): boolean {
 		switch (type) {
-			case 'load_history_data':
+			case 'history.refresh':
+			case 'history.deepSearch':
+				// 深度搜索在 opencode 侧没有本地缓存可清：重新向 daemon 拉一次列表
+				// 就是它的全部语义（idea `handleDeepSearchHistory` 同样实现）。
 				this.handleLoadHistoryData();
 				return true;
-			case 'load_session':
-				this.handleLoadSession(content);
-				return true;
-			case 'delete_session':
+			case 'history.delete':
 				this.handleDeleteSession(content);
 				return true;
-			case 'delete_sessions':
+			case 'history.deleteMany':
 				this.handleDeleteSessions(content);
 				return true;
-			case 'toggle_favorite':
+			case 'history.favorite':
 				this.handleToggleFavorite(content);
 				return true;
-		case 'update_title':
-			this.handleUpdateTitle(content);
-			return true;
-		case 'load_subagent_session':
-			this.handleLoadSubagentSession(content);
-			return true;
-		default:
-			return false;
+			case 'history.rename':
+				this.handleUpdateTitle(content);
+				return true;
+			case 'load_subagent_session':
+				this.handleLoadSubagentSession(content);
+				return true;
+			default:
+				return false;
 		}
 	}
 
@@ -236,12 +246,10 @@ export class HistoryHandler extends BaseMessageHandler {
 		storeSessions(this.context.getSettingsService().getStore(), sessions);
 	}
 
-	private getFavorites(): Record<string, { favoritedAt: number }> {
-		return getFavorites(this.context.getSettingsService().getStore());
-	}
-
-	private setFavorites(favorites: Record<string, { favoritedAt: number }>): void {
-		storeFavorites(this.context.getSettingsService().getStore(), favorites);
+	/** 删除成功后清掉本地索引里那条摘要（否则历史标题查询会拿到幽灵条目）。 */
+	private forgetSessionSummary(sessionId: string): void {
+		const remaining = this.getSessions().filter((s) => s.sessionId !== sessionId);
+		this.setSessions(remaining);
 	}
 
 	/** 由 OpenCodeSession 在 turn 结束时调用：登记/更新会话摘要（原生模式由 OpenCode 服务端接管）。 */
@@ -269,14 +277,14 @@ export class HistoryHandler extends BaseMessageHandler {
 			this.failLoadHistory('No daemon connection');
 			return;
 		}
-		// 每次加载都是一个新序列：delete/update_title 触发的重复加载会顶掉旧序列，
+		// 每次加载都是一个新序列：history.delete / history.rename 触发的重复加载会顶掉旧序列，
 		// 防止过期结果（或过期重试）覆盖新结果。
 		const seq = ++this.historyLoadSeq;
 		this.requestSessions(daemon, this.context.resolveEffectiveWorkingDirectory() ?? undefined, 1, seq);
 	}
 
 	private failLoadHistory(error: string): void {
-		logError(`load_history_data failed: ${error}`, undefined, 'HistoryHandler');
+		logError(`history.refresh failed: ${error}`, undefined, 'HistoryHandler');
 		this.callJavaScript(
 			'setHistoryData',
 			JSON.stringify({ success: false, error: `Failed to list sessions: ${error}`, sessions: [], total: 0, favorites: {} }),
@@ -310,14 +318,14 @@ export class HistoryHandler extends BaseMessageHandler {
 				return;
 			}
 			if (attempt < HISTORY_MAX_ATTEMPTS) {
-				logWarn(`load_history_data attempt ${attempt} ${failure.message} — retrying`, 'HistoryHandler');
+				logWarn(`history.refresh attempt ${attempt} ${failure.message} — retrying`, 'HistoryHandler');
 				timer = setTimeout(() => this.requestSessions(daemon, directory, attempt + 1, seq), HISTORY_RETRY_DELAY_MS);
 				return;
 			}
 			if (failure.empty) {
 				// 重试后仍是空：日志里必须能和「回包丢失」区分开；同时给前端一个
 				// 终态，否则列表永远停在 loading 转圈。
-				logWarn(`load_history_data returned an empty session list after ${attempt} attempts`, 'HistoryHandler');
+				logWarn(`history.refresh returned an empty session list after ${attempt} attempts`, 'HistoryHandler');
 				this.callJavaScript(
 					'setHistoryData',
 					JSON.stringify({ success: true, sessions: [], total: 0, favorites: {} }),
@@ -956,30 +964,67 @@ export class HistoryHandler extends BaseMessageHandler {
 	}
 
 	/**
-	 * webview 上滚到顶请求更早的历史（opencode 恢复分页）。
-	 * payload: { sessionId?, count? }——sessionId 不匹配当前会话时忽略。
+	 * v2 命令的会话 id：`{"sessionId":"ses_x"}`。
+	 *
+	 * <p>宿主在 `HostCommand.parse` 里把信封身份合进了 payload，所以删除/收藏
+	 * 拿到的永远是 JSON 对象，不再是 idea 早期 `delete_session:ses-x` 的裸字符串。
+	 * 裸字符串只作防御性兼容。</p>
 	 */
+	private readSessionId(content: string): string {
+		const raw = (content ?? '').trim();
+		if (!raw) {
+			return '';
+		}
+		if (raw.startsWith('{')) {
+			try {
+				const json = JSON.parse(raw) as Record<string, unknown>;
+				return typeof json.sessionId === 'string' ? json.sessionId.trim() : '';
+			} catch {
+				return '';
+			}
+		}
+		return raw;
+	}
+
+	/** 被删会话若仍挂在某个 tab 上并且在跑，先中断（idea `quiesceActiveSessionForDeletion`）。 */
+	private quiesceSession(sessionId: string): void {
+		const owner = this.context.getSessionBySessionId(sessionId);
+		if (owner && owner.state.isBusy()) {
+			owner.interrupt();
+		}
+	}
+
+	/** 删除历史会话（v2 `history.delete`，payload `{ sessionId }`）。 */
 	private handleDeleteSession(content: string): void {
-		const sessionId = (content ?? '').trim();
-		if (!sessionId) {
+		const sessionId = this.readSessionId(content);
+		if (!SESSION_ID_PATTERN.test(sessionId)) {
+			logWarn(`history.delete rejected: invalid sessionId`, 'HistoryHandler');
 			return;
 		}
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
+			this.failLoadHistory('No daemon connection');
 			return;
 		}
+		this.quiesceSession(sessionId);
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		daemon.request('opencode.deleteSession', { sessionId, directory }, {
+		void daemon.request('opencode.deleteSession', { sessionId, directory }, {
 			onLine: () => {},
 			onError: (err) => {
-				console.error('[HistoryHandler] Failed to delete session:', err);
+				logWarn(`opencode.deleteSession failed: ${String(err)}`, 'HistoryHandler');
 			},
-			onComplete: () => {
+			// 成败都重拉列表：成功拿到删掉之后的权威列表，失败把 webview 的
+			// 乐观删除撤回——不另发错误提示，列表本身就是真相。
+			onComplete: (success) => {
+				if (success) {
+					this.forgetSessionSummary(sessionId);
+				}
 				this.handleLoadHistoryData();
 			},
 		});
 	}
 
+	/** 批量删除（v2 `history.deleteMany`，payload `{ sessionIds }`）。 */
 	private handleDeleteSessions(content: string): void {
 		let ids: string[] = [];
 		try {
@@ -992,32 +1037,46 @@ export class HistoryHandler extends BaseMessageHandler {
 		} catch {
 			ids = content ? [content] : [];
 		}
-		const idSet = new Set(ids);
+		const idSet = new Set(ids.map((id) => id.trim()).filter((id) => SESSION_ID_PATTERN.test(id)));
 		if (idSet.size === 0) {
+			logWarn('history.deleteMany rejected: no valid sessionIds', 'HistoryHandler');
 			return;
 		}
 		const daemon = this.context.getDaemon();
 		if (!daemon) {
+			this.failLoadHistory('No daemon connection');
 			return;
 		}
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		const promises = Array.from(idSet).map((sessionId) => {
-			return new Promise<void>((resolve) => {
-				daemon.request('opencode.deleteSession', { sessionId, directory }, {
+		const idList = Array.from(idSet);
+		const promises = idList.map((sessionId) => {
+			this.quiesceSession(sessionId);
+			return new Promise<boolean>((resolve) => {
+				void daemon.request('opencode.deleteSession', { sessionId, directory }, {
 					onLine: () => {},
-					onError: () => resolve(),
-					onComplete: () => resolve(),
+					onError: (err) => {
+						logWarn(`opencode.deleteSession failed for ${sessionId}: ${String(err)}`, 'HistoryHandler');
+					},
+					onComplete: (success) => resolve(success),
 				});
 			});
 		});
-		Promise.all(promises).then(() => {
+		void Promise.all(promises).then((results) => {
+			results.forEach((success, index) => {
+				if (success) {
+					this.forgetSessionSummary(idList[index]);
+				}
+			});
+			// 与单条删除同一规则：成败都重拉，列表即真相。
 			this.handleLoadHistoryData();
 		});
 	}
 
+	/** 收藏（v2 `history.favorite`，payload `{ sessionId }`）。 */
 	private handleToggleFavorite(content: string): void {
-		const sessionId = (content ?? '').trim();
-		if (!sessionId) {
+		const sessionId = this.readSessionId(content);
+		if (!SESSION_ID_PATTERN.test(sessionId)) {
+			logWarn(`history.favorite rejected: invalid sessionId`, 'HistoryHandler');
 			return;
 		}
 		const daemon = this.context.getDaemon();
@@ -1025,47 +1084,70 @@ export class HistoryHandler extends BaseMessageHandler {
 			return;
 		}
 		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-		daemon.request('opencode.toggleFavorite', { sessionId, directory }, {
+		void daemon.request('opencode.toggleFavorite', { sessionId, directory }, {
 			onLine: () => {},
 			onError: (err) => {
-				console.error('[HistoryHandler] Failed to toggle favorite:', err);
+				logWarn(`opencode.toggleFavorite failed: ${String(err)}`, 'HistoryHandler');
 			},
-			onComplete: (success) => {
-				if (success) {
-					console.log('[HistoryHandler] Favorite toggled successfully:', sessionId);
-				}
+			// 收藏状态存在 session.metadata 里：成败都重拉一次，成功拿到服务端
+			// 权威值，失败把 webview 的乐观切换撤回。
+			onComplete: () => {
+				this.handleLoadHistoryData();
 			},
 		});
 	}
 
+	/**
+	 * 重命名（v2 `history.rename`，payload `{ sessionId, title }`）。
+	 *
+	 * <p>历史行是**会话级**操作：它按会话 id 定址，不要求该会话正开在某个 tab
+	 * 里（tab 栏改名走 tab 级的 `session.rename`）。写成功后把标题按会话所属
+	 * tab 发回 `tab.title.changed`，宿主记录与其他视图一起更新。</p>
+	 */
 	private handleUpdateTitle(content: string): void {
+		let sessionId = '';
+		let title = '';
 		try {
 			const json = JSON.parse(content) as Record<string, unknown>;
-			const sessionId = typeof json?.sessionId === 'string' ? json.sessionId : '';
-			const title = typeof json?.title === 'string' ? json.title : (typeof json?.customTitle === 'string' ? json.customTitle : '');
-			if (!sessionId || !title) {
-				return;
-			}
-			const daemon = this.context.getDaemon();
-			if (!daemon) {
-				return;
-			}
-			const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
-			daemon.request('opencode.updateSessionTitle', { sessionId, title, directory }, {
-				onLine: () => {},
-				onError: (err) => {
-					console.error('[HistoryHandler] Failed to update session title:', err);
-				},
-				onComplete: (success) => {
-					if (success) {
-						this.callJavaScript('updateSessionTitle', sessionId, title);
-						this.handleLoadHistoryData();
-					}
-				},
-			});
+			sessionId = typeof json?.sessionId === 'string' ? json.sessionId.trim() : '';
+			// 与 idea `HistoryMetadataService` 同序：`customTitle` 优先，`title` 兜底。
+			title = typeof json?.customTitle === 'string' ? json.customTitle : (typeof json?.title === 'string' ? json.title : '');
 		} catch {
 			// 忽略解析失败
+			return;
 		}
+		if (!SESSION_ID_PATTERN.test(sessionId) || !title.trim()) {
+			logWarn('history.rename rejected: incomplete payload', 'HistoryHandler');
+			return;
+		}
+		// 标题是单行的：换行折成空格，和宿主 `applyTitleEvent` 的清洗规则一致。
+		const cleanTitle = title.replace(/[\r\n]+/g, ' ').trim();
+		const daemon = this.context.getDaemon();
+		if (!daemon) {
+			return;
+		}
+		const directory = this.context.resolveEffectiveWorkingDirectory() ?? undefined;
+		void daemon.request('opencode.updateSessionTitle', { sessionId, title: cleanTitle, directory }, {
+			onLine: () => {},
+			onError: (err) => {
+				logWarn(`opencode.updateSessionTitle failed: ${String(err)}`, 'HistoryHandler');
+			},
+			onComplete: (success) => {
+				if (success) {
+					// 标题属于会话：发到它所属的 tab，走宿主唯一标题发布口。
+					// 事件本身就是 webview 的 `updateSessionTitle`（见 EventCatalog），
+					// 所以 `legacy: false`——不再额外按位置调一次 `window.<fn>`。
+					this.context.publishTabEvent(
+						'tab.title.changed',
+						this.context.getTabIdForSession(sessionId),
+						{ title: cleanTitle, source: 'user' },
+						{ sessionId, legacy: false },
+					);
+				}
+				// 成功：历史行换成服务端标题；失败：把 webview 的乐观改名撤回。
+				this.handleLoadHistoryData();
+			},
+		});
 	}
 
 	/**

@@ -143,11 +143,12 @@ suite('createChatInstance Assembly', () => {
 		});
 
 		// 验证 ExportHandler 已正确注册到当前实例的 dispatcher
-		const canHandleExportMarkdown = instance.dispatcher.dispatch('export_session_markdown', '{}');
-		assert.strictEqual(canHandleExportMarkdown, true);
+		assert.strictEqual(instance.dispatcher.hasHandlerFor('history.export'), true);
+		assert.strictEqual(instance.dispatcher.hasHandlerFor('save_json'), true);
 
-		const canHandleExportSession = instance.dispatcher.dispatch('export_session', '{}');
-		assert.strictEqual(canHandleExportSession, true);
+		// 旧的 export_session* 名字已随历史域收敛删除
+		assert.strictEqual(instance.dispatcher.hasHandlerFor('export_session'), false);
+		assert.strictEqual(instance.dispatcher.hasHandlerFor('export_session_markdown'), false);
 
 		// 验证未注册的类型返回 false
 		assert.strictEqual(instance.dispatcher.dispatch('unknown_type', '{}'), false);

@@ -498,11 +498,10 @@ export function useSessionManagement({
 
   // Update session title
   const updateHistoryTitle = useCallback((sessionId: string, newTitle: string) => {
-    // The rename is a command: it names the session it renames.
-    const tabId = getTabStore().findIdBySession(sessionId) ?? getTabStore().getActiveTabId();
-    if (tabId) {
-      sendHostCommand(tabId, 'session.rename', { customTitle: newTitle }, sessionId);
-    }
+    // Renaming a history row is a session-level operation: it names the session,
+    // not a tab. `session.rename` is tab-scoped and would be refused (or write
+    // nothing) when that session is not open in a tab.
+    sendWindowCommand('history.rename', { sessionId, title: newTitle });
 
     // Immediately update frontend state
     if (historyData && historyData.sessions) {
