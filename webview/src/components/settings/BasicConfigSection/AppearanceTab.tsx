@@ -3,6 +3,7 @@ import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
 import type { DiffThemeMode } from '../../../utils/diffTheme';
 import type { UiFontConfig, CodeFontConfig } from '../hooks/useSettingsBasicActions';
+import type { StyleMode } from '../../../utils/uiPreferences';
 
 // Preset colors (module-level constants to avoid recreating on each render)
 const DARK_PRESETS = [
@@ -123,6 +124,8 @@ const SystemIcon = () => (
 export interface AppearanceTabProps {
   theme: 'light' | 'dark' | 'system';
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
+  styleMode?: StyleMode;
+  onStyleModeChange?: (mode: StyleMode) => void;
   fontSizeLevel: number;
   onFontSizeLevelChange: (level: number) => void;
   editorFontConfig?: {
@@ -152,6 +155,8 @@ export interface AppearanceTabProps {
 const AppearanceTab = ({
   theme,
   onThemeChange,
+  styleMode = 'classic',
+  onStyleModeChange = () => {},
   fontSizeLevel,
   onFontSizeLevelChange,
   editorFontConfig,
@@ -403,6 +408,43 @@ const AppearanceTab = ({
     },
   ];
 
+  const styleModeOptions: Array<{
+    value: StyleMode;
+    labelKey: string;
+    descKey: string;
+    iconClass: string;
+    iconText: string;
+  }> = [
+    {
+      value: 'classic',
+      labelKey: 'settings.basic.styleMode.classic',
+      descKey: 'settings.basic.styleMode.classicDesc',
+      iconClass: styles.styleModeIconClassic,
+      iconText: '◼',
+    },
+    {
+      value: 'liquid-glass',
+      labelKey: 'settings.basic.styleMode.liquidGlass',
+      descKey: 'settings.basic.styleMode.liquidGlassDesc',
+      iconClass: styles.styleModeIconLiquid,
+      iconText: '💧',
+    },
+    {
+      value: 'material-design',
+      labelKey: 'settings.basic.styleMode.materialDesign',
+      descKey: 'settings.basic.styleMode.materialDesignDesc',
+      iconClass: styles.styleModeIconMaterial,
+      iconText: '◆',
+    },
+    {
+      value: 'fluent-design',
+      labelKey: 'settings.basic.styleMode.fluentDesign',
+      descKey: 'settings.basic.styleMode.fluentDesignDesc',
+      iconClass: styles.styleModeIconFluent,
+      iconText: '⊞',
+    },
+  ];
+
   const languageOptions = [
     { value: FOLLOW_IDEA_LANGUAGE, label: 'settings.basic.language.followIde' },
     { value: 'zh', label: 'settings.basic.language.simplifiedChinese' },
@@ -496,6 +538,40 @@ const AppearanceTab = ({
             </div>
             <span className={styles.themeOptionLabel}>{t('settings.basic.theme.dark')}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Style mode switcher */}
+      <div className={styles.styleModeSection}>
+        <div className={styles.fieldHeader}>
+          <span className="codicon codicon-paintcan" />
+          <span className={styles.fieldLabel}>{t('settings.basic.styleMode.label')}</span>
+        </div>
+
+        <div className={styles.styleModeGrid}>
+          {styleModeOptions.map((option) => {
+            const isSelected = styleMode === option.value;
+            return (
+              <div
+                key={option.value}
+                className={`${styles.styleModeCard} ${isSelected ? styles.active : ''}`}
+                onClick={() => onStyleModeChange(option.value)}
+              >
+                {isSelected && (
+                  <div className={styles.checkBadge}>
+                    <span className="codicon codicon-check" />
+                  </div>
+                )}
+                <div className={`${styles.styleModeIconWrapper} ${option.iconClass}`}>
+                  <span>{option.iconText}</span>
+                </div>
+                <div className={styles.styleModeInfo}>
+                  <span className={styles.styleModeTitle}>{t(option.labelKey)}</span>
+                  <span className={styles.styleModeDesc}>{t(option.descKey)}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

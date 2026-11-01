@@ -220,6 +220,17 @@
         "dark": "暗色",
         "darkDesc": "护眼舒适，适合夜间使用"
       },
+      "styleMode": {
+        "label": "样式风格主题",
+        "classic": "经典模式",
+        "classicDesc": "原生 VS Code 稳重纯色直角，性能开销极低",
+        "liquidGlass": "苹果液态玻璃",
+        "liquidGlassDesc": "macOS / visionOS 磨砂高斯模糊与晶莹反光高光",
+        "materialDesign": "谷歌 Material 3",
+        "materialDesignDesc": "Material You 阶梯色调表面、胶囊按键与柔和阴影",
+        "fluentDesign": "微软 Fluent 2",
+        "fluentDesignDesc": "Windows 11 亚克力透光质感与严谨商务边框"
+      },
       "language": {
         "label": "界面语言",
         "followIde": "跟随 IDE",

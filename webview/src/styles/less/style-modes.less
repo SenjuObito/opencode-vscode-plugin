@@ -1,0 +1,351 @@
+/* ==========================================================================
+   OpenCode Buddy 样式风格主题模式 (Style Modes)
+   支持四种模式：
+     1. classic (经典模式)
+     2. liquid-glass (苹果液态玻璃)
+     3. material-design (谷歌 Material 3)
+     4. fluent-design (微软 Fluent 2)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. 苹果液态玻璃模式 (Apple Liquid Glass)
+   -------------------------------------------------------------------------- */
+[data-style-mode="liquid-glass"] {
+  /* 暗色液态玻璃 */
+  &, &[data-theme="dark"] {
+    --bg-primary: #12141c;
+    --bg-chat: rgba(18, 20, 28, 0.78);
+    --bg-secondary: rgba(28, 30, 42, 0.65);
+    --bg-tertiary: rgba(36, 40, 56, 0.55);
+    --bg-elevated: rgba(36, 40, 56, 0.85);
+    --bg-hover: rgba(255, 255, 255, 0.09);
+    --bg-active: rgba(255, 255, 255, 0.14);
+
+    --border-primary: rgba(255, 255, 255, 0.12);
+    --border-secondary: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.22);
+
+    --accent-primary: #0a84ff;
+    --accent-primary-hover: #409cff;
+    --accent-primary-active: #0066cc;
+    --accent-secondary: #5e5ce6;
+
+    --color-message-user-bg: linear-gradient(135deg, #0a84ff 0%, #0066cc 100%);
+    --color-message-user-text: #ffffff;
+    --color-tool-bg: rgba(255, 255, 255, 0.05);
+    --color-code-block-bg: rgba(14, 16, 24, 0.75);
+    --color-code-block-border: rgba(255, 255, 255, 0.1);
+
+    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.48);
+  }
+
+  /* 亮色液态玻璃 */
+  &[data-theme="light"] {
+    --bg-primary: #f5f5f7;
+    --bg-chat: rgba(255, 255, 255, 0.75);
+    --bg-secondary: rgba(245, 245, 247, 0.75);
+    --bg-tertiary: rgba(235, 235, 240, 0.65);
+    --bg-elevated: rgba(255, 255, 255, 0.9);
+    --bg-hover: rgba(0, 0, 0, 0.05);
+    --bg-active: rgba(0, 0, 0, 0.09);
+
+    --border-primary: rgba(0, 0, 0, 0.09);
+    --border-secondary: rgba(0, 0, 0, 0.05);
+    --border-hover: rgba(0, 0, 0, 0.16);
+
+    --accent-primary: #007aff;
+    --accent-primary-hover: #0062cc;
+    --accent-primary-active: #004fb0;
+    --accent-secondary: #5856d6;
+
+    --color-message-user-bg: linear-gradient(135deg, #007aff 0%, #0051a8 100%);
+    --color-message-user-text: #ffffff;
+    --color-tool-bg: rgba(255, 255, 255, 0.6);
+    --color-code-block-bg: rgba(245, 245, 247, 0.85);
+    --color-code-block-border: rgba(0, 0, 0, 0.08);
+
+    --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 液态玻璃核心组件质感 */
+  .header,
+  .chat-screen-header,
+  .session-tab-bar {
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    box-shadow: inset 0 -1px 0 var(--border-secondary);
+  }
+
+  .chat-input-box-container,
+  .chat-input-box {
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border-radius: 14px !important;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+
+  .message.user .message-content {
+    border-radius: 16px 16px 4px 16px !important;
+    box-shadow: 0 4px 14px rgba(10, 132, 255, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .tool-block {
+    border-radius: 12px !important;
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 2px 10px rgba(0, 0, 0, 0.08) !important;
+    border: 1px solid var(--border-primary) !important;
+  }
+
+  .thinking-block {
+    border-radius: 12px !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .thinking-content {
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .tab-item,
+  .btn,
+  button:not(.send-button):not(.header-action-button) {
+    border-radius: 8px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .code-block,
+  pre {
+    border-radius: 12px !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2. 谷歌 Material 3 模式 (Material Design / Material You)
+   -------------------------------------------------------------------------- */
+[data-style-mode="material-design"] {
+  /* 暗色 Material 3 (Tonal Surfaces) */
+  &, &[data-theme="dark"] {
+    --bg-primary: #141218;
+    --bg-chat: #141218;
+    --bg-secondary: #1d1b20;
+    --bg-tertiary: #211f26;
+    --bg-elevated: #2b2930;
+    --bg-hover: #36343b;
+    --bg-active: #49454f;
+
+    --border-primary: #36343b;
+    --border-secondary: #2b2930;
+    --border-hover: #49454f;
+
+    --accent-primary: #d0bcff;
+    --accent-primary-hover: #e8def8;
+    --accent-primary-active: #b69df8;
+    --accent-secondary: #ccc2dc;
+
+    --color-message-user-bg: #d0bcff;
+    --color-message-user-text: #381e72;
+    --color-tool-bg: #211f26;
+    --color-code-block-bg: #1d1b20;
+    --color-code-block-border: #36343b;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.24);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.25), 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 亮色 Material 3 */
+  &[data-theme="light"] {
+    --bg-primary: #fef7ff;
+    --bg-chat: #fef7ff;
+    --bg-secondary: #f7f2fa;
+    --bg-tertiary: #f3edf7;
+    --bg-elevated: #ece6f0;
+    --bg-hover: #e7e0ec;
+    --bg-active: #dcd6e2;
+
+    --border-primary: #e7e0ec;
+    --border-secondary: #f3edf7;
+    --border-hover: #cac4d0;
+
+    --accent-primary: #6750a4;
+    --accent-primary-hover: #7e67be;
+    --accent-primary-active: #533b8c;
+    --accent-secondary: #625b71;
+
+    --color-message-user-bg: #6750a4;
+    --color-message-user-text: #ffffff;
+    --color-tool-bg: #f3edf7;
+    --color-code-block-bg: #f7f2fa;
+    --color-code-block-border: #e7e0ec;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Material 3 核心组件形态 */
+  .chat-input-box-container,
+  .chat-input-box {
+    border-radius: 20px !important;
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-primary) !important;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .message.user .message-content {
+    border-radius: 20px 20px 4px 20px !important;
+    box-shadow: var(--shadow-sm) !important;
+    border: none !important;
+    font-weight: 500;
+  }
+
+  .tool-block {
+    border-radius: 16px !important;
+    border: 1px solid var(--border-primary) !important;
+    background: var(--color-tool-bg) !important;
+    box-shadow: var(--shadow-sm) !important;
+  }
+
+  .thinking-block {
+    border-radius: 16px !important;
+  }
+
+  .thinking-content {
+    border-radius: 12px;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border-left: 3px solid var(--accent-primary) !important;
+  }
+
+  .code-block,
+  pre {
+    border-radius: 16px !important;
+    border: 1px solid var(--border-primary) !important;
+  }
+
+  .btn,
+  .tab-item,
+  button:not(.header-action-button) {
+    border-radius: 9999px !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. 微软 Fluent 2 模式 (Windows 11 Acrylic & Mica)
+   -------------------------------------------------------------------------- */
+[data-style-mode="fluent-design"] {
+  /* 暗色 Fluent 2 */
+  &, &[data-theme="dark"] {
+    --bg-primary: #202020;
+    --bg-chat: #202020;
+    --bg-secondary: #272727;
+    --bg-tertiary: #2f2f2f;
+    --bg-elevated: #323232;
+    --bg-hover: #383838;
+    --bg-active: #404040;
+
+    --border-primary: rgba(255, 255, 255, 0.08);
+    --border-secondary: rgba(255, 255, 255, 0.05);
+    --border-hover: rgba(255, 255, 255, 0.16);
+
+    --accent-primary: #60cdff;
+    --accent-primary-hover: #7cd5ff;
+    --accent-primary-active: #4cbbe8;
+    --accent-secondary: #90d8ff;
+
+    --color-message-user-bg: #0078d4;
+    --color-message-user-text: #ffffff;
+    --color-tool-bg: rgba(255, 255, 255, 0.035);
+    --color-code-block-bg: #1b1b1b;
+    --color-code-block-border: rgba(255, 255, 255, 0.08);
+
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 6px 14px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.4);
+  }
+
+  /* 亮色 Fluent 2 */
+  &[data-theme="light"] {
+    --bg-primary: #f9f9f9;
+    --bg-chat: #f9f9f9;
+    --bg-secondary: #f3f3f3;
+    --bg-tertiary: #ececec;
+    --bg-elevated: #ffffff;
+    --bg-hover: #e5e5e5;
+    --bg-active: #dadada;
+
+    --border-primary: rgba(0, 0, 0, 0.08);
+    --border-secondary: rgba(0, 0, 0, 0.05);
+    --border-hover: rgba(0, 0, 0, 0.16);
+
+    --accent-primary: #0078d4;
+    --accent-primary-hover: #106ebe;
+    --accent-primary-active: #005a9e;
+    --accent-secondary: #2b88d8;
+
+    --color-message-user-bg: #0078d4;
+    --color-message-user-text: #ffffff;
+    --color-tool-bg: rgba(0, 0, 0, 0.025);
+    --color-code-block-bg: #f3f3f3;
+    --color-code-block-border: rgba(0, 0, 0, 0.08);
+
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 6px 14px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.14);
+  }
+
+  /* Fluent 2 核心质感：亚克力透光与细微高光 */
+  .header,
+  .chat-screen-header {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .chat-input-box-container,
+  .chat-input-box {
+    border-radius: 8px !important;
+    border: 1px solid var(--border-primary) !important;
+    border-bottom: 2px solid var(--accent-primary) !important;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .message.user .message-content {
+    border-radius: 8px 8px 2px 8px !important;
+    box-shadow: var(--shadow-sm) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .tool-block {
+    border-radius: 6px !important;
+    border: 1px solid var(--border-primary) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .thinking-block {
+    border-radius: 6px !important;
+  }
+
+  .code-block,
+  pre {
+    border-radius: 6px !important;
+    border: 1px solid var(--border-primary) !important;
+  }
+
+  .tab-item,
+  .btn,
+  button:not(.header-action-button) {
+    border-radius: 4px !important;
+  }
+}

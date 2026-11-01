@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-style-mode="liquid-glass">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenCode Buddy - 主题与样式模式预览 (Theme & Style Mode Preview)</title>
+  <style>
+    /* ==========================================================================
+       1. 基础重置与字体
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--page-bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* ==========================================================================
+       2. 模式与主题 CSS 变量定义 (Design Tokens)
+       ========================================================================== */
+
+    /* ----------------------------------------------------
+       2.1 经典模式 (Classic Mode) - VS Code 经典原生风格
+       ---------------------------------------------------- */
+    [data-style-mode="classic"] {
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --radius-full: 9999px;
+
+      --backdrop-blur: none;
+      --surface-filter: none;
+    }
+    [data-style-mode="classic"][data-theme="dark"] {
+      --page-bg: #121212;
+      --bg-chat: #1e1e1e;
+      --bg-header: #252526;
+      --bg-input: #252526;
+      --bg-card: #252526;
+      --bg-tool: #282828;
+      --bg-user-msg: #005fb8;
+      --text-user-msg: #ffffff;
+      --text-primary: #cccccc;
+      --text-secondary: #999999;
+      --text-muted: #666666;
+      --border-color: #383838;
+      --border-subtle: #2d2d2d;
+      --accent: #007fd4;
+      --accent-hover: #026ec1;
+      --shadow-elevation: 0 4px 10px rgba(0, 0, 0, 0.35);
+      --card-highlight: none;
+    }
+    [data-style-mode="classic"][data-theme="light"] {
+      --page-bg: #e5e5e5;
+      --bg-chat: #ffffff;
+      --bg-header: #f3f3f3;
+      --bg-input: #ffffff;
+      --bg-card: #f8f8f8;
+      --bg-tool: #f3f3f3;
+      --bg-user-msg: #0078d4;
+      --text-user-msg: #ffffff;
+      --text-primary: #333333;
+      --text-secondary: #666666;
+      --text-muted: #999999;
+      --border-color: #e0e0e0;
+      --border-subtle: #eeeeee;
+      --accent: #0078d4;
+      --accent-hover: #106ebe;
+      --shadow-elevation: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --card-highlight: none;
+    }
+
+    /* ----------------------------------------------------
+       2.2 苹果液态玻璃模式 (Apple Liquid Glass) - macOS / visionOS
+       ---------------------------------------------------- */
+    [data-style-mode="liquid-glass"] {
+      --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 18px;
+      --radius-full: 9999px;
+
+      --backdrop-blur: blur(28px) saturate(190%);
+      --surface-filter: drop-shadow(0 12px 36px rgba(0, 0, 0, 0.28));
+    }
+    [data-style-mode="liquid-glass"][data-theme="dark"] {
+      --page-bg: radial-gradient(circle at 10% 20%, #1e1035 0%, #0d1117 50%, #0a192f 100%);
+      --bg-chat: rgba(22, 24, 34, 0.72);
+      --bg-header: rgba(30, 32, 44, 0.65);
+      --bg-input: rgba(30, 33, 48, 0.75);
+      --bg-card: rgba(255, 255, 255, 0.04);
+      --bg-tool: rgba(255, 255, 255, 0.06);
+      --bg-user-msg: linear-gradient(135deg, #0A84FF 0%, #0066CC 100%);
+      --text-user-msg: #ffffff;
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1a6;
+      --text-muted: #6e6e73;
+      --border-color: rgba(255, 255, 255, 0.12);
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --accent: #0A84FF;
+      --accent-hover: #409CFF;
+      --shadow-elevation: 0 16px 40px rgba(0, 0, 0, 0.45);
+      --card-highlight: inset 0 1px 1px rgba(255, 255, 255, 0.22), inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+    }
+    [data-style-mode="liquid-glass"][data-theme="light"] {
+      --page-bg: radial-gradient(circle at 20% 20%, #e0c3fc 0%, #8ec5fc 100%);
+      --bg-chat: rgba(255, 255, 255, 0.68);
+      --bg-header: rgba(255, 255, 255, 0.75);
+      --bg-input: rgba(255, 255, 255, 0.85);
+      --bg-card: rgba(255, 255, 255, 0.6);
+      --bg-tool: rgba(255, 255, 255, 0.5);
+      --bg-user-msg: linear-gradient(135deg, #007AFF 0%, #0051A8 100%);
+      --text-user-msg: #ffffff;
+      --text-primary: #1d1d1f;
+      --text-secondary: #515154;
+      --text-muted: #86868b;
+      --border-color: rgba(255, 255, 255, 0.65);
+      --border-subtle: rgba(0, 0, 0, 0.06);
+      --accent: #007AFF;
+      --accent-hover: #0062CC;
+      --shadow-elevation: 0 16px 36px rgba(0, 0, 0, 0.12);
+      --card-highlight: inset 0 1px 1.5px rgba(255, 255, 255, 0.85), inset 0 -1px 1px rgba(0, 0, 0, 0.04);
+    }
+
+    /* ----------------------------------------------------
+       2.3 谷歌 Material Design 3 (Material You / M3)
+       ---------------------------------------------------- */
+    [data-style-mode="material-design"] {
+      --font-family: "Roboto", -apple-system, BlinkMacSystemFont, sans-serif;
+      --radius-sm: 8px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
+      --radius-full: 9999px;
+
+      --backdrop-blur: none;
+      --surface-filter: none;
+    }
+    [data-style-mode="material-design"][data-theme="dark"] {
+      --page-bg: #141218;
+      --bg-chat: #141218;
+      --bg-header: #1d1b20;
+      --bg-input: #211f26;
+      --bg-card: #211f26;
+      --bg-tool: #2b2930;
+      --bg-user-msg: #D0BCFF;
+      --text-user-msg: #381E72;
+      --text-primary: #e6e0e9;
+      --text-secondary: #cac4d0;
+      --text-muted: #938f99;
+      --border-color: transparent;
+      --border-subtle: #36343b;
+      --accent: #D0BCFF;
+      --accent-hover: #E8DEF8;
+      --shadow-elevation: 0 2px 6px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.2);
+      --card-highlight: none;
+    }
+    [data-style-mode="material-design"][data-theme="light"] {
+      --page-bg: #f4eff4;
+      --bg-chat: #fef7ff;
+      --bg-header: #f7f2fa;
+      --bg-input: #f3edf7;
+      --bg-card: #f3edf7;
+      --bg-tool: #ece6f0;
+      --bg-user-msg: #6750A4;
+      --text-user-msg: #ffffff;
+      --text-primary: #1d1b20;
+      --text-secondary: #49454f;
+      --text-muted: #79747e;
+      --border-color: transparent;
+      --border-subtle: #e7e0ec;
+      --accent: #6750A4;
+      --accent-hover: #7E67BE;
+      --shadow-elevation: 0 2px 6px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05);
+      --card-highlight: none;
+    }
+
+    /* ----------------------------------------------------
+       2.4 微软 Fluent Design (Windows 11 Acrylic & Mica)
+       ---------------------------------------------------- */
+    [data-style-mode="fluent-design"] {
+      --font-family: "Segoe UI Variable", "Segoe UI", -apple-system, sans-serif;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 10px;
+      --radius-full: 9999px;
+
+      --backdrop-blur: blur(20px);
+      --surface-filter: none;
+    }
+    [data-style-mode="fluent-design"][data-theme="dark"] {
+      --page-bg: radial-gradient(circle at 50% 0%, #1a2332 0%, #0d1219 100%);
+      --bg-chat: rgba(32, 32, 32, 0.88);
+      --bg-header: rgba(36, 36, 36, 0.92);
+      --bg-input: rgba(45, 45, 45, 0.95);
+      --bg-card: rgba(255, 255, 255, 0.05);
+      --bg-tool: rgba(255, 255, 255, 0.03);
+      --bg-user-msg: #0078D4;
+      --text-user-msg: #ffffff;
+      --text-primary: #ffffff;
+      --text-secondary: #d1d1d1;
+      --text-muted: #9e9e9e;
+      --border-color: rgba(255, 255, 255, 0.09);
+      --border-subtle: rgba(255, 255, 255, 0.05);
+      --accent: #60CDFF;
+      --accent-hover: #7cd5ff;
+      --shadow-elevation: 0 6px 18px rgba(0, 0, 0, 0.35);
+      --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    [data-style-mode="fluent-design"][data-theme="light"] {
+      --page-bg: radial-gradient(circle at 50% 0%, #d8e6f3 0%, #f0f4f9 100%);
+      --bg-chat: rgba(246, 246, 246, 0.92);
+      --bg-header: rgba(255, 255, 255, 0.88);
+      --bg-input: #ffffff;
+      --bg-card: rgba(255, 255, 255, 0.7);
+      --bg-tool: rgba(0, 0, 0, 0.03);
+      --bg-user-msg: #0078D4;
+      --text-user-msg: #ffffff;
+      --text-primary: #242424;
+      --text-secondary: #616161;
+      --text-muted: #8d8d8d;
+      --border-color: rgba(0, 0, 0, 0.08);
+      --border-subtle: rgba(0, 0, 0, 0.04);
+      --accent: #0078D4;
+      --accent-hover: #106ebe;
+      --shadow-elevation: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+
+    /* ==========================================================================
+       3. 页面布局与导航控制条 (Toolbar)
+       ========================================================================== */
+    .preview-header {
+      width: 100%;
+      max-width: 960px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .title-row h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .theme-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-full);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      backdrop-filter: var(--backdrop-blur);
+      transition: all 0.2s ease;
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--accent);
+    }
+
+    /* 样式选择标签栏 */
+    .style-selector {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      background: var(--bg-card);
+      padding: 6px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-color);
+      backdrop-filter: var(--backdrop-blur);
+      box-shadow: var(--shadow-elevation);
+    }
+
+    .style-btn {
+      padding: 12px 14px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+    }
+
+    .style-btn .style-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .style-btn .style-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    .style-btn.active {
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    }
+    .style-btn.active .style-title,
+    .style-btn.active .style-desc {
+      color: #ffffff;
+    }
+
+    /* ==========================================================================
+       4. 插件模拟器容器 (Simulator Frame)
+       ========================================================================== */
+    .plugin-window {
+      width: 100%;
+      max-width: 960px;
+      height: 720px;
+      background: var(--bg-chat);
+      backdrop-filter: var(--backdrop-blur);
+      -webkit-backdrop-filter: var(--backdrop-blur);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-elevation), var(--card-highlight);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+    }
+
+    /* 4.1 顶部标签栏 (Session Tab Bar) */
+    .window-header {
+      height: 44px;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      user-select: none;
+      backdrop-filter: var(--backdrop-blur);
+    }
+
+    .tab-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .tab-item:hover {
+      background: var(--bg-card);
+      color: var(--text-primary);
+    }
+    .tab-item.active {
+      background: var(--bg-chat);
+      color: var(--text-primary);
+      border-color: var(--border-subtle);
+      box-shadow: var(--card-highlight);
+      font-weight: 500;
+    }
+    .tab-close {
+      font-size: 11px;
+      opacity: 0.6;
+      border-radius: var(--radius-full);
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tab-close:hover {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .tab-new-btn {
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-size: 16px;
+    }
+    .tab-new-btn:hover {
+      background: var(--bg-card);
+      color: var(--text-primary);
+    }
+
+    /* 4.2 消息流展示区 (Message List) */
+    .message-stream {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* 用户气泡 */
+    .message-bubble-user {
+      align-self: flex-end;
+      max-width: 75%;
+      background: var(--bg-user-msg);
+      color: var(--text-user-msg);
+      padding: 12px 16px;
+      border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
+      font-size: 13.5px;
+      line-height: 1.5;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Assistant 消息区 */
+    .message-assistant {
+      align-self: flex-start;
+      max-width: 90%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .assistant-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .assistant-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* 思考块 (Thinking Block) */
+    .thinking-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      box-shadow: var(--card-highlight);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .thinking-title {
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    /* 工具调用块 (Tool Block) */
+    .tool-block {
+      background: var(--bg-tool);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: var(--card-highlight);
+    }
+    .tool-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+    }
+    .tool-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .tool-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      background: rgba(76, 175, 80, 0.15);
+      color: #4caf50;
+      font-weight: 500;
+    }
+
+    .code-preview {
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-family: Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #a5d6a7;
+      overflow-x: auto;
+    }
+
+    /* 4.3 底部输入框组件 (Chat Input Box) */
+    .input-container {
+      padding: 14px 18px 16px;
+      background: var(--bg-header);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      backdrop-filter: var(--backdrop-blur);
+    }
+
+    .input-bar {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      box-shadow: var(--card-highlight);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .input-textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-size: 13.5px;
+      resize: none;
+      height: 48px;
+      font-family: inherit;
+    }
+    .input-textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-left-chips {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chip-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .chip-btn:hover {
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+
+    .footer-right-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .send-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-full);
+      background: var(--accent);
+      border: none;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    .send-btn:hover {
+      background: var(--accent-hover);
+      transform: scale(1.05);
+    }
+
+    /* ==========================================================================
+       5. 底部设计说明卡片 (Design Notes)
+       ========================================================================== */
+    .design-specs {
+      width: 100%;
+      max-width: 960px;
+      margin-top: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      backdrop-filter: var(--backdrop-blur);
+    }
+    .design-specs h2 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+    .specs-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      font-size: 12px;
+    }
+    .spec-item {
+      background: var(--bg-tool);
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+    .spec-item h3 {
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: var(--accent);
+    }
+    .spec-item ul {
+      list-style-type: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 控制导航栏 -->
+  <header class="preview-header">
+    <div class="title-row">
+      <h1>OpenCode Buddy 界面风格主题选择方案</h1>
+      <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-label">切换亮色/暗色</span>
+      </button>
+    </div>
+
+    <!-- 4 种模式选择器 -->
+    <div class="style-selector">
+      <button class="style-btn" onclick="setStyleMode('classic')">
+        <span class="style-title">1. 经典模式 (Classic)</span>
+        <span class="style-desc">保留当前 VS Code 原生暗色/亮色风格，直角稳重，极简开销</span>
+      </button>
+      <button class="style-btn active" onclick="setStyleMode('liquid-glass')">
+        <span class="style-title">2. 苹果液态玻璃 (Liquid Glass)</span>
+        <span class="style-desc">macOS / visionOS 磨砂高斯模糊、反光高光内阴影、大圆角与通透景深</span>
+      </button>
+      <button class="style-btn" onclick="setStyleMode('material-design')">
+        <span class="style-title">3. 谷歌 Material 3 (M3)</span>
+        <span class="style-desc">Material You 层次色调 Surface、胶囊形按键、浮动卡片与轻快色彩</span>
+      </button>
+      <button class="style-btn" onclick="setStyleMode('fluent-design')">
+        <span class="style-title">4. 微软 Fluent 2 (Fluent)</span>
+        <span class="style-desc">Windows 11 亚克力 (Acrylic) 透光层、微边框、商务严谨、Fluent 蓝</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 模拟插件运行视图 -->
+  <main class="plugin-window">
+    <!-- 标签栏 -->
+    <div class="window-header">
+      <div class="tab-item active">
+        <span>🚀 架构优化与重构方案</span>
+        <span class="tab-close">✕</span>
+      </div>
+      <div class="tab-item">
+        <span>🐛 修复会话队列阻塞问题</span>
+        <span class="tab-close">✕</span>
+      </div>
+      <button class="tab-new-btn" title="新建会话">+</button>
+    </div>
+
+    <!-- 消息流区域 -->
+    <div class="message-stream">
+      <!-- 用户提问 -->
+      <div class="message-bubble-user">
+        请帮我分析当前模块的生命周期事件，并给出优化方案。
+      </div>
+
+      <!-- AI 回复 -->
+      <div class="message-assistant">
+        <div class="assistant-header">
+          <div class="assistant-avatar">AI</div>
+          <span>OpenCode Buddy</span>
+          <span>· 刚刚</span>
+        </div>
+
+        <!-- 思考卡片 -->
+        <div class="thinking-card">
+          <div class="thinking-title">
+            <span>🧠 思考过程 (已折叠 3 步)</span>
+          </div>
+          <div>正在分析生命周期状态泵 (TabQueuePump) 与会话分发链路，确认不存在多余的并发调度...</div>
+        </div>
+
+        <!-- 工具调用 -->
+        <div class="tool-block">
+          <div class="tool-header">
+            <span class="tool-badge">⚡ 执行工具: read_file</span>
+            <span class="tool-status">✓ 成功读取 (240 行)</span>
+          </div>
+          <div class="code-preview">
+            src/host/queue/TabQueuePump.ts
+          </div>
+        </div>
+
+        <div style="font-size: 13.5px; line-height: 1.6; color: var(--text-primary);">
+          分析完成，已为您整理生命周期流转图与建议。在当前模式下，所有的卡片边缘与交互动效均已应用选定的设计规范。
+        </div>
+      </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="input-container">
+      <div class="input-bar">
+        <textarea class="input-textarea" placeholder="输入问题或 @ 引用文件、# 引用会话... (Shift + Enter 换行)"></textarea>
+        <div class="input-footer">
+          <div class="footer-left-chips">
+            <div class="chip-btn">🤖 deepseek-v4-pro ▾</div>
+            <div class="chip-btn">⚡ 自动模式</div>
+            <div class="chip-btn">🌐 联网搜索</div>
+          </div>
+          <div class="footer-right-actions">
+            <span style="font-size: 11.5px; color: var(--text-muted);">1.2k / 128k</span>
+            <button class="send-btn" title="发送">↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 规格对比与实现说明 -->
+  <section class="design-specs">
+    <h2>各风格核心设计参数规范 (Token Specifications)</h2>
+    <div class="specs-grid">
+      <div class="spec-item">
+        <h3>1. 经典模式 (Classic)</h3>
+        <ul>
+          <li>• <b>核心质感</b>: 纯色平板，原生嵌入</li>
+          <li>• <b>圆角规范</b>: 4px - 6px 直角/微圆角</li>
+          <li>• <b>毛玻璃模糊</b>: 无 (0px，CPU开销最小)</li>
+          <li>• <b>阴影与边框</b>: 细描边 (1px)，经典VS Code底色</li>
+          <li>• <b>代表应用</b>: VS Code 经典界面</li>
+        </ul>
+      </div>
+      <div class="spec-item">
+        <h3>2. 苹果液态玻璃 (Liquid Glass)</h3>
+        <ul>
+          <li>• <b>核心质感</b>: 高通透毛玻璃、反光内高光</li>
+          <li>• <b>圆角规范</b>: 14px - 18px 流畅大圆角</li>
+          <li>• <b>毛玻璃模糊</b>: 28px saturate(190%)</li>
+          <li>• <b>阴影与边框</b>: 半透白边 + 顶部高光 (inset 0 1px)</li>
+          <li>• <b>代表应用</b>: macOS Sonoma / visionOS</li>
+        </ul>
+      </div>
+      <div class="spec-item">
+        <h3>3. 谷歌 Material 3 (M3)</h3>
+        <ul>
+          <li>• <b>核心质感</b>: Tonal Palette 阶梯色调表面</li>
+          <li>• <b>圆角规范</b>: 16px - 24px 大圆角，胶囊按钮</li>
+          <li>• <b>毛玻璃模糊</b>: 无，完全依靠色彩明度层次</li>
+          <li>• <b>阴影与边框</b>: 无生硬描边，多层软投影</li>
+          <li>• <b>代表应用</b>: Android 14 / Pixel Material You</li>
+        </ul>
+      </div>
+      <div class="spec-item">
+        <h3>4. 微软 Fluent 2 (Fluent)</h3>
+        <ul>
+          <li>• <b>核心质感</b>: 亚克力 (Acrylic) 透光、微光泽</li>
+          <li>• <b>圆角规范</b>: 6px - 8px 精致紧凑圆角</li>
+          <li>• <b>毛玻璃模糊</b>: 20px 轻度磨砂</li>
+          <li>• <b>阴影与边框</b>: 1px 细微光泽边框 (StrokeSubtle)</li>
+          <li>• <b>代表应用</b>: Windows 11 Fluent UI / Edge</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    function setStyleMode(mode) {
+      document.documentElement.setAttribute('data-style-mode', mode);
+      document.querySelectorAll('.style-btn').forEach(btn => btn.classList.remove('active'));
+      const mapping = {
+        'classic': 0,
+        'liquid-glass': 1,
+        'material-design': 2,
+        'fluent-design': 3
+      };
+      const buttons = document.querySelectorAll('.style-btn');
+      if (buttons[mapping[mode]]) {
+        buttons[mapping[mode]].classList.add('active');
+      }
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      document.getElementById('theme-icon').textContent = nextTheme === 'dark' ? '🌙' : '☀️';
+    }
+  </script>
+</body>
+</html>

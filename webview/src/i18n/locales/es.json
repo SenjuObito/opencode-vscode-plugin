@@ -116,7 +116,6 @@
     "streamingConnected": "Entendiendo tu pregunta…",
     "showEarlierMessages": "Mostrar {{count}} mensajes anteriores",
     "showEarlierTurns": "Mostrar {{count}} turnos anteriores (quedan {{remaining}})",
-
     "showEarlierConversation": "Mostrar conversación anterior",
     "loadEarlierMessages": "Cargar {{count}} mensajes anteriores (quedan {{remaining}} de {{total}})",
     "loadingEarlierTurns": "Cargando turnos anteriores",
@@ -389,6 +388,17 @@
         "label": "Ruta de OpenCode",
         "placeholder": "p. ej. /usr/local/bin/opencode — dejar vacío para autodetección",
         "hint": "Binario de opencode personalizado y opcional, usado para iniciar el servicio de opencode. Déjelo vacío para buscar en PATH y en las ubicaciones de instalación predeterminadas (~/.opencode/bin). Surte efecto cuando el daemon se reinicia al guardar."
+      },
+      "styleMode": {
+        "label": "Tema de estilo",
+        "classic": "Modo clásico",
+        "classicDesc": "Superficie plana nativa de VS Code, sobrecarga mínima",
+        "liquidGlass": "Apple Liquid Glass",
+        "liquidGlassDesc": "Desenfoque esmerilado de macOS / visionOS con brillo especular",
+        "materialDesign": "Google Material 3",
+        "materialDesignDesc": "Superficies tonales Material You, botones en píldora y sombras suaves",
+        "fluentDesign": "Microsoft Fluent 2",
+        "fluentDesignDesc": "Capas translúcidas acrílicas de Windows 11 y bordes refinados"
       }
     },
     "providers": "Gestión de proveedores",

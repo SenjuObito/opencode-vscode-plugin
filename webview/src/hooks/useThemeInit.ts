@@ -27,6 +27,8 @@ function applyAppearance(prefs: UiPreferences, ideTheme: 'light' | 'dark' | null
     document.documentElement.setAttribute('data-theme', ideTheme);
   }
 
+  document.documentElement.setAttribute('data-style-mode', prefs.styleMode || 'classic');
+
   applyFontScale(String(FONT_SIZE_SCALE[prefs.fontSizeLevel] ?? 1.0));
 
   if (prefs.chatBgColor && isValidHexColor(prefs.chatBgColor)) {

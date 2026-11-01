@@ -125,6 +125,100 @@
   white-space: nowrap;
 }
 
+.styleModeSection {
+  margin-bottom: 24px;
+}
+
+.styleModeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+
+  @media (max-width: 580px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.styleModeCard {
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  &:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-tertiary);
+  }
+
+  &.active {
+    border-color: var(--accent-primary);
+    background: rgba(0, 120, 212, 0.08);
+  }
+}
+
+.styleModeIconWrapper {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.styleModeIconClassic {
+  background: #252526;
+  border: 1px solid #454545;
+  color: #007fd4;
+}
+
+.styleModeIconLiquid {
+  background: linear-gradient(135deg, rgba(10, 132, 255, 0.35) 0%, rgba(255, 255, 255, 0.2) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+  color: #0a84ff;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+
+.styleModeIconMaterial {
+  background: linear-gradient(135deg, #d0bcff 0%, #381e72 100%);
+  color: #ffffff;
+  border-radius: 9999px;
+}
+
+.styleModeIconFluent {
+  background: linear-gradient(135deg, #0078d4 0%, #004578 100%);
+  color: #60cdff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.styleModeInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.styleModeTitle {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.styleModeDesc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
 /* 保留 themeGrid 和 themeCard 供其他地方使用 (如发送快捷键) */
 .themeGrid {
   display: grid;

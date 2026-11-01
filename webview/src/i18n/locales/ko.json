@@ -116,7 +116,6 @@
     "streamingConnected": "질문을 이해하는 중…",
     "showEarlierMessages": "이전 메시지 {{count}}개 보기",
     "showEarlierTurns": "이전 {{count}}개 턴 표시 ({{remaining}}개 남음)",
-
     "showEarlierConversation": "이전 대화 표시",
     "loadEarlierMessages": "이전 {{count}}개 메시지 불러오기 (전체 {{total}}개 중 {{remaining}}개 남음)",
     "loadingEarlierTurns": "이전 대화를 불러오는 중",
@@ -389,6 +388,17 @@
         "label": "OpenCode 경로",
         "placeholder": "예: /usr/local/bin/opencode — 비워두면 자동 감지",
         "hint": "opencode 서비스를 시작하는 데 사용되는 사용자 지정 opencode 바이너리(선택 사항). 비워두면 PATH 및 기본 설치 위치(~/.opencode/bin)를 자동으로 탐색합니다. 저장 후 데몬이 재시작되면 적용됩니다."
+      },
+      "styleMode": {
+        "label": "스타일 테마",
+        "classic": "클래식 모드",
+        "classicDesc": "VS Code 네이티브 플랫 스타일, 최소한의 오버헤드",
+        "liquidGlass": "Apple 리퀴드 글래스",
+        "liquidGlassDesc": "macOS / visionOS 반투명 블러와 반사 하이라이트",
+        "materialDesign": "Google Material 3",
+        "materialDesignDesc": "Material You 톤 표면, 알약 모양 버튼 및 부드러운 그림자",
+        "fluentDesign": "Microsoft Fluent 2",
+        "fluentDesignDesc": "Windows 11 아크릴 반투명 레이어와 정교한 테두리"
       }
     },
     "providers": "제공자 관리",

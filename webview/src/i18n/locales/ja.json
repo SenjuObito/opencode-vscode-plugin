@@ -116,7 +116,6 @@
     "streamingConnected": "質問を理解しています…",
     "showEarlierMessages": "以前の{{count}}件のメッセージを表示",
     "showEarlierTurns": "前の{{count}}ターンを表示（残り{{remaining}}ターン）",
-
     "showEarlierConversation": "前の会話を表示",
     "loadEarlierMessages": "前の{{count}}件のメッセージを読み込む（全{{total}}件中、残り{{remaining}}件）",
     "loadingEarlierTurns": "以前の会話を読み込み中",
@@ -389,6 +388,17 @@
         "label": "OpenCode パス",
         "placeholder": "例: /usr/local/bin/opencode — 空欄で自動検出",
         "hint": "opencode サービスの起動に使うカスタム opencode バイナリ（任意）。空欄の場合は PATH と既定のインストール先（~/.opencode/bin）を自動検索します。保存後にデーモンが再起動されて反映されます。"
+      },
+      "styleMode": {
+        "label": "スタイルテーマ",
+        "classic": "クラシックモード",
+        "classicDesc": "VS Code ネイティブのフラットスタイル、最小限の負荷",
+        "liquidGlass": "Apple リキッドグラス",
+        "liquidGlassDesc": "macOS / visionOS のすりガラスぼかしと反射ハイライト",
+        "materialDesign": "Google Material 3",
+        "materialDesignDesc": "Material You のトーナルサーフェスとピル型ボタン",
+        "fluentDesign": "Microsoft Fluent 2",
+        "fluentDesignDesc": "Windows 11 アクリル半透明レイヤーと洗練された枠線"
       }
     },
     "providers": "プロバイダー管理",

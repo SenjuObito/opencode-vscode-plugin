@@ -10,6 +10,7 @@ import {
   UI_PREFERENCES_CHANGED_EVENT,
   type UiPreferences,
   type UiPreferencesChangedDetail,
+  type StyleMode,
 } from '../../../utils/uiPreferences';
 
 // Extend window type for IDE theme injection
@@ -22,6 +23,8 @@ declare global {
 export interface UseSettingsThemeSyncReturn {
   themePreference: 'light' | 'dark' | 'system';
   setThemePreference: (theme: 'light' | 'dark' | 'system') => void;
+  styleMode: StyleMode;
+  setStyleMode: (mode: StyleMode) => void;
   ideTheme: 'light' | 'dark' | null;
   setIdeTheme: (theme: 'light' | 'dark' | null) => void;
   fontSizeLevel: number;
@@ -42,6 +45,9 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
   const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>(
     () => getUiPreferences().theme,
   );
+
+  // Style mode state ('classic' | 'liquid-glass' | 'material-design' | 'fluent-design')
+  const [styleMode, setStyleMode] = useState<StyleMode>(() => getUiPreferences().styleMode);
 
   // IDE theme state (prefer Java-injected initial theme, used to handle dynamic changes)
   const [ideTheme, setIdeTheme] = useState<'light' | 'dark' | null>(() => {
@@ -76,6 +82,7 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
       if (detail?.source !== 'host' || !detail.preferences) return;
       const next: UiPreferences = detail.preferences;
       setThemePreference(next.theme);
+      if (next.styleMode) setStyleMode(next.styleMode);
       setFontSizeLevel(next.fontSizeLevel);
       setChatBgColor(next.chatBgColor);
       setUserMsgColor(next.userMsgColor);
@@ -170,9 +177,17 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
     updateUiPreferences({ diffTheme });
   }, [diffTheme, ideTheme, themePreference]);
 
+  // Style mode handler (supports classic, liquid-glass, material-design, fluent-design)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-style-mode', styleMode);
+    updateUiPreferences({ styleMode });
+  }, [styleMode]);
+
   return {
     themePreference,
     setThemePreference: handleSetThemePreference,
+    styleMode,
+    setStyleMode,
     ideTheme,
     setIdeTheme,
     fontSizeLevel,

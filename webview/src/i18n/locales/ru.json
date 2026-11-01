@@ -116,7 +116,6 @@
     "streamingConnected": "{{provider}} обрабатывает запрос",
     "showEarlierMessages": "Показать предыдущие сообщения ({{count}})",
     "showEarlierTurns": "Показать предыдущие ходы: {{count}} (осталось {{remaining}})",
-
     "showEarlierConversation": "Показать предыдущую переписку",
     "loadEarlierMessages": "Загрузить предыдущие сообщения: {{count}} (осталось {{remaining}} из {{total}})",
     "loadingEarlierTurns": "Загрузка предыдущих ходов",
@@ -389,6 +388,17 @@
         "label": "Путь к OpenCode",
         "placeholder": "напр. /usr/local/bin/opencode — оставьте пустым для автовыбора",
         "hint": "Необязательный пользовательский бинарный файл opencode для запуска сервиса opencode. Оставьте пустым для поиска в PATH и стандартных местах установки (~/.opencode/bin). Вступает в силу после перезапуска демона при сохранении."
+      },
+      "styleMode": {
+        "label": "Тема стиля",
+        "classic": "Классический режим",
+        "classicDesc": "Нативный плоский стиль VS Code, минимальная нагрузка",
+        "liquidGlass": "Apple Liquid Glass",
+        "liquidGlassDesc": "Матовое размытие macOS / visionOS с зеркальным блеском",
+        "materialDesign": "Google Material 3",
+        "materialDesignDesc": "Тональные поверхности Material You, кнопки-капсулы и мягкие тени",
+        "fluentDesign": "Microsoft Fluent 2",
+        "fluentDesignDesc": "Акриловые полупрозрачные слои Windows 11 и изящные рамки"
       }
     },
     "providers": "Управление провайдерами",

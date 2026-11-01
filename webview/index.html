@@ -73,8 +73,13 @@
           }
 
           document.documentElement.setAttribute('data-theme', theme);
+
+          var savedStyleMode = localStorage.getItem('openCodeBuddy_styleMode');
+          var styleMode = savedStyleMode || 'classic';
+          document.documentElement.setAttribute('data-style-mode', styleMode);
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.setAttribute('data-style-mode', 'classic');
         }
       })();
     </script>

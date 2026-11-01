@@ -116,7 +116,6 @@
     "streamingConnected": "AI 正在理解問題…",
     "showEarlierMessages": "顯示之前的 {{count}} 則訊息",
     "showEarlierTurns": "顯示更早的 {{count}} 輪對話（還剩 {{remaining}} 輪）",
-
     "showEarlierConversation": "顯示更早的對話",
     "loadEarlierMessages": "載入更早的 {{count}} 條訊息（共 {{total}} 條，尚餘 {{remaining}} 條）",
     "loadingEarlierTurns": "正在載入更早的對話",
@@ -389,6 +388,17 @@
         "label": "OpenCode 路徑",
         "placeholder": "例如 /usr/local/bin/opencode — 留空則自動查找",
         "hint": "可選的自訂 opencode 二進位路徑，用於啟動 opencode 服務。留空則按 PATH 與預設安裝位置（~/.opencode/bin）自動探測。儲存後重啟守護程序生效。"
+      },
+      "styleMode": {
+        "label": "樣式風格主題",
+        "classic": "經典模式",
+        "classicDesc": "原生 VS Code 穩重純色直角，性能開銷極低",
+        "liquidGlass": "蘋果液態玻璃",
+        "liquidGlassDesc": "macOS / visionOS 磨砂高斯模糊與晶瑩反光高光",
+        "materialDesign": "谷歌 Material 3",
+        "materialDesignDesc": "Material You 階梯色調表面、膠囊按鍵與柔和陰影",
+        "fluentDesign": "微軟 Fluent 2",
+        "fluentDesignDesc": "Windows 11 亞克力透光質感與嚴謹商務邊框"
       }
     },
     "providers": "供應商管理",

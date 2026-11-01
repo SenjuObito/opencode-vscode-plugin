@@ -220,6 +220,17 @@
         "dark": "Dark",
         "darkDesc": "Eye-friendly, suitable for nighttime use"
       },
+      "styleMode": {
+        "label": "Style Theme",
+        "classic": "Classic Mode",
+        "classicDesc": "Native VS Code solid flat surfaces, minimal overhead",
+        "liquidGlass": "Apple Liquid Glass",
+        "liquidGlassDesc": "macOS / visionOS frosted blur with luminous specular sheen",
+        "materialDesign": "Google Material 3",
+        "materialDesignDesc": "Material You tonal surfaces, pill shapes, and soft elevation",
+        "fluentDesign": "Microsoft Fluent 2",
+        "fluentDesignDesc": "Windows 11 Acrylic translucent layers and refined strokes"
+      },
       "language": {
         "label": "Language",
         "followIde": "Follow IDE",

@@ -116,7 +116,6 @@
     "streamingConnected": "आपके प्रश्न को समझ रहा है…",
     "showEarlierMessages": "{{count}} पुराने संदेश दिखाएं",
     "showEarlierTurns": "पिछले {{count}} टर्न दिखाएँ ({{remaining}} शेष)",
-
     "showEarlierConversation": "पिछली बातचीत दिखाएँ",
     "loadEarlierMessages": "पहले के {{count}} संदेश लोड करें ({{total}} में से {{remaining}} शेष)",
     "loadingEarlierTurns": "पहले के संवाद लोड हो रहे हैं",
@@ -389,6 +388,17 @@
         "label": "OpenCode पथ",
         "placeholder": "जैसे /usr/local/bin/opencode — खाली छोड़ें तो स्वतः पहचान",
         "hint": "वैकल्पिक कस्टम opencode बाइनरी, जो opencode सेवा शुरू करने के लिए उपयोग होती है। खाली छोड़ने पर PATH और डिफ़ॉल्ट इंस्टॉल स्थान (~/.opencode/bin) में खोजा जाएगा। सहेजने पर डेमन पुनः आरंभ होने के बाद लागू होगा।"
+      },
+      "styleMode": {
+        "label": "स्टाइल थीम",
+        "classic": "क्लासिक मोड",
+        "classicDesc": "नेटिव VS Code फ्लैट स्टाइल, न्यूनतम ओवरहेड",
+        "liquidGlass": "Apple लिक्विड ग्लास",
+        "liquidGlassDesc": "macOS / visionOS फ्रॉस्टेड ब्लर और रिफ्लेक्टिव हाइलाइट्स",
+        "materialDesign": "Google Material 3",
+        "materialDesignDesc": "Material You टोनल सतहें, पिल आकार बटन और सॉफ्ट शेडोज़",
+        "fluentDesign": "Microsoft Fluent 2",
+        "fluentDesignDesc": "Windows 11 ऐक्रेलिक पारभासी परतें और परिष्कृत बॉर्डर"
       }
     },
     "providers": "प्रदाता प्रबंधन",

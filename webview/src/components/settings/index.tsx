@@ -70,6 +70,8 @@ const SettingsView = ({
   const {
     themePreference,
     setThemePreference,
+    styleMode,
+    setStyleMode,
     setIdeTheme,
     fontSizeLevel,
     setFontSizeLevel,
@@ -262,6 +264,8 @@ const SettingsView = ({
             <BasicConfigSection
               theme={themePreference}
               onThemeChange={setThemePreference}
+              styleMode={styleMode}
+              onStyleModeChange={setStyleMode}
               fontSizeLevel={fontSizeLevel}
               onFontSizeLevelChange={setFontSizeLevel}
               opencodeCliPath={opencodeCliPath}

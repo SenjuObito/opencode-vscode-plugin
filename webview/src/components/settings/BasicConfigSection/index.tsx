@@ -3,6 +3,7 @@ import styles from './style.module.less';
 import { useTranslation } from 'react-i18next';
 import type { DiffThemeMode } from '../../../utils/diffTheme';
 import type { UiFontConfig, CodeFontConfig } from '../hooks/useSettingsBasicActions';
+import type { StyleMode } from '../../../utils/uiPreferences';
 import AppearanceTab from './AppearanceTab';
 import BehaviorTab from './BehaviorTab';
 import EnvironmentTab from './EnvironmentTab';
@@ -18,6 +19,8 @@ const BASIC_TABS: { key: BasicTab; icon: string; labelKey: string }[] = [
 interface BasicConfigSectionProps {
   theme: 'light' | 'dark' | 'system';
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
+  styleMode?: StyleMode;
+  onStyleModeChange?: (mode: StyleMode) => void;
   fontSizeLevel: number;
   onFontSizeLevelChange: (level: number) => void;
   opencodeCliPath?: string;
@@ -126,6 +129,8 @@ const BasicConfigSection = (props: BasicConfigSectionProps) => {
         <AppearanceTab
           theme={props.theme}
           onThemeChange={props.onThemeChange}
+          styleMode={props.styleMode}
+          onStyleModeChange={props.onStyleModeChange}
           fontSizeLevel={props.fontSizeLevel}
           onFontSizeLevelChange={props.onFontSizeLevelChange}
           editorFontConfig={props.editorFontConfig}

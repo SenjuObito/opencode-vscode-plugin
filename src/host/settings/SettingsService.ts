@@ -23,9 +23,13 @@ export const DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS = 30;
  * 现在宿主持有权威副本：webview 启动时由 HTML 内联脚本先落地一次（避免首屏
  * 主题闪烁），随后 `get_ui_preferences` 回灌，改动经 `set_ui_preferences` 合并写回。
  */
+export type StyleMode = 'classic' | 'liquid-glass' | 'material-design' | 'fluent-design';
+
 export interface UiPreferences {
 	/** 'system' = 跟随 VS Code 主题。 */
 	theme: 'light' | 'dark' | 'system';
+	/** 界面风格主题模式 */
+	styleMode: StyleMode;
 	/** 1..6，见 webview fontSizeMap（2 = 90%）。 */
 	fontSizeLevel: number;
 	chatBgColor: string;
@@ -40,6 +44,7 @@ export interface UiPreferences {
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 	theme: 'system',
+	styleMode: 'classic',
 	fontSizeLevel: 2,
 	chatBgColor: '',
 	userMsgColor: '',
@@ -315,6 +320,10 @@ export class SettingsService {
 		const theme = raw.theme === 'light' || raw.theme === 'dark' || raw.theme === 'system'
 			? raw.theme
 			: DEFAULT_UI_PREFERENCES.theme;
+		const STYLE_MODES: StyleMode[] = ['classic', 'liquid-glass', 'material-design', 'fluent-design'];
+		const styleMode = typeof raw.styleMode === 'string' && (STYLE_MODES as string[]).includes(raw.styleMode)
+			? raw.styleMode as StyleMode
+			: DEFAULT_UI_PREFERENCES.styleMode;
 		const fontSizeLevel =
 			typeof raw.fontSizeLevel === 'number' && Number.isFinite(raw.fontSizeLevel)
 				? Math.min(6, Math.max(1, Math.trunc(raw.fontSizeLevel)))
@@ -330,6 +339,7 @@ export class SettingsService {
 			typeof value === 'boolean' ? value : fallback;
 		return {
 			theme,
+			styleMode,
 			fontSizeLevel,
 			chatBgColor: color(raw.chatBgColor),
 			userMsgColor: color(raw.userMsgColor),

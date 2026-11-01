@@ -26,9 +26,13 @@ import {
   type DetailedOutputEnabledChangedDetail,
 } from './detailedOutputPreference';
 
+export type StyleMode = 'classic' | 'liquid-glass' | 'material-design' | 'fluent-design';
+
 export interface UiPreferences {
   /** 'system' = follow the VS Code color theme. */
   theme: 'light' | 'dark' | 'system';
+  /** 'classic' | 'liquid-glass' | 'material-design' | 'fluent-design' */
+  styleMode: StyleMode;
   /** 1..6, see the fontSizeMap in useThemeInit / useSettingsThemeSync. */
   fontSizeLevel: number;
   chatBgColor: string;
@@ -43,6 +47,7 @@ export interface UiPreferences {
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   theme: 'system',
+  styleMode: 'classic',
   fontSizeLevel: 2,
   chatBgColor: '',
   userMsgColor: '',
@@ -62,8 +67,11 @@ export interface UiPreferencesChangedDetail {
   source: 'host' | 'local';
 }
 
+export const STYLE_MODE_STORAGE_KEY = 'openCodeBuddy_styleMode';
+
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const THEMES: UiPreferences['theme'][] = ['light', 'dark', 'system'];
+const STYLE_MODES: StyleMode[] = ['classic', 'liquid-glass', 'material-design', 'fluent-design'];
 const DIFF_THEMES: DiffThemeMode[] = ['follow', 'editor', 'light', 'soft-dark'];
 
 function readString(key: string): string | null {
@@ -112,6 +120,9 @@ function sanitize(patch: unknown): Partial<UiPreferences> {
   if (typeof raw.theme === 'string' && THEMES.includes(raw.theme as UiPreferences['theme'])) {
     out.theme = raw.theme as UiPreferences['theme'];
   }
+  if (typeof raw.styleMode === 'string' && STYLE_MODES.includes(raw.styleMode as StyleMode)) {
+    out.styleMode = raw.styleMode as StyleMode;
+  }
   if (typeof raw.fontSizeLevel === 'number' && Number.isFinite(raw.fontSizeLevel)) {
     out.fontSizeLevel = Math.min(6, Math.max(1, Math.trunc(raw.fontSizeLevel)));
   }
@@ -146,6 +157,10 @@ function readLocalMirror(): Partial<UiPreferences> {
   const theme = readString('theme');
   if (theme !== null && THEMES.includes(theme as UiPreferences['theme'])) {
     partial.theme = theme as UiPreferences['theme'];
+  }
+  const styleMode = readString(STYLE_MODE_STORAGE_KEY);
+  if (styleMode !== null && STYLE_MODES.includes(styleMode as StyleMode)) {
+    partial.styleMode = styleMode as StyleMode;
   }
   if (readString('fontSizeLevel') !== null) {
     partial.fontSizeLevel = Math.min(6, Math.max(1, readInt('fontSizeLevel', 2)));
@@ -182,6 +197,11 @@ function readInitialPreferences(): UiPreferences {
 }
 
 let current: UiPreferences = readInitialPreferences();
+try {
+  document.documentElement.setAttribute('data-style-mode', current.styleMode);
+} catch {
+  // Ignore in non-DOM test environments
+}
 /** Last JSON exchanged with the host — used to suppress redundant round-trips. */
 let lastSyncedJson = '';
 
@@ -191,6 +211,7 @@ export function getUiPreferences(): UiPreferences {
 
 function writeLocalMirror(prefs: UiPreferences): void {
   writeString('theme', prefs.theme);
+  writeString(STYLE_MODE_STORAGE_KEY, prefs.styleMode);
   writeString('fontSizeLevel', String(prefs.fontSizeLevel));
   writeString('chatBgColor', prefs.chatBgColor);
   writeString('userMsgColor', prefs.userMsgColor);
@@ -203,6 +224,7 @@ function writeLocalMirror(prefs: UiPreferences): void {
 }
 
 function emit(source: UiPreferencesChangedDetail['source']): void {
+  document.documentElement.setAttribute('data-style-mode', current.styleMode);
   window.dispatchEvent(new CustomEvent<UiPreferencesChangedDetail>(
     UI_PREFERENCES_CHANGED_EVENT,
     { detail: { preferences: current, source } },
