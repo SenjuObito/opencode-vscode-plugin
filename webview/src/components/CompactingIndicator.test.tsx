@@ -5,7 +5,11 @@ import { CompactingIndicator } from './CompactingIndicator';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => (key === 'chat.compactingSession' ? '正在压缩会话' : key),
+    t: (key: string) => {
+      if (key === 'chat.compactingSession') return '正在压缩会话';
+      if (key === 'chat.autoCompactingSession') return '正在自动压缩会话上下文';
+      return key;
+    },
   }),
 }));
 
@@ -19,13 +23,19 @@ describe('CompactingIndicator', () => {
   });
 
   it('renders dual spinner rings and internationalized text', () => {
-    const { container, getByText } = render(<CompactingIndicator />);
+    const { container, getByText } = render(<CompactingIndicator reason="manual" />);
 
     expect(getByText(/正在压缩会话/)).toBeTruthy();
     expect(container.querySelector('.compact-card__spinner-outer')).toBeTruthy();
     expect(container.querySelector('.compact-card__spinner-inner')).toBeTruthy();
     expect(container.querySelector('.compact-card--compacting')).toBeTruthy();
     expect(container.querySelector('.compact-card-wrapper--indicator')).toBeTruthy();
+  });
+
+  it('words an engine-triggered compaction differently from a manual one', () => {
+    const { getByText } = render(<CompactingIndicator reason="auto" />);
+
+    expect(getByText(/正在自动压缩会话上下文/)).toBeTruthy();
   });
 
   it('formats elapsed time correctly under and over 60 seconds', () => {

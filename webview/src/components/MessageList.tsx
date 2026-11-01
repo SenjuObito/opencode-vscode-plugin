@@ -79,6 +79,7 @@ interface MessageListProps {
   loadingStartTime: number | null;
   isCompacting?: boolean;
   compactingStartTime?: number | null;
+  compactingReason?: 'manual' | 'auto' | null;
   t: TFunction;
   getMessageText: (message: ClaudeMessage) => string;
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[];
@@ -146,6 +147,7 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
   loadingStartTime,
   isCompacting,
   compactingStartTime,
+  compactingReason,
   t,
   getMessageText,
   getContentBlocks,
@@ -609,7 +611,12 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
       {turnActive && <WaitingIndicator startTime={loadingStartTime ?? undefined} />}
 
       {/* Compacting indicator */}
-      {isCompacting && <CompactingIndicator startTime={compactingStartTime ?? undefined} />}
+      {isCompacting && (
+        <CompactingIndicator
+          startTime={compactingStartTime ?? undefined}
+          reason={compactingReason ?? undefined}
+        />
+      )}
 
       <div ref={messagesEndRef} />
     </div>

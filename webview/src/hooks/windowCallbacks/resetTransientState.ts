@@ -20,8 +20,6 @@ export interface ResetTransientUiStateOptions {
   setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
-  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
 
   // Streaming refs
   isStreamingRef: MutableRefObject<boolean>;
@@ -69,8 +67,6 @@ export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) =
     opts.setLoadingStartTime(null);
     opts.setIsThinking(false);
     opts.setStreamingActive(false);
-    opts.setIsCompacting?.(false);
-    opts.setCompactingStartTime?.(null);
     const shouldSkip = skipSessionLoading || transitioning;
     if (!shouldSkip) {
       cardDebugLog('[resetTransientUiState] EXECUTING: setSessionLoading(false)');

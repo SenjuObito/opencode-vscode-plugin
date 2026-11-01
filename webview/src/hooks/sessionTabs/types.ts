@@ -24,10 +24,6 @@ export interface UseSessionTabsOptions {
   setSessionLoading?: (loading: boolean) => void;
   revertBoundaryId?: string | null;
   setRevertBoundaryId?: (id: string | null) => void;
-  isCompacting?: boolean;
-  setIsCompacting?: (compacting: boolean) => void;
-  compactingStartTime?: number | null;
-  setCompactingStartTime?: (time: number | null) => void;
   taskEvents?: Record<string, any>;
   setTaskEvents?: (events: Record<string, any>) => void;
   sseTodos?: any[] | null;

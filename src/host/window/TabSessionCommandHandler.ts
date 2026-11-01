@@ -252,6 +252,8 @@ export class TabSessionCommandHandler {
 			this.publish('session.compact.failed', command.tabId.value, null, {
 				error: 'tab has no session',
 				data: '',
+				reason: 'manual',
+				source: 'command',
 				requestId: command.requestId,
 			});
 			return;
@@ -261,11 +263,25 @@ export class TabSessionCommandHandler {
 		if (model) {
 			params.model = model.trim();
 		}
+		// The user pressed compact and the request is about to leave for the
+		// engine: show the indicator now. The engine's own compaction lifecycle
+		// also reports a start, but it is not guaranteed (and on some engines it
+		// only lands once the summary message exists), so waiting for it leaves
+		// the button looking dead. The view ignores a second start for a tab that
+		// is already compacting.
+		this.publish('session.compact.started', target.tabId, target.sessionId, {
+			sessionId: target.sessionId,
+			startedAt: Date.now(),
+			reason: 'manual',
+			source: 'command',
+		});
 		this.request('summarize', params, (success) => {
 			if (!success) {
 				this.publish('session.compact.failed', target.tabId, target.sessionId, {
 					error: 'compact failed',
 					data: target.sessionId,
+					reason: 'manual',
+					source: 'command',
 					requestId: command.requestId,
 				});
 				return;
@@ -273,11 +289,15 @@ export class TabSessionCommandHandler {
 			this.publish('session.compact.done', target.tabId, target.sessionId, {
 				data: target.sessionId,
 				sessionId: target.sessionId,
+				reason: 'manual',
+				source: 'command',
 				requestId: command.requestId,
 			});
 		}, (error) => this.publish('session.compact.failed', target.tabId, target.sessionId, {
 			error,
 			data: target.sessionId,
+			reason: 'manual',
+			source: 'command',
 			requestId: command.requestId,
 		}));
 	}

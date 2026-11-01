@@ -570,24 +570,19 @@ export class SessionCallbackAdapter implements SessionCallback {
 		} catch {
 			// keep string
 		}
-		this.emit('session.compact.started', { data: parsed }, () => {
+		this.emit('session.compact.started', { data: parsed, source: 'engine' }, () => {
 			this.jsTarget.callJavaScript('onCompactStarted', payload);
 		});
 	}
 
-	onCompactionDelta(payload: string): void {
-		if (this.isInactive() || !payload) {
-			return;
-		}
-		let parsed: unknown = payload;
-		try {
-			parsed = JSON.parse(payload);
-		} catch {
-			// keep string
-		}
-		this.emit('session.compact.delta', { data: parsed }, () => {
-			this.jsTarget.callJavaScript('onCompactDelta', payload);
-		});
+	/**
+	 * Compaction summary deltas are intentionally not forwarded: the view shows
+	 * a single compacting indicator and the persisted summary once the engine
+	 * settles, so streaming the summary text has no consumer. The marker is
+	 * still parsed by `MarkerParser` (the core protocol), it just stops here.
+	 */
+	onCompactionDelta(_payload: string): void {
+		// no-op by design — see above.
 	}
 
 	onCompactionEnded(payload: string): void {
@@ -600,7 +595,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 		} catch {
 			// keep string
 		}
-		this.emit('session.compact.done', { data: parsed }, () => {
+		this.emit('session.compact.done', { data: parsed, source: 'engine' }, () => {
 			this.jsTarget.callJavaScript('onCompactSuccess', payload);
 		});
 	}
@@ -615,7 +610,7 @@ export class SessionCallbackAdapter implements SessionCallback {
 		} catch {
 			// keep string
 		}
-		this.emit('session.compact.failed', { data: parsed }, () => {
+		this.emit('session.compact.failed', { data: parsed, source: 'engine' }, () => {
 			this.jsTarget.callJavaScript('onCompactError', payload);
 		});
 	}

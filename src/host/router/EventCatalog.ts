@@ -80,7 +80,6 @@ const FUNCTION_BY_TYPE: Record<string, string> = {
 	'session.compact.failed': 'onCompactError',
 	'session.compact.done': 'onCompactSuccess',
 	'session.compact.started': 'onCompactStarted',
-	'session.compact.delta': 'onCompactDelta',
 	'context.usage.error': 'onContextUsageError',
 	'clipboard.copied': 'onCopyToClipboardResult',
 	'font.editor.received': 'onEditorFontConfigReceived',

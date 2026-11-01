@@ -129,6 +129,12 @@
     width: 100%;
 }
 
+/* 历史转录里的压缩摘要也是左对齐通知；它的卡片同样需要整宽，
+   否则会被 align-items: flex-start 挤成文字宽度 */
+.message.compact-summary-message .message-content {
+    width: 100%;
+}
+
 .message-header-row {
     display: flex;
     align-items: center;

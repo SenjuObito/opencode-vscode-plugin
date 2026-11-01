@@ -47,6 +47,8 @@ export interface SessionTabData {
   revertBoundaryId?: string | null;
   isCompacting?: boolean;
   compactingStartTime?: number | null;
+  /** Why the current compaction runs: `manual` (/compact) or `auto` (context window). */
+  compactingReason?: 'manual' | 'auto' | null;
   /** Compact result still waiting to be acknowledged by a user message. */
   compactNotice?: CompactNoticeData | null;
   /** Background Agent task_* events owned by this tab. */

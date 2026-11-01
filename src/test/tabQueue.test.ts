@@ -554,10 +554,16 @@ suite('P8: per-tab host-owned message queue', () => {
 			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first'],
 				'nothing overtakes the in-flight command');
 			assert.deepStrictEqual(record.queue.items().map((item) => item.id), ['a-2']);
-			assert.strictEqual(
-				h.view.events().filter((event) => event.type === 'session.compact.started').length,
-				1,
-			);
+			// The command publishes its own start the moment the summarize
+			// request leaves, so the view does not sit idle waiting for the
+			// engine's (optional) lifecycle event.
+			const starts = h.view.events().filter((event) => event.type === 'session.compact.started');
+			assert.strictEqual(starts.length, 1);
+			const startedPayload = starts[0].payload as Record<string, unknown>;
+			assert.strictEqual(startedPayload.source, 'command');
+			assert.strictEqual(startedPayload.reason, 'manual');
+			assert.strictEqual(startedPayload.sessionId, 'ses_a');
+			assert.strictEqual(typeof startedPayload.startedAt, 'number');
 			assert.strictEqual(h.daemon.calls[0]?.method, 'opencode.summarize');
 
 			h.daemon.calls[0].complete('{"success":true}');
@@ -566,6 +572,12 @@ suite('P8: per-tab host-owned message queue', () => {
 			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first', 'third']);
 			assert.strictEqual(record.queue.getInflightCommand(), null);
 			assert.strictEqual(record.queue.isCompacting(), false);
+			const done = h.view.events().filter((event) => event.type === 'session.compact.done');
+			assert.strictEqual(done.length, 1, 'the command settles the queue exactly once');
+			const donePayload = done[0].payload as Record<string, unknown>;
+			assert.strictEqual(donePayload.source, 'command');
+			assert.strictEqual(donePayload.reason, 'manual');
+			assert.strictEqual(donePayload.requestId, 'c-1');
 		});
 
 		test('a command result without its request id cannot release the item', async () => {

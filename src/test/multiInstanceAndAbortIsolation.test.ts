@@ -146,9 +146,30 @@ suite('createChatInstance Assembly', () => {
 		assert.strictEqual(instance.dispatcher.hasHandlerFor('history.export'), true);
 		assert.strictEqual(instance.dispatcher.hasHandlerFor('save_json'), true);
 
-		// 旧的 export_session* 名字已随历史域收敛删除
-		assert.strictEqual(instance.dispatcher.hasHandlerFor('export_session'), false);
-		assert.strictEqual(instance.dispatcher.hasHandlerFor('export_session_markdown'), false);
+		// 历史视图的 v2 命令全部有属主（缺一个就是 webview 侧的 UNKNOWN_TYPE 弹窗）
+		for (const type of [
+			'history.refresh',
+			'history.deepSearch',
+			'history.delete',
+			'history.deleteMany',
+			'history.favorite',
+			'history.rename',
+		]) {
+			assert.strictEqual(instance.dispatcher.hasHandlerFor(type), true, `${type} must have a handler`);
+		}
+
+		// 旧的 snake_case 名字已随历史域收敛删除
+		for (const legacy of [
+			'export_session',
+			'export_session_markdown',
+			'load_history_data',
+			'delete_session',
+			'delete_sessions',
+			'toggle_favorite',
+			'update_title',
+		]) {
+			assert.strictEqual(instance.dispatcher.hasHandlerFor(legacy), false, `${legacy} must be gone`);
+		}
 
 		// 验证未注册的类型返回 false
 		assert.strictEqual(instance.dispatcher.dispatch('unknown_type', '{}'), false);

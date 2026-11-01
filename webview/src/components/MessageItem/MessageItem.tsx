@@ -637,6 +637,11 @@ export const MessageItem = memo(function MessageItem({
   }, [message.type, messageKey, onNodeRef]);
 
   const isProviderNotConfigured = message.type === 'error' && isProviderNotConfiguredError(getMessageText(message));
+  // A persisted compact summary renders as a left-aligned notification; give it
+  // the transcript width so its card is not squeezed to the text width.
+  const isCompactSummaryMessage = !!message.raw
+    && typeof message.raw === 'object'
+    && (message.raw as Record<string, unknown>).isCompactSummary === true;
   const errorDiagnosticPattern = useMemo(
     () => (message.type === 'error' && !isProviderNotConfigured
       ? matchErrorPattern(getMessageText(message))
@@ -849,7 +854,7 @@ export const MessageItem = memo(function MessageItem({
 
   return (
     <div
-      className={`message ${message.type}${isLast ? ' is-last-message' : ''}${isProviderNotConfigured ? ' provider-not-configured' : ''}`}
+      className={`message ${message.type}${isLast ? ' is-last-message' : ''}${isProviderNotConfigured ? ' provider-not-configured' : ''}${isCompactSummaryMessage ? ' compact-summary-message' : ''}`}
       ref={anchorRefCallback}
       data-message-anchor-id={message.type === 'user' ? messageKey : undefined}
     >

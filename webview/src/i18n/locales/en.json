@@ -130,6 +130,7 @@
     "compactTooltip": "Click to compact session",
     "compactStarted": "Compacting session…",
     "compactingSession": "Compacting session",
+    "autoCompactingSession": "Auto-compacting conversation tokens",
     "compactSuccess": "Session compacted",
     "compactFailed": "Failed to compact session",
     "compactConfirmTitle": "Compact session",

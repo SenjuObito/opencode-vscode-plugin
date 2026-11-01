@@ -751,11 +751,6 @@ interface Window {
   onCompactStarted?: (payload?: unknown, envelope?: { tabId?: string }) => void;
 
   /**
-   * Compact (summarize) delta streaming callback.
-   */
-  onCompactDelta?: (payload?: unknown, envelope?: { tabId?: string }) => void;
-
-  /**
    * Update project info
    */
   updateProjectInfo?: (json: string) => void;

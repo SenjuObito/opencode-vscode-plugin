@@ -115,21 +115,20 @@ describe('MessagesContext', () => {
     expect(store.findById('tab-1')?.loading).toBe(true);
   });
 
-  it('keeps compactNotice on its tab until cleared', () => {
+  it('projects compactNotice from its tab without exposing a window setter', () => {
     const store = getTabStore();
     store.setTabs([
-      { id: 'tab-1', sessionId: null, title: 'tab-1', messages: [] },
-      { id: 'tab-2', sessionId: null, title: 'tab-2', messages: [] },
+      { id: 'tab-1', sessionId: 'ses_1', title: 'tab-1', messages: [] },
+      { id: 'tab-2', sessionId: 'ses_2', title: 'tab-2', messages: [] },
     ]);
     store.setActiveTabId('tab-1');
 
     const { result } = renderHook(() => useMessages(), { wrapper });
     const notice = { status: 'success' as const, at: 1 };
     act(() => {
-      result.current.setCompactNotice(notice);
+      store.updateTab('tab-1', (tab) => ({ ...tab, compactNotice: notice }));
     });
     expect(result.current.compactNotice).toEqual(notice);
-    expect(store.findById('tab-1')?.compactNotice).toEqual(notice);
 
     act(() => {
       store.setActiveTabId('tab-2');
@@ -142,7 +141,7 @@ describe('MessagesContext', () => {
     expect(result.current.compactNotice).toEqual(notice);
 
     act(() => {
-      result.current.setCompactNotice(null);
+      store.resetCompaction('tab-1');
     });
     expect(store.findById('tab-1')?.compactNotice).toBeNull();
   });

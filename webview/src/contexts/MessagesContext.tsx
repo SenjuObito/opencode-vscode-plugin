@@ -39,13 +39,19 @@ export interface MessagesContextValue {
   /** Authoritative todo list from opencode's `todo.updated` SSE event. */
   sseTodos: TodoItem[] | null;
   setSseTodos: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
+  /**
+   * Compaction state is owned by the tab record and written only by
+   * `setTabCompacting` / `applyCompactNotice` in App. This provider is a read
+   * projection over the active tab, so it deliberately exposes no setters: a
+   * window-level setter writes whichever tab happens to be active when it runs,
+   * which is how switching away and back used to wipe a running spinner.
+   */
   isCompacting: boolean;
-  setIsCompacting: React.Dispatch<React.SetStateAction<boolean>>;
   compactingStartTime: number | null;
-  setCompactingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
+  /** Why the current compaction runs: `manual` (/compact) or `auto` (context window). */
+  compactingReason: 'manual' | 'auto' | null;
   /** Last compact result of this tab, shown until the next user message. */
   compactNotice: CompactNoticeData | null;
-  setCompactNotice: React.Dispatch<React.SetStateAction<CompactNoticeData | null>>;
   /**
    * How much of the transcript the host has read back for this tab.
    *
@@ -166,36 +172,6 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
     [tabStore],
   );
 
-  const setIsCompacting = useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
-    (updater) => {
-      tabStore.updateActiveTab((tab) => ({
-        ...tab,
-        isCompacting: applyUpdater(updater, tab.isCompacting ?? false),
-      }));
-    },
-    [tabStore],
-  );
-
-  const setCompactingStartTime = useCallback<React.Dispatch<React.SetStateAction<number | null>>>(
-    (updater) => {
-      tabStore.updateActiveTab((tab) => ({
-        ...tab,
-        compactingStartTime: applyUpdater(updater, tab.compactingStartTime ?? null),
-      }));
-    },
-    [tabStore],
-  );
-
-  const setCompactNotice = useCallback<React.Dispatch<React.SetStateAction<CompactNoticeData | null>>>(
-    (updater) => {
-      tabStore.updateActiveTab((tab) => ({
-        ...tab,
-        compactNotice: applyUpdater(updater, tab.compactNotice ?? null),
-      }));
-    },
-    [tabStore],
-  );
-
   // A history download is a property of the viewport, not of a conversation:
   // it is true only while the current tab is restoring its transcript and must
   // not follow a tab switch.
@@ -212,6 +188,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const sseTodos = activeTab.sseTodos ?? null;
   const isCompacting = activeTab.isCompacting ?? false;
   const compactingStartTime = activeTab.compactingStartTime ?? null;
+  const compactingReason = activeTab.compactingReason ?? null;
   const compactNotice = activeTab.compactNotice ?? null;
   const historyWindow = activeTab.historyWindow ?? null;
 
@@ -237,11 +214,9 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       sseTodos,
       setSseTodos,
       isCompacting,
-      setIsCompacting,
       compactingStartTime,
-      setCompactingStartTime,
+      compactingReason,
       compactNotice,
-      setCompactNotice,
       historyWindow,
     }),
     [
@@ -264,11 +239,9 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       sseTodos,
       setSseTodos,
       isCompacting,
-      setIsCompacting,
       compactingStartTime,
-      setCompactingStartTime,
+      compactingReason,
       compactNotice,
-      setCompactNotice,
       historyWindow,
     ],
   );

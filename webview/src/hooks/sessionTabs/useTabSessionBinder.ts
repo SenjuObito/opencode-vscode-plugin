@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { SessionTabData } from '../../components/ChatHeader/types';
-import { createTabId } from '../../store/tabStore';
+import { createTabId, getTabStore } from '../../store/tabStore';
 import { TabMessageStore } from '../../store/tabMessageStore';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import type { PermissionMode, ReasoningEffort } from '../../components/ChatInputBox/types';
@@ -29,8 +29,6 @@ export interface UseTabSessionBinderOptions extends Pick<
   | 'setIsThinking'
   | 'setStatus'
   | 'setRevertBoundaryId'
-  | 'setIsCompacting'
-  | 'setCompactingStartTime'
   | 'setTaskEvents'
   | 'setSseTodos'
   | 'subagentHistories'
@@ -59,8 +57,6 @@ export interface UseTabSessionBinderOptions extends Pick<
   | 'isThinking'
   | 'status'
   | 'revertBoundaryId'
-  | 'isCompacting'
-  | 'compactingStartTime'
   | 'taskEvents'
   | 'sseTodos'
   | 'filteredFileChanges'
@@ -93,8 +89,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     setIsThinking,
     setStatus,
     setRevertBoundaryId,
-    setIsCompacting,
-    setCompactingStartTime,
     setTaskEvents,
     setSseTodos,
     setSubagentHistories,
@@ -132,8 +126,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     streamingActive,
     isThinking,
     status,
-    isCompacting,
-    compactingStartTime,
     subagentHistories,
     sseTodos,
     tabBar,
@@ -175,8 +167,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     streamingActive,
     isThinking,
     status,
-    isCompacting,
-    compactingStartTime,
     subagentHistories,
     sseTodos,
   });
@@ -201,8 +191,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       streamingActive,
       isThinking,
       status,
-      isCompacting,
-      compactingStartTime,
       subagentHistories,
       sseTodos,
     };
@@ -225,8 +213,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     streamingActive,
     isThinking,
     status,
-    isCompacting,
-    compactingStartTime,
     subagentHistories,
     sseTodos,
   ]);
@@ -403,8 +389,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       currentActive.streamingActive = snap.streamingActive;
       currentActive.isThinking = snap.isThinking;
       currentActive.status = snap.status;
-      currentActive.isCompacting = snap.isCompacting;
-      currentActive.compactingStartTime = snap.compactingStartTime;
       currentActive.subagentHistories = snap.subagentHistories;
       currentActive.sseTodos = snap.sseTodos;
       currentActive.messageBaseIndex = typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : currentActive.messageBaseIndex;
@@ -857,6 +841,10 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
 
       syncHostActiveTabTo(activeTabIdRef.current);
+      // Opening another session rebinds this tab, so the previous session's
+      // compact state (spinner and result pill) must not leak into the new
+      // transcript. This is a tab-scoped write, not a window-level one.
+      getTabStore().resetCompaction(activeTabIdRef.current);
 
       setMessages([]);
       restoreScrollState?.(null);
@@ -865,8 +853,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setIsThinking?.(false);
       setStatus?.('');
       setRevertBoundaryId?.(null);
-      setIsCompacting?.(false);
-      setCompactingStartTime?.(null);
       setTaskEvents?.({});
       setSseTodos?.(null);
       setSubagentHistories?.({});
@@ -930,8 +916,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setIsThinking,
       setStatus,
       setRevertBoundaryId,
-      setIsCompacting,
-      setCompactingStartTime,
       setTaskEvents,
       setSseTodos,
       setSubagentHistories,

@@ -3,9 +3,14 @@ import { useTranslation } from 'react-i18next';
 
 interface CompactingIndicatorProps {
   startTime?: number;
+  /**
+   * `manual` for a user-issued /compact, `auto` for the engine's own
+   * context-window compaction. The wording differs; the card does not.
+   */
+  reason?: 'manual' | 'auto';
 }
 
-export const CompactingIndicator = ({ startTime }: CompactingIndicatorProps) => {
+export const CompactingIndicator = ({ startTime, reason = 'auto' }: CompactingIndicatorProps) => {
   const { t } = useTranslation();
   const [dotCount, setDotCount] = useState(1);
   const [elapsedSeconds, setElapsedSeconds] = useState(() => {
@@ -50,7 +55,9 @@ export const CompactingIndicator = ({ startTime }: CompactingIndicatorProps) => 
           <div className="compact-card__spinner-inner" />
         </div>
         <span className="compact-card__text">
-          {t('chat.compactingSession')}
+          {reason === 'manual'
+            ? t('chat.compactingSession')
+            : t('chat.autoCompactingSession', 'Auto-compacting conversation tokens')}
           <span className="compact-card__dots">{dots}</span>
         </span>
         <span className="compact-card__time-badge">{formatTime(elapsedSeconds)}</span>

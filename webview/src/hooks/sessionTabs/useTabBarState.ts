@@ -24,8 +24,6 @@ export interface UseTabBarStateOptions extends Pick<
   | 'usagePercentage'
   | 'usageUsedTokens'
   | 'usageMaxTokens'
-  | 'isCompacting'
-  | 'compactingStartTime'
   | 'isShared'
   | 'defaultAutoOpenFileEnabled'
   | 'deleteTabRuntime'
@@ -49,8 +47,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
-    isCompacting,
-    compactingStartTime,
     defaultAutoOpenFileEnabled,
     deleteTabRuntime,
     t,
@@ -120,12 +116,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
       const nextMessageBaseIndex = typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : active.messageBaseIndex;
       const nextOpencodeListStart = typeof window.__opencodeListStart === 'number' ? window.__opencodeListStart : active.opencodeListStart;
       const nextPrepended = typeof window.__prependedHistoryMessageCount === 'number' ? window.__prependedHistoryMessageCount : active.prependedHistoryMessageCount;
-      // A compact belongs to the tab that started it. Mirroring it here keeps
-      // the spinner on that tab when the user switches away and back.
-      const nextIsCompacting = isCompacting ?? active.isCompacting ?? false;
-      const nextCompactingStartTime = compactingStartTime !== undefined
-        ? compactingStartTime
-        : (active.compactingStartTime ?? null);
 
       if (
         active.revertBoundaryId === revertBoundaryId &&
@@ -140,9 +130,7 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         active.usageMaxTokens === nextUsageMaxTokens &&
         active.messageBaseIndex === nextMessageBaseIndex &&
         active.opencodeListStart === nextOpencodeListStart &&
-        active.prependedHistoryMessageCount === nextPrepended &&
-        (active.isCompacting ?? false) === nextIsCompacting &&
-        (active.compactingStartTime ?? null) === nextCompactingStartTime
+        active.prependedHistoryMessageCount === nextPrepended
       ) {
         return prev;
       }
@@ -164,8 +152,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
             messageBaseIndex: nextMessageBaseIndex,
             opencodeListStart: nextOpencodeListStart,
             prependedHistoryMessageCount: nextPrepended,
-            isCompacting: nextIsCompacting,
-            compactingStartTime: nextCompactingStartTime,
           };
         }
         return tab;
@@ -183,8 +169,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
     usagePercentage,
     usageUsedTokens,
     usageMaxTokens,
-    isCompacting,
-    compactingStartTime,
   ]);
 
   const closeTabRef = useRef<(tabId: string) => void>(() => {});

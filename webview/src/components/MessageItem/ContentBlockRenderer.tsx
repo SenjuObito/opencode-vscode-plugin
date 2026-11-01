@@ -199,13 +199,13 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
-        aria-label={`${t('chat.compactSuccess')} — ${toggleLabel}`}
+        aria-label={`${t(block.title)} — ${toggleLabel}`}
         onClick={block.content ? toggleExpanded : undefined}
         onKeyDown={block.content ? onKeyDown : undefined}
         style={{ cursor: block.content ? 'pointer' : 'default' }}
       >
         <i className="codicon codicon-check compact-card__pill-icon" />
-        <span className="compact-card__pill-title">{t('chat.compactSuccess')}</span>
+        <span className="compact-card__pill-title">{t(block.title)}</span>
         {hasCountMeta && (
           <span className="compact-card__pill-detail">
             {`— ${t(

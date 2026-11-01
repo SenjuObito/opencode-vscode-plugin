@@ -70,6 +70,37 @@ describe('ContentBlockRenderer block-level streaming', () => {
   });
 });
 
+describe('ContentBlockRenderer compact summary', () => {
+  it('renders the persisted summary with its own title, not the success wording', () => {
+    const block = {
+      type: 'compact_summary',
+      title: 'chat.compactSummary.summarizedConversation',
+      content: 'the summary body',
+      metadata: { messagesSummarized: 10 },
+      compactStatus: 'success',
+    } as unknown as ClaudeContentBlock;
+
+    const { getByText, queryByText } = render(
+      <ContentBlockRenderer
+        block={block}
+        messageIndex={0}
+        messageType="notification"
+        isStreaming={false}
+        isThinkingExpanded={false}
+        isThinking={false}
+        isLastMessage={false}
+        isLastBlock={false}
+        t={t}
+        onToggleThinking={() => {}}
+        findToolResult={() => null}
+      />,
+    );
+
+    expect(getByText('chat.compactSummary.summarizedConversation')).toBeTruthy();
+    expect(queryByText('chat.compactSuccess')).toBeNull();
+  });
+});
+
 describe('ContentBlockRenderer askuserquestion', () => {
   const askBlock = (): ClaudeContentBlock =>
     ({

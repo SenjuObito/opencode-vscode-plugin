@@ -63,6 +63,46 @@ describe('TabStore', () => {
     expect(store.getActiveTab().loading).toBeUndefined();
   });
 
+  it('keeps a running compact on its tab across active-tab switches', () => {
+    const store = new TabStore([tab('tab-1', 'ses_a'), tab('tab-2', 'ses_b')], 'tab-1');
+    store.updateTab('tab-1', (target) => ({
+      ...target,
+      isCompacting: true,
+      compactingStartTime: 1234,
+      compactingReason: 'manual',
+    }));
+
+    // Switching away and back must not write the outgoing/incoming projection
+    // back into the tab record: that is what used to wipe the spinner.
+    store.setActiveTabId('tab-2');
+    store.updateActiveTab((active) => ({ ...active, isCompacting: false, compactingStartTime: null }));
+
+    store.setActiveTabId('tab-1');
+    expect(store.findById('tab-1')?.isCompacting).toBe(true);
+    expect(store.findById('tab-1')?.compactingStartTime).toBe(1234);
+    expect(store.findById('tab-1')?.compactingReason).toBe('manual');
+  });
+
+  it('drops compact state only when the tab is rebound to another session', () => {
+    const store = new TabStore([tab('tab-1', 'ses_a')], 'tab-1');
+    store.updateTab('tab-1', (target) => ({
+      ...target,
+      isCompacting: true,
+      compactingStartTime: 1234,
+      compactingReason: 'auto',
+      compactNotice: { status: 'success', at: 1 },
+    }));
+
+    store.updateTabSessionId('tab-1', 'ses_a');
+    expect(store.findById('tab-1')?.isCompacting).toBe(true);
+
+    store.updateTabSessionId('tab-1', 'ses_b');
+    expect(store.findById('tab-1')?.isCompacting).toBe(false);
+    expect(store.findById('tab-1')?.compactingStartTime).toBeNull();
+    expect(store.findById('tab-1')?.compactingReason).toBeNull();
+    expect(store.findById('tab-1')?.compactNotice).toBeNull();
+  });
+
   it('keeps a detached runtime before the first tab exists', () => {
     const store = new TabStore([], '');
     const listener = vi.fn();

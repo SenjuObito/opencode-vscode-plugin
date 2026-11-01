@@ -39,8 +39,6 @@ interface UseSessionManagementOptions {
   setSseTodos?: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
   /** Clears polled sidechain histories so stale transcripts cannot leak across sessions. */
   setSubagentHistories?: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
-  setIsCompacting?: React.Dispatch<React.SetStateAction<boolean>>;
-  setCompactingStartTime?: React.Dispatch<React.SetStateAction<number | null>>;
   /** Resets model selection to preferred first model on new session. */
   onResetToPreferredModel?: () => void;
   clearToasts: () => void;
@@ -91,8 +89,6 @@ export function useSessionManagement({
   setTaskEvents,
   setSseTodos,
   setSubagentHistories,
-  setIsCompacting,
-  setCompactingStartTime,
   onResetToPreferredModel,
   clearToasts,
   addToast,
@@ -139,8 +135,6 @@ export function useSessionManagement({
       setLoadingState(false);
       setIsThinking(false);
       setStreamingActive(false);
-      setIsCompacting?.(false);
-      setCompactingStartTime?.(null);
     }
     setMessages([]);
     if (nextSessionId !== null) {

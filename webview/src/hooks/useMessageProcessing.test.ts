@@ -260,6 +260,34 @@ describe('useMessageProcessing', () => {
     expect(result.current.mergedMessages[0].type).toBe('compact_notification');
   });
 
+  it('suppresses a persisted summary that carries real text while a notice exists', () => {
+    // Real transcripts set `content` on the compact-summary message, so the old
+    // `!message.content` guard never suppressed it and the UI showed two pills.
+    const messages: ClaudeMessage[] = [
+      makeMessage('user', 'This session is being continued from a previous conversation...', {
+        raw: {
+          isCompactSummary: true,
+          compactMetadata: { messagesSummarized: 10 },
+          message: { content: 'This session is being continued...' },
+        },
+        timestamp: '2026-01-01T10:00:00.000Z',
+      }),
+      {
+        type: 'compact_notification',
+        content: 'chat.compactSuccess',
+        timestamp: '2026-01-01T10:00:01.000Z',
+        raw: { compactItems: [], compactStatus: 'success' },
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useMessageProcessing({ messages, currentSessionId: 'session-1', t }),
+    );
+
+    expect(result.current.mergedMessages).toHaveLength(1);
+    expect(result.current.mergedMessages[0].type).toBe('compact_notification');
+  });
+
   it('hides a reloaded compact pill once the user sends the next message', () => {
     const messages: ClaudeMessage[] = [
       makeMessage('user', '', {

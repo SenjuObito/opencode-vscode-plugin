@@ -79,7 +79,19 @@ suite('Tab session commands match the core method names', () => {
 		h.handler.compact(TabCommand.of('tab-src', 'session.compact', 'r2', {}));
 		assert.strictEqual(h.calls[0]?.method, 'opencode.summarize');
 		assert.strictEqual(h.calls[0]?.params.sessionId, 'ses_src');
-		assert.ok(h.events.some((event) => event.type === 'session.compact.done'));
+		// The indicator turns on before the RPC completes, from the command's
+		// own start event.
+		const started = h.events.find((event) => event.type === 'session.compact.started');
+		assert.ok(started);
+		assert.strictEqual(started!.payload.source, 'command');
+		assert.strictEqual(started!.payload.reason, 'manual');
+		const done = h.events.find((event) => event.type === 'session.compact.done');
+		assert.ok(done);
+		// The view tells the engine's lifecycle apart from this RPC result by
+		// `source`, and words the indicator from `reason`.
+		assert.strictEqual(done!.payload.source, 'command');
+		assert.strictEqual(done!.payload.reason, 'manual');
+		assert.strictEqual(done!.payload.requestId, 'r2');
 	});
 
 	test('share uses opencode.shareSession and publishes the url', () => {

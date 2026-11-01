@@ -518,14 +518,10 @@ export class ChatWindow {
 		}
 
 		const tabCommand = new TabCommand(record.getTabId(), queueCommandType(command), item.id, payload);
-		if (command === '/compact') {
-			// The view only turns on its compacting indicator when the command
-			// really starts, not while it is still waiting behind other items.
-			this.publishRecordEvent(record, 'session.compact.started', {
-				sessionId: record.getSessionIdString(),
-				startedAt: Date.now(),
-			});
-		}
+		// No optimistic `session.compact.started` here: the engine's compaction
+		// lifecycle (relayed by SessionCallbackAdapter) is the single start source,
+		// so the indicator turns on when compaction really starts — and the event
+		// carries the manual/auto reason the view needs.
 
 		switch (command) {
 			case '/compact':
