@@ -932,7 +932,10 @@ export class ChatWindow {
 
 	/** `message.error` is global UI (a toast), so every view shows it once. */
 	private publishTabError(record: TabRecord, message: string): void {
-		this.publishRecordEvent(record, 'message.error', { message });
+		// `data` (not `message`) keeps the legacy string contract: the
+		// dispatcher unwraps a single `{ data: string }` payload, so
+		// `addErrorMessage` receives text instead of an object.
+		this.publishRecordEvent(record, 'message.error', { data: message });
 	}
 
 	/**

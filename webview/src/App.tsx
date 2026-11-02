@@ -201,7 +201,7 @@ const App = () => {
   // ── Model/Provider state ──
   const {
     currentProvider, selectedModel, permissionMode,
-    daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled, daemonEngine,
+    daemonStatusLoaded, retryDaemonStatus, currentSdkInstalled,
     currentProviderRef,
     activeProviderConfig,
     reasoningEffort, sendShortcut, autoOpenFileEnabled,
@@ -1607,7 +1607,6 @@ const App = () => {
               currentSdkInstalled={currentSdkInstalled}
               daemonStatusLoaded={daemonStatusLoaded}
               retryDaemonStatus={retryDaemonStatus}
-              daemonEngine={daemonEngine}
               activeProviderConfig={activeProviderConfig}
               reasoningEffort={reasoningEffort}
               sendShortcut={sendShortcut}

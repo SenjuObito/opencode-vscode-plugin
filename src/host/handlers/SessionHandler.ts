@@ -81,7 +81,7 @@ export class SessionHandler extends BaseMessageHandler {
 	}
 
 	private reportError(tabId: string, message: string): void {
-		this.context.publishTabEvent('message.error', tabId, { message }, { legacy: false });
+		this.context.publishTabEvent('message.error', tabId, { data: message }, { legacy: false });
 	}
 
 	/** Interrupt/restart must never create a session just to stop one. */

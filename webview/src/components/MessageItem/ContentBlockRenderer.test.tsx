@@ -101,6 +101,45 @@ describe('ContentBlockRenderer compact summary', () => {
   });
 });
 
+describe('ContentBlockRenderer compact notification', () => {
+  const renderCompactNotification = (detail?: string) => render(
+    <ContentBlockRenderer
+      block={{
+        type: 'compact_notification',
+        headerText: 'chat.compactFailed',
+        items: [],
+        status: 'failure',
+        detail,
+      } as ClaudeContentBlock}
+      messageIndex={0}
+      messageType="notification"
+      isStreaming={false}
+      isThinkingExpanded={false}
+      isThinking={false}
+      isLastMessage={false}
+      isLastBlock={false}
+      t={t}
+      onToggleThinking={() => {}}
+      findToolResult={() => null}
+    />,
+  );
+
+  it('renders the detail with a real em dash, not the literal escape', () => {
+    const { getByText, queryByText } = renderCompactNotification('Nothing to compact yet');
+
+    expect(getByText('— Nothing to compact yet')).toBeTruthy();
+    // JSX text used to keep the six-character `\u2014` sequence verbatim.
+    expect(queryByText(/\\u2014/)).toBeNull();
+  });
+
+  it('does not double the separator when the engine detail already has one', () => {
+    const { getByText, queryByText } = renderCompactNotification('— Nothing to compact yet');
+
+    expect(getByText('— Nothing to compact yet')).toBeTruthy();
+    expect(queryByText('— — Nothing to compact yet')).toBeNull();
+  });
+});
+
 describe('ContentBlockRenderer askuserquestion', () => {
   const askBlock = (): ClaudeContentBlock =>
     ({

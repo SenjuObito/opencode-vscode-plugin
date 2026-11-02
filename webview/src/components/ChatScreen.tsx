@@ -8,7 +8,6 @@ import type {
 import { MessageAnchorRail } from './MessageAnchorRail';
 import { MessageList } from './MessageList';
 import { MessagesErrorBoundary } from './MessagesErrorBoundary';
-import { EngineBlockedNotice } from './EngineBlockedNotice';
 import { ScrollControl } from './ScrollControl';
 import { StatusPanel, StatusPanelErrorBoundary } from './StatusPanel';
 import type { TabType } from './StatusPanel/types';
@@ -100,7 +99,6 @@ export interface ChatScreenProps {
   currentSdkInstalled: ProviderState['currentSdkInstalled'];
   daemonStatusLoaded: boolean;
   retryDaemonStatus: () => void;
-  daemonEngine?: import('../hooks/providers/useUsageTracking').DaemonEngineStatus | null;
   activeProviderConfig: ProviderState['activeProviderConfig'];
   reasoningEffort: ProviderState['reasoningEffort'];
   sendShortcut: ProviderState['sendShortcut'];
@@ -152,7 +150,6 @@ export const ChatScreen = ({
   currentSdkInstalled,
   daemonStatusLoaded,
   retryDaemonStatus,
-  daemonEngine,
   activeProviderConfig,
   reasoningEffort, sendShortcut, autoOpenFileEnabled,
   usagePercentage, usageUsedTokens, usageMaxTokens,
@@ -325,12 +322,6 @@ export const ChatScreen = ({
       </div>
 
       <ScrollControl containerRef={messagesContainerRef} inputAreaRef={inputAreaRef} />
-
-      {/* Retry / quota notice lives above the composer
-          (`ChatInputBoxHeader` → `StatusNoticeBar`, 与 idea 同一挂载点)。这里
-          只保留 VS Code 专属的「daemon 引擎不可用」提示 —— 它不属于额度条，
-          混在一起会让两份实现继续分叉。 */}
-      <EngineBlockedNotice engine={daemonEngine} onRetry={retryDaemonStatus} />
 
       <StatusPanelErrorBoundary>
         <StatusPanel

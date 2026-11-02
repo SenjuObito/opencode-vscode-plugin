@@ -495,6 +495,23 @@ export function createCompactFailureNotice(headerText: string, detail?: string):
 }
 
 /**
+ * Normalize an engine error detail for the compact card.
+ *
+ * <p>The card renders the detail after its own `— ` separator, so an engine
+ * message that already starts with a dash/colon would otherwise show
+ * `— — …`. Whitespace is collapsed because engine errors often arrive as a
+ * multi-line string that does not fit the single-line pill.</p>
+ */
+export function formatCompactDetail(detail?: string | null): string {
+  const text = (detail ?? '').trim();
+  if (!text) return '';
+  return text
+    .replace(/^[\s\-–—:：]+/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Get text content from a message
  */
 export function getMessageText(

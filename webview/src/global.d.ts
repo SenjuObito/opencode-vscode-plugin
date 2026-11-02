@@ -95,9 +95,12 @@ interface Window {
   clearMessages?: (barrierSequence?: string | number) => void;
 
   /**
-   * Add error message
+   * Add error message.
+   *
+   * <p>Legacy callers pass the text; a named `message.error` event passes the
+   * `{ message }` payload, so the handler accepts both.</p>
    */
-  addErrorMessage?: (message: string) => void;
+  addErrorMessage?: (message: string | { message?: string }) => void;
 
   /**
    * Context usage dialog callback - receives JSON string with context usage data to show in a dialog.

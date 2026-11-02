@@ -426,15 +426,6 @@
         "label": "OpenCode 路径",
         "placeholder": "例如 /usr/local/bin/opencode — 留空则自动查找",
         "hint": "可选的自定义 opencode 二进制路径，用于启动 opencode 服务。留空则按 PATH 与默认安装位置（~/.opencode/bin）自动探测。保存后重启守护进程生效。"
-      },
-      "engine": {
-        "label": "opencode 引擎",
-        "state": "状态",
-        "cliVersion": "CLI 版本",
-        "cliSource": "CLI 来源",
-        "cliPath": "CLI 路径",
-        "apiVersion": "接口版本",
-        "reason": "原因"
       }
     },
     "providers": "供应商管理",
@@ -1898,10 +1889,5 @@
     "retryIn": "{{seconds}} 秒后重试",
     "openLink": "查看详情",
     "dismiss": "关闭"
-  },
-  "engineNotice": {
-    "title": "opencode 引擎不可用",
-    "message": "无法确认 opencode CLI 的版本或接口版本，请检查 CLI 路径后重试。",
-    "retry": "重新检测"
   }
 }

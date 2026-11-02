@@ -26,9 +26,12 @@ function preview(item: QueuedMessage): string {
  * <p>This is a projection, not a scheduling surface: the host owns the queue
  * and decides when an item is sent. Only items that are *still waiting* are
  * listed — the moment the host starts sending one it leaves this list and
- * appears in the conversation instead. A paused banner with an explicit
+ * appears in the conversation instead. A halted banner with an explicit
  * "continue" stays: after a stop the host waits for that confirmation instead
- * of sending the next prompt automatically.</p>
+ * of sending the next prompt automatically. A send failure halts the pump the
+ * same way (`lastError`), so the same button must be reachable there too —
+ * without it the failed item sits at the head and every new message queues
+ * behind it forever.</p>
  */
 export function MessageQueue({
   queue,
@@ -47,6 +50,11 @@ export function MessageQueue({
         <div className="message-queue-banner message-queue-banner-error" role="alert">
           <span className="codicon codicon-warning" />
           <span className="message-queue-banner-text" title={error.message}>{error.message}</span>
+          {onResume && (
+            <button className="message-queue-resume" onClick={onResume}>
+              继续发送
+            </button>
+          )}
         </div>
       )}
       {paused && (

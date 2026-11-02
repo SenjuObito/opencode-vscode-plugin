@@ -155,7 +155,7 @@ export class TabSender {
 
 	private reportError(tabId: string, message: string): void {
 		PluginFileLogger.warn('TabSender', `tab=${tabId} ${message}`);
-		this.context.publishTabEvent('message.error', tabId, { message }, { legacy: false });
+		this.context.publishTabEvent('message.error', tabId, { data: message }, { legacy: false });
 	}
 
 	private determineWorkingDirectory(): string {

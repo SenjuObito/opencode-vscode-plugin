@@ -426,15 +426,6 @@
         "label": "OpenCode Path",
         "placeholder": "e.g. /usr/local/bin/opencode — leave empty to auto-detect",
         "hint": "Optional custom opencode binary used to start the opencode service. Leave empty to search PATH and default install locations (~/.opencode/bin). Takes effect after the daemon restarts on save."
-      },
-      "engine": {
-        "label": "opencode engine",
-        "state": "State",
-        "cliVersion": "CLI version",
-        "cliSource": "CLI source",
-        "cliPath": "CLI path",
-        "apiVersion": "API version",
-        "reason": "Reason"
       }
     },
     "providers": "Provider Management",
@@ -1893,10 +1884,5 @@
     "retryIn": "retrying in {{seconds}}s",
     "openLink": "Learn more",
     "dismiss": "Dismiss"
-  },
-  "engineNotice": {
-    "title": "opencode engine unavailable",
-    "message": "The opencode CLI version or API version could not be determined. Check the CLI path and retry.",
-    "retry": "Check again"
   }
 }

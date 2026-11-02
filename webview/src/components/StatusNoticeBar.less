@@ -5,31 +5,44 @@
    --warning  retry backoff for the running turn (auto-hides with the turn)
    --error    terminal, user-dismissed notice (e.g. quota exhausted) */
 
+/* 与 idea 同一份样式：提示条贴住输入框顶部通栏，不再自带外边距和自成一套的
+   圆角/描边 —— 那会和 .chat-input-box 的 1px 描边、8px 圆角错位，看起来像贴了
+   一张和容器割裂的小卡片。`border-top-*-radius: inherit` 直接继承容器圆角。 */
 .status-notice-bar {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 0 12px 6px;
-    padding: 8px 10px;
-    border: 1px solid transparent;
-    border-left-width: 3px;
-    border-radius: 4px;
+    padding: 6px 12px;
+    border-bottom: 1px solid transparent;
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
     color: var(--text-primary);
     font-size: 12px;
     line-height: 1.4;
 }
 
 .status-notice-bar--warning {
-    border-color: var(--color-warning);
-    background: var(--bg-tertiary);
+    background: rgba(255, 152, 0, 0.15);
+    border-bottom-color: rgba(255, 152, 0, 0.3);
+    color: #ffb74d;
 }
 
-/* A persistent notice: a full red outline is harsh to keep on screen, so the
-   signal is carried by the thick left edge plus a barely-there red wash. */
 .status-notice-bar--error {
-    border-color: var(--color-notice-error-border);
-    border-left-color: var(--color-error);
-    background: var(--color-notice-error-bg);
+    background: rgba(244, 67, 54, 0.12);
+    border-bottom-color: rgba(244, 67, 54, 0.25);
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .status-notice-bar--warning {
+    background: rgba(255, 149, 0, 0.1);
+    border-bottom-color: rgba(255, 149, 0, 0.2);
+    color: #e65100;
+}
+
+[data-theme="light"] .status-notice-bar--error {
+    background: rgba(232, 17, 35, 0.08);
+    border-bottom-color: rgba(232, 17, 35, 0.2);
+    color: #c62828;
 }
 
 .status-notice-icon {

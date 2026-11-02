@@ -99,7 +99,7 @@
 | # | 功能域 | 状态 | 代码证据 / 说明 |
 |---|---|---|---|
 | 10.1 | 启动页与首帧 | ✅ | `index.html` 内联 `html,body,#app` 底色 + `#boot-splash`（`prefers-reduced-motion`）；`main.tsx` 双 rAF 后移除；`ErrorBoundary` 兜底 |
-| 10.2 | 插件图标与品牌 | ✅ | `media/opencode.png`（idea 512）、单色活动栏 `opencode-activity*.svg`、`AeroOpenCodeLogo`、`ProviderModelIcon` 彩色分支；`WelcomeScreen` 去掉写死 `#555` |
+| 10.2 | 插件图标与品牌 | ✅ | 市场/扩展列表图标 `media/opencode.png` 为 idea 512 Aero 标记（彩色，扩展列表不做单色渲染）；**活动栏/辅助侧边栏/编辑器标签页/编辑器标题栏**改用旧「回」字单色版 `opencode-activity{,-light,-dark}.svg`（Aero 几何在 16px 下边框仅约 0.8px、内核成实块，VS Code 单色渲染后是一团白，故回退）；webview 内 `AeroOpenCodeLogo`（玻璃徽章）与 `ProviderModelIcon` 彩色分支保留；`WelcomeScreen` 去掉写死 `#555` |
 | 10.3 | 新会话默认背景 | ✅ | `.messages-shell.is-empty-state`（径向极光 + 20px 点阵 + light 变体）；与 idea 的 `.chat-screen-shell.is-empty-state` 效果等价 |
 | 10.4 | 模式列表 | ✅ | `store/agentStore` + `ModeSelect` + `modeColors`；`agents.list` → `AgentHandler.refresh`；`view.ready` 时主动请求目录 |
 | 10.5 | 模型列表与置顶 | ✅ | idea `ModelSelect` 整份移植（长按 180ms 拖拽 + `writePinnedModelIds`）、`selectors.css`；保留 `useDropdownPosition` |

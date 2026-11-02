@@ -13,7 +13,7 @@ import {
 } from '../toolBlocks';
 import type { EditToolItem } from '../toolBlocks/EditToolBlock';
 import { EDIT_TOOL_NAMES, BASH_TOOL_NAMES, TASK_MANAGE_TOOL_NAMES, AGENT_TOOL_NAMES, isToolName, isTransientInternalToolName, normalizeToolName } from '../../utils/toolConstants';
-import { TASK_STATUS_COLORS } from '../../utils/messageUtils';
+import { TASK_STATUS_COLORS, formatCompactDetail } from '../../utils/messageUtils';
 import { getQuestionAnswer, subscribe as subscribeQuestionAnswer, getSnapshot as getQuestionAnswerSnapshot } from '../../store/questionAnswerStore';
 
 const IMAGE_BLOCK_STYLE: React.CSSProperties = { cursor: 'pointer' };
@@ -556,15 +556,15 @@ export function ContentBlockRenderer({
           <i className={`codicon ${iconCodicon} compact-card__pill-icon`} />
           <span className="compact-card__pill-title">{block.headerText}</span>
           {isFailure ? (
-            block.detail ? (
+            formatCompactDetail(block.detail) ? (
               <span className="compact-card__pill-detail" title={block.detail}>
-                \u2014 {block.detail}
+                {`— ${formatCompactDetail(block.detail)}`}
               </span>
             ) : null
           ) : (
             block.items && block.items.length > 0 ? (
               <span className="compact-card__pill-detail">
-                \u2014 {block.items.length} messages summarized
+                {`— ${block.items.length} messages summarized`}
               </span>
             ) : null
           )}

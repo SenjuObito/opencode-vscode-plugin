@@ -24,6 +24,7 @@ import {
   extractCompactItems,
   buildCompactNotification,
   createCompactSuccessNotice,
+  formatCompactDetail,
   matchesProviderMessageId,
   applyMessagesRemoved,
   TASK_STATUS_COLORS,
@@ -1129,6 +1130,25 @@ describe('extractCompactItems', () => {
     expect(items).toHaveLength(2);
     expect(items[0].text).toBe('line one');
     expect(items[1].text).toBe('line two');
+  });
+});
+
+describe('formatCompactDetail', () => {
+  it('trims an engine error and collapses its whitespace', () => {
+    expect(formatCompactDetail('  Nothing to compact yet \n ')).toBe('Nothing to compact yet');
+    expect(formatCompactDetail('line one\n\nline two')).toBe('line one line two');
+  });
+
+  it('strips a leading separator so the card never doubles its own dash', () => {
+    expect(formatCompactDetail('— Nothing to compact yet')).toBe('Nothing to compact yet');
+    expect(formatCompactDetail('- Nothing to compact yet')).toBe('Nothing to compact yet');
+    expect(formatCompactDetail('：Nothing to compact yet')).toBe('Nothing to compact yet');
+  });
+
+  it('returns an empty string for a missing detail', () => {
+    expect(formatCompactDetail(undefined)).toBe('');
+    expect(formatCompactDetail(null)).toBe('');
+    expect(formatCompactDetail('   ')).toBe('');
   });
 });
 

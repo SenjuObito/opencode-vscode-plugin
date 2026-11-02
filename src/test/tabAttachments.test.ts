@@ -241,7 +241,9 @@ suite('P8 §10.10: 附件链路（按 tab 落盘 + 只发 id）', () => {
 				.flatMap((message) => (message.batch as Array<Record<string, unknown>>) ?? [])
 				.find((event) => event.type === 'message.error');
 			assert.ok(error, '必须提示用户');
-			assert.match(String((error.payload as Record<string, unknown>).message), /附件不可用/);
+			// `data` is the legacy string field the dispatcher unwraps; the
+			// webview must receive text, not a `{ message }` object.
+			assert.match(String((error.payload as Record<string, unknown>).data), /附件不可用/);
 		});
 
 		test('关 tab 时释放该 tab 的附件目录', async () => {

@@ -946,6 +946,23 @@ describe('useWindowCallbacks integration', () => {
     expect(opts.setStatus).not.toHaveBeenCalled();
   });
 
+  it('addErrorMessage unwraps the named-event { message } payload', () => {
+    // The dispatcher hands a named `message.error` event over as an object.
+    // Passing that object straight to addToast crashes React (#31).
+    const opts = createOptions();
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.addErrorMessage!({ message: 'Nothing to compact yet' });
+    });
+
+    expect(opts.addToast).toHaveBeenCalledWith('Nothing to compact yet', 'error');
+    expect(opts.addToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Nothing to compact yet' }),
+      'error',
+    );
+  });
+
   // ===== clearMessages resets all transient UI state =====
 
   it('clearMessages resets streaming refs, loading, thinking, and status', () => {
