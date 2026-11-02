@@ -51,7 +51,7 @@ export const APP_VERSION = '0.0.1';
 
 该文件由 `webview/src/main.tsx` 消费，用于首启弹窗与版本更新检测。
 
-> ⚠️ **已知隐患**：根 `package.json` 的版本号（`0.0.1`）落后于 git tag 与 `CHANGELOG.md`（`v0.0.3`）。同时脚本把 `'0.0.1'` 硬编码为**读取失败时的 fallback**（`extract-version.mjs:15`），因此读取失败不会报错，而是**伪装成一个合法版本号**流向 UI。建议后续统一版本号源头。
+> ⚠️ **已知隐患**：仓库里根 `package.json` 的版本号（`0.0.4`）落后于 git tag 与 `CHANGELOG.md`（`v2.0.1`）。发布流程会在 `release.yml` 的「Sync version from tag」步骤里按 tag 覆写 `package.json`，所以产物版本号是对的；但本地构建仍会读到这个旧值。同时脚本把 `'0.0.1'` 硬编码为**读取失败时的 fallback**（`extract-version.mjs:15`），因此读取失败不会报错，而是**伪装成一个合法版本号**流向 UI。建议后续统一版本号源头。
 
 ---
 

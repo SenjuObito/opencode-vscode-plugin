@@ -198,7 +198,10 @@ export class HistoryHandler extends BaseMessageHandler {
 						loadedCount: added,
 						loadedTurns: countUserTurns(messages),
 						cursor: collector.getNextCursor(),
-						hasEarlier: collector.getHasEarlier() || Boolean(collector.getNextCursor()),
+						// `hasEarlier` 由 daemon 用 rawCount（过滤前的服务端页大小）
+						// 算出。不能再 OR 游标：这个引擎的最后一页也会给 `nextCursor`，
+						// OR 上去就永远「还有更早」，要多点一次才收口。
+						hasEarlier: collector.getHasEarlier(),
 					});
 					done();
 				},
@@ -626,7 +629,9 @@ export class HistoryHandler extends BaseMessageHandler {
 									loadedCount: messages.length,
 									loadedTurns: countUserTurns(messages),
 									cursor: collector.getNextCursor(),
-									hasEarlier: collector.getHasEarlier() || Boolean(collector.getNextCursor()),
+									// 满页判据在 daemon 侧用 rawCount 算好：条目数在这里
+									// 已被过滤（idle/synthetic 等），不能拿来跟页大小比。
+									hasEarlier: collector.getHasEarlier(),
 									pageSize: HISTORY_PAGE_MESSAGE_LIMIT,
 								});
 								session.publishHistoryWindow();

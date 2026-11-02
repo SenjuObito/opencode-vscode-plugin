@@ -43,8 +43,10 @@ export class ListMessagesCollector {
 					this.sawNewProtocol = true;
 					this.nextCursor = typeof obj.nextCursor === 'string' && obj.nextCursor ? obj.nextCursor : null;
 					this.previousCursor = typeof obj.previousCursor === 'string' && obj.previousCursor ? obj.previousCursor : null;
-					// `hasEarlier` 由 daemon 依据游标算出；旧 daemon 不回该字段时
-					// 退化为「有游标即有更早一页」。
+					// `hasEarlier` 由 daemon 用 `rawCount`（过滤 idle/synthetic 之前的
+					// 服务端条数）算出。它才是权威判据 —— 这个引擎在最后一页也会回
+					// `nextCursor`，OR 游标会让「还有更早」永远成立。旧 daemon 完全
+					// 不回该字段时才退化成「有游标即有更早一页」。
 					this.hasEarlier = typeof obj.hasEarlier === 'boolean'
 						? obj.hasEarlier
 						: Boolean(this.nextCursor);
@@ -84,9 +86,11 @@ export class ListMessagesCollector {
 	/**
 	 * Cursor of the next older page, or null when this page is the oldest.
 	 *
-	 * <p>On any page a `next` cursor may point past the real end (the filtered
-	 * `type=user` pages do this), so callers must stop on the first empty page
-	 * as well — never on the cursor alone.</p>
+	 * <p>On any page a `next` cursor may point past the real end: the engine
+	 * still returns one on its final page, and the filtered `type=user` pages do
+	 * it too. Callers must therefore never treat a cursor as proof — use
+	 * `getHasEarlier()` (computed by the daemon from the pre-filter page size)
+	 * and stop on the first empty page.</p>
 	 */
 	getNextCursor(): string | null {
 		return this.nextCursor;
@@ -96,6 +100,15 @@ export class ListMessagesCollector {
 		return this.previousCursor;
 	}
 
+	/**
+	 * Whether the server holds an older page.
+	 *
+	 * <p>Authoritative: the daemon compares the page size the server returned
+	 * (`rawCount`, before non-transcript rows are dropped) with the requested
+	 * limit. Entry counts cannot be used — filtering makes a full page look
+	 * short — and `nextCursor` cannot be used either, because the last page has
+	 * one too.</p>
+	 */
 	getHasEarlier(): boolean {
 		return this.hasEarlier;
 	}
