@@ -517,12 +517,14 @@ export const ModelSelect = ({
         onClick={handleToggle}
         title={t('chat.currentModel', { model: getModelLabel(currentModel) })}
       >
-        <ProviderModelIcon
-          providerId={currentProvider}
-          modelId={currentModel.id}
-          size={12}
-          colored
-        />
+        <span className="selector-icon-box">
+          <ProviderModelIcon
+            providerId={currentProvider}
+            modelId={currentModel.id}
+            size={12}
+            colored
+          />
+        </span>
         <span className="selector-button-text">{getModelLabel(currentModel)}</span>
         <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={CHEVRON_ICON_STYLE} />
       </button>

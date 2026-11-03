@@ -63,7 +63,7 @@ export function ChatHeader({
       <div className="header-left">
         {currentView === 'history' ? (
           <button className="back-button" onClick={onBack} data-tooltip={t('common.back')}>
-            <BackIcon /> {t('common.back')}
+            <span className="back-icon-box"><BackIcon /></span> {t('common.back')}
           </button>
         ) : (
           <SessionTabBar

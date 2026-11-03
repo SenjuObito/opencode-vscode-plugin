@@ -3,7 +3,7 @@
    ============================================================ */
 .selector-button {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 3px;
   padding: 4px 6px;
   height: 24px; /* 固定高度：模型/模式/推理力度三个按钮的 hover 背景高度必须一致 */
@@ -20,12 +20,31 @@
 }
 
 .selector-button > .codicon {
-  align-self: center;
-  transform: none;
+  align-self: baseline;
+  transform: translateY(var(--ui-icon-shift));
 }
 
-.selector-button > svg {
-  align-self: center;
+/* 所有选择器图标统一装进 14px 布局盒：codicon 的 ascent 是 14px，
+   SVG/img 的基线则是盒子底边，只有盒子高度一致，三个按钮的文字基线才会一致。 */
+.selector-icon-box {
+  /* 盒子本身没有行内内容，flex 基线回退到盒子底边 = 14px，
+     与 14px codicon 的 ascent 完全一致。图标用绝对定位居中，
+     这样 SVG / img / span 包装的 ProviderModelIcon 都不会再改变基线。 */
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1;
+  align-self: baseline;
+  transform: translateY(var(--ui-icon-shift));
+}
+
+.selector-icon-box > * {
+  position: absolute;
+  inset: 0;
+  margin: auto;
 }
 
 .selector-button:hover {

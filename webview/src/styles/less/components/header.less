@@ -70,17 +70,32 @@
     padding: 4px 8px;
     border-radius: 4px;
     display: flex;
-    align-items: center;
+    align-items: baseline;
     line-height: 16px;
     position: relative;
     .flex-gap-horizontal(4px);
     .tooltip-bottom-center(32px);
 }
 
-.back-button > .codicon,
-.back-button > svg {
-    align-self: center;
-    transform: none;
+/* BackIcon 是内联 SVG：装进 16px 图标盒后锚定基线。
+   SVG 墨迹填满盒子，视觉中心比同为 16px 的 codicon 略高，
+   所以偏移用 0.19em（16px 盒约 3px），而不是 0.14em。 */
+.back-button > .back-icon-box {
+    position: relative;
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    font-size: 16px;
+    line-height: 1;
+    align-self: baseline;
+    transform: translateY(0.19em);
+}
+
+.back-button > .back-icon-box > * {
+    position: absolute;
+    inset: 0;
+    margin: auto;
 }
 
 .back-button:hover {
