@@ -21,7 +21,7 @@ interface UseSessionManagementOptions {
   currentSessionIdRef?: React.MutableRefObject<string | null>;
   currentProvider?: string;
   setHistoryData: React.Dispatch<React.SetStateAction<HistoryData | null>>;
-  setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
+  mutateTranscript: (operation: (transcript: import('../store/tabTranscript').TabTranscript) => void) => void;
   setCurrentView: (view: ViewMode) => void;
   setCurrentSessionId: (id: string | null) => void;
   setCustomSessionTitle: (title: string | null) => void;
@@ -74,7 +74,7 @@ export function useSessionManagement({
   currentSessionIdRef,
   currentProvider,
   setHistoryData,
-  setMessages,
+  mutateTranscript,
   setCurrentView,
   setCurrentSessionId,
   setCustomSessionTitle,
@@ -136,7 +136,7 @@ export function useSessionManagement({
       setIsThinking(false);
       setStreamingActive(false);
     }
-    setMessages([]);
+    mutateTranscript((transcript) => transcript.clear());
     if (nextSessionId !== null) {
       setSessionLoading(true);
     }
@@ -188,7 +188,7 @@ export function useSessionManagement({
         setSessionLoading(false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
-  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
+  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, mutateTranscript, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
 
   /**
    * Open a fresh, unbound tab.
@@ -391,7 +391,7 @@ export function useSessionManagement({
 
     }
     showSessionDeletedToast(startedSessionTransition);
-  }, [historyData, currentSessionId, loading, setHistoryData, setMessages, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, openNewSessionTab]);
+  }, [historyData, currentSessionId, loading, setHistoryData, mutateTranscript, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, showSessionDeletedToast, openNewSessionTab]);
 
   // Batch delete history sessions
   const deleteHistorySessions = useCallback((sessionIds: string[]) => {

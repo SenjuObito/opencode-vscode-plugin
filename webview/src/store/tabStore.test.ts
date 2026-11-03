@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TabStore, createTabId } from './tabStore';
 import type { SessionTabData } from '../components/ChatHeader/types';
+import { TabTranscript } from './tabTranscript';
 
 const tab = (id: string, sessionId: string | null = null): SessionTabData => ({
   id,
   sessionId,
   title: id,
-  messages: [],
+  transcript: new TabTranscript(),
 });
 
 describe('TabStore', () => {

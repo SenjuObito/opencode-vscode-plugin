@@ -14,12 +14,18 @@ import { registerStreamingCallbacks } from './streamingCallbacks';
 import { endTransition } from '../tabTransition';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage } from '../../../types';
+import { getTabStore } from '../../../store/tabStore';
+import { resetTranscripts } from '../../../test/transcriptHarness';
 
 type Ref<T> = { current: T };
 const ref = <T,>(value: T): Ref<T> => ({ current: value });
 
 function createHarness(initialMessages: ClaudeMessage[], turnIdCounter: number) {
-  let messages = [...initialMessages];
+  resetTranscripts();
+  getTabStore().mutateActiveTranscript((transcript) => {
+    transcript.clear();
+    transcript.applySnapshot(initialMessages);
+  });
 
   const refs = {
     streamingContentRef: ref(''),
@@ -39,9 +45,6 @@ function createHarness(initialMessages: ClaudeMessage[], turnIdCounter: number) 
 
   const options = {
     ...refs,
-    setMessages: (updater: ClaudeMessage[] | ((prev: ClaudeMessage[]) => ClaudeMessage[])) => {
-      messages = typeof updater === 'function' ? updater(messages) : updater;
-    },
     setStreamingActive: () => {},
     setLoading: () => {},
     setLoadingStartTime: () => {},
@@ -52,7 +55,7 @@ function createHarness(initialMessages: ClaudeMessage[], turnIdCounter: number) 
   } as unknown as UseWindowCallbacksOptions;
 
   registerStreamingCallbacks(options);
-  return { refs, getMessages: () => messages };
+  return { refs, getMessages: () => getTabStore().getActiveTabMessages() };
 }
 
 describe('onStreamStart bubble routing', () => {

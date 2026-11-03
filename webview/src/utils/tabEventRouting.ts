@@ -54,85 +54,33 @@ export function updateBackgroundTab(
 }
 
 /**
- * Append a text delta to a tab's last assistant message.
+ * Append one content delta to a tab's streaming assistant bubble.
  *
- * <p>Ported from idea's `appendDeltaToTab`: the tab record owns the transcript,
- * so a background stream keeps producing visible content without touching the
- * active view. Copy the array before mutating it so React sees a new reference
- * when the tab is selected.</p>
+ * <p>The transcript owns the merge (text and matching raw blocks), so this only
+ * states the fact: a delta arrived for this tab's open turn.</p>
  */
 export function appendDeltaToTab(tab: SessionTabData, delta: string): void {
   if (!delta) return;
-  (tab as SessionTabData).streamingActive = true;
-  (tab as SessionTabData).loading = true;
-  const messages = tab.messages ?? [];
-  const lastIndex = messages.length - 1;
-  const last = lastIndex >= 0 ? messages[lastIndex] : undefined;
-  if (last && last.type === 'assistant') {
-    const next = messages.slice();
-    const updatedContent = (typeof last.content === 'string' ? last.content : '') + delta;
-    let updatedRaw = last.raw;
-    if (updatedRaw && typeof updatedRaw === 'object') {
-      const rawObj = { ...(updatedRaw as Record<string, unknown>) } as Record<string, any>;
-      const msgObj = rawObj.message ? { ...rawObj.message } : { content: [] };
-      const contentBlocks = Array.isArray(msgObj.content) ? [...msgObj.content] : [];
-      const lastBlockIdx = contentBlocks.length - 1;
-      if (lastBlockIdx >= 0 && contentBlocks[lastBlockIdx]?.type === 'text') {
-        contentBlocks[lastBlockIdx] = {
-          ...contentBlocks[lastBlockIdx],
-          text: (contentBlocks[lastBlockIdx].text || '') + delta,
-        };
-      } else {
-        contentBlocks.push({ type: 'text', text: delta });
-      }
-      msgObj.content = contentBlocks;
-      rawObj.message = msgObj;
-      updatedRaw = rawObj;
-    }
-    next[lastIndex] = { ...last, content: updatedContent, raw: updatedRaw };
-    tab.messages = next;
-    return;
-  }
-  const initialRaw = {
-    type: 'assistant',
-    message: { content: [{ type: 'text', text: delta }] },
-  };
-  const newMessage: ClaudeMessage = {
-    type: 'assistant',
-    content: delta,
-    raw: initialRaw as ClaudeMessage['raw'],
-    timestamp: new Date().toISOString(),
-  } as ClaudeMessage;
-  tab.messages = [...messages, newMessage];
+  tab.streamingActive = true;
+  tab.loading = true;
+  tab.transcript.appendDelta(delta, tab.transcript.streamingAssistantTurn());
 }
 
 /** Replace a tab's transcript with a host snapshot (background tab). */
 export function applySnapshotToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
-  if (tab.messageStore) {
-    tab.messages = tab.messageStore.applySnapshot(messages);
-  } else {
-    tab.messages = messages;
-  }
+  tab.transcript.applySnapshot(messages);
 }
 
 /** Prepend an older page to a tab's transcript. */
 export function applyPrependToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
   if (messages.length === 0) return;
-  if (tab.messageStore) {
-    tab.messages = tab.messageStore.applyPrepend(messages);
-  } else {
-    tab.messages = [...messages, ...(tab.messages ?? [])];
-  }
+  tab.transcript.prependPage(messages);
 }
 
-/** Apply a tail update to a tab's transcript (background tab). */export function applyTailToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
-  if (tab.messageStore) {
-    tab.messages = tab.messageStore.applyTail(messages);
-  } else {
-    const tail = messages;
-    const head = Math.max(0, (tab.messages?.length ?? 0) - tail.length);
-    tab.messages = [...(tab.messages ?? []).slice(0, head), ...tail];
-  }
+/** Apply a tail update to a tab's transcript (background tab). */
+export function applyTailToTab(tab: SessionTabData, messages: ClaudeMessage[], baseIndex = 0): void {
+  if (messages.length === 0) return;
+  tab.transcript.applyTail(messages, baseIndex);
 }
 
 /** Parse a JSON payload that may arrive as a string or an object. */

@@ -1,3 +1,4 @@
+import { TabTranscript } from '../../../store/tabTranscript';
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -19,7 +20,7 @@ const makeTab = (id: string): SessionTabData => ({
   id,
   sessionId: null,
   title: '',
-  messages: [],
+  transcript: new TabTranscript(),
 } as SessionTabData);
 
 const publish = (tabId: string, names: string[]) => {

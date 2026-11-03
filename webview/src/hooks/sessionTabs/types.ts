@@ -11,7 +11,11 @@ export interface UseSessionTabsOptions {
   setCustomSessionTitle: (title: string | null) => void;
   updateHistoryTitle: (sessionId: string, newTitle: string) => void;
   messages: ClaudeMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
+  /**
+   * The single write entry for the active tab's transcript. Tab activation does
+   * not copy messages anywhere: the view already reads the active tab.
+   */
+  mutateTranscript: (operation: (transcript: import('../../store/tabTranscript').TabTranscript) => void) => void;
   loading: boolean;
   setLoading?: (loading: boolean) => void;
   streamingActive: boolean;

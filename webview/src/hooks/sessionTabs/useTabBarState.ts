@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { TabType } from '../../components/StatusPanel/types';
 import { getTabStore } from '../../store/tabStore';
-import { TabMessageStore } from '../../store/tabMessageStore';
+import { TabTranscript } from '../../store/tabTranscript';
 import type { TabDraftStore } from '../../store/tabDraftStore';
 import { sendHostCommand } from '../../utils/bridge';
 import type { UseSessionTabsOptions } from './types';
@@ -60,9 +60,8 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         {
           id: 'tab-1',
           sessionId: null,
-          messageStore: new TabMessageStore(),
+          transcript: new TabTranscript(),
           title: t('common.newSession', { defaultValue: '新会话' }),
-          messages: [],
           isShared: false,
           autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
           permissionMode: permissionMode || 'default',
@@ -113,10 +112,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
       const nextUsagePercentage = usagePercentage ?? active.usagePercentage;
       const nextUsageUsedTokens = usageUsedTokens !== undefined ? usageUsedTokens : active.usageUsedTokens;
       const nextUsageMaxTokens = usageMaxTokens !== undefined ? usageMaxTokens : active.usageMaxTokens;
-      const nextMessageBaseIndex = typeof window.__messageBaseIndex === 'number' ? window.__messageBaseIndex : active.messageBaseIndex;
-      const nextOpencodeListStart = typeof window.__opencodeListStart === 'number' ? window.__opencodeListStart : active.opencodeListStart;
-      const nextPrepended = typeof window.__prependedHistoryMessageCount === 'number' ? window.__prependedHistoryMessageCount : active.prependedHistoryMessageCount;
-
       if (
         active.revertBoundaryId === revertBoundaryId &&
         active.taskEvents === taskEvents &&
@@ -127,10 +122,7 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         active.contextInfo === contextInfo &&
         active.usagePercentage === nextUsagePercentage &&
         active.usageUsedTokens === nextUsageUsedTokens &&
-        active.usageMaxTokens === nextUsageMaxTokens &&
-        active.messageBaseIndex === nextMessageBaseIndex &&
-        active.opencodeListStart === nextOpencodeListStart &&
-        active.prependedHistoryMessageCount === nextPrepended
+        active.usageMaxTokens === nextUsageMaxTokens
       ) {
         return prev;
       }
@@ -149,9 +141,6 @@ export function useTabBarState(options: UseTabBarStateOptions) {
             usagePercentage: nextUsagePercentage,
             usageUsedTokens: nextUsageUsedTokens,
             usageMaxTokens: nextUsageMaxTokens,
-            messageBaseIndex: nextMessageBaseIndex,
-            opencodeListStart: nextOpencodeListStart,
-            prependedHistoryMessageCount: nextPrepended,
           };
         }
         return tab;

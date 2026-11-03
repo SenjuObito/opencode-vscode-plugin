@@ -28,7 +28,6 @@ export interface UseWindowCallbacksOptions {
   clearToasts: () => void;
 
   // State setters
-  setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
   setStatus: React.Dispatch<React.SetStateAction<string>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;

@@ -8,19 +8,28 @@
  */
 import type { SessionTabData } from '../components/ChatHeader/types';
 import { getTabStore, resetTabStore } from '../store/tabStore';
+import { TabTranscript } from '../store/tabTranscript';
+import type { ClaudeMessage } from '../types';
 
 export interface SeedTab {
   id: string;
   sessionId?: string | null;
   /** A title the user typed; auto titles must never be persisted on bind. */
   isCustomTitle?: boolean;
+  /** Initial transcript content for this tab. */
+  messages?: ClaudeMessage[];
 }
 
 /** Replace the store's tabs and active tab. */
 export function seedTabStore(tabs: SeedTab[], activeTabId: string): void {
   resetTabStore();
   const store = getTabStore();
-  store.setTabs(tabs.map((tab) => ({ sessionId: null, ...tab } as unknown as SessionTabData)));
+  // Every tab owns a transcript, exactly like a tab created by the app.
+  store.setTabs(tabs.map(({ messages, ...tab }) => {
+    const transcript = new TabTranscript();
+    if (messages && messages.length > 0) transcript.applySnapshot(messages);
+    return { sessionId: null, transcript, ...tab } as unknown as SessionTabData;
+  }));
   store.setActiveTabId(activeTabId);
 }
 

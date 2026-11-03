@@ -1,5 +1,4 @@
 import type {
-  ClaudeMessage,
   FileChangeSummary,
   SubagentHistoryResponse,
   TaskEventMap,
@@ -9,7 +8,7 @@ import type { ContextInfo } from '../../hooks';
 import type { TabScrollState } from '../../hooks/useScrollBehavior';
 import type { PermissionMode, ReasoningEffort } from '../ChatInputBox/types';
 import type { TabType } from '../StatusPanel/types';
-import type { TabMessageStore } from '../../store/tabMessageStore';
+import type { TabTranscript } from '../../store/tabTranscript';
 
 /**
  * The result of the last /compact on this tab.
@@ -32,7 +31,13 @@ export interface SessionTabData {
   title: string;
   isCustomTitle?: boolean;
   isShared?: boolean;
-  messages: ClaudeMessage[];
+  /**
+   * This tab's transcript: the single owner of its messages.
+   *
+   * <p>The view renders `transcript.getSnapshot()`. Nothing else may hold a
+   * second message array: a second copy is a copy that can drift.</p>
+   */
+  transcript: TabTranscript;
   /**
    * Host-owned outbox projection for this tab.
    *
@@ -78,9 +83,6 @@ export interface SessionTabData {
   usagePercentage?: number;
   usageUsedTokens?: number;
   usageMaxTokens?: number;
-  messageBaseIndex?: number;
-  opencodeListStart?: number;
-  prependedHistoryMessageCount?: number;
   /**
    * How much of the transcript this tab has read back from the engine.
    *
@@ -91,12 +93,4 @@ export interface SessionTabData {
   historyWindow?: import('../../store/historyWindow').HistoryWindowState | null;
   /** Per-tab reader position, restored when this tab is selected again. */
   scrollState?: TabScrollState;
-  /**
-   * The tab's transcript, reconciled by message id.
-   *
-   * <p>The store is shared by reference: the tab object is cloned on every
-   * update, the store is not, so the transcript survives those clones and
-   * keeps the identity of its messages.</p>
-   */
-  messageStore?: TabMessageStore;
 }

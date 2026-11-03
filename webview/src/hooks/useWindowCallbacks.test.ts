@@ -1,4 +1,4 @@
-import { createElement, useState } from 'react';
+import { createElement, useSyncExternalStore } from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { useWindowCallbacks } from './useWindowCallbacks.js';
 
@@ -6,7 +6,6 @@ import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor 
 import { seedTabStore } from '../test/seedTabStore';
 import { getTabStore } from '../store/tabStore';
 import { dispatchHostEnvelope } from '../utils/hostDispatcher';
-import { TabMessageStore } from '../store/tabMessageStore';
 import type { UseWindowCallbacksOptions } from './useWindowCallbacks.js';
 import type { ClaudeMessage } from '../types/index.js';
 
@@ -25,7 +24,6 @@ describe('useWindowCallbacks integration', () => {
     clearToasts: vi.fn(),
 
     // State setters
-    setMessages: vi.fn(),
     setStatus: vi.fn(),
     setLoading: vi.fn(),
     setLoadingStartTime: vi.fn(),
@@ -100,8 +98,6 @@ describe('useWindowCallbacks integration', () => {
     endTransition('tab-active');
     endTransition('tab-new');
     window.__minAcceptedUpdateSequence = 0;
-    window.__prependedHistoryMessageCount = 0;
-    window.__messageBaseIndex = 0;
     window.__pendingSessionTransitionToast = undefined;
     window.__deniedToolIds = new Set();
     window.sendToJava = vi.fn();
@@ -199,19 +195,21 @@ describe('useWindowCallbacks integration', () => {
   });
 
   /**
-   * Builds opts whose setMessages mock actually runs the updater against a shared
-   * messages buffer, so the production reducer logic is exercised end to end.
+   * Seeds the active tab's transcript, so the production reducer logic is
+   * exercised end to end through the store instead of a mocked setter.
    * Shared by the "marks unresolved tool_use as interrupted" and Issue #1315 suites.
    */
   const createOptsWithMessages = (messages: ClaudeMessage[]) => {
-    const buffer = { current: messages };
-    const setMessages = vi.fn((value: ClaudeMessage[] | ((prev: ClaudeMessage[]) => ClaudeMessage[])) => {
-      buffer.current = typeof value === 'function'
-        ? (value as (prev: ClaudeMessage[]) => ClaudeMessage[])(buffer.current)
-        : value;
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.clear();
+      transcript.applySnapshot(messages);
     });
-    const opts = createOptions({ setMessages: setMessages as never });
-    return { opts, buffer };
+    const buffer = {
+      get current(): ClaudeMessage[] {
+        return getTabStore().getActiveTabMessages();
+      },
+    };
+    return { opts: createOptions(), buffer };
   };
 
   // ===== historyLoadComplete releases transition guard =====
@@ -259,20 +257,23 @@ describe('useWindowCallbacks integration', () => {
       { type: 'user', content: 'question', timestamp: '2024-01-01T00:00:00Z' },
       { type: 'assistant', content: 'answer', timestamp: '2024-01-01T00:01:00Z' },
     ];
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.applySnapshot(originalMessages);
+    });
+    const before = getTabStore().getActiveTabMessages();
 
     act(() => {
       window.historyLoadComplete!();
     });
 
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
-    const updater = (opts.setMessages as any).mock.calls[0][0] as (prev: ClaudeMessage[]) => ClaudeMessage[];
-    const result = updater(originalMessages);
+    const result = getTabStore().getActiveTabMessages();
 
-    // Verify full shallow copy: array is new, each message object is new
-    expect(result).not.toBe(originalMessages);
+    // A history reload repaints: the list and every message object are new,
+    // with the same content in the same order.
+    expect(result).not.toBe(before);
     expect(result.length).toBe(originalMessages.length);
     for (let i = 0; i < result.length; i++) {
-      expect(result[i]).not.toBe(originalMessages[i]);
+      expect(result[i]).not.toBe(before[i]);
       expect(result[i].content).toBe(originalMessages[i].content);
       expect(result[i].type).toBe(originalMessages[i].type);
     }
@@ -282,18 +283,16 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
+    const transcript = getTabStore().getActiveTab().transcript;
+    const before = transcript.getSnapshot();
+
     act(() => {
       window.historyLoadComplete!();
     });
 
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
-    const updater = (opts.setMessages as any).mock.calls[0][0] as (prev: ClaudeMessage[]) => ClaudeMessage[];
-    const emptyArray: ClaudeMessage[] = [];
-    const result = updater(emptyArray);
-
-    // Returns the same empty array reference (no unnecessary copy)
-    expect(result).toBe(emptyArray);
-    expect(result.length).toBe(0);
+    // Nothing to repaint: an empty history keeps the same (empty) list.
+    expect(transcript.getSnapshot()).toBe(before);
+    expect(transcript.getSnapshot()).toHaveLength(0);
   });
 
   // ===== setSessionId releases transition guard =====
@@ -419,8 +418,8 @@ describe('useWindowCallbacks integration', () => {
       window.updateMessages!(JSON.stringify(staleMessages));
     });
 
-    // setMessages should NOT be called because guard is active
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    // The guard drops the stale snapshot before it reaches the transcript.
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(0);
   });
 
   it('updateMessages accepts the session the tab is transitioning to', () => {
@@ -442,7 +441,8 @@ describe('useWindowCallbacks integration', () => {
 
     // A same-session soft reload must land; dropping it is what emptied the
     // transcript after revert.
-    expect(opts.setMessages).toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages().map((message) => message.content))
+      .toEqual(['authoritative history']);
   });
 
   it('accepts a named message.snapshot for the transition target session', () => {
@@ -469,7 +469,8 @@ describe('useWindowCallbacks integration', () => {
       });
     });
 
-    expect(opts.setMessages).toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages().map((message) => message.content))
+      .toEqual(['authoritative history']);
   });
 
   it('still drops a snapshot from another session while transitioning', () => {
@@ -489,7 +490,7 @@ describe('useWindowCallbacks integration', () => {
       );
     });
 
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(0);
   });
 
   it('updateMessages works normally after guard is released', () => {
@@ -507,8 +508,8 @@ describe('useWindowCallbacks integration', () => {
       window.updateMessages!(JSON.stringify(freshMessages));
     });
 
-    // setMessages SHOULD be called
-    expect(opts.setMessages).toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages().map((message) => message.content))
+      .toEqual(['hello']);
   });
 
   it('reports one DOM commit when restored history arrives after completion', () => {
@@ -562,8 +563,12 @@ describe('useWindowCallbacks integration', () => {
     });
 
     const HistoryHarness = () => {
-      const [messages, setMessages] = useState<ClaudeMessage[]>([]);
-      useWindowCallbacks(createOptions({ setMessages }));
+      useWindowCallbacks(createOptions());
+      // The view reads the active tab's transcript, never a local copy.
+      const messages = useSyncExternalStore(
+        getTabStore().subscribe,
+        () => getTabStore().getActiveTabMessages(),
+      );
       return createElement(
         'div',
         { 'data-testid': 'history-dom' },
@@ -674,8 +679,49 @@ describe('useWindowCallbacks integration', () => {
     expect(buffer.current[397]?.content).toBe('old-397');
     expect(buffer.current[398]?.content).toBe('new-398');
     expect(buffer.current[399]?.content).toBe('new-399');
-    expect(window.__messageBaseIndex).toBe(0);
+    expect(getTabStore().getActiveTab().transcript.baseIndex()).toBe(0);
     expect(window.__minAcceptedUpdateSequence).toBe(7);
+  });
+
+  it('keeps a read-back page when the next full snapshot arrives', () => {
+    // Regression: the snapshot used to replace the whole transcript, so the
+    // page the user had just read back vanished on the next host update.
+    const { opts, buffer } = createOptsWithMessages([
+      { type: 'user', content: 'current-user' },
+      { type: 'assistant', content: 'current-answer' },
+    ]);
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'message.prepended',
+        tabId: 'tab-active',
+        epoch: 0,
+        payload: {
+          messages: [
+            { type: 'user', content: 'older-user' },
+            { type: 'assistant', content: 'older-answer' },
+          ],
+        },
+      });
+    });
+    expect(buffer.current.map((message) => message.content)).toEqual([
+      'older-user', 'older-answer', 'current-user', 'current-answer',
+    ]);
+
+    act(() => {
+      window.updateMessages!(JSON.stringify([
+        { type: 'user', content: 'current-user' },
+        { type: 'assistant', content: 'updated-answer' },
+        { type: 'user', content: 'new-user' },
+      ]));
+    });
+
+    expect(buffer.current.map((message) => message.content)).toEqual([
+      'older-user', 'older-answer', 'current-user', 'updated-answer', 'new-user',
+    ]);
+    expect(getTabStore().getActiveTab().transcript.pagedCount()).toBe(2);
   });
 
   it('reconstructs settled turn metadata after a tail update', () => {
@@ -721,21 +767,21 @@ describe('useWindowCallbacks integration', () => {
       { type: 'assistant', content: 'message-221' },
     ]), 220, 7));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-220', 'message-221']);
-    expect(window.__messageBaseIndex).toBe(220);
+    expect(getTabStore().getActiveTab().transcript.baseIndex()).toBe(220);
 
     act(() => window.updateMessageTail!(JSON.stringify([
       { type: 'user', content: 'message-221' },
       { type: 'assistant', content: 'message-222' },
     ]), 221, 8));
     expect(buffer.current.map((message) => message.content)).toEqual(['message-221', 'message-222']);
-    expect(window.__messageBaseIndex).toBe(221);
+    expect(getTabStore().getActiveTab().transcript.baseIndex()).toBe(221);
 
     act(() => window.updateMessageTail!(JSON.stringify([
       { type: 'user', content: 'compacted-170' },
       { type: 'assistant', content: 'compacted-171' },
     ]), 170, 9));
     expect(buffer.current.map((message) => message.content)).toEqual(['compacted-170', 'compacted-171']);
-    expect(window.__messageBaseIndex).toBe(170);
+    expect(getTabStore().getActiveTab().transcript.baseIndex()).toBe(170);
   });
 
   it('ignores stale or invalid long-conversation tail updates', () => {
@@ -770,7 +816,7 @@ describe('useWindowCallbacks integration', () => {
     ]), 8));
 
     expect(buffer.current.map((message) => message.content)).toEqual(['full-user', 'full-answer']);
-    expect(window.__messageBaseIndex).toBe(0);
+    expect(getTabStore().getActiveTab().transcript.baseIndex()).toBe(0);
   });
 
   it('patchMessageUuid updates the latest unresolved user message using raw text fallback', () => {
@@ -783,12 +829,6 @@ describe('useWindowCallbacks integration', () => {
     });
     renderHook(() => useWindowCallbacks(opts));
 
-    act(() => {
-      window.patchMessageUuid?.('Generated attachment summary', 'uuid-123');
-    });
-
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
-    const updater = (opts.setMessages as any).mock.calls[0][0] as (messages: ClaudeMessage[]) => ClaudeMessage[];
     const previous: ClaudeMessage[] = [
       {
         type: 'user',
@@ -810,8 +850,16 @@ describe('useWindowCallbacks integration', () => {
         } as any,
       },
     ];
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.applySnapshot(previous);
+    });
 
-    const next = updater(previous);
+    // Only the message whose raw text carries the summary gets the id.
+    act(() => {
+      window.patchMessageUuid?.('Generated attachment summary', 'uuid-123');
+    });
+
+    const next = getTabStore().getActiveTabMessages();
 
     expect((next[0].raw as any)?.uuid).toBeUndefined();
     expect((next[1].raw as any)?.uuid).toBe('uuid-123');
@@ -823,11 +871,15 @@ describe('useWindowCallbacks integration', () => {
 
     beginTransition('tab-active', 'hist-1', 'transition-test');
 
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.appendRemote({ type: 'user', content: 'hello', timestamp: new Date().toISOString(), raw: {} });
+    });
+
     act(() => {
       window.patchMessageUuid?.('hello', 'uuid-guarded');
     });
 
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    expect((getTabStore().getActiveTabMessages()[0].raw as any)?.uuid).toBeUndefined();
   });
 
   it('updateStatus does not release an active transition token', () => {
@@ -975,13 +1027,15 @@ describe('useWindowCallbacks integration', () => {
       streamingMessageIndexRef,
     });
     renderHook(() => useWindowCallbacks(opts));
-    window.__prependedHistoryMessageCount = 12;
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.applySnapshot([{ type: 'user', content: 'old', timestamp: new Date().toISOString() }]);
+    });
 
     act(() => {
       window.clearMessages!();
     });
 
-    expect(opts.setMessages).toHaveBeenCalledWith([]);
+    expect(getTabStore().getActiveTabMessages()).toEqual([]);
     expect(opts.clearToasts).toHaveBeenCalled();
     expect(opts.setStatus).toHaveBeenCalledWith('');
     expect(opts.setLoading).toHaveBeenCalledWith(false);
@@ -990,7 +1044,7 @@ describe('useWindowCallbacks integration', () => {
     expect(isStreamingRef.current).toBe(false);
     expect(streamingContentRef.current).toBe('');
     expect(streamingMessageIndexRef.current).toBe(-1);
-    expect(window.__prependedHistoryMessageCount).toBe(0);
+    expect(getTabStore().getActiveTab().transcript.pagedCount()).toBe(0);
   });
 
   // ===== clearMessages resets turn tracking refs =====
@@ -1027,7 +1081,7 @@ describe('useWindowCallbacks integration', () => {
     act(() => {
       window.updateMessages!(JSON.stringify([{ type: 'assistant', content: 'stale' }]));
     });
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(0);
 
     // Step 3: Java calls historyLoadComplete (failure path also calls this before addErrorMessage)
     act(() => {
@@ -1047,7 +1101,8 @@ describe('useWindowCallbacks integration', () => {
         JSON.stringify([{ type: 'user', content: 'new message' }])
       );
     });
-    expect(opts.setMessages).toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages().map((message) => message.content))
+      .toEqual(['new message']);
   });
 
   it('ignores stale updateMessages snapshots that arrive after stream end', () => {
@@ -1063,7 +1118,6 @@ describe('useWindowCallbacks integration', () => {
     });
 
     opts.isStreamingRef.current = false;
-    (opts.setMessages as any).mockClear();
 
     act(() => {
       window.updateMessages!(
@@ -1072,7 +1126,7 @@ describe('useWindowCallbacks integration', () => {
       );
     });
 
-    expect(opts.setMessages).not.toHaveBeenCalled();
+    expect(getTabStore().getActiveTabMessages().map((message) => message.content)).toEqual([]);
 
     act(() => {
       window.updateMessages!(
@@ -1081,16 +1135,13 @@ describe('useWindowCallbacks integration', () => {
       );
     });
 
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
+    expect(getTabStore().getActiveTabMessages().map((message) => message.content))
+      .toEqual(['final snapshot']);
   });
 
   it('accepts streaming updateMessages when assistant raw blocks gain spawn_agent tool_use', () => {
     stubSynchronousTimers();
 
-    const patchAssistantForStreaming = vi.fn((msg: ClaudeMessage) => ({
-      ...msg,
-      isStreaming: true,
-    }));
     const extractRawBlocks = (raw: unknown) => {
       if (!raw || typeof raw !== 'object') return [];
       const rawObj = raw as { content?: unknown; message?: { content?: unknown } };
@@ -1102,25 +1153,16 @@ describe('useWindowCallbacks integration', () => {
       currentProviderRef: { current: 'codex' },
       isStreamingRef: { current: true },
       streamingTurnIdRef: { current: 7 },
-      patchAssistantForStreaming,
       extractRawBlocks,
     });
     renderHook(() => useWindowCallbacks(opts));
 
-    const previousMessages: ClaudeMessage[] = [
-      {
-        type: 'assistant',
-        content: 'Working',
-        timestamp: '2026-04-02T10:00:00.000Z',
-        __turnId: 7,
-        isStreaming: true,
-        raw: {
-          message: {
-            content: [{ type: 'text', text: 'Working' }],
-          },
-        } as any,
-      },
-    ];
+    // The streaming bubble is the turn the host is reporting on, exactly as
+    // `onStreamStart` would have opened it.
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.beginAssistant(7, false);
+      transcript.appendDelta('Working', 7);
+    });
 
     act(() => {
       window.updateMessages!(JSON.stringify([
@@ -1140,36 +1182,35 @@ describe('useWindowCallbacks integration', () => {
       ]));
     });
 
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
-    const updater = (opts.setMessages as any).mock.calls[0][0] as (messages: ClaudeMessage[]) => ClaudeMessage[];
-    const nextMessages = updater(previousMessages);
+    const nextMessages = getTabStore().getActiveTabMessages();
 
-    expect(nextMessages).not.toBe(previousMessages);
-    expect(patchAssistantForStreaming).toHaveBeenCalled();
+    // The host's structural block arrives; the streaming bubble is not cloned.
+    expect(nextMessages).toHaveLength(1);
     expect((nextMessages[0].raw as any).message.content[0]).toMatchObject({
       type: 'tool_use',
       name: 'spawn_agent',
       id: 'spawn-1',
     });
     expect(nextMessages[0].__turnId).toBe(7);
+    expect(nextMessages[0].isStreaming).toBe(true);
   });
 
   it('reuses replayed in-progress assistant when stream restarts after webview reload', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.applySnapshot([
+        { type: 'user', content: 'question', timestamp: '2026-04-27T00:00:00.000Z' },
+        { type: 'assistant', content: 'partial answer', timestamp: '2026-04-27T00:00:01.000Z' },
+      ]);
+    });
+
     act(() => {
       window.onStreamStart?.('replay');
     });
 
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
-    const updater = (opts.setMessages as any).mock.calls[0][0] as (messages: ClaudeMessage[]) => ClaudeMessage[];
-    const replayedMessages: ClaudeMessage[] = [
-      { type: 'user', content: 'question', timestamp: '2026-04-27T00:00:00.000Z' },
-      { type: 'assistant', content: 'partial answer', timestamp: '2026-04-27T00:00:01.000Z' },
-    ];
-
-    const nextMessages = updater(replayedMessages);
+    const nextMessages = getTabStore().getActiveTabMessages();
 
     expect(nextMessages).toHaveLength(2);
     expect(nextMessages[1]).toMatchObject({
@@ -1184,23 +1225,23 @@ describe('useWindowCallbacks integration', () => {
     const opts = createOptions();
     renderHook(() => useWindowCallbacks(opts));
 
+    getTabStore().mutateActiveTranscript((transcript) => {
+      transcript.applySnapshot([
+        { type: 'user', content: 'previous question', timestamp: '2026-04-27T00:00:00.000Z' },
+        {
+          type: 'assistant',
+          content: 'previous answer',
+          timestamp: '2026-04-27T00:00:01.000Z',
+          durationMs: 1200,
+        },
+      ]);
+    });
+
     act(() => {
       window.onStreamStart?.();
     });
 
-    expect(opts.setMessages).toHaveBeenCalledTimes(1);
-    const updater = (opts.setMessages as any).mock.calls[0][0] as (messages: ClaudeMessage[]) => ClaudeMessage[];
-    const previousMessages: ClaudeMessage[] = [
-      { type: 'user', content: 'previous question', timestamp: '2026-04-27T00:00:00.000Z' },
-      {
-        type: 'assistant',
-        content: 'previous answer',
-        timestamp: '2026-04-27T00:00:01.000Z',
-        durationMs: 1200,
-      },
-    ];
-
-    const nextMessages = updater(previousMessages);
+    const nextMessages = getTabStore().getActiveTabMessages();
 
     expect(nextMessages).toHaveLength(3);
     expect(nextMessages[1]).toMatchObject({
@@ -1466,13 +1507,10 @@ describe('useWindowCallbacks integration', () => {
       };
       // No tool_result for B-1 either.
 
-      const buffer = { current: [turnA, turnAResults, turnB] as ClaudeMessage[] };
-      const setMessages = vi.fn((value: ClaudeMessage[] | ((prev: ClaudeMessage[]) => ClaudeMessage[])) => {
-        buffer.current = typeof value === 'function'
-          ? (value as (prev: ClaudeMessage[]) => ClaudeMessage[])(buffer.current)
-          : value;
+      getTabStore().mutateActiveTranscript((transcript) => {
+        transcript.applySnapshot([turnA, turnAResults, turnB]);
       });
-      const opts = createOptions({ setMessages: setMessages as never });
+      const opts = createOptions();
       renderHook(() => useWindowCallbacks(opts));
 
       act(() => { window.historyLoadComplete!(); });
@@ -1753,17 +1791,24 @@ describe('useWindowCallbacks integration', () => {
       window.__streamEndProcessedTurnId = undefined;
     });
 
-    /** Drive onStreamEnd with a backend snapshot, then return its flush updater. */
-    const runStreamEndAndGetUpdater = (
-      opts: UseWindowCallbacksOptions,
+    /**
+     * Seed what the tab already shows, then drive onStreamEnd with a backend
+     * snapshot and return the settled transcript.
+     */
+    const runStreamEnd = (
       pendingSnapshot: unknown[],
-    ): ((prev: ClaudeMessage[]) => ClaudeMessage[]) => {
+      liveState: ClaudeMessage[],
+    ): ClaudeMessage[] => {
+      getTabStore().mutateActiveTranscript((transcript) => {
+        transcript.clear();
+        transcript.applySnapshot(liveState);
+      });
       window.__pendingUpdateJson = JSON.stringify(pendingSnapshot);
       act(() => {
         window.onStreamEnd!('10');
       });
       delete (window as unknown as Record<string, unknown>).__pendingUpdateJson;
-      return (opts.setMessages as any).mock.calls[0][0];
+      return getTabStore().getActiveTabMessages();
     };
 
     it('re-appends a tool_result dropped from the cancelled rAF snapshot', () => {
@@ -1774,23 +1819,19 @@ describe('useWindowCallbacks integration', () => {
       });
       renderHook(() => useWindowCallbacks(opts));
 
-      const updater = runStreamEndAndGetUpdater(opts, [
+      // Live state lost the tool_result when the rAF was cancelled.
+      const next = runStreamEnd([
         { type: 'assistant', content: 'running', raw: { message: { content: [{ type: 'tool_use', id: 'tool-1', name: 'Bash' }] } } },
         { type: 'user', content: '[tool_result]', raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'build ok' }] } },
-      ]);
-
-      // Live state lost the tool_result when the rAF was cancelled.
-      const prev: ClaudeMessage[] = [
+      ], [
         {
           type: 'assistant',
           content: 'running',
           timestamp: '2026-05-25T10:00:00.000Z',
           raw: { message: { content: [{ type: 'tool_use', id: 'tool-1', name: 'Bash' }] } } as any,
         },
-      ];
-      const next = updater(prev);
+      ]);
 
-      expect(next).not.toBe(prev);
       expect(next).toHaveLength(2);
       expect(next[1]).toMatchObject({ type: 'user', content: '[tool_result]' });
       expect((next[1].raw as any).content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'tool-1' });
@@ -1805,21 +1846,17 @@ describe('useWindowCallbacks integration', () => {
       });
       renderHook(() => useWindowCallbacks(opts));
 
-      const updater = runStreamEndAndGetUpdater(opts, [
+      const next = runStreamEnd([
         { type: 'user', content: '[tool_result]', raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-9', content: 'done' }] } },
-      ]);
-
-      const prev: ClaudeMessage[] = [
+      ], [
         {
           type: 'assistant',
           content: 'done',
           timestamp: '2026-05-25T10:00:00.000Z',
           raw: { message: { content: [{ type: 'tool_use', id: 'tool-9', name: 'Bash' }] } } as any,
         },
-      ];
-      const next = updater(prev);
+      ]);
 
-      expect(next).not.toBe(prev);               // immutability preserved even on this path
       expect(next).toHaveLength(2);
       expect((next[1].raw as any).content[0].tool_use_id).toBe('tool-9');
     });
@@ -1832,15 +1869,12 @@ describe('useWindowCallbacks integration', () => {
       });
       renderHook(() => useWindowCallbacks(opts));
 
-      const updater = runStreamEndAndGetUpdater(opts, [
+      const next = runStreamEnd([
         { type: 'user', content: '[tool_result]', raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }] } },
-      ]);
-
-      const prev: ClaudeMessage[] = [
+      ], [
         { type: 'assistant', content: 'x', timestamp: '2026-05-25T10:00:00.000Z', raw: { message: { content: [{ type: 'tool_use', id: 'tool-1' }] } } as any },
         { type: 'user', content: '[tool_result]', timestamp: '2026-05-25T10:00:01.000Z', raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }] } as any },
-      ];
-      const next = updater(prev);
+      ]);
 
       expect(next.filter((m) => m.content === '[tool_result]')).toHaveLength(1);
     });
@@ -1853,14 +1887,11 @@ describe('useWindowCallbacks integration', () => {
       });
       renderHook(() => useWindowCallbacks(opts));
 
-      const updater = runStreamEndAndGetUpdater(opts, [
+      const next = runStreamEnd([
         { type: 'user', content: '[tool_result]', raw: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok' }] } },
-      ]);
-
-      const prev: ClaudeMessage[] = [
+      ], [
         { type: 'assistant', content: 'x', timestamp: '2026-05-25T10:00:00.000Z', raw: { message: { content: [{ type: 'tool_use', id: 'tool-1' }] } } as any },
-      ];
-      const next = updater(prev);
+      ]);
 
       const recovered = next.find((m) => m.content === '[tool_result]');
       expect(recovered).toBeDefined();
@@ -2167,8 +2198,9 @@ describe('useWindowCallbacks integration', () => {
 
       // No scan ran — the id is NOT marked.
       expect(window.__deniedToolIds?.has('solo-1')).toBe(false);
-      // And setMessages was not called by onPermissionDenied (no wasted render).
-      expect((opts.setMessages as any)).not.toHaveBeenCalled();
+      const before = getTabStore().getActiveTab().transcript.getSnapshot();
+      // And the transcript was not touched by onPermissionDenied (no wasted render).
+      expect(getTabStore().getActiveTab().transcript.getSnapshot()).toBe(before);
     });
   });
 
@@ -2280,7 +2312,9 @@ describe('useWindowCallbacks integration', () => {
   it('routes a named content.delta into a background tab record', () => {
     seedTabStore([{ id: 'tab-active' }, { id: 'tab-bg', sessionId: 'ses-bg' }], 'tab-active');
     getTabStore().updateTab('tab-bg', (tab) => {
-      tab.messages = [{ type: 'assistant', content: 'before', timestamp: '2026-01-01T00:00:00.000Z' } as ClaudeMessage];
+      tab.transcript.applySnapshot([
+        { type: 'assistant', content: 'before', timestamp: '2026-01-01T00:00:00.000Z' } as ClaudeMessage,
+      ]);
     });
 
     renderHook(() => useWindowCallbacks(createOptions()));
@@ -2296,15 +2330,12 @@ describe('useWindowCallbacks integration', () => {
     });
 
     const background = getTabStore().findById('tab-bg');
-    expect(background?.messages[0]?.content).toBe('before after');
+    expect(background?.transcript.getSnapshot()[0]?.content).toBe('before after');
     expect(background?.streamingActive).toBe(true);
   });
 
   it('applies a named message.snapshot to the background tab store', () => {
     seedTabStore([{ id: 'tab-active' }, { id: 'tab-bg', sessionId: 'ses-bg' }], 'tab-active');
-    getTabStore().updateTab('tab-bg', (tab) => {
-      tab.messageStore = new TabMessageStore();
-    });
     const snapshot = JSON.stringify([
       { type: 'assistant', content: 'from snapshot', timestamp: '2026-01-01T00:00:00.000Z' },
     ]);
@@ -2322,7 +2353,7 @@ describe('useWindowCallbacks integration', () => {
     });
 
     const background = getTabStore().findById('tab-bg');
-    expect(background?.messages[0]?.content).toBe('from snapshot');
+    expect(background?.transcript.getSnapshot()[0]?.content).toBe('from snapshot');
   });
 
   it('updates a background tab loading flag from session.loading', () => {
@@ -2345,7 +2376,9 @@ describe('useWindowCallbacks integration', () => {
   it('drops a named event for an unknown tab instead of applying it to the active tab', () => {
     seedTabStore([{ id: 'tab-active' }], 'tab-active');
     getTabStore().updateTab('tab-active', (tab) => {
-      tab.messages = [{ type: 'assistant', content: 'active', timestamp: '2026-01-01T00:00:00.000Z' } as ClaudeMessage];
+      tab.transcript.applySnapshot([
+        { type: 'assistant', content: 'active', timestamp: '2026-01-01T00:00:00.000Z' } as ClaudeMessage,
+      ]);
     });
     renderHook(() => useWindowCallbacks(createOptions()));
 
@@ -2359,6 +2392,6 @@ describe('useWindowCallbacks integration', () => {
       });
     });
 
-    expect(getTabStore().findById('tab-active')?.messages[0]?.content).toBe('active');
+    expect(getTabStore().findById('tab-active')?.transcript.getSnapshot()[0]?.content).toBe('active');
   });
 });

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMessageQueue } from './useMessageQueue';
 import { getTabStore, resetTabStore } from '../store/tabStore';
 import type { SessionTabData } from '../components/ChatHeader/types';
+import { TabTranscript } from '../store/tabTranscript';
 
 const bridgeMocks = vi.hoisted(() => ({
   sendTabCommand: vi.fn(),
@@ -25,7 +26,7 @@ function tab(id: string, sessionId: string | null = null): SessionTabData {
     id,
     sessionId,
     title: id,
-    messages: [],
+    transcript: new TabTranscript(),
   };
 }
 

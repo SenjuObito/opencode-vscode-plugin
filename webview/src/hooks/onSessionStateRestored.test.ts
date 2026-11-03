@@ -13,7 +13,6 @@ describe('onSessionStateRestored', () => {
     t,
     addToast: vi.fn(),
     clearToasts: vi.fn(),
-    setMessages: vi.fn(),
     setStatus: vi.fn(),
     setLoading: vi.fn(),
     setLoadingStartTime: vi.fn(),

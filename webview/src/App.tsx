@@ -37,7 +37,7 @@ import {
 } from './hooks/useMessageSender';
 import { applyDiffTheme, getStoredDiffTheme } from './utils/diffTheme';
 import { collectTaskEventsFromMessages } from './utils/taskNotificationMessage';
-import { createCompactSuccessNotice, createCompactFailureNotice, applyMessagesRemoved } from './utils/messageUtils';
+import { createCompactSuccessNotice, createCompactFailureNotice } from './utils/messageUtils';
 import { parseRevertStateEvent } from './utils/revertStateEvent';
 import type { ClaudeMessage } from './types';
 import type { Attachment, ChatInputBoxHandle } from './components/ChatInputBox/types';
@@ -81,7 +81,7 @@ const App = () => {
   // ── Messages flow state (extracted to MessagesContext, stage 1 of TASK-P1-01) ──
   // Display state (loadingStartTime / isThinking) is consumed inside <ChatScreen>.
   const {
-    messages, setMessages,
+    messages, mutateTranscript,
     subagentHistories, setSubagentHistories,
     status, setStatus,
     loading, setLoading, loadingStartTime, setLoadingStartTime,
@@ -384,7 +384,7 @@ const App = () => {
     toggleFavoriteSession, updateHistoryTitle, applyHistoryTitleLocal,
   } = useSessionManagement({
     messages, loading, historyData, currentSessionId, currentSessionIdRef, currentProvider,
-    setHistoryData, setMessages, setCurrentView, setCurrentSessionId,
+    setHistoryData, mutateTranscript, setCurrentView, setCurrentSessionId,
     setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setStatus, setLoading, setIsThinking, setStreamingActive, setSessionLoading,
     setTaskEvents,
@@ -798,12 +798,10 @@ const App = () => {
         console.debug('[App] message.removed', targetSessionId, ids);
         const store = getTabStore();
         if (targetSessionId && store.size() > 0 && !store.isActiveSession(targetSessionId)) {
-          store.updateBackgroundTab(targetSessionId, (tab) => {
-            tab.messages = applyMessagesRemoved(tab.messages ?? [], ids);
-          });
+          store.mutateSessionTranscript(targetSessionId, (transcript) => transcript.removeByIds(ids));
           return;
         }
-        setMessages((prev) => applyMessagesRemoved(prev, ids));
+        store.mutateActiveTranscript((transcript) => transcript.removeByIds(ids));
       } catch {
         // ignore malformed payloads
       }
@@ -1035,12 +1033,12 @@ const App = () => {
       delete window.onCompactError;
       delete window.onCompactStarted;
     };
-  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setMessages, setTabCompacting, applyCompactNotice, scrollToBottom, customSessionTitleRef]);
+  }, [applyRevertState, loadHistorySession, currentSessionIdRef, addToast, t, setTabCompacting, applyCompactNotice, scrollToBottom, customSessionTitleRef]);
 
   // ── Window callbacks (bridge communication) ──
   useWindowCallbacks({
     t, addToast, clearToasts,
-    setMessages, setStatus, setLoading, setLoadingStartTime,
+    setStatus, setLoading, setLoadingStartTime,
     setIsThinking, setStreamingActive, setSessionLoading, setHistoryData,
     setCurrentSessionId, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens,
     setPermissionMode, setCurrentProvider,
@@ -1102,7 +1100,7 @@ const App = () => {
     // drop buffered content and cancel queued rAFs when the user hits stop.
     streamingContentRef, streamingThinkingRef,
     contentUpdateTimeoutRef, thinkingUpdateTimeoutRef,
-    setMessages, setLoading, setLoadingStartTime, setStreamingActive,
+    mutateTranscript, setLoading, setLoadingStartTime, setStreamingActive,
     setCurrentView,
     forceCreateNewSession,
     handleModeSelect,
@@ -1177,18 +1175,18 @@ const App = () => {
       }
     }
     if (idx >= 0) {
-      const remainingMessages = messages.slice(0, idx);
-      setMessages(remainingMessages);
+      getTabStore().mutateActiveTranscript((transcript) => {
+        transcript.truncateAt(idx);
+      });
       const activeTabId = getTabStore().getActiveTabId();
       if (activeTabId) {
         getTabStore().updateTab(activeTabId, (tab) => {
-          tab.messages = remainingMessages;
           tab.revertBoundaryId = null;
         });
       }
     }
     applyRevertState(false);
-  }, [messages, getMessageId, applyRevertState, setMessages]);
+  }, [messages, getMessageId, applyRevertState]);
 
   // ── /compact 确认门：压缩不可撤销，先弹确认框，用户确认后才入队 ──
   const doCompact = useCallback(() => {
@@ -1439,7 +1437,7 @@ const App = () => {
     setCustomSessionTitle,
     updateHistoryTitle,
     messages,
-    setMessages,
+    mutateTranscript,
     loading,
     setLoading,
     streamingActive,
@@ -1534,7 +1532,7 @@ const App = () => {
         }}
         onOpenSearch={() => setSearchOpen(true)}
         onExportTab={(tab) => {
-          const tabMessages = tab.id === activeTabId ? messages : (tab.messages || []);
+          const tabMessages = tab.id === activeTabId ? messages : tab.transcript.getSnapshot();
           const title = tab.title || t('common.newSession', { defaultValue: '新会话' });
           const md = convertMessagesToMarkdown(tabMessages, title);
           // The host shows the save dialog and writes the file; its success

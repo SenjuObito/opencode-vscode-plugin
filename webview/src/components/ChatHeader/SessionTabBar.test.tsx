@@ -2,12 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SessionTabBar } from './SessionTabBar';
 import type { SessionTabData } from './types';
+import { TabTranscript } from '../../store/tabTranscript';
 
 const mockT = ((key: string) => key) as any;
 
 const tabs: SessionTabData[] = [
-  { id: 'tab-1', sessionId: 'sess-1', title: 'Tab 1', messages: [], isShared: false },
-  { id: 'tab-2', sessionId: 'sess-2', title: 'Tab 2', messages: [], isShared: false },
+  { id: 'tab-1', sessionId: 'sess-1', title: 'Tab 1', transcript: new TabTranscript(), isShared: false },
+  { id: 'tab-2', sessionId: 'sess-2', title: 'Tab 2', transcript: new TabTranscript(), isShared: false },
 ];
 
 function renderBar() {

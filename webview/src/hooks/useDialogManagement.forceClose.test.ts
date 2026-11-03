@@ -5,6 +5,7 @@ import { useDialogManagement } from './useDialogManagement';
 import { MessagesProvider } from '../contexts/MessagesContext';
 import { SessionProvider, useSession } from '../contexts/SessionContext';
 import { getTabStore, resetTabStore } from '../store/tabStore';
+import { TabTranscript } from '../store/tabTranscript';
 import type { SessionTabData } from '../components/ChatHeader/types';
 
 const t = ((key: string) => key) as any;
@@ -25,7 +26,7 @@ const mkTab = (id: string): SessionTabData => ({
   id,
   sessionId: null,
   title: id,
-  messages: [],
+  transcript: new TabTranscript(),
   pendingPermissions: [],
   pendingQuestions: [],
   pendingPlans: [],

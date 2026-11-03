@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MessagesProvider, useMessages, DEFAULT_STATUS } from './MessagesContext';
 import { getTabStore, resetTabStore } from '../store/tabStore';
+import { TabTranscript } from '../store/tabTranscript';
 import type { SessionTabData } from '../components/ChatHeader/types';
 import type { ClaudeMessage } from '../types';
 import type { ReactNode } from 'react';
@@ -32,13 +33,13 @@ describe('MessagesContext', () => {
     expect(result.current.compactNotice).toBeNull();
   });
 
-  it('updates messages via setMessages and reflects the new value', () => {
+  it('reflects transcript writes made through mutateTranscript', () => {
     const { result } = renderHook(() => useMessages(), { wrapper });
     const next: ClaudeMessage[] = [
       { type: 'user', content: 'hello', timestamp: '2026-05-07T00:00:00.000Z' },
     ];
     act(() => {
-      result.current.setMessages(next);
+      result.current.mutateTranscript((transcript) => transcript.applySnapshot(next));
     });
     expect(result.current.messages).toEqual(next);
   });
@@ -86,7 +87,7 @@ describe('MessagesContext', () => {
       id,
       sessionId: null,
       title: id,
-      messages: [],
+      transcript: new TabTranscript(),
       ...turn,
     });
     const store = getTabStore();
@@ -118,8 +119,8 @@ describe('MessagesContext', () => {
   it('projects compactNotice from its tab without exposing a window setter', () => {
     const store = getTabStore();
     store.setTabs([
-      { id: 'tab-1', sessionId: 'ses_1', title: 'tab-1', messages: [] },
-      { id: 'tab-2', sessionId: 'ses_2', title: 'tab-2', messages: [] },
+      { id: 'tab-1', sessionId: 'ses_1', title: 'tab-1', transcript: new TabTranscript() },
+      { id: 'tab-2', sessionId: 'ses_2', title: 'tab-2', transcript: new TabTranscript() },
     ]);
     store.setActiveTabId('tab-1');
 
@@ -160,12 +161,12 @@ describe('MessagesContext', () => {
   it('returns stable setter references across renders', () => {
     const { result, rerender } = renderHook(() => useMessages(), { wrapper });
     const firstSetters = {
-      setMessages: result.current.setMessages,
+      mutateTranscript: result.current.mutateTranscript,
       setLoading: result.current.setLoading,
       setStreamingActive: result.current.setStreamingActive,
     };
     rerender();
-    expect(result.current.setMessages).toBe(firstSetters.setMessages);
+    expect(result.current.mutateTranscript).toBe(firstSetters.mutateTranscript);
     expect(result.current.setLoading).toBe(firstSetters.setLoading);
     expect(result.current.setStreamingActive).toBe(firstSetters.setStreamingActive);
   });

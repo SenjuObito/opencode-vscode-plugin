@@ -7,12 +7,20 @@ import type { CompactNoticeData } from '../components/ChatHeader/types';
 
 export const DEFAULT_STATUS = 'ready';
 
-const EMPTY_MESSAGES: ClaudeMessage[] = [];
 const EMPTY_SUBAGENT_HISTORIES: Record<string, SubagentHistoryResponse> = {};
 
 export interface MessagesContextValue {
+  /** Read-only projection of the active tab's transcript. */
   messages: ClaudeMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
+  /**
+   * The single write entry for the active tab's transcript.
+   *
+   * <p>Callers name an operation (`applySnapshot`, `prependPage`, …); there is
+   * no setter that accepts a message array, so no second copy can appear.</p>
+   */
+  mutateTranscript: (
+    operation: (transcript: import('../store/tabTranscript').TabTranscript) => void,
+  ) => void;
   subagentHistories: Record<string, SubagentHistoryResponse>;
   setSubagentHistories: React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>;
   status: string;
@@ -92,15 +100,19 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
     tabStore.getActiveTab,
   );
 
-  const setMessages = useCallback<React.Dispatch<React.SetStateAction<ClaudeMessage[]>>>(
-    (updater) => {
-      tabStore.updateActiveTab((tab) => ({
-        ...tab,
-        messages: applyUpdater(updater, tab.messages ?? EMPTY_MESSAGES),
-      }));
-    },
-    [tabStore],
-  );
+  /**
+   * Run one transcript operation as a tab update.
+   *
+   * <p>The tab object is replaced so the view re-reads the snapshot; the
+   * transcript itself is shared by reference across those clones, which is
+   * what makes it the owner rather than a copy.</p>
+   */
+  const mutateTranscript = useCallback((operation: (transcript: import('../store/tabTranscript').TabTranscript) => void) => {
+    tabStore.updateActiveTab((tab) => {
+      operation(tab.transcript);
+      return { ...tab };
+    });
+  }, [tabStore]);
 
   const setSubagentHistories = useCallback<React.Dispatch<React.SetStateAction<Record<string, SubagentHistoryResponse>>>>(
     (updater) => {
@@ -177,7 +189,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   // not follow a tab switch.
   const [sessionLoading, setSessionLoading] = useState<boolean>(false);
 
-  const messages = activeTab.messages ?? EMPTY_MESSAGES;
+  const messages = activeTab.transcript.getSnapshot();
   const subagentHistories = activeTab.subagentHistories ?? EMPTY_SUBAGENT_HISTORIES;
   const status = activeTab.status ?? DEFAULT_STATUS;
   const loading = activeTab.loading ?? false;
@@ -195,7 +207,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const value = useMemo<MessagesContextValue>(
     () => ({
       messages,
-      setMessages,
+      mutateTranscript,
       subagentHistories,
       setSubagentHistories,
       status,
@@ -221,7 +233,7 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
     }),
     [
       messages,
-      setMessages,
+      mutateTranscript,
       subagentHistories,
       setSubagentHistories,
       status,

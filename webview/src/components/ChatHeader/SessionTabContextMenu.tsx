@@ -79,7 +79,7 @@ export const SessionTabContextMenu: React.FC<SessionTabContextMenuProps> = ({
   const disableCloseOthers = tabs.length <= 1;
   const disableCloseToLeft = currentIndex <= 0;
   const disableCloseToRight = currentIndex < 0 || currentIndex >= tabs.length - 1;
-  const disableCloseAll = tabs.length === 1 && !tabs[0].sessionId && (tabs[0].messages?.length ?? 0) === 0;
+  const disableCloseAll = tabs.length === 1 && !tabs[0].sessionId && tabs[0].transcript.size() === 0;
 
   return (
     <div

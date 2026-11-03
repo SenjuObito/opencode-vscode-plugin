@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatHeader } from './ChatHeader';
 import type { SessionTabData } from './types';
+import { TabTranscript } from '../../store/tabTranscript';
 
 const mockT = ((key: string) => key) as any;
 
@@ -11,14 +12,14 @@ describe('ChatHeader', () => {
       id: 'tab-1',
       sessionId: 'sess-1',
       title: 'Tab 1',
-      messages: [],
+      transcript: new TabTranscript(),
       isShared: false,
     },
     {
       id: 'tab-2',
       sessionId: 'sess-2',
       title: 'Tab 2',
-      messages: [],
+      transcript: new TabTranscript(),
       isShared: true,
     },
   ];
@@ -119,9 +120,9 @@ describe('ChatHeader', () => {
     const onCloseAllTabs = vi.fn();
 
     const threeTabs: SessionTabData[] = [
-      { id: 'tab-1', sessionId: null, title: 'Tab 1', messages: [], isShared: false },
-      { id: 'tab-2', sessionId: null, title: 'Tab 2', messages: [], isShared: false },
-      { id: 'tab-3', sessionId: null, title: 'Tab 3', messages: [], isShared: false },
+      { id: 'tab-1', sessionId: null, title: 'Tab 1', transcript: new TabTranscript(), isShared: false },
+      { id: 'tab-2', sessionId: null, title: 'Tab 2', transcript: new TabTranscript(), isShared: false },
+      { id: 'tab-3', sessionId: null, title: 'Tab 3', transcript: new TabTranscript(), isShared: false },
     ];
 
     render(
@@ -170,9 +171,9 @@ describe('ChatHeader', () => {
 
   it('disables close left on first tab and close right on last tab', () => {
     const threeTabs: SessionTabData[] = [
-      { id: 'tab-1', sessionId: null, title: 'Tab 1', messages: [], isShared: false },
-      { id: 'tab-2', sessionId: null, title: 'Tab 2', messages: [], isShared: false },
-      { id: 'tab-3', sessionId: null, title: 'Tab 3', messages: [], isShared: false },
+      { id: 'tab-1', sessionId: null, title: 'Tab 1', transcript: new TabTranscript(), isShared: false },
+      { id: 'tab-2', sessionId: null, title: 'Tab 2', transcript: new TabTranscript(), isShared: false },
+      { id: 'tab-3', sessionId: null, title: 'Tab 3', transcript: new TabTranscript(), isShared: false },
     ];
 
     render(
@@ -243,7 +244,7 @@ describe('ChatHeader', () => {
       id: `tab-${index + 1}`,
       sessionId: `sess-${index + 1}`,
       title: `Tab ${index + 1}`,
-      messages: [],
+      transcript: new TabTranscript(),
       isShared: false,
     }));
 

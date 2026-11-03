@@ -1,3 +1,4 @@
+import { TabTranscript } from '../../../store/tabTranscript';
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerWindowCallbacks } from '../registerCallbacks';
@@ -15,7 +16,7 @@ const makeTab = (id: string, sessionId: string): SessionTabData => ({
   id,
   sessionId,
   title: '',
-  messages: [],
+  transcript: new TabTranscript(),
   sseTodos: null,
 } as SessionTabData);
 

@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { useMessageSender } from './useMessageSender';
 import type { UseMessageSenderOptions } from './useMessageSender';
 import { seedTabStore } from '../test/seedTabStore';
+import { getTabStore } from '../store/tabStore';
 
 describe('useMessageSender - /context command', () => {
   const t = ((key: string, opts?: any) => opts?.defaultValue ?? key) as any;
@@ -25,7 +26,7 @@ describe('useMessageSender - /context command', () => {
     streamingThinkingRef: { current: '' },
     contentUpdateTimeoutRef: { current: null },
     thinkingUpdateTimeoutRef: { current: null },
-    setMessages: vi.fn(),
+    mutateTranscript: (operation) => operation(getTabStore().getActiveTab().transcript),
     setLoading: vi.fn(),
     setLoadingStartTime: vi.fn(),
     setStreamingActive: vi.fn(),

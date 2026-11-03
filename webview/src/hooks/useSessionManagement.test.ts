@@ -5,13 +5,16 @@ import { beginTransition, endTransition, isTabTransitioning, transitionTokenFor 
 import type { HistoryData } from '../types/index.js';
 import { sentCommands } from '../utils/testEvents';
 import { seedTabStore } from '../test/seedTabStore';
+import { getTabStore } from '../store/tabStore';
 
 describe('useSessionManagement', () => {
   const t = ((key: string) => key) as any;
 
   const createMocks = () => ({
     setHistoryData: vi.fn(),
-    setMessages: vi.fn(),
+    mutateTranscript: (operation: (transcript: import('../store/tabTranscript').TabTranscript) => void) => {
+      getTabStore().mutateActiveTranscript(operation);
+    },
     setCurrentView: vi.fn(),
     setCurrentSessionId: vi.fn(),
     setCustomSessionTitle: vi.fn(),
@@ -341,7 +344,8 @@ describe('useSessionManagement', () => {
     // Interrupt dialog must appear; no silent transition.
     expect(result.current.showInterruptConfirm).toBe(true);
     expect(isTabTransitioning('tab-1')).toBe(false);
-    expect(mocks.setMessages).not.toHaveBeenCalled();
+    // Nothing was cleared: the transcript still belongs to the current session.
+    expect(getTabStore().getActiveTabMessages()).toHaveLength(0);
     expect(window.__openNewSessionTab).not.toHaveBeenCalled();
   });
 
@@ -501,7 +505,7 @@ describe('useSessionManagement', () => {
     expect(isTabTransitioning('tab-1')).toBe(true);
     expect(transitionTokenFor('tab-1')).toBeTruthy();
     expect(mocks.clearToasts).toHaveBeenCalledTimes(1);
-    expect(mocks.setMessages).toHaveBeenCalledWith([]);
+    expect(getTabStore().getActiveTabMessages()).toEqual([]);
     expect(mocks.setCurrentSessionId).toHaveBeenCalledWith('hist-2');
     expect(mocks.setCustomSessionTitle).toHaveBeenCalledWith(null);
   });

@@ -1,6 +1,7 @@
 import type { SessionTabData } from '../components/ChatHeader/types';
 import type { ClaudeMessage } from '../types';
 import type { TabDraft } from './tabDraftStore';
+import { TabTranscript } from './tabTranscript';
 
 type Updater<T> = T | ((previous: T) => T);
 
@@ -64,7 +65,7 @@ const createDetachedTab = (): SessionTabData => ({
   id: '',
   sessionId: null,
   title: '',
-  messages: [],
+  transcript: new TabTranscript(),
   loading: false,
   streamingActive: false,
   isThinking: false,
@@ -224,27 +225,58 @@ export class TabStore {
    * never has to copy a transcript into another piece of state.</p>
    */
   getActiveTabMessages(): ClaudeMessage[] {
-    return this.getActiveTab().messages ?? [];
+    return this.getActiveTab().transcript.getSnapshot();
   }
 
   /** The transcript of one tab. */
   getTabMessages(tabId: string | null | undefined): ClaudeMessage[] {
-    return this.findById(tabId)?.messages ?? [];
+    return this.findById(tabId)?.transcript.getSnapshot() ?? [];
   }
 
   /**
-   * Write the active tab's transcript.
+   * Run one named transcript operation on a tab.
    *
-   * <p>The updater receives the tab's current transcript — the owner — and
-   * returns the new one.</p>
+   * <p>This is the only write path outside React: it replaces the tab record
+   * so subscribers re-read the transcript's snapshot, while the transcript
+   * itself keeps its identity across those clones.</p>
    */
-  updateActiveTabMessages(
-    updater: (current: ClaudeMessage[]) => ClaudeMessage[],
-  ): void {
-    this.updateActiveTab((tab) => ({
-      ...tab,
-      messages: updater(tab.messages ?? []),
-    }));
+  mutateTranscript(
+    tabId: string | null | undefined,
+    operation: (transcript: TabTranscript) => void,
+  ): boolean {
+    return this.updateTab(tabId, (tab) => {
+      operation(tab.transcript);
+      return { ...tab };
+    });
+  }
+
+  /** Same, for whichever tab is on screen. */
+  mutateActiveTranscript(operation: (transcript: TabTranscript) => void): void {
+    this.updateActiveTab((tab) => {
+      operation(tab.transcript);
+      return { ...tab };
+    });
+  }
+
+  /**
+   * Write the transcript of the tab that owns `sessionId`.
+   *
+   * <p>Without a tab strip there is exactly one transcript — the view's own —
+   * so the active tab owns every session by definition. A session that no tab
+   * claims is not written anywhere: guessing would move one conversation's
+   * content into another's.</p>
+   */
+  mutateSessionTranscript(
+    sessionId: string | null | undefined,
+    operation: (transcript: TabTranscript) => void,
+  ): boolean {
+    const tabId = this.findIdBySession(sessionId);
+    if (tabId) return this.mutateTranscript(tabId, operation);
+    if (this.size() === 0) {
+      this.mutateActiveTranscript(operation);
+      return true;
+    }
+    return false;
   }
 
   findIdBySession(sessionId: string | null | undefined): string | null {

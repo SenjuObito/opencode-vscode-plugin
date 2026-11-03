@@ -16,6 +16,7 @@ vi.mock('../store/tabStore', () => ({
 }));
 
 import { useMessageSender } from './useMessageSender';
+import { TabTranscript } from '../store/tabTranscript';
 import type { UseMessageSenderOptions } from './useMessageSender';
 
 describe('useMessageSender - tab-scoped send', () => {
@@ -40,7 +41,7 @@ describe('useMessageSender - tab-scoped send', () => {
     streamingThinkingRef: { current: '' },
     contentUpdateTimeoutRef: { current: null },
     thinkingUpdateTimeoutRef: { current: null },
-    setMessages: vi.fn(),
+    mutateTranscript: (operation) => operation(new TabTranscript()),
     setLoading: vi.fn(),
     setLoadingStartTime: vi.fn(),
     setStreamingActive: vi.fn(),

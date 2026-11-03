@@ -51,7 +51,7 @@ export interface UseMessageSenderOptions {
   streamingThinkingRef: RefObject<string>;
   contentUpdateTimeoutRef: RefObject<number | null>;
   thinkingUpdateTimeoutRef: RefObject<number | null>;
-  setMessages: React.Dispatch<React.SetStateAction<ClaudeMessage[]>>;
+  mutateTranscript: (operation: (transcript: import('../store/tabTranscript').TabTranscript) => void) => void;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
@@ -87,7 +87,7 @@ export function useMessageSender({
   streamingThinkingRef,
   contentUpdateTimeoutRef,
   thinkingUpdateTimeoutRef,
-  setMessages,
+  mutateTranscript,
   setLoading,
   setLoadingStartTime,
   setStreamingActive,
@@ -190,11 +190,14 @@ export function useMessageSender({
         content: t('chat.commandNotImplemented', { command }),
         timestamp: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      mutateTranscript((transcript) => {
+        transcript.appendRemote(userMessage);
+        transcript.appendRemote(assistantMessage);
+      });
       return true;
     }
     return false;
-  }, [t, setMessages]);
+  }, [t, mutateTranscript]);
 
   /**
    * Build content blocks for the user message
@@ -368,7 +371,12 @@ export function useMessageSender({
       isOptimistic: true,
       raw: { message: { content: userContentBlocks } },
     };
-    setMessages((prev) => [...prev, userMessage]);
+    mutateTranscript((transcript) => {
+      // The optimistic bubble is its own segment of the transcript: a host
+      // snapshot that predates this send cannot erase it, and the echo removes
+      // it by content instead of leaving a duplicate behind.
+      transcript.addLocal(`local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, userMessage);
+    });
 
     // Set loading state
     setLoading(true);
