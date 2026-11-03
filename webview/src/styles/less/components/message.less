@@ -103,10 +103,10 @@
     white-space: pre-wrap;
 }
 
-/* System notification messages: left-aligned, no bubble (task_notification + compact_notification + non-human origin) */
+/* System notification messages: left-aligned, no bubble (task_notification + compaction + non-human origin) */
 .message.task_notification,
 .message.notification,
-.message.compact_notification {
+.message.compaction {
     background-color: transparent;
     border-left: none;
     align-items: flex-start;
@@ -115,7 +115,7 @@
 
 .message.task_notification .message-content,
 .message.notification .message-content,
-.message.compact_notification .message-content {
+.message.compaction .message-content {
     background-color: transparent;
     padding: 0;
     border-radius: 0;
@@ -123,15 +123,9 @@
     max-width: 100%;
 }
 
-/* compact_notification 内的卡片（成功/失败）需撑满与助手消息一致的全宽，
-   抵消上方 align-items: flex-start 造成的横向收缩 */
-.message.compact_notification .message-content {
-    width: 100%;
-}
-
-/* 历史转录里的压缩摘要也是左对齐通知；它的卡片同样需要整宽，
-   否则会被 align-items: flex-start 挤成文字宽度 */
-.message.compact-summary-message .message-content {
+/* 压缩卡（进行中/成功/失败）必须撑满整行；align-items: flex-start 会把
+   它挤成文字宽度，表现为一个很窄的条。 */
+.message.compaction .message-content {
     width: 100%;
 }
 

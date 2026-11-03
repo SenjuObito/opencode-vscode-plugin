@@ -42,7 +42,6 @@ export interface UseTabSessionBinderOptions extends Pick<
   | 'setUsagePercentage'
   | 'setUsageUsedTokens'
   | 'setUsageMaxTokens'
-  | 'setSessionLoading'
   | 'setCurrentView'
   | 'chatInputRef'
   | 'loadHistorySession'
@@ -101,7 +100,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
     setUsagePercentage,
     setUsageUsedTokens,
     setUsageMaxTokens,
-    setSessionLoading,
     setCurrentView,
     chatInputRef,
     loadHistorySession,
@@ -501,7 +499,9 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         chatInputRef.current.restoreQuoteTags?.(draft?.quotes ?? {});
       }
 
-      setSessionLoading?.(false);
+      // The indicator belongs to this tab and is rendered from its record: a
+      // tab that is still loading keeps its own indicator, and switching to a
+      // tab that is not loading shows nothing without touching any state.
     },
     [
       activeTabIdRef,
@@ -538,8 +538,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       setUsageMaxTokens,
       chatInputRef,
       draftStore,
-      setSessionLoading,
-    ]
+      ]
   );
 
   // ── Host-driven tab sync (multi-view) ─────────────────────────────────
@@ -734,7 +733,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       if (existingTab) {
         selectTab(existingTab.id);
         setCurrentView?.('chat');
-        setSessionLoading?.(false);
         return;
       }
 
@@ -770,7 +768,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
                 filteredFileChanges: [],
                 contextInfo: null,
                 autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
-                compactNotice: null,
                 scrollState: undefined,
               }
             : t
@@ -829,10 +826,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       }
 
       syncHostActiveTabTo(activeTabIdRef.current);
-      // Opening another session rebinds this tab, so the previous session's
-      // compact state (spinner and result pill) must not leak into the new
-      // transcript. This is a tab-scoped write, not a window-level one.
-      getTabStore().resetCompaction(activeTabIdRef.current);
 
       mutateTranscript((transcript) => transcript.clear());
       restoreScrollState?.(null);
@@ -861,13 +854,18 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
 
       chatInputRef?.current?.setValue?.('');
       setCurrentView?.('chat');
-      setSessionLoading?.(true);
+      // The indicator is this tab's state; `beginSessionTransition` repeats it,
+      // which also covers the path that loads the session without a helper.
+      const loadingTabId = activeTabIdRef.current;
+      getTabStore().setHistoryLoading(loadingTabId, true);
 
       if (historyLoadingTimeoutRef.current) {
         clearTimeout(historyLoadingTimeoutRef.current);
       }
+      // Safety net for a lost completion signal: only this tab, so a later load
+      // in another tab cannot be cleared by this timer.
       historyLoadingTimeoutRef.current = setTimeout(() => {
-        setSessionLoading?.(false);
+        getTabStore().setHistoryLoading(loadingTabId, false);
       }, 8000);
 
       if (loadHistorySession) {
@@ -883,8 +881,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
       tabsRef,
       selectTab,
       setCurrentView,
-      setSessionLoading,
-      currentProvider,
+        currentProvider,
       availableModels,
       activeTabIdRef,
       messages,

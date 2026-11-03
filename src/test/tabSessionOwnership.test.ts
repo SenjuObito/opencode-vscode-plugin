@@ -2,6 +2,7 @@ import './mockVscode';
 import * as assert from 'assert';
 import { ChatWindow } from '../host/window/ChatWindow';
 import { TabId } from '../host/tab/TabId';
+import { TabState } from '../host/tab/TabState';
 import { SessionState } from '../host/session/SessionState';
 import { SessionCallbackAdapter } from '../host/session/SessionCallbackAdapter';
 import type { OpenCodeSession, SendMessagePayload } from '../host/session/OpenCodeSession';
@@ -244,6 +245,37 @@ suite('P8-A1/A2: 会话归属与 session.send / session.interrupt', () => {
 		assert.ok(types.includes('message.snapshot'), '切 tab 必须回放快照');
 		assert.ok(types.includes('tab.state'), '切 tab 必须恢复该 tab 的 model/mode/effort');
 		assert.ok(types.includes('session.loaded'), '回放结束要释放过渡态');
+	});
+
+	test('切到仍在加载历史的 tab 时，回放不宣布「历史已就绪」', async () => {
+		const factory = makeSessionFactory();
+		const chatWindow = makeChatWindow(factory);
+		const view = new MockChannel();
+		chatWindow.registerView('sidebar', view);
+
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		const tabB = chatWindow.registry.create(TabId.of('tab-b'), '/mock/workspace').getTabId();
+
+		await sendCommand(chatWindow, 'sidebar', 'session.send', tabA.value, { text: 'a' });
+		await sendCommand(chatWindow, 'sidebar', 'session.send', tabB.value, { text: 'b' });
+
+		// tab-b 的转录还在抓取：它的 session.loaded 由 completeSessionLoad 发出。
+		chatWindow.registry.get(tabB)!.setState(TabState.LOADING_HISTORY);
+
+		view.calls.length = 0;
+		view.raw.length = 0;
+		await sendCommand(chatWindow, 'sidebar', 'tab.activate', tabB.value, {});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const types = view.raw
+			.filter((message) => message.type === 'host.events')
+			.flatMap((message) => (message.batch as Array<Record<string, unknown>>) ?? [])
+			.map((event) => event.type);
+		assert.ok(types.includes('session.cleared'), '回放仍然要清屏');
+		assert.ok(
+			!types.includes('session.loaded'),
+			'历史未到不能宣布已就绪：webview 会据此收掉加载指示条',
+		);
 	});
 
 	test('切历史会话：先释放旧绑定再重绑，旧会话被释放', async () => {

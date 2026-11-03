@@ -200,7 +200,8 @@
     "filesSection": "文件",
     "filesEmpty": "未找到匹配的文件",
     "renderError": "消息渲染发生异常",
-    "autoCompacting": "正在自动压缩会话上下文..."
+    "autoCompacting": "正在自动压缩会话上下文...",
+    "manualCompacting": "正在压缩会话上下文..."
   },
   "settings": {
     "title": "设置",

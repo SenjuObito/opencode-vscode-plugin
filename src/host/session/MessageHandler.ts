@@ -1124,30 +1124,144 @@ export class MessageHandler implements MessageCallback {
 		if (!content) {
 			return;
 		}
+		const payload = this.parseCompactionPayload(content);
+		if (!payload || !this.isOwnCompaction(payload)) {
+			return;
+		}
+		const reason = typeof payload.reason === 'string' && payload.reason ? payload.reason : 'auto';
+		const messageID = typeof payload.messageID === 'string' ? payload.messageID : '';
 		logDiagnostic(`[MessageHandler] compaction_started content=${content.substring(0, 200)}`);
-		this.callbackHandler.notifyCompactionStarted(content);
+		this.beginCompaction(reason, messageID);
 	}
 
 	private handleCompactionDelta(content: string): void {
 		if (!content) {
 			return;
 		}
-		this.callbackHandler.notifyCompactionDelta(content);
+		// The terminal event carries the complete summary. Streaming it into the
+		// card would only churn the transcript while the card is spinning.
 	}
 
 	private handleCompactionEnded(content: string): void {
 		if (!content) {
 			return;
 		}
+		const payload = this.parseCompactionPayload(content);
+		if (!payload || !this.isOwnCompaction(payload)) {
+			return;
+		}
 		logDiagnostic(`[MessageHandler] compaction_ended content=${content.substring(0, 200)}`);
-		this.callbackHandler.notifyCompactionEnded(content);
+		const failed = payload.failed === true;
+		this.finishCompaction(failed ? 'failed' : 'completed', {
+			id: typeof payload.messageID === 'string' ? payload.messageID : undefined,
+			summary: typeof payload.summary === 'string' ? payload.summary : undefined,
+			error: compactionErrorText(payload.error),
+			tokens: isObject(payload.tokens) ? (payload.tokens as Record<string, unknown>) : undefined,
+			reason: typeof payload.reason === 'string' ? payload.reason : undefined,
+			startedAt: typeof payload.startedAt === 'number' ? payload.startedAt : undefined,
+		});
 	}
 
 	private handleCompactionFailed(content: string): void {
 		if (!content) {
 			return;
 		}
+		const payload = this.parseCompactionPayload(content);
+		if (!payload || !this.isOwnCompaction(payload)) {
+			return;
+		}
 		logDiagnostic(`[MessageHandler] compaction_failed content=${content.substring(0, 200)}`);
-		this.callbackHandler.notifyCompactionFailed(content);
+		this.finishCompaction('failed', {
+			id: typeof payload.messageID === 'string' ? payload.messageID : undefined,
+			error: compactionErrorText(payload.error) ?? 'compact failed',
+			reason: typeof payload.reason === 'string' ? payload.reason : undefined,
+			startedAt: typeof payload.startedAt === 'number' ? payload.startedAt : undefined,
+		});
 	}
+
+	/** 命令面发起的手动压缩（会话领域入口）。 */
+	beginCompaction(reason: string, engineId?: string | null): void {
+		// 封口只在“还没有 running 记录”时发生：第二次 started 属于同一次
+		// 压缩，此时压缩后的助手段可能已经开始了，不能再清一次累加器。
+		if (!this.state.hasActiveCompaction()) {
+			this.sealAssistantSegment();
+		}
+		this.state.beginCompaction(reason, engineId);
+		this.publishCompactionChange();
+	}
+
+	/** 终态写入（引擎事件或命令面 RPC 结果）。 */
+	finishCompaction(
+		status: 'completed' | 'failed',
+		options: {
+			id?: string | null;
+			summary?: string;
+			error?: string;
+			tokens?: Record<string, unknown>;
+			reason?: string;
+			startedAt?: number;
+		} = {},
+	): void {
+		this.state.finishCompaction(status, options);
+		this.publishCompactionChange();
+	}
+
+	/**
+	 * 封口当前助手段。
+	 *
+	 * <p>压缩记录把时间线切成两段。如果不封口，压缩后的增量和旧的
+	 * `assistantContent` 会继续追加到压缩前那条消息上，表现为“压缩后的话
+	 * 写回了旧气泡”。</p>
+	 */
+	private sealAssistantSegment(): void {
+		this.assistantContent = '';
+		this.currentAssistantMessage = null;
+		this.resetSegmentState();
+	}
+
+	private publishCompactionChange(): void {
+		this.state.updateLastModifiedTime();
+		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		// Flush now: the compaction card and the sealed assistant must reach the
+		// view before the first post-compaction delta, otherwise that delta has
+		// no boundary to attach to.
+		this.callbackHandler.flushMessageUpdate();
+	}
+
+	private parseCompactionPayload(content: string): Record<string, unknown> | null {
+		try {
+			const parsed = JSON.parse(content) as unknown;
+			return isObject(parsed) ? parsed : null;
+		} catch {
+			return null;
+		}
+	}
+
+	private isOwnCompaction(payload: Record<string, unknown>): boolean {
+		const eventSessionId = typeof payload.sessionID === 'string'
+			? payload.sessionID
+			: (typeof payload.sessionId === 'string' ? payload.sessionId : '');
+		const ownSessionId = this.state.getSessionId();
+		if (eventSessionId && ownSessionId && eventSessionId !== ownSessionId) {
+			logDiagnostic(
+				`[MessageHandler] ignoring compaction for another session: ${eventSessionId} (own=${ownSessionId})`,
+			);
+			return false;
+		}
+		return true;
+	}
+}
+
+/** 把压缩失败载荷里的 error（字符串或对象）归一成一句人话。 */
+function compactionErrorText(value: unknown): string | undefined {
+	if (typeof value === 'string') {
+		return value.trim() || undefined;
+	}
+	if (isObject(value)) {
+		const message = (value as Record<string, unknown>).message;
+		if (typeof message === 'string' && message.trim()) {
+			return message;
+		}
+	}
+	return undefined;
 }

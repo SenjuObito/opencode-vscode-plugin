@@ -10,7 +10,7 @@ export interface StatusPanelProps {
   currentSessionId?: string | null;
   currentProvider: string;
   /** Whether a history session is being loaded */
-  sessionLoading?: boolean;
+  historyLoading?: boolean;
   /** Whether the panel is expanded */
   expanded?: boolean;
   /** Whether the conversation is currently streaming (active) */

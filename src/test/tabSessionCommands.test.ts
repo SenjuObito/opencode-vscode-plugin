@@ -79,12 +79,8 @@ suite('Tab session commands match the core method names', () => {
 		h.handler.compact(TabCommand.of('tab-src', 'session.compact', 'r2', {}));
 		assert.strictEqual(h.calls[0]?.method, 'opencode.summarize');
 		assert.strictEqual(h.calls[0]?.params.sessionId, 'ses_src');
-		// The indicator turns on before the RPC completes, from the command's
-		// own start event.
-		const started = h.events.find((event) => event.type === 'session.compact.started');
-		assert.ok(started);
-		assert.strictEqual(started!.payload.source, 'command');
-		assert.strictEqual(started!.payload.reason, 'manual');
+		// The transcript record is created by the session domain, not by a
+		// view-level start event; only the queue result is a command-plane event.
 		const done = h.events.find((event) => event.type === 'session.compact.done');
 		assert.ok(done);
 		// The view tells the engine's lifecycle apart from this RPC result by

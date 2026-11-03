@@ -403,3 +403,97 @@ describe('TabTranscript', () => {
     });
   });
 });
+
+describe('TabTranscript compaction boundaries', () => {
+  const compaction = (
+    uuid: string,
+    status: 'in_progress' | 'completed' | 'failed' = 'in_progress',
+  ): ClaudeMessage => ({
+    type: 'compaction',
+    content: '',
+    timestamp: '2026-01-01T00:00:02.000Z',
+    raw: { type: 'compaction', uuid },
+    compaction: { status, reason: 'auto' },
+  } as unknown as ClaudeMessage);
+
+  it('settles the pre-compaction pending above the card, then opens a new bubble', () => {
+    const transcript = new TabTranscript();
+    transcript.applySnapshot([user('u1')]);
+    transcript.beginAssistant(1, false);
+    transcript.appendDelta('before compaction', 1);
+
+    // The host seals the assistant and appends the compaction record.
+    transcript.applySnapshot([
+      user('u1'),
+      assistant('before compaction', 'a1'),
+      compaction('c1'),
+    ]);
+
+    expect(contents(transcript.getSnapshot())).toEqual(['u1', 'before compaction', '']);
+    expect(transcript.getSnapshot()[2].type).toBe('compaction');
+
+    // The first delta after the boundary belongs to a new segment.
+    transcript.appendDelta('after compaction', 1);
+    const afterDelta = transcript.getSnapshot();
+    expect(afterDelta.map((message) => message.type)).toEqual([
+      'user',
+      'assistant',
+      'compaction',
+      'assistant',
+    ]);
+    expect(afterDelta[3].content).toBe('after compaction');
+  });
+
+  it('merges the post-compaction streaming copy instead of duplicating it', () => {
+    const transcript = new TabTranscript();
+    transcript.applySnapshot([
+      user('u1'),
+      assistant('before', 'a1'),
+      compaction('c1'),
+      assistant('', 'a2'),
+    ]);
+    transcript.beginAssistant(2, false);
+    transcript.appendDelta('after', 2);
+
+    transcript.applySnapshot([
+      user('u1'),
+      assistant('before', 'a1'),
+      compaction('c1'),
+      assistant('after and more', 'a2'),
+    ]);
+
+    const snapshot = transcript.getSnapshot();
+    expect(snapshot.map((message) => message.type)).toEqual([
+      'user',
+      'assistant',
+      'compaction',
+      'assistant',
+    ]);
+    expect(snapshot[3].content).toBe('after and more');
+  });
+
+  it('never rewrites the sealed assistant when the current segment is empty', () => {
+    const transcript = new TabTranscript();
+    transcript.applySnapshot([
+      user('u1'),
+      assistant('sealed', 'a1'),
+      compaction('c1'),
+    ]);
+    // No assistant after the boundary: the patch must not fall back to the
+    // sealed one.
+    expect(transcript.patchAssistant(2, (message) => ({ ...message, content: 'leak' }))).toBe(-1);
+    expect(transcript.getSnapshot()[1].content).toBe('sealed');
+  });
+  it('reports a crossed boundary exactly once so the view can drop stale buffers', () => {
+    const transcript = new TabTranscript();
+    transcript.applySnapshot([user('u1')]);
+    transcript.beginAssistant(1, false);
+    transcript.appendDelta('before', 1);
+
+    transcript.applySnapshot([user('u1'), assistant('before', 'a1'), compaction('c1')]);
+
+    expect(transcript.consumeCompactionBoundary()).toBe(true);
+    expect(transcript.consumeCompactionBoundary()).toBe(false);
+  });
+
+});

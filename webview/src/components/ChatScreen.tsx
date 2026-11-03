@@ -20,6 +20,7 @@ import {
   ToolResultRawContext,
 } from '../contexts/SubagentContext';
 import { useMessages } from '../contexts/MessagesContext';
+import { useActiveTabHistoryLoading } from '../hooks/useActiveTabHistoryLoading';
 import { useSession } from '../contexts/SessionContext';
 import { useUIState } from '../contexts/UIStateContext';
 import { extractMarkdownContent } from '../utils/copyUtils';
@@ -159,8 +160,11 @@ export const ChatScreen = ({
   onRemoveFromQueue, onResumeQueue,
 }: ChatScreenProps) => {
   const { t } = useTranslation();
-  const { messages, loading, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, sessionLoading, isCompacting, compactingStartTime, compactingReason, historyWindow } = useMessages();
-  cardDebugLog('[ChatScreen] render, sessionLoading:', sessionLoading, 'statusPanelExpanded:', statusPanelExpanded);
+  const { messages, loading, isThinking, streamingActive, turnActive, loadingStartTime, subagentHistories, historyWindow } = useMessages();
+  // The indicator belongs to the tab on screen: switching tabs shows that tab's
+  // own load, and a background load never shows here.
+  const historyLoading = useActiveTabHistoryLoading();
+  cardDebugLog('[ChatScreen] render, historyLoading:', historyLoading, 'statusPanelExpanded:', statusPanelExpanded);
   const { currentSessionId } = useSession();
   const previousMessageKeySnapshotRef = useRef<MessageKeySnapshot | undefined>(undefined);
   const messageKeySnapshot = useMemo(
@@ -247,7 +251,7 @@ export const ChatScreen = ({
   // 画布作用域必须是整个 chat-screen-shell：状态面板与输入区都是消息列表的
   // 兄弟节点，若底纹只挂在 messages-shell 上，面板展开后下方会露出 #app 的
   // 主题侧边栏色，形成一条纯黑断层（与 idea 03f87d7 / 2baec63 同一修法）。
-  const isEmptyState = !sessionLoading && mergedMessages.length === 0;
+  const isEmptyState = !historyLoading && mergedMessages.length === 0;
 
   return (
     <div className={`chat-screen-shell${isEmptyState ? ' is-empty-state' : ''}`}>
@@ -268,7 +272,7 @@ export const ChatScreen = ({
           isAutoScrollingRef={isAutoScrollingRef}
         />
         <div className="messages-container" ref={messagesContainerRef}>
-          {!sessionLoading && messages.length === 0 && (
+          {!historyLoading && messages.length === 0 && (
             <WelcomeScreen
               currentProvider={currentProvider}
               t={t}
@@ -287,9 +291,6 @@ export const ChatScreen = ({
                   isThinking={isThinking}
                   loading={loading}
                   loadingStartTime={loadingStartTime}
-                  isCompacting={isCompacting}
-                  compactingStartTime={compactingStartTime}
-                  compactingReason={compactingReason}
                   t={t}
                   getMessageText={getMessageText}
                   getContentBlocks={getContentBlocks}
@@ -331,7 +332,7 @@ export const ChatScreen = ({
           subagentHistories={subagentHistories}
           currentSessionId={currentSessionId}
           currentProvider={currentProvider}
-          sessionLoading={sessionLoading}
+          historyLoading={historyLoading}
           expanded={statusPanelExpanded}
           activeTab={statusPanelTab}
           onActiveTabChange={onStatusPanelTabChange}
@@ -360,7 +361,7 @@ export const ChatScreen = ({
           sdkInstalled={currentSdkInstalled}
           daemonStatusLoaded={daemonStatusLoaded}
           onRetryDaemonStatus={retryDaemonStatus}
-          sessionLoading={sessionLoading}
+          historyLoading={historyLoading}
           value={draftInput}
           onInput={setDraftInput}
           onSubmit={handleSubmit}

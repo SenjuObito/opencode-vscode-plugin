@@ -30,7 +30,6 @@ describe('MessagesContext', () => {
     expect(result.current.isThinking).toBe(false);
     expect(result.current.streamingActive).toBe(false);
     expect(result.current.turnActive).toBe(false);
-    expect(result.current.compactNotice).toBeNull();
   });
 
   it('reflects transcript writes made through mutateTranscript', () => {
@@ -114,37 +113,6 @@ describe('MessagesContext', () => {
     });
     expect(result.current.turnActive).toBe(false);
     expect(store.findById('tab-1')?.loading).toBe(true);
-  });
-
-  it('projects compactNotice from its tab without exposing a window setter', () => {
-    const store = getTabStore();
-    store.setTabs([
-      { id: 'tab-1', sessionId: 'ses_1', title: 'tab-1', transcript: new TabTranscript() },
-      { id: 'tab-2', sessionId: 'ses_2', title: 'tab-2', transcript: new TabTranscript() },
-    ]);
-    store.setActiveTabId('tab-1');
-
-    const { result } = renderHook(() => useMessages(), { wrapper });
-    const notice = { status: 'success' as const, at: 1 };
-    act(() => {
-      store.updateTab('tab-1', (tab) => ({ ...tab, compactNotice: notice }));
-    });
-    expect(result.current.compactNotice).toEqual(notice);
-
-    act(() => {
-      store.setActiveTabId('tab-2');
-    });
-    expect(result.current.compactNotice).toBeNull();
-
-    act(() => {
-      store.setActiveTabId('tab-1');
-    });
-    expect(result.current.compactNotice).toEqual(notice);
-
-    act(() => {
-      store.resetCompaction('tab-1');
-    });
-    expect(store.findById('tab-1')?.compactNotice).toBeNull();
   });
 
   it('updates subagentHistories with functional setter', () => {

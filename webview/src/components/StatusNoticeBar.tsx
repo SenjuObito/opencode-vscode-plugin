@@ -29,6 +29,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next';
 import { useMessages } from '../contexts/MessagesContext';
 import { useSession } from '../contexts/SessionContext';
+import { useActiveTabHistoryLoading } from '../hooks/useActiveTabHistoryLoading';
 import { matchErrorPattern, type DiagnosticPattern } from '../utils/errorMatcher';
 import type { ClaudeMessage } from '../types';
 import type { HostEventEnvelope } from '../utils/hostEventTypes';
@@ -44,7 +45,6 @@ const useMessagesSafe = () => {
       loading: false,
       streamingActive: false,
       turnActive: false,
-      sessionLoading: false,
     } as unknown as ReturnType<typeof useMessages>;
   }
 };
@@ -426,7 +426,7 @@ export const StatusNoticeBar = ({
   const messages = propMessages ?? messagesCtx?.messages ?? [];
   const getMessageText = propGetMessageText ?? defaultGetMessageText;
   const turnActive = messagesCtx?.turnActive ?? false;
-  const sessionLoading = messagesCtx?.sessionLoading ?? false;
+  const historyLoading = useActiveTabHistoryLoading();
   const currentSessionId = sessionCtx?.currentSessionId ?? null;
 
   const [payload, setPayload] = useState<RetryStatusPayload | null>(getRetryStatus);
@@ -439,7 +439,7 @@ export const StatusNoticeBar = ({
   const terminalNotice = useMemo<TerminalNotice | null>(() => {
     // A notice raised by a transcript that is still being restored is not
     // something the user can act on yet.
-    if (sessionLoading) return null;
+    if (historyLoading) return null;
 
     // Anchor both representations of an error to the prompt that opened the
     // turn, not to their own timestamps.
@@ -485,7 +485,7 @@ export const StatusNoticeBar = ({
 
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dismissVersion is a re-evaluation trigger, not an input
-  }, [messages, getMessageText, sessionLoading, currentSessionId, dismissVersion, directTerminalError]);
+  }, [messages, getMessageText, historyLoading, currentSessionId, dismissVersion, directTerminalError]);
 
   useEffect(() => {
     const listener = (next: RetryStatusPayload | null) => setPayload(next);

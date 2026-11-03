@@ -13,7 +13,7 @@ import {
 } from '../toolBlocks';
 import type { EditToolItem } from '../toolBlocks/EditToolBlock';
 import { EDIT_TOOL_NAMES, BASH_TOOL_NAMES, TASK_MANAGE_TOOL_NAMES, AGENT_TOOL_NAMES, isToolName, isTransientInternalToolName, normalizeToolName } from '../../utils/toolConstants';
-import { TASK_STATUS_COLORS, formatCompactDetail } from '../../utils/messageUtils';
+import { TASK_STATUS_COLORS } from '../../utils/messageUtils';
 import { getQuestionAnswer, subscribe as subscribeQuestionAnswer, getSnapshot as getQuestionAnswerSnapshot } from '../../store/questionAnswerStore';
 
 const IMAGE_BLOCK_STYLE: React.CSSProperties = { cursor: 'pointer' };
@@ -164,7 +164,9 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
             <div className="compact-card__spinner-inner" />
           </div>
           <span className="compact-card__text">
-            {t('chat.compactSummary.autoCompacting', '正在自动压缩会话上下文...')}
+            {block.metadata?.trigger === 'manual'
+              ? t('chat.manualCompacting', '正在压缩会话上下文...')
+              : t('chat.autoCompacting', '正在自动压缩会话上下文...')}
             <span className="compact-card__dots">{dots}</span>
           </span>
           <span className="compact-card__time-badge">{formatTime(elapsedSeconds)}</span>
@@ -542,34 +544,6 @@ export function ContentBlockRenderer({
         result={findToolResult(block.id, messageIndex)}
         toolId={block.id}
       />
-    );
-  }
-
-  // Compact notification block — success / failure card (方案 3: 极简紧凑单行条)
-  if (block.type === 'compact_notification') {
-    const isFailure = block.status === 'failure';
-    const cardClass = `compact-card compact-card--compact-pill ${isFailure ? 'compact-card--failure' : 'compact-card--success'}`;
-    const iconCodicon = isFailure ? 'codicon-warning' : 'codicon-check';
-    return (
-      <div className="compact-card-wrapper">
-        <div className={cardClass}>
-          <i className={`codicon ${iconCodicon} compact-card__pill-icon`} />
-          <span className="compact-card__pill-title">{block.headerText}</span>
-          {isFailure ? (
-            formatCompactDetail(block.detail) ? (
-              <span className="compact-card__pill-detail" title={block.detail}>
-                {`— ${formatCompactDetail(block.detail)}`}
-              </span>
-            ) : null
-          ) : (
-            block.items && block.items.length > 0 ? (
-              <span className="compact-card__pill-detail">
-                {`— ${block.items.length} messages summarized`}
-              </span>
-            ) : null
-          )}
-        </div>
-      </div>
     );
   }
 

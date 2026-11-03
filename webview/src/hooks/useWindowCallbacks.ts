@@ -34,7 +34,6 @@ export interface UseWindowCallbacksOptions {
   setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
   setExpandedThinking?: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setHistoryData: React.Dispatch<React.SetStateAction<HistoryData | null>>;
   setCurrentSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   setUsagePercentage: React.Dispatch<React.SetStateAction<number>>;

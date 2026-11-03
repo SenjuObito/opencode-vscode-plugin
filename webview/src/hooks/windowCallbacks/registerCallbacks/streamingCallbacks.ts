@@ -22,6 +22,7 @@ import {
   appendDeltaToTab,
   applySnapshotToTab,
   applyTailToTab,
+  eventTabId,
   isActiveTabEvent,
   parseEventJson,
   updateBackgroundTab,
@@ -869,7 +870,13 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       window.clearMessages?.(String(barrier ?? 0));
     },
     'session.loaded': (_payload: unknown, env?: HostEventEnvelope) => {
-      if (!isActiveTabEvent(env)) return;
+      if (!isActiveTabEvent(env)) {
+        // The load finished in a background tab: only that tab's indicator is
+        // done. The tab on screen is waiting for its own history.
+        const tabId = eventTabId(env);
+        if (tabId) getTabStore().setHistoryLoading(tabId, false);
+        return;
+      }
       window.historyLoadComplete?.();
     },
     'tab.state': (payload: unknown, env?: HostEventEnvelope) => {

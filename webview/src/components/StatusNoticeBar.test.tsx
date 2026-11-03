@@ -14,9 +14,15 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
 }));
 
-const messagesState = { turnActive: false, sessionLoading: false };
+const messagesState = { turnActive: false };
 vi.mock('../contexts/MessagesContext', () => ({
   useMessages: () => messagesState,
+}));
+
+// The indicator is tab state; the component reads it through this hook.
+const historyLoadingState = { value: false };
+vi.mock('../hooks/useActiveTabHistoryLoading', () => ({
+  useActiveTabHistoryLoading: () => historyLoadingState.value,
 }));
 
 const sessionState = { currentSessionId: 'ses_a' as string | null };
@@ -63,7 +69,7 @@ describe('StatusNoticeBar — retry notice (regression)', () => {
     sendToJava.mockClear();
     __resetNoticeStateForTest();
     messagesState.turnActive = true;
-    messagesState.sessionLoading = false;
+    historyLoadingState.value = false;
     sessionState.currentSessionId = 'ses_a';
   });
 
@@ -170,7 +176,7 @@ describe('StatusNoticeBar — terminal quota notice', () => {
     sendToJava.mockClear();
     __resetNoticeStateForTest();
     messagesState.turnActive = false;
-    messagesState.sessionLoading = false;
+    historyLoadingState.value = false;
     sessionState.currentSessionId = 'ses_a';
   });
 
@@ -415,7 +421,7 @@ describe('StatusNoticeBar — terminal quota notice', () => {
   });
 
   it('stays hidden while a session is being restored', () => {
-    messagesState.sessionLoading = true;
+    historyLoadingState.value = true;
 
     const { container } = renderBar([quotaMessage()]);
 
@@ -428,7 +434,7 @@ describe('StatusNoticeBar — upgrade action', () => {
     sendToJava.mockClear();
     __resetNoticeStateForTest();
     messagesState.turnActive = false;
-    messagesState.sessionLoading = false;
+    historyLoadingState.value = false;
     sessionState.currentSessionId = 'ses_a';
   });
 

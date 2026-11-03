@@ -1,9 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import type { ClaudeMessage, SubagentHistoryResponse, TodoItem } from '../types';
 import { getTabStore } from '../store/tabStore';
 import { isTabTurnActive } from '../store/tabRuntime';
 import type { HistoryWindowState } from '../store/historyWindow';
-import type { CompactNoticeData } from '../components/ChatHeader/types';
 
 export const DEFAULT_STATUS = 'ready';
 
@@ -42,24 +41,9 @@ export interface MessagesContextValue {
    * rather than one of the phases.</p>
    */
   turnActive: boolean;
-  sessionLoading: boolean;
-  setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
   /** Authoritative todo list from opencode's `todo.updated` SSE event. */
   sseTodos: TodoItem[] | null;
   setSseTodos: React.Dispatch<React.SetStateAction<TodoItem[] | null>>;
-  /**
-   * Compaction state is owned by the tab record and written only by
-   * `setTabCompacting` / `applyCompactNotice` in App. This provider is a read
-   * projection over the active tab, so it deliberately exposes no setters: a
-   * window-level setter writes whichever tab happens to be active when it runs,
-   * which is how switching away and back used to wipe a running spinner.
-   */
-  isCompacting: boolean;
-  compactingStartTime: number | null;
-  /** Why the current compaction runs: `manual` (/compact) or `auto` (context window). */
-  compactingReason: 'manual' | 'auto' | null;
-  /** Last compact result of this tab, shown until the next user message. */
-  compactNotice: CompactNoticeData | null;
   /**
    * How much of the transcript the host has read back for this tab.
    *
@@ -184,11 +168,6 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
     [tabStore],
   );
 
-  // A history download is a property of the viewport, not of a conversation:
-  // it is true only while the current tab is restoring its transcript and must
-  // not follow a tab switch.
-  const [sessionLoading, setSessionLoading] = useState<boolean>(false);
-
   const messages = activeTab.transcript.getSnapshot();
   const subagentHistories = activeTab.subagentHistories ?? EMPTY_SUBAGENT_HISTORIES;
   const status = activeTab.status ?? DEFAULT_STATUS;
@@ -198,10 +177,6 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
   const streamingActive = activeTab.streamingActive ?? false;
   const turnActive = isTabTurnActive(activeTab);
   const sseTodos = activeTab.sseTodos ?? null;
-  const isCompacting = activeTab.isCompacting ?? false;
-  const compactingStartTime = activeTab.compactingStartTime ?? null;
-  const compactingReason = activeTab.compactingReason ?? null;
-  const compactNotice = activeTab.compactNotice ?? null;
   const historyWindow = activeTab.historyWindow ?? null;
 
   const value = useMemo<MessagesContextValue>(
@@ -221,14 +196,8 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       streamingActive,
       setStreamingActive,
       turnActive,
-      sessionLoading,
-      setSessionLoading,
       sseTodos,
       setSseTodos,
-      isCompacting,
-      compactingStartTime,
-      compactingReason,
-      compactNotice,
       historyWindow,
     }),
     [
@@ -247,13 +216,8 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
       streamingActive,
       setStreamingActive,
       turnActive,
-      sessionLoading,
       sseTodos,
       setSseTodos,
-      isCompacting,
-      compactingStartTime,
-      compactingReason,
-      compactNotice,
       historyWindow,
     ],
   );

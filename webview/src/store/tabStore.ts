@@ -71,9 +71,6 @@ const createDetachedTab = (): SessionTabData => ({
   isThinking: false,
   status: undefined,
   turnStartedAt: null,
-  isCompacting: false,
-  compactingStartTime: null,
-  compactingReason: null,
   sseTodos: null,
   subagentHistories: {},
 });
@@ -332,6 +329,42 @@ export class TabStore {
     return this.updateTab(tabId, updater);
   }
 
+  /**
+   * Mark one tab as waiting for (or done with) its history load.
+   *
+   * <p>The indicator lives on the tab because the load does: a tab switch must
+   * carry it, a reset of another tab must not clear it, and closing the tab
+   * drops it with the tab.</p>
+   */
+  setHistoryLoading(tabId: string | null | undefined, loading: boolean): void {
+    if (!tabId) return;
+    this.updateTab(tabId, (tab) => {
+      if ((tab.historyLoading ?? false) === loading) return;
+      tab.historyLoading = loading;
+    });
+  }
+
+  /** Same, for the tab that owns `sessionId`. */
+  setSessionHistoryLoading(sessionId: string | null | undefined, loading: boolean): boolean {
+    const tabId = this.findIdBySession(sessionId);
+    if (tabId) {
+      this.setHistoryLoading(tabId, loading);
+      return true;
+    }
+    // No tab strip (or the session is not bound yet): the view's own tab is
+    // the only place the indicator can live.
+    if (this.size() === 0) {
+      this.setHistoryLoading(this.getActiveTab().id, loading);
+      return true;
+    }
+    return false;
+  }
+
+  /** The tab on screen is waiting for its history. */
+  isActiveTabHistoryLoading(): boolean {
+    return this.getActiveTab().historyLoading === true;
+  }
+
   /** Apply one updater to every tab (dialog bookkeeping, bulk cleanup). */
   updateAllTabs(updater: (tab: SessionTabData) => SessionTabData | void): void {
     this.setTabs((prev) => prev.map((tab) => {
@@ -340,50 +373,13 @@ export class TabStore {
     }));
   }
 
-  /**
-   * Drop every compaction field of one tab.
-   *
-   * <p>Compaction is per conversation: when a tab is rebound to another session
-   * (or a session is opened into it) the previous session's running spinner and
-   * result pill no longer describe what the tab shows. Only an explicit session
-   * change may call this — a tab switch must not, because that is the state the
-   * switch is supposed to preserve.</p>
-   */
-  resetCompaction(tabId: string | null | undefined): void {
-    if (!tabId) return;
-    this.updateTab(tabId, (tab) => {
-      if (
-        !tab.isCompacting
-        && tab.compactingStartTime == null
-        && tab.compactingReason == null
-        && tab.compactNotice == null
-      ) {
-        return tab;
-      }
-      tab.isCompacting = false;
-      tab.compactingStartTime = null;
-      tab.compactingReason = null;
-      tab.compactNotice = null;
-      return tab;
-    });
-  }
-
   /** Bind the tab that shows {@code tabId} to a session. */
   updateTabSessionId(tabId: string, sessionId: string): void {
     if (!tabId) return;
     this.setTabs((prev) => prev.map((tab) => {
       if (tab.id !== tabId && tab.sessionId !== tabId) return tab;
       if (tab.sessionId === sessionId) return tab;
-      // Rebinding a tab to another conversation invalidates its compaction:
-      // the running spinner and the result pill described the previous session.
-      return {
-        ...tab,
-        sessionId,
-        isCompacting: false,
-        compactingStartTime: null,
-        compactingReason: null,
-        compactNotice: null,
-      };
+      return { ...tab, sessionId };
     }));
     if (this.activeTabId === tabId) {
       this.view.setCurrentSessionId?.(sessionId);

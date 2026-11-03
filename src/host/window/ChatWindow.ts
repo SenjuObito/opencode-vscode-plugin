@@ -518,10 +518,8 @@ export class ChatWindow {
 		}
 
 		const tabCommand = new TabCommand(record.getTabId(), queueCommandType(command), item.id, payload);
-		// No optimistic `session.compact.started` here: the engine's compaction
-		// lifecycle (relayed by SessionCallbackAdapter) is the single start source,
-		// so the indicator turns on when compaction really starts — and the event
-		// carries the manual/auto reason the view needs.
+		// `compact()` creates the transcript record itself: the view renders the
+		// running card from the host snapshot, not from a command-plane event.
 
 		switch (command) {
 			case '/compact':
@@ -1205,7 +1203,7 @@ export class ChatWindow {
 			this.publishRecordEvent(record, 'session.bound', { sessionId: '' });
 			this.publishRecordEvent(record, 'session.loading', { loading: false });
 			this.publishRecordEvent(record, 'revert.changed', { state: JSON.stringify({ hasRevert: false }) });
-			this.publishRecordEvent(record, 'session.loaded', {});
+			this.publishReplayLoaded(record);
 			this.publishQueueState(record);
 			return;
 		}
@@ -1236,8 +1234,23 @@ export class ChatWindow {
 		this.publishRecordEvent(record, 'revert.changed', {
 			state: JSON.stringify(revert ? { hasRevert: true, messageId: revert.messageID } : { hasRevert: false }),
 		});
-		this.publishRecordEvent(record, 'session.loaded', {});
+		this.publishReplayLoaded(record);
 		this.publishQueueState(record);
+	}
+
+	/**
+	 * 回放结束时宣布「这个 tab 的转录已就绪」。
+	 *
+	 * <p>正在抓取历史的 tab 还没有就绪：它自己的 {@code session.loaded} 由
+	 * {@code completeSessionLoad} 在消息真的到达后发出。若在这里提前宣布，
+	 * webview 会当成「历史已到」，把刚打开的会话的加载指示条收掉——用户看到
+	 * 的就是「橙色条闪一下就没了」。</p>
+	 */
+	private publishReplayLoaded(record: TabRecord): void {
+		if (record.getState() === TabState.LOADING_HISTORY) {
+			return;
+		}
+		this.publishRecordEvent(record, 'session.loaded', {});
 	}
 
 	/**

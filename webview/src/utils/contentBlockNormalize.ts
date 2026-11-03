@@ -10,7 +10,7 @@ export const MESSAGE_TYPES = {
   ASSISTANT: 'assistant',
   TASK_NOTIFICATION: 'task_notification',
   NOTIFICATION: 'notification',
-  COMPACT_NOTIFICATION: 'compact_notification',
+  COMPACTION: 'compaction',
   ERROR: 'error',
 } as const;
 

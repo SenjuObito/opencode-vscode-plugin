@@ -46,6 +46,7 @@ export function registerMessageCallbacks(
     messagesContainerRef,
     suppressNextStatusToastRef,
     streamingContentRef,
+    streamingThinkingRef,
     isStreamingRef,
     streamingMessageIndexRef,
     streamingTurnIdRef,
@@ -170,6 +171,14 @@ export function registerMessageCallbacks(
 
       getTabStore().mutateActiveTranscript((transcript) => {
         transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0);
+        // A boundary seals the pre-compaction bubble into remote. The delta
+        // buffers still describe that old segment, so drop them before the
+        // first post-compaction snapshot merges into a new bubble.
+        if (transcript.consumeCompactionBoundary()) {
+          streamingContentRef.current = '';
+          streamingThinkingRef.current = '';
+          streamingMessageIndexRef.current = -1;
+        }
         transcript.rebuildMetadata((list) => stripDuplicateTrailingToolMessages(
           reconstructTurnMetadata(list, { skipTrailingTurn: isStreamingRef.current }),
           options.currentProviderRef.current,
@@ -229,6 +238,11 @@ export function registerMessageCallbacks(
 
       getTabStore().mutateActiveTranscript((transcript) => {
         transcript.applyTail(tail, baseIndex);
+        if (transcript.consumeCompactionBoundary()) {
+          streamingContentRef.current = '';
+          streamingThinkingRef.current = '';
+          streamingMessageIndexRef.current = -1;
+        }
         // Turn footers are derived from the tail's records; while a turn is
         // still streaming its footer waits for the settle path.
         transcript.rebuildMetadata((messages) => reconstructTurnMetadata(
@@ -558,12 +572,13 @@ export function registerMessageCallbacks(
 
   window.historyLoadComplete = (expectedMessageCountArg) => {
     // The history arrived, so the tab that was loading may write again.
-    endTransition(activeTabId());
-    // Defer sessionLoading=false so the loading indicator has time to render.
-    // setTimeout(0) is too fast — React 18 batches it into the same frame as
-    // the message update, so the UI jumps from empty→messages with no visible
-    // loading state. 300ms gives the user a brief but perceptible loading flash.
-    setTimeout(() => { options.setSessionLoading(false); }, 300);
+    const loadingTabId = activeTabId();
+    endTransition(loadingTabId);
+    // Defer the clear so the indicator has time to render. setTimeout(0) is too
+    // fast — React 18 batches it into the same frame as the message update, so
+    // the UI jumps from empty→messages with no visible loading state. 300ms
+    // gives the user a brief but perceptible loading flash.
+    setTimeout(() => { getTabStore().setHistoryLoading(loadingTabId, false); }, 300);
     // 同会话软刷新已完成，释放 loadHistorySession 的去抖守卫
     window.__softSessionReloadInFlight = null;
     const pendingToast = window.__pendingSessionTransitionToast;

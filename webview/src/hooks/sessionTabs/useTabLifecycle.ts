@@ -41,7 +41,6 @@ export interface UseTabLifecycleOptions extends Pick<
   | 'setUsagePercentage'
   | 'setUsageUsedTokens'
   | 'setUsageMaxTokens'
-  | 'setSessionLoading'
   | 'setCurrentView'
   | 'chatInputRef'
   | 'deleteTabRuntime'
@@ -83,7 +82,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsagePercentage,
     setUsageUsedTokens,
     setUsageMaxTokens,
-    setSessionLoading,
     setCurrentView,
     chatInputRef,
     deleteTabRuntime,
@@ -179,7 +177,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsageMaxTokens?.(undefined);
 
     chatInputRef?.current?.setValue?.('');
-    setSessionLoading?.(false);
     setCurrentView?.('chat');
 
     syncHostActiveTabTo(newId);
@@ -216,7 +213,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsageUsedTokens,
     setUsageMaxTokens,
     chatInputRef,
-    setSessionLoading,
     setCurrentView,
     syncHostActiveTabTo,
   ]);
@@ -304,8 +300,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsageUsedTokens?.(nextActive.usageUsedTokens);
     setUsageMaxTokens?.(nextActive.usageMaxTokens);
 
-    setSessionLoading?.(false);
-
   }, [
     activeTabIdRef,
     setActiveTabId,
@@ -336,7 +330,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsagePercentage,
     setUsageUsedTokens,
     setUsageMaxTokens,
-    setSessionLoading,
   ]);
 
   const createAndActivateFreshTab = useCallback((): SessionTabData => {
@@ -390,7 +383,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsagePercentage?.(0);
     setUsageUsedTokens?.(undefined);
     setUsageMaxTokens?.(undefined);
-    setSessionLoading?.(false);
     return freshTab;
   }, [
     currentProvider,
@@ -421,7 +413,6 @@ export function useTabLifecycle(options: UseTabLifecycleOptions) {
     setUsagePercentage,
     setUsageUsedTokens,
     setUsageMaxTokens,
-    setSessionLoading,
   ]);
 
   const closeTab = useCallback(

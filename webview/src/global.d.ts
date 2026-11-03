@@ -828,7 +828,7 @@ interface Window {
    * Called by beginSessionTransition (useSessionManagement) to synchronously
    * clear both React state AND internal refs before starting a new session.
    */
-  __resetTransientUiState?: (skipSessionLoading?: boolean) => void;
+  __resetTransientUiState?: () => void;
 
   /**
    * Timestamp of the last streaming activity (content/thinking delta or message update).

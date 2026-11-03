@@ -560,59 +560,12 @@ export class SessionCallbackAdapter implements SessionCallback {
 		});
 	}
 
-	onCompactionStarted(payload: string): void {
-		if (this.isInactive() || !payload) {
+	/** 立即把挂起的快照推给 webview（压缩边界要求先快照、后增量）。 */
+	onFlushMessageUpdate(): void {
+		if (this.isInactive()) {
 			return;
 		}
-		let parsed: unknown = payload;
-		try {
-			parsed = JSON.parse(payload);
-		} catch {
-			// keep string
-		}
-		this.emit('session.compact.started', { data: parsed, source: 'engine' }, () => {
-			this.jsTarget.callJavaScript('onCompactStarted', payload);
-		});
-	}
-
-	/**
-	 * Compaction summary deltas are intentionally not forwarded: the view shows
-	 * a single compacting indicator and the persisted summary once the engine
-	 * settles, so streaming the summary text has no consumer. The marker is
-	 * still parsed by `MarkerParser` (the core protocol), it just stops here.
-	 */
-	onCompactionDelta(_payload: string): void {
-		// no-op by design — see above.
-	}
-
-	onCompactionEnded(payload: string): void {
-		if (this.isInactive() || !payload) {
-			return;
-		}
-		let parsed: unknown = payload;
-		try {
-			parsed = JSON.parse(payload);
-		} catch {
-			// keep string
-		}
-		this.emit('session.compact.done', { data: parsed, source: 'engine' }, () => {
-			this.jsTarget.callJavaScript('onCompactSuccess', payload);
-		});
-	}
-
-	onCompactionFailed(payload: string): void {
-		if (this.isInactive() || !payload) {
-			return;
-		}
-		let parsed: unknown = payload;
-		try {
-			parsed = JSON.parse(payload);
-		} catch {
-			// keep string
-		}
-		this.emit('session.compact.failed', { data: parsed, source: 'engine' }, () => {
-			this.jsTarget.callJavaScript('onCompactError', payload);
-		});
+		this.streamCoalescer.flush();
 	}
 
 	// =========================================================================

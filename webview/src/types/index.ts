@@ -1,11 +1,17 @@
-export type ClaudeRole = 'user' | 'assistant' | 'error' | 'task_notification' | 'notification' | 'compact_notification' | string;
+export type ClaudeRole = 'user' | 'assistant' | 'error' | 'task_notification' | 'notification' | 'compaction' | string;
+
+/** Lifecycle of one compaction record (host-owned, rendered as a card). */
+export interface CompactionMeta {
+  status: 'in_progress' | 'completed' | 'failed';
+  reason: 'manual' | 'auto' | string;
+  startedAt?: number;
+  completedAt?: number;
+  durationMs?: number;
+  tokens?: Record<string, unknown>;
+  error?: string;
+}
 
 export type ToolInput = Record<string, unknown>;
-
-export interface CompactNotificationItem {
-  type: 'stdout';
-  text: string;
-}
 
 /**
  * Metadata for compact summary messages.
@@ -51,7 +57,6 @@ export type ClaudeContentBlock =
   | { type: 'image'; src?: string; mediaType?: string; alt?: string }
   | { type: 'attachment'; fileName?: string; mediaType?: string }
   | { type: 'task_notification'; icon: string; summary: string; status: string; detail?: string }
-  | { type: 'compact_notification'; headerText: string; items: CompactNotificationItem[]; status?: 'success' | 'failure'; detail?: string }
   | { type: 'compact_summary'; title: string; content: string; metadata?: CompactSummaryMetadata; compactStatus?: 'in_progress' | 'success' | 'failure'; startTime?: number };
 
 export interface ToolResultBlock {
@@ -95,6 +100,8 @@ export interface ClaudeMessage {
    * be merged. Undefined for history messages loaded from JSONL files.
    */
   __turnId?: number;
+  /** Present only on host-owned compaction records (`type === 'compaction'`). */
+  compaction?: CompactionMeta;
   [key: string]: unknown;
 }
 

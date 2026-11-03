@@ -30,7 +30,6 @@ describe('useWindowCallbacks integration', () => {
     setIsThinking: vi.fn(),
     setExpandedThinking: vi.fn(),
     setStreamingActive: vi.fn(),
-    setSessionLoading: vi.fn(),
     setHistoryData: vi.fn(),
     setCurrentSessionId: vi.fn(),
     setCustomSessionTitle: vi.fn(),
@@ -228,6 +227,73 @@ describe('useWindowCallbacks integration', () => {
 
     expect(isTabTransitioning('tab-active')).toBe(false);
     expect(transitionTokenFor('tab-active')).toBeNull();
+  });
+
+  // ===== the history indicator belongs to the tab that asked for it =====
+
+  it('a reset of another tab keeps the indicator of a tab that is loading history', () => {
+    seedTabStore([
+      { id: 'tab-a', sessionId: 'ses-a' },
+      { id: 'tab-b', sessionId: null },
+    ], 'tab-b');
+    const store = getTabStore();
+    store.setHistoryLoading('tab-a', true);
+
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    // The tab on screen is cleared (session.cleared / beginSessionTransition).
+    // That reset belongs to tab-b and must not end tab-a's load.
+    act(() => {
+      window.clearMessages!('0');
+    });
+
+    expect(store.findById('tab-a')?.historyLoading).toBe(true);
+    expect(store.findById('tab-b')?.historyLoading).toBeFalsy();
+  });
+
+  it('a background tab finishing its history clears only its own indicator', () => {
+    seedTabStore([
+      { id: 'tab-a', sessionId: 'ses-a' },
+      { id: 'tab-b', sessionId: 'ses-b' },
+    ], 'tab-a');
+    const store = getTabStore();
+    store.setHistoryLoading('tab-a', true);
+    store.setHistoryLoading('tab-b', true);
+
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    act(() => {
+      dispatchHostEnvelope({
+        v: 2,
+        type: 'session.loaded',
+        tabId: 'tab-b',
+        sessionId: 'ses-b',
+        epoch: 0,
+        payload: {},
+      });
+    });
+
+    expect(store.findById('tab-b')?.historyLoading).toBe(false);
+    expect(store.findById('tab-a')?.historyLoading).toBe(true);
+  });
+
+  it('the arrival of the history clears the indicator of the tab that was loading', () => {
+    seedTabStore([{ id: 'tab-active', sessionId: 'ses-a' }], 'tab-active');
+    const store = getTabStore();
+    store.setHistoryLoading('tab-active', true);
+
+    renderHook(() => useWindowCallbacks(createOptions()));
+
+    vi.useFakeTimers();
+    act(() => {
+      window.historyLoadComplete!();
+    });
+    // The clear is deferred so the indicator is visible for a beat.
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    expect(store.findById('tab-active')?.historyLoading).toBe(false);
   });
 
   it('historyLoadComplete shows pending session transition toast', () => {

@@ -6,11 +6,14 @@
  *
  * The transition guard itself is per tab and lives in `tabTransition.ts`; this
  * file only owns the reset.
+ *
+ * <p>The "waiting for history" indicator is NOT transient window state: it
+ * belongs to the tab that asked for the load and lives on its record, so a
+ * reset of any tab leaves it alone.</p>
  */
 
 import type { MutableRefObject } from 'react';
 import { cardDebugLog } from '../../utils/bridge';
-import { activeTabId, isTabTransitioning } from './tabTransition';
 
 export interface ResetTransientUiStateOptions {
   clearToasts: () => void;
@@ -19,7 +22,6 @@ export interface ResetTransientUiStateOptions {
   setLoadingStartTime: React.Dispatch<React.SetStateAction<number | null>>;
   setIsThinking: React.Dispatch<React.SetStateAction<boolean>>;
   setStreamingActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setSessionLoading: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Streaming refs
   isStreamingRef: MutableRefObject<boolean>;
@@ -47,33 +49,15 @@ export interface ResetTransientUiStateOptions {
  * Clear all transient UI state (streaming refs + React state flags).
  * Called on clearMessages and exposed as window.__resetTransientUiState so
  * useSessionTransition can invoke it synchronously during session transitions.
- *
- * @param opts.skipSessionLoading - When true, do NOT reset sessionLoading.
- *   Used by beginSessionTransition which sets sessionLoading=true immediately
- *   after; resetting it here would cause a transient false→true flicker because
- *   React 18 batches the reset+set into one render with sessionLoading=false.
  */
 export const buildResetTransientUiState = (opts: ResetTransientUiStateOptions) => {
-  return (skipSessionLoading?: boolean) => {
-    // The transition guard belongs to the tab that is switching, so the active
-    // tab's own state decides whether the loading indicator is kept.
-    const transitioning = isTabTransitioning(activeTabId());
-    const shouldSkipSS = skipSessionLoading || transitioning;
-    cardDebugLog('[resetTransientUiState] skipSessionLoading:', skipSessionLoading, 'transitioning:', transitioning, '→ skip:', shouldSkipSS);
-    cardDebugLog('[resetTransientUiState] BEFORE: sessionLoading will', shouldSkipSS ? 'BE KEPT' : 'be SET TO false');
+  return () => {
     opts.clearToasts();
     opts.setStatus('');
     opts.setLoading(false);
     opts.setLoadingStartTime(null);
     opts.setIsThinking(false);
     opts.setStreamingActive(false);
-    const shouldSkip = skipSessionLoading || transitioning;
-    if (!shouldSkip) {
-      cardDebugLog('[resetTransientUiState] EXECUTING: setSessionLoading(false)');
-      opts.setSessionLoading(false);
-    } else {
-      cardDebugLog('[resetTransientUiState] SKIPPED: setSessionLoading not called');
-    }
     // Archive the outgoing session's live streaming runtime before wiping it.
     // Must run BEFORE the ref resets below: `loadHistorySession` leaves the
     // previous turn running in the background, and that turn still needs its

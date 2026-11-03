@@ -131,19 +131,13 @@ export class CallbackHandler {
 		this.callback?.onRetryStatus?.(payload);
 	}
 
-	notifyCompactionStarted(payload: string): void {
-		this.callback?.onCompactionStarted?.(payload);
-	}
-
-	notifyCompactionDelta(payload: string): void {
-		this.callback?.onCompactionDelta?.(payload);
-	}
-
-	notifyCompactionEnded(payload: string): void {
-		this.callback?.onCompactionEnded?.(payload);
-	}
-
-	notifyCompactionFailed(payload: string): void {
-		this.callback?.onCompactionFailed?.(payload);
+	/**
+	 * 立刻把挂起的消息快照推给 webview。
+	 *
+	 * <p>压缩边界依赖顺序：封口后的助手段与压缩记录必须先到，压缩后的第一个
+	 * 增量才有“新段”可落。合并器的定时推送不足以保证这个顺序。</p>
+	 */
+	flushMessageUpdate(): void {
+		this.callback?.onFlushMessageUpdate?.();
 	}
 }

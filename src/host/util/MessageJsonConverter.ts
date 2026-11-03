@@ -33,6 +33,11 @@ function convertMessage(msg: ChatMessage): JsonObject {
 	if (typeof msg.durationMs === 'number') {
 		msgObj.durationMs = msg.durationMs;
 	}
+	// 压缩记录的生命周期字段是转录的一部分，必须随消息一起送达；
+	// 只靠 raw 会把它降级成“提示文案”，历史与实时又会分叉。
+	if (msg.compaction) {
+		msgObj.compaction = { ...msg.compaction };
+	}
 	return msgObj;
 }
 

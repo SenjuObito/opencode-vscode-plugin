@@ -9,7 +9,6 @@ import {
   formatCommandForResubmit,
   formatTaskNotificationForDisplay,
   createTaskNotificationBlock,
-  attachCompactBoundaryMetadata,
   hasCommandMessageTag,
   hasTaskNotificationTag,
   isTaskNotificationOnlyMessage,
@@ -18,13 +17,6 @@ import {
   isSyntheticToolMessageContent,
   hasNonHumanOrigin,
   shouldShowMessage,
-  isCompactCommandMessage,
-  isCompactStdoutMessage,
-  isCompactRelatedMessage,
-  extractCompactItems,
-  buildCompactNotification,
-  createCompactSuccessNotice,
-  formatCompactDetail,
   matchesProviderMessageId,
   applyMessagesRemoved,
   TASK_STATUS_COLORS,
@@ -907,346 +899,6 @@ describe('shouldShowMessage', () => {
 // Compact notification detection
 // ---------------------------------------------------------------------------
 
-describe('isCompactCommandMessage', () => {
-  it('returns true for message with <command-name>/compact in raw.content string', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: {
-        message: {
-          content: '<command-name>/compact</command-name><command-message>compact</command-message>',
-        },
-      },
-    };
-    expect(isCompactCommandMessage(msg)).toBe(true);
-  });
-
-  it('returns true for message with <command-name>/compact with args', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: {
-        content: '<command-name>/compact</command-name><command-args>注意保留cli源码地址</command-args>',
-      },
-    };
-    expect(isCompactCommandMessage(msg)).toBe(true);
-  });
-
-  it('returns false for message with other command', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: {
-        message: {
-          content: '<command-name>/aimax:auto</command-name><command-message>aimax:auto</command-message>',
-        },
-      },
-    };
-    expect(isCompactCommandMessage(msg)).toBe(false);
-  });
-
-  it('returns false for non-user messages', () => {
-    const msg: ClaudeMessage = {
-      type: 'assistant',
-      content: '<command-name>/compact</command-name>',
-      timestamp: '1',
-    };
-    expect(isCompactCommandMessage(msg)).toBe(false);
-  });
-
-  it('returns false when raw is undefined and content is not /compact', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: 'hello',
-      timestamp: '1',
-    };
-    expect(isCompactCommandMessage(msg)).toBe(false);
-  });
-
-  it('does not detect optimistic /compact command by content (no XML tags)', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '/compact',
-      timestamp: '1',
-    };
-    expect(isCompactCommandMessage(msg)).toBe(false);
-  });
-
-  it('detects /compact in raw.content array of text blocks', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: {
-        content: [
-          { type: 'text', text: '<command-name>/compact</command-name><command-message>compact</command-message>' },
-        ],
-      },
-    };
-    expect(isCompactCommandMessage(msg)).toBe(true);
-  });
-
-  it('does not detect optimistic /compact with arguments by content (no XML tags)', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '/compact --verbose',
-      timestamp: '1',
-    };
-    expect(isCompactCommandMessage(msg)).toBe(false);
-  });
-
-  it('does not match non-compact content without XML tags', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '/compactextra',
-      timestamp: '1',
-    };
-    expect(isCompactCommandMessage(msg)).toBe(false);
-  });
-});
-
-describe('isCompactStdoutMessage', () => {
-  it('returns true for message with <local-command-stdout> in raw', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: {
-        message: {
-          content: '<local-command-stdout>Compacted Tip: You have access to Opus 1M</local-command-stdout>',
-        },
-      },
-    };
-    expect(isCompactStdoutMessage(msg)).toBe(true);
-  });
-
-  it('returns false for message without stdout tag', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: 'regular message',
-      timestamp: '1',
-      raw: { content: 'regular message' },
-    };
-    expect(isCompactStdoutMessage(msg)).toBe(false);
-  });
-
-  it('returns false for non-user messages', () => {
-    const msg: ClaudeMessage = {
-      type: 'assistant',
-      content: '<local-command-stdout>output</local-command-stdout>',
-      timestamp: '1',
-    };
-    expect(isCompactStdoutMessage(msg)).toBe(false);
-  });
-});
-
-describe('isCompactRelatedMessage', () => {
-  it('returns true for compact command message', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: { message: { content: '<command-name>/compact</command-name>' } },
-    };
-    expect(isCompactRelatedMessage(msg)).toBe(true);
-  });
-
-  it('returns true for compact stdout message', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: '',
-      timestamp: '1',
-      raw: { message: { content: '<local-command-stdout>Compacted</local-command-stdout>' } },
-    };
-    expect(isCompactRelatedMessage(msg)).toBe(true);
-  });
-
-  it('returns true for isCompactSummary message', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: 'summary',
-      timestamp: '1',
-      raw: { isCompactSummary: true },
-    };
-    expect(isCompactRelatedMessage(msg)).toBe(true);
-  });
-
-  it('returns false for regular message', () => {
-    const msg: ClaudeMessage = {
-      type: 'user',
-      content: 'hello',
-      timestamp: '1',
-    };
-    expect(isCompactRelatedMessage(msg)).toBe(false);
-  });
-});
-
-describe('extractCompactItems', () => {
-  it('extracts stdout text from messages', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '1',
-        raw: { message: { content: '<local-command-stdout>Compacted Tip: test</local-command-stdout>' } },
-      },
-    ];
-    const items = extractCompactItems(messages);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toEqual({ type: 'stdout', text: 'Compacted Tip: test' });
-  });
-
-  it('returns empty for messages without stdout', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '1',
-        raw: { message: { content: '<command-name>/compact</command-name>' } },
-      },
-    ];
-    expect(extractCompactItems(messages)).toHaveLength(0);
-  });
-
-  it('extracts multiple stdout items from group', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '1',
-        raw: { message: { content: '<local-command-stdout>line one</local-command-stdout>' } },
-      },
-      {
-        type: 'user',
-        content: '',
-        timestamp: '2',
-        raw: { message: { content: '<local-command-stdout>line two</local-command-stdout>' } },
-      },
-    ];
-    const items = extractCompactItems(messages);
-    expect(items).toHaveLength(2);
-    expect(items[0].text).toBe('line one');
-    expect(items[1].text).toBe('line two');
-  });
-});
-
-describe('formatCompactDetail', () => {
-  it('trims an engine error and collapses its whitespace', () => {
-    expect(formatCompactDetail('  Nothing to compact yet \n ')).toBe('Nothing to compact yet');
-    expect(formatCompactDetail('line one\n\nline two')).toBe('line one line two');
-  });
-
-  it('strips a leading separator so the card never doubles its own dash', () => {
-    expect(formatCompactDetail('— Nothing to compact yet')).toBe('Nothing to compact yet');
-    expect(formatCompactDetail('- Nothing to compact yet')).toBe('Nothing to compact yet');
-    expect(formatCompactDetail('：Nothing to compact yet')).toBe('Nothing to compact yet');
-  });
-
-  it('returns an empty string for a missing detail', () => {
-    expect(formatCompactDetail(undefined)).toBe('');
-    expect(formatCompactDetail(null)).toBe('');
-    expect(formatCompactDetail('   ')).toBe('');
-  });
-});
-
-describe('buildCompactNotification', () => {
-  it('returns null for empty group', () => {
-    expect(buildCompactNotification([])).toBeNull();
-  });
-
-  it('returns null when group has no command message', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '1',
-        raw: { message: { content: '<local-command-stdout>output</local-command-stdout>' } },
-      },
-    ];
-    expect(buildCompactNotification(messages)).toBeNull();
-  });
-
-  it('builds notification with command and stdout', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '2026-01-01T00:00:00Z',
-        raw: { message: { content: '<command-name>/compact</command-name><command-message>compact</command-message>' } },
-      },
-      {
-        type: 'user',
-        content: '',
-        timestamp: '2026-01-01T00:00:01Z',
-        raw: { message: { content: '<local-command-stdout>Compacted Tip: test</local-command-stdout>' } },
-      },
-    ];
-    const result = buildCompactNotification(messages);
-    expect(result).not.toBeNull();
-    expect(result!.type).toBe('compact_notification');
-    expect(result!.content).toBe('/compact');
-    expect(result!.timestamp).toBe('2026-01-01T00:00:00Z');
-    const compactItems = (result!.raw as any)?.compactItems;
-    expect(compactItems).toHaveLength(1);
-    expect(compactItems[0]).toEqual({ type: 'stdout', text: 'Compacted Tip: test' });
-  });
-
-  it('uses formatCommandForDisplay for header text with args', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '1',
-        raw: {
-          message: {
-            content: '<command-name>/compact</command-name><command-message>compact</command-message><command-args>注意保留cli源码地址</command-args>',
-          },
-        },
-      },
-    ];
-    const result = buildCompactNotification(messages);
-    expect(result).not.toBeNull();
-    expect(result!.content).toBe('/compact 注意保留cli源码地址');
-  });
-
-  it('falls back to /compact when formatCommandForDisplay returns null', () => {
-    const messages: ClaudeMessage[] = [
-      {
-        type: 'user',
-        content: '',
-        timestamp: '1',
-        raw: { message: { content: '<command-name>/compact</command-name>' } },
-      },
-    ];
-    const result = buildCompactNotification(messages);
-    expect(result).not.toBeNull();
-    expect(result!.content).toBe('/compact');
-  });
-});
-
-describe('createCompactSuccessNotice', () => {
-  it('builds a compact_notification message with the given header text', () => {
-    const result = createCompactSuccessNotice('会话已压缩');
-    expect(result.type).toBe('compact_notification');
-    expect(result.content).toBe('会话已压缩');
-    expect(typeof result.timestamp).toBe('string');
-    expect(result.timestamp).not.toBe('');
-    const compactItems = (result.raw as any)?.compactItems;
-    expect(compactItems).toEqual([]);
-  });
-
-});
-
-
-// ---------------------------------------------------------------------------
-// formatCommandForResubmit — real CLI tag order (command-name → command-message
-// → command-args). A combined regex used to require args to IMMEDIATELY follow
-// the name, silently dropping them from copy/export.
-// ---------------------------------------------------------------------------
-
 describe('formatCommandForResubmit — name → message → args tag order', () => {
   it('extracts args when <command-message> sits between name and args', () => {
     const text = '<command-name>/effort</command-name>\n<command-message>effort</command-message>\n<command-args>ultracode</command-args>';
@@ -1315,127 +967,67 @@ describe('formatTaskNotificationForDisplay — <event> payload', () => {
 });
 
 // ---------------------------------------------------------------------------
-// attachCompactBoundaryMetadata — pairing the compact_boundary system line with
-// the compact-summary user line (real two-line transcript shape)
+// getContentBlocks — compaction records
 // ---------------------------------------------------------------------------
 
-describe('attachCompactBoundaryMetadata', () => {
-  // Mirrors the real JSONL pair: a type:'system', subtype:'compact_boundary'
-  // line carrying compactMetadata, immediately followed by the summary line.
-  const boundaryMessage = (): ClaudeMessage => ({
-    type: 'system',
-    content: 'Conversation compacted',
-    raw: {
-      type: 'system',
-      subtype: 'compact_boundary',
-      content: 'Conversation compacted',
-      isMeta: false,
-      compactMetadata: {
-        trigger: 'manual',
-        preTokens: 524835,
-        durationMs: 109542,
-        postTokens: 14582,
-        preCompactDiscoveredTools: ['TaskCreate', 'TaskUpdate'],
-      },
-    } as ClaudeMessage['raw'],
-  });
-
-  const summaryMessage = (): ClaudeMessage => ({
-    type: 'user',
-    content: '',
-    raw: {
-      type: 'user',
-      isCompactSummary: true,
-      message: { role: 'user', content: 'This session is being continued from a previous conversation…' },
-    } as ClaudeMessage['raw'],
-  });
-
-  it('attaches compactMetadata to the following compact-summary message and drops the boundary line', () => {
-    const other = makeMsg('user', 'hello');
-    const result = attachCompactBoundaryMetadata([other, boundaryMessage(), summaryMessage()]);
-
-    expect(result).toHaveLength(2);
-    expect(result[0]).toBe(other);
-    const raw = result[1].raw as Record<string, unknown>;
-    expect(raw.isCompactSummary).toBe(true);
-    expect(raw.compactMetadata).toMatchObject({
-      trigger: 'manual',
-      preTokens: 524835,
-      postTokens: 14582,
-      durationMs: 109542,
-    });
-  });
-
-  it('returns the same array reference when no boundary line is present', () => {
-    const messages = [makeMsg('user', 'hello'), makeMsg('assistant', 'hi')];
-    expect(attachCompactBoundaryMetadata(messages)).toBe(messages);
-  });
-
-  it('does not overwrite metadata the summary already carries', () => {
-    const summary = summaryMessage();
-    (summary.raw as Record<string, unknown>).compactMetadata = { trigger: 'auto', preTokens: 1 };
-    const result = attachCompactBoundaryMetadata([boundaryMessage(), summary]);
-
-    expect(result).toHaveLength(1);
-    expect((result[0].raw as Record<string, unknown>).compactMetadata).toMatchObject({ trigger: 'auto', preTokens: 1 });
-  });
-
-  it('pairs across intermediate messages between boundary and summary', () => {
-    const between = makeMsg('assistant', 'unrelated');
-    const result = attachCompactBoundaryMetadata([boundaryMessage(), between, summaryMessage()]);
-
-    expect(result).toHaveLength(2);
-    expect(result[0]).toBe(between);
-    expect((result[1].raw as Record<string, unknown>).compactMetadata).toMatchObject({ trigger: 'manual' });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getContentBlocks — compact summary metadata subtitle wiring
-// ---------------------------------------------------------------------------
-
-describe('getContentBlocks — compact summary compactMetadata', () => {
+describe('getContentBlocks — compaction records', () => {
   const normalizeBlocksFn = () => null;
   const localizeMessage = (text: string) => text;
 
-  it('exposes compactMetadata as the compact_summary block metadata', () => {
+  it('renders an in-progress compaction as a compact_summary block with its start time', () => {
     const message: ClaudeMessage = {
-      type: 'notification',
+      type: 'compaction',
       content: '',
-      raw: {
-        type: 'user',
-        isCompactSummary: true,
-        compactMetadata: { trigger: 'manual', preTokens: 524835, postTokens: 14582, durationMs: 109542 },
-        message: { role: 'user', content: 'This session is being continued…' },
-      } as ClaudeMessage['raw'],
+      compaction: { status: 'in_progress', reason: 'auto', startedAt: 1700000000000 },
     };
 
     const blocks = getContentBlocks(message, normalizeBlocksFn, localizeMessage);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({
       type: 'compact_summary',
-      content: 'This session is being continued…',
-      metadata: { trigger: 'manual', preTokens: 524835, postTokens: 14582, durationMs: 109542 },
+      compactStatus: 'in_progress',
+      startTime: 1700000000000,
+      content: '',
+      metadata: { trigger: 'auto' },
     });
   });
 
-  it('still honors the legacy summarizeMetadata shape', () => {
+  it('renders a completed compaction with the summary and token/duration stats', () => {
     const message: ClaudeMessage = {
-      type: 'notification',
-      content: '',
-      raw: {
-        type: 'user',
-        isCompactSummary: true,
-        summarizeMetadata: { messagesSummarized: 12, direction: 'up_to' },
-        message: { role: 'user', content: 'summary' },
-      } as ClaudeMessage['raw'],
+      type: 'compaction',
+      content: '## Objective\n- ship it',
+      compaction: {
+        status: 'completed',
+        reason: 'manual',
+        startedAt: 1700000000000,
+        durationMs: 109542,
+        tokens: { total: 14582 },
+      },
     };
 
     const blocks = getContentBlocks(message, normalizeBlocksFn, localizeMessage);
     expect(blocks[0]).toMatchObject({
       type: 'compact_summary',
-      title: 'chat.compactSummary.summarizedConversation',
-      metadata: { messagesSummarized: 12 },
+      compactStatus: 'success',
+      title: 'chat.compactSummary.compactSummary',
+      content: '## Objective\n- ship it',
+      metadata: { trigger: 'manual', postTokens: 14582, durationMs: 109542 },
+    });
+  });
+
+  it('renders a failed compaction as a failure card carrying the error detail', () => {
+    const message: ClaudeMessage = {
+      type: 'compaction',
+      content: '',
+      compaction: { status: 'failed', reason: 'manual', error: 'Nothing to compact yet' },
+    };
+
+    const blocks = getContentBlocks(message, normalizeBlocksFn, localizeMessage);
+    expect(blocks[0]).toMatchObject({
+      type: 'compact_summary',
+      compactStatus: 'failure',
+      title: 'chat.compactFailed',
+      content: 'Nothing to compact yet',
     });
   });
 });

@@ -64,11 +64,86 @@ export function convertSdkMessage(entry: SdkMessageEntry): ChatMessage[] {
 		return [buildUserMessage(parts, info, timestamp)];
 	}
 
+	if (role === 'compaction' || info.isCompactSummary === true || info.type === 'compaction') {
+		const message = buildCompactionMessage(parts, info, timestamp);
+		return message ? [message] : [];
+	}
+
 	if (role === 'assistant') {
 		return buildAssistantMessages(parts, info, timestamp);
 	}
 
 	return []; // system / 其他 role 跳过
+}
+
+/**
+ * 一条持久化的压缩记录 → 转录里的 compaction 消息。
+ *
+ * <p>摘要进 `content`（raw 只放身份），状态与失败原因进 `compaction`：
+ * 历史行与实时卡因此共用同一个渲染器，不再有“历史摘要被整条丢弃”或
+ * “失败压缩显示成空摘要”的分叉。</p>
+ */
+function buildCompactionMessage(
+	parts: SdkPart[],
+	info: SdkMessageInfo,
+	timestamp: number,
+): ChatMessage | null {
+	const summary = parts
+		.filter((part) => part?.type === 'text' && typeof part.text === 'string')
+		.map((part) => String(part.text))
+		.join('\n');
+	const rawStatus = typeof info.compactionStatus === 'string'
+		? info.compactionStatus
+		: (typeof info.status === 'string' ? info.status : 'completed');
+	const status: 'in_progress' | 'completed' | 'failed' =
+		rawStatus === 'failed'
+			? 'failed'
+			: (rawStatus === 'running' || rawStatus === 'in_progress' ? 'in_progress' : 'completed');
+	// A failed compaction did not replace the context: it is operational
+	// feedback, not a transcript boundary. The live card shows it once; the
+	// reloaded history must not replay a wall of "Nothing to compact yet".
+	if (status === 'failed') {
+		return null;
+	}
+	const reason = typeof info.compactionReason === 'string'
+		? info.compactionReason
+		: (typeof info.reason === 'string' ? info.reason : 'auto');
+	const raw: Record<string, unknown> = { type: 'compaction' };
+	if (typeof info.id === 'string' && info.id) {
+		raw.id = info.id;
+		raw.uuid = info.id;
+	}
+	const tokens = info.tokens && typeof info.tokens === 'object'
+		? info.tokens as Record<string, unknown>
+		: undefined;
+	const error = compactionErrorMessage(info.error);
+	return {
+		type: MessageType.COMPACTION,
+		content: summary,
+		timestamp,
+		raw,
+		compaction: {
+			status,
+			reason,
+			startedAt: timestamp,
+			...(status === 'completed' ? { completedAt: timestamp } : {}),
+			...(tokens ? { tokens } : {}),
+			...(error ? { error } : {}),
+		},
+	};
+}
+
+function compactionErrorMessage(value: unknown): string | undefined {
+	if (typeof value === 'string') {
+		return value.trim() || undefined;
+	}
+	if (value && typeof value === 'object') {
+		const message = (value as Record<string, unknown>).message;
+		if (typeof message === 'string' && message.trim()) {
+			return message;
+		}
+	}
+	return undefined;
 }
 
 export function convertSdkMessages(entries: SdkMessageEntry[]): ChatMessage[] {

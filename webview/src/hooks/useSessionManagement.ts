@@ -32,7 +32,6 @@ interface UseSessionManagementOptions {
   setLoading: (loading: boolean) => void;
   setIsThinking: (thinking: boolean) => void;
   setStreamingActive: (active: boolean) => void;
-  setSessionLoading: (loading: boolean) => void;
   /** Clears async subagent task events so stale completions cannot leak across sessions. */
   setTaskEvents?: React.Dispatch<React.SetStateAction<TaskEventMap>>;
   /** Clears SSE todos so stale todo lists cannot leak across sessions. */
@@ -85,7 +84,6 @@ export function useSessionManagement({
   setLoading: setLoadingState,
   setIsThinking,
   setStreamingActive,
-  setSessionLoading,
   setTaskEvents,
   setSseTodos,
   setSubagentHistories,
@@ -127,7 +125,7 @@ export function useSessionManagement({
     // Use the single cleanup entry point exposed by useWindowCallbacks.
     // This clears both React state AND internal streaming refs in one shot.
     if (typeof window.__resetTransientUiState === 'function') {
-      window.__resetTransientUiState(true);
+      window.__resetTransientUiState();
     } else {
       // Fallback if useWindowCallbacks hasn't mounted yet (e.g. during SSR/tests)
       clearToasts();
@@ -137,10 +135,10 @@ export function useSessionManagement({
       setStreamingActive(false);
     }
     mutateTranscript((transcript) => transcript.clear());
-    if (nextSessionId !== null) {
-      setSessionLoading(true);
-    }
-    cardDebugLog('[SessionManagement] beginSessionTransition: sessionLoading set to', nextSessionId !== null, 'nextSessionId:', nextSessionId);
+    // The indicator belongs to the tab that is switching: another tab's reset
+    // or a load finishing elsewhere must not hide it.
+    getTabStore().setHistoryLoading(transitionTabId, nextSessionId !== null);
+    cardDebugLog('[SessionManagement] beginSessionTransition: historyLoading set to', nextSessionId !== null, 'tab:', transitionTabId, 'nextSessionId:', nextSessionId);
     // Drop async subagent events from the prior session: tool_use_ids are
     // globally unique so stale entries cannot mislabel the new session's
     // agents, but leaving them would grow the map without bound.
@@ -185,10 +183,10 @@ export function useSessionManagement({
       const ended = endTransition(transitionTabId, token);
       if (ended) {
         cardDebugLog('[SessionManagement] Transition guard timed out — auto-releasing');
-        setSessionLoading(false);
+        getTabStore().setHistoryLoading(transitionTabId, false);
       }
     }, 15_000); // 15 seconds — generous enough for slow history loads
-  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, setSessionLoading, mutateTranscript, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
+  }, [clearToasts, currentSessionIdRef, setStatus, setLoadingState, setIsThinking, setStreamingActive, mutateTranscript, setCurrentSessionId, setCustomSessionTitle, setUsagePercentage, setUsageUsedTokens, setUsageMaxTokens, setTaskEvents, setSseTodos, setSubagentHistories, onResetToPreferredModel]);
 
   /**
    * Open a fresh, unbound tab.
@@ -297,7 +295,7 @@ export function useSessionManagement({
       cardDebugLog('[SessionManagement] same session soft reload, sending load_session');
       cardDebugLog('[SessionManagement] BEFORE: tab transition=', isTabTransitioning(getTabStore().getActiveTabId()), 'softReload=', window.__softSessionReloadInFlight);
       // Set transition guard so backend's clearMessages (from restoreMessages)
-      // won't reset sessionLoading to false before messages arrive — prevents
+      // won't clear the indicator before messages arrive — prevents
       // the empty-state flash that occurs when the tab is not transitioning.
       const softReloadTabId = getTabStore().getActiveTabId() ?? null;
       const softReloadToken = createSessionTransitionToken();

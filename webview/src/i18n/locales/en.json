@@ -200,7 +200,8 @@
     "filesSection": "Files",
     "filesEmpty": "No matching files",
     "renderError": "Message rendering failed",
-    "autoCompacting": "Auto-compacting conversation tokens..."
+    "autoCompacting": "Auto-compacting conversation tokens...",
+    "manualCompacting": "Compacting conversation context..."
   },
   "settings": {
     "title": "Settings",

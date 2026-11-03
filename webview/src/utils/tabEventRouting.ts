@@ -69,6 +69,9 @@ export function appendDeltaToTab(tab: SessionTabData, delta: string): void {
 /** Replace a tab's transcript with a host snapshot (background tab). */
 export function applySnapshotToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
   tab.transcript.applySnapshot(messages);
+  // Background tabs keep no delta buffers; discard the boundary flag so a later
+  // foreground read cannot reset the active tab's buffers with it.
+  tab.transcript.consumeCompactionBoundary();
 }
 
 /** Prepend an older page to a tab's transcript. */

@@ -7,11 +7,8 @@ import {
   shouldShowMessage as shouldShowMessageUtil,
   getContentBlocks as getContentBlocksUtil,
   mergeConsecutiveAssistantMessages,
-  attachCompactBoundaryMetadata,
   isTaskNotificationOnlyMessage,
   hasNonHumanOrigin,
-  isCompactCommandMessage,
-  isCompactSummaryMessage,
   MESSAGE_TYPES,
 } from '../utils/messageUtils';
 import type { ClaudeContentBlock, ClaudeMessage, ClaudeRawMessage } from '../types';
@@ -113,100 +110,35 @@ export function useMessageProcessing({ messages, currentSessionId, t }: UseMessa
   // instead of 'user' type so they render correctly (left-aligned, no bubble).
   // This includes task_notification, hook, agent, queue, channel, etc.
   const mergedMessages = useMemo(() => {
-    // Pair compact_boundary system lines with their compact-summary user line
-    // (attaches compactMetadata, drops the metadata-only boundary line).
+    // Merge assistant fragments before visibility filtering so hidden boundary
+    // messages still separate distinct turns in the rendered timeline.
+    // Non-human origin user messages are re-typed as notifications so they
+    // render left-aligned without a bubble.
     const merged = mergeConsecutiveAssistantMessages(
-      attachCompactBoundaryMetadata(messages),
+      messages,
       normalizeBlocks,
       mergedAssistantMessageCache.current
     );
 
     const visible: ClaudeMessage[] = [];
-
-    // A locally injected compact result (see SessionTabData.compactNotice) is the
-    // authoritative feedback for this compaction. The persisted summary it
-    // describes must not render as a second pill next to it.
-    const hasLocalCompactNotice = merged.some((message) => {
-      if (message.type !== MESSAGE_TYPES.COMPACT_NOTIFICATION) return false;
-      const raw = message.raw;
-      return !!raw && typeof raw === 'object' && Boolean((raw as Record<string, unknown>).compactStatus);
-    });
-
     for (const message of merged) {
-      // ── Compact summary → notification ─────────────────────────────────
-      // Must happen before shouldShowMessage because isCompactSummary
-      // messages are filtered out there. Show as left-aligned collapsible
-      // notification block with title, metadata, and expandable summary.
-      // /compact command messages pass through to shouldShowMessage where
-      // hasCommandMessageTag returns true → rendered as normal user message.
-      // stdout messages are hidden by HIDDEN_OUTPUT_TAGS filter.
-      if (isCompactSummaryMessage(message) && !isTaskNotificationOnlyMessage(message)) {
-        // The tab's own result pill (`SessionTabData.compactNotice`) is the
-        // authoritative feedback for this compaction. While it is present the
-        // persisted summary it describes must not render as a second pill.
-        // Testing `!message.content` was wrong: a real summary always has
-        // content, so the suppression never fired.
-        if (hasLocalCompactNotice) continue;
-        visible.push({ ...message, type: MESSAGE_TYPES.NOTIFICATION });
+      // A compaction record is a host-owned transcript fact; it must never be
+      // dropped by the text-oriented visibility heuristics below.
+      if (message.type === MESSAGE_TYPES.COMPACTION) {
+        visible.push(message);
         continue;
       }
-
-      // ── Standard visibility + type transforms ──────────────────────────
       if (shouldShowMessageCached(message)) {
         if (message.type === MESSAGE_TYPES.USER && isTaskNotificationOnlyMessage(message)) {
           visible.push({ ...message, type: MESSAGE_TYPES.TASK_NOTIFICATION });
-        }
-        else if (message.type === MESSAGE_TYPES.USER && hasNonHumanOrigin(message)) {
+        } else if (message.type === MESSAGE_TYPES.USER && hasNonHumanOrigin(message)) {
           visible.push({ ...message, type: MESSAGE_TYPES.NOTIFICATION });
         } else {
           visible.push(message);
         }
       }
     }
-
-    // Post-process: ensure /compact command appears before its compact
-    // summary notification. In CLI output the isCompactSummary message can
-    // precede the /compact command in the JSONL file, so after filtering
-    // intermediate messages they may end up adjacent in the wrong order:
-    // [notification, /compact user]. Swap them.
-    //
-    // Assumption: each /compact invocation produces exactly one summary, so
-    // we only ever need to swap a single adjacent pair per cluster. After a
-    // swap we advance by 2 (via `i += 2`) to avoid re-considering the just-
-    // swapped notification as the `curr` of the next iteration, which would
-    // otherwise undo the swap if a second compact pair follows immediately.
-    for (let i = 0; i < visible.length - 1; i++) {
-      const curr = visible[i];
-      const next = visible[i + 1];
-      const currRaw = curr.raw;
-      if ((curr.type === MESSAGE_TYPES.COMPACT_NOTIFICATION || curr.type === MESSAGE_TYPES.NOTIFICATION)
-        && currRaw && typeof currRaw === 'object' && currRaw.isCompactSummary
-        && next.type === MESSAGE_TYPES.USER && isCompactCommandMessage(next)) {
-        visible[i] = next;
-        visible[i + 1] = curr;
-        i++; // Skip the swapped pair to keep ordering stable for chained compacts
-      }
-    }
-
-    // A compact pill describes the context state the next prompt replaces.
-    // Keep it while it is still the newest user-facing event — an assistant
-    // continuation after an automatic compaction does not count — and drop it
-    // once the user sends a later message. This also keeps reloaded history
-    // from stacking one pill per past compaction.
-    let lastUserPromptIndex = -1;
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const message = visible[i];
-      if (message.type !== MESSAGE_TYPES.USER || isCompactSummaryMessage(message)) continue;
-      lastUserPromptIndex = i;
-      break;
-    }
-
-    return lastUserPromptIndex >= 0
-      ? visible.filter((message, index) => !(isCompactSummaryMessage(message) && index < lastUserPromptIndex))
-      : visible;
-    // Note: isTaskNotificationOnlyMessage, hasNonHumanOrigin, isCompactRelatedMessage
-    // are stable module-level pure functions imported from messageUtils — their references
-    // never change, so they don't need to be in the dependency array.
+    return visible;
   }, [messages, shouldShowMessageCached, normalizeBlocks]);
 
   return {

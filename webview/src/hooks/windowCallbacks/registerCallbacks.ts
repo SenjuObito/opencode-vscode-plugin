@@ -145,7 +145,6 @@ export function registerWindowCallbacks(
     setLoadingStartTime: options.setLoadingStartTime,
     setIsThinking: options.setIsThinking,
     setStreamingActive: options.setStreamingActive,
-    setSessionLoading: options.setSessionLoading,
     isStreamingRef: options.isStreamingRef,
     useBackendStreamingRenderRef: options.useBackendStreamingRenderRef,
     streamingMessageIndexRef: options.streamingMessageIndexRef,

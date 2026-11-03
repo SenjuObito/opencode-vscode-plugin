@@ -109,7 +109,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       sdkInstalled = true,
       daemonStatusLoaded = false,
       onRetryDaemonStatus,
-      sessionLoading,
+      historyLoading,
       addToast,
       messageQueue,
       queuePaused,
@@ -657,7 +657,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           autoOpenFileEnabled={autoOpenFileEnabled}
           onRequestEnableFileContext={handleRequestEnableFileContext}
           onCompactClick={onCompactClick}
-          sessionLoading={sessionLoading}
+          historyLoading={historyLoading}
         />
 
         {/* Input area */}

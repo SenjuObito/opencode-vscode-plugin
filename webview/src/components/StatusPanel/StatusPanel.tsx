@@ -13,8 +13,8 @@ import DiscardAllDialog from './DiscardAllDialog';
 import type { TabType, StatusPanelProps } from './types';
 import './StatusPanel.less';
 
-const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, sessionLoading = false, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll, activeTab, onActiveTabChange }: StatusPanelProps) => {
-  cardDebugLog('[StatusPanel] render, sessionLoading:', sessionLoading, 'expanded:', expanded);
+const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, currentSessionId, currentProvider, historyLoading = false, expanded = true, isStreaming = false, onUndoFile, onDiscardAll, onKeepAll, activeTab, onActiveTabChange }: StatusPanelProps) => {
+  cardDebugLog('[StatusPanel] render, historyLoading:', historyLoading, 'expanded:', expanded);
   const { t } = useTranslation();
   const [localPopover, setLocalPopover] = useState<TabType | null>(null);
   // 受控时以 tab 的 statusPanelTab 为准：切 tab 会带回它自己的子页（§10.9）。
@@ -249,7 +249,7 @@ const StatusPanel = ({ todos, fileChanges, subagents, subagentHistories, current
   }, [onDiscardAll, onUndoFile, t]);
 
   if (!expanded) {
-    cardDebugLog('[StatusPanel] expanded is false, returning null (sessionLoading:', sessionLoading, ')');
+    cardDebugLog('[StatusPanel] expanded is false, returning null (historyLoading:', historyLoading, ')');
     return null;
   }
 

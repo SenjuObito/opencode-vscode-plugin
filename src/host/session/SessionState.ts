@@ -261,6 +261,174 @@ export class SessionState {
 	}
 
 	/**
+	 * 当前正在进行的压缩记录（最多一条）。
+	 *
+	 * <p>引擎在同一会话里串行执行压缩，所以 `running` 期间再次收到 started
+	 * 只能理解为同一次压缩的第二个信号，而不是第二次压缩。</p>
+	 */
+	findActiveCompaction(): ChatMessage | undefined {
+		for (let i = this.messages.length - 1; i >= 0; i--) {
+			const message = this.messages[i];
+			if (message.type === MessageType.COMPACTION && message.compaction?.status === 'in_progress') {
+				return message;
+			}
+		}
+		return undefined;
+	}
+
+	hasActiveCompaction(): boolean {
+		return this.findActiveCompaction() != null;
+	}
+
+	/** 按引擎消息 id 找一条压缩记录（历史行与实时卡共用身份）。 */
+	findCompactionById(id: string | null | undefined): ChatMessage | undefined {
+		if (!id) {
+			return undefined;
+		}
+		for (let i = this.messages.length - 1; i >= 0; i--) {
+			const message = this.messages[i];
+			if (message.type !== MessageType.COMPACTION) {
+				continue;
+			}
+			const raw = message.raw as Record<string, unknown> | undefined;
+			if (raw && (raw.id === id || raw.uuid === id)) {
+				return message;
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * 开始（或继续）一次压缩。
+	 *
+	 * <p>只创建，不追加第二条：已有 running 记录时只补齐 reason / id。
+	 * 返回的记录位置固定，终态不会把它移动到列表末尾。</p>
+	 */
+	beginCompaction(reason: string, engineId?: string | null): ChatMessage {
+		const active = this.findActiveCompaction();
+		if (active) {
+			if (active.compaction) {
+				// The first trigger owns the wording: a manual /compact creates
+				// the record before the engine's own (often `auto`-shaped) start.
+				active.compaction = {
+					...active.compaction,
+					reason: active.compaction.reason || reason,
+				};
+			}
+			if (engineId) {
+				stampCompactionId(active, engineId, false);
+			}
+			return active;
+		}
+
+		const startedAt = Date.now();
+		const message: ChatMessage = {
+			type: MessageType.COMPACTION,
+			content: '',
+			timestamp: startedAt,
+			raw: { type: 'compaction' },
+			compaction: {
+				status: 'in_progress',
+				reason: reason || 'auto',
+				startedAt,
+			},
+		};
+		if (engineId) {
+			stampCompactionId(message, engineId, false);
+		}
+		this.messages.push(message);
+		return message;
+	}
+
+	/** 压缩摘要增量（仅用于 running 记录；终态会带完整 summary）。 */
+	applyCompactionSummary(text: string): void {
+		if (!text) {
+			return;
+		}
+		const active = this.findActiveCompaction();
+		if (!active) {
+			return;
+		}
+		active.content = (active.content ?? '') + text;
+	}
+
+	/**
+	 * 结束一次压缩。
+	 *
+	 * <p>终态只更新，不新建：先找 running，再按引擎 id 找；都找不到才补建
+	 * （引擎在漏发 started 时也会补一条 completed/failed）。因此重复的、
+	 * 迟到的终态事件都不会多出一条记录。</p>
+	 */
+	finishCompaction(
+		status: 'completed' | 'failed',
+		options: {
+			id?: string | null;
+			summary?: string;
+			error?: string;
+			tokens?: Record<string, unknown>;
+			reason?: string;
+			startedAt?: number;
+			completedAt?: number;
+		} = {},
+	): ChatMessage {
+		const { id, summary, error, tokens, reason, startedAt } = options;
+		let target = this.findActiveCompaction() ?? this.findCompactionById(id);
+		if (!target) {
+			const createdAt = typeof startedAt === 'number' && startedAt > 0 ? startedAt : Date.now();
+			target = {
+				type: MessageType.COMPACTION,
+				content: '',
+				timestamp: createdAt,
+				raw: { type: 'compaction' },
+				compaction: {
+					status,
+					reason: reason || 'auto',
+					startedAt: createdAt,
+				},
+			};
+			if (id) {
+				stampCompactionId(target, id, true);
+			}
+			this.messages.push(target);
+		}
+
+		const previous = target.compaction ?? {
+			status: 'in_progress' as const,
+			reason: reason || 'auto',
+		};
+		const completedAt = typeof options.completedAt === 'number' && options.completedAt > 0
+			? options.completedAt
+			: Date.now();
+		const nextStartedAt = previous.startedAt
+			?? (typeof startedAt === 'number' && startedAt > 0 ? startedAt : undefined);
+		const next = {
+			...previous,
+			status,
+			reason: reason || previous.reason,
+			...(nextStartedAt != null ? { startedAt: nextStartedAt } : {}),
+			completedAt,
+			...(nextStartedAt != null ? { durationMs: Math.max(0, completedAt - nextStartedAt) } : {}),
+			...(tokens && typeof tokens === 'object' ? { tokens } : {}),
+		};
+		if (status === 'failed') {
+			if (error) next.error = error;
+		} else {
+			// A late success supersedes a timeout failure: the card's error text
+			// must not survive next to a completed summary.
+			delete next.error;
+		}
+		target.compaction = next;
+		// 终态 id 是权威身份：它必须覆盖 started 阶段可能拿到的 inputID。
+		if (id) {
+			stampCompactionId(target, id, true);
+		}
+		if (status === 'completed' && typeof summary === 'string' && summary.trim().length > 0) {
+			target.content = summary;
+		}
+		return target;
+	}
+
+	/**
 	 * 把迟到的回合失败原因落到转录里。
 	 *
 	 * 本地 180s 兜底超时已经报过一次失败，所以这条修正必须**改写**那一行而不是
@@ -360,6 +528,23 @@ export function createMessage(
 	timestamp: number = Date.now(),
 ): ChatMessage {
 	return { type, content, timestamp, raw };
+}
+
+/** 给压缩记录写入引擎消息 id（历史行与实时卡共用的身份）。 */
+function stampCompactionId(message: ChatMessage, id: string, overwrite: boolean): void {
+	if (!id) {
+		return;
+	}
+	const raw: Record<string, unknown> = message.raw && typeof message.raw === 'object'
+		? { ...(message.raw as Record<string, unknown>) }
+		: { type: 'compaction' };
+	if (overwrite || raw.id == null || raw.id === '') {
+		raw.id = id;
+	}
+	if (overwrite || raw.uuid == null || raw.uuid === '') {
+		raw.uuid = id;
+	}
+	message.raw = raw;
 }
 
 /**

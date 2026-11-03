@@ -592,10 +592,6 @@ suite('P8: per-tab host-owned message queue', () => {
 			await enqueue(h.chatWindow, tabA.value, 'a-2', 'third');
 
 			assert.deepStrictEqual(record.queue.items().map((item) => item.command), [undefined, '/compact', undefined]);
-			assert.ok(
-				!h.view.events().some((event) => event.type === 'session.compact.started'),
-				'a queued compact has not started yet',
-			);
 
 			(sessionA.session.state as SessionState).setBusy(false);
 			h.chatWindow.queuePump.onTabSettled(record);
@@ -610,16 +606,8 @@ suite('P8: per-tab host-owned message queue', () => {
 			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first'],
 				'nothing overtakes the in-flight command');
 			assert.deepStrictEqual(record.queue.items().map((item) => item.id), ['a-2']);
-			// The command publishes its own start the moment the summarize
-			// request leaves, so the view does not sit idle waiting for the
-			// engine's (optional) lifecycle event.
-			const starts = h.view.events().filter((event) => event.type === 'session.compact.started');
-			assert.strictEqual(starts.length, 1);
-			const startedPayload = starts[0].payload as Record<string, unknown>;
-			assert.strictEqual(startedPayload.source, 'command');
-			assert.strictEqual(startedPayload.reason, 'manual');
-			assert.strictEqual(startedPayload.sessionId, 'ses_a');
-			assert.strictEqual(typeof startedPayload.startedAt, 'number');
+			// The command's own result is the only command-plane event the
+			// queue needs; the transcript record is created by the session.
 			assert.strictEqual(h.daemon.calls[0]?.method, 'opencode.summarize');
 
 			h.daemon.calls[0].complete('{"success":true}');

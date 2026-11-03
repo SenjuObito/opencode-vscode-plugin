@@ -263,20 +263,19 @@ export class TabSessionCommandHandler {
 		if (model) {
 			params.model = model.trim();
 		}
+		const session = target.record.getSession();
+		// Test doubles and partially wired hosts may not expose the session
+		// domain methods; the command plane must still work there.
+		const beginCompaction = session?.beginCompaction?.bind(session);
+		const finishCompaction = session?.finishCompaction?.bind(session);
 		// The user pressed compact and the request is about to leave for the
-		// engine: show the indicator now. The engine's own compaction lifecycle
-		// also reports a start, but it is not guaranteed (and on some engines it
-		// only lands once the summary message exists), so waiting for it leaves
-		// the button looking dead. The view ignores a second start for a tab that
-		// is already compacting.
-		this.publish('session.compact.started', target.tabId, target.sessionId, {
-			sessionId: target.sessionId,
-			startedAt: Date.now(),
-			reason: 'manual',
-			source: 'command',
-		});
+		// engine: create the transcript record now. The engine's own lifecycle
+		// also reports a start, but waiting for it leaves the button looking
+		// dead. The record state machine reuses this one for that second signal.
+		beginCompaction?.('manual');
 		this.request('summarize', params, (success) => {
 			if (!success) {
+				finishCompaction?.('failed', { error: 'compact failed' });
 				this.publish('session.compact.failed', target.tabId, target.sessionId, {
 					error: 'compact failed',
 					data: target.sessionId,
@@ -286,6 +285,13 @@ export class TabSessionCommandHandler {
 				});
 				return;
 			}
+			// The engine's `ended` is authoritative and normally lands first.
+			// Close a still-running record as a fallback so a lost terminal event
+			// cannot leave the card spinning forever; a late `ended` then fills
+			// the summary into the same record.
+			if (session?.state.hasActiveCompaction()) {
+				finishCompaction?.('completed');
+			}
 			this.publish('session.compact.done', target.tabId, target.sessionId, {
 				data: target.sessionId,
 				sessionId: target.sessionId,
@@ -293,13 +299,16 @@ export class TabSessionCommandHandler {
 				source: 'command',
 				requestId: command.requestId,
 			});
-		}, (error) => this.publish('session.compact.failed', target.tabId, target.sessionId, {
-			error,
-			data: target.sessionId,
-			reason: 'manual',
-			source: 'command',
-			requestId: command.requestId,
-		}));
+		}, (error) => {
+			finishCompaction?.('failed', { error });
+			this.publish('session.compact.failed', target.tabId, target.sessionId, {
+				error,
+				data: target.sessionId,
+				reason: 'manual',
+				source: 'command',
+				requestId: command.requestId,
+			});
+		});
 	}
 
 	// ── Shared plumbing ──────────────────────────────────────────────────

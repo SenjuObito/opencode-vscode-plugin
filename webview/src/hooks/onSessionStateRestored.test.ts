@@ -19,7 +19,6 @@ describe('onSessionStateRestored', () => {
     setIsThinking: vi.fn(),
     setExpandedThinking: vi.fn(),
     setStreamingActive: vi.fn(),
-    setSessionLoading: vi.fn(),
     setHistoryData: vi.fn(),
     setCurrentSessionId: vi.fn(),
     setCustomSessionTitle: vi.fn(),

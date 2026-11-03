@@ -9,6 +9,27 @@ export enum MessageType {
 	ASSISTANT = 'assistant',
 	SYSTEM = 'system',
 	ERROR = 'error',
+	/**
+	 * One compaction of the conversation.
+	 *
+	 * <p>It is a first-class transcript record, not a notice: the engine
+	 * persists it with an id and a status, it participates in ordering,
+	 * paging, revert and history reload, and it is the boundary between the
+	 * assistant segment before the compaction and the one after it.</p>
+	 */
+	COMPACTION = 'compaction',
+}
+
+/** Lifecycle of one compaction record. */
+export interface CompactionMeta {
+	status: 'in_progress' | 'completed' | 'failed';
+	/** `manual` for a user-issued /compact, `auto` for the context window. */
+	reason: 'manual' | 'auto' | string;
+	startedAt?: number;
+	completedAt?: number;
+	durationMs?: number;
+	tokens?: Record<string, unknown>;
+	error?: string;
 }
 
 export interface ChatMessage {
@@ -17,6 +38,8 @@ export interface ChatMessage {
 	timestamp: number;
 	raw?: unknown; // raw SDK JSON object (message blocks, usage, …)
 	durationMs?: number;
+	/** Present only on {@link MessageType.COMPACTION}. */
+	compaction?: CompactionMeta;
 }
 
 /** Minimal permission request (Phase 4 wires the full dialog + reply path). */
@@ -102,8 +125,6 @@ export interface SessionCallback {
 	 * payload 为 JSON 对象字符串。
 	 */
 	onRetryStatus?(payload: string): void;
-	onCompactionStarted?(payload: string): void;
-	onCompactionDelta?(payload: string): void;
-	onCompactionEnded?(payload: string): void;
-	onCompactionFailed?(payload: string): void;
+	/** 立刻冲刷悬而未决的消息快照（压缩边界需要确定性顺序）。 */
+	onFlushMessageUpdate?(): void;
 }

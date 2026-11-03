@@ -501,7 +501,7 @@ export interface ChatInputBoxProps {
   /** Retry daemon status check callback */
   onRetryDaemonStatus?: () => void;
   /** Session loading indicator (transitioning between history sessions) */
-  sessionLoading?: boolean;
+  historyLoading?: boolean;
   /** Show toast message */
   addToast?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 

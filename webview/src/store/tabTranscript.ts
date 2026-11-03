@@ -87,6 +87,15 @@ export class TabTranscript {
   private pendingAssistant: ClaudeMessage | null = null;
   private snapshot: ClaudeMessage[] | null = null;
   private streamingTurnId: number | null = null;
+  /**
+   * Set when a snapshot/tail crossed a compaction boundary.
+   *
+   * <p>The view keeps its own delta buffers for the open turn. Once the
+   * pre-compaction bubble is sealed, those buffers still hold the old segment's
+   * text; the view must drop them before the first post-compaction snapshot
+   * merges, or the new bubble inherits the old text.</p>
+   */
+  private compactionBoundaryCrossed = false;
 
   /** How many leading remote messages came from older disk pages. */
   private paged = 0;
@@ -129,6 +138,13 @@ export class TabTranscript {
     return this.streamingTurnId;
   }
 
+  /** True once after a snapshot settled a bubble at a compaction boundary. */
+  consumeCompactionBoundary(): boolean {
+    if (!this.compactionBoundaryCrossed) return false;
+    this.compactionBoundaryCrossed = false;
+    return true;
+  }
+
   get(key: string): ClaudeMessage | undefined {
     return this.byId.get(key);
   }
@@ -151,7 +167,13 @@ export class TabTranscript {
     // report, not a confirmed message: `pendingAssistant` owns that bubble. Its
     // structural blocks (tool_use, tool_result) come from the host, its
     // text/thinking keeps whichever side is further ahead.
+    //
+    // A compaction record is the segment boundary. A pending bubble that sits
+    // before the newest boundary belongs to the pre-compaction segment and must
+    // land there, not below the card; one that sits after it is the open
+    // segment and keeps the normal merge.
     const pending = this.pendingAssistant;
+    const compactionIndex = lastCompactionIndex(messages);
     if (pending) {
       const streamingIndex = lastStreamingCopyIndex(messages, pending);
       if (streamingIndex >= 0) {
@@ -164,6 +186,18 @@ export class TabTranscript {
           content: incomingContent.length > pendingContent.length ? incomingContent : pendingContent,
           raw: mergeRawBlocksDuringStreaming(pending.raw, incoming.raw) as ClaudeMessage['raw'],
         };
+      } else if (compactionIndex >= 0) {
+        windowMessages = [...messages];
+        const preIndex = lastAssistantIndexBefore(windowMessages, compactionIndex);
+        if (preIndex >= 0) {
+          windowMessages[preIndex] = mergePendingIntoHost(windowMessages[preIndex], pending);
+        } else {
+          windowMessages.splice(compactionIndex, 0, pending);
+        }
+        // The next delta belongs to the post-compaction segment and opens a new
+        // bubble; it must never be appended to the sealed one.
+        this.pendingAssistant = null;
+        this.compactionBoundaryCrossed = true;
       }
     }
 
@@ -245,6 +279,42 @@ export class TabTranscript {
       .slice(0, headCount)
       .map((key) => this.byId.get(key))
       .filter((message): message is ClaudeMessage => Boolean(message));
+
+    // A tail can carry a compaction record too (long conversations). Apply the
+    // same boundary rule as `applySnapshot`: settle the pre-compaction pending
+    // into the assistant before the card, or merge a post-compaction streaming
+    // copy into the open bubble instead of duplicating it.
+    const pending = this.pendingAssistant;
+    const compactionIndex = lastCompactionIndex(messages);
+    if (pending && compactionIndex >= 0) {
+      const postIndex = lastAssistantIndexAfter(messages, compactionIndex);
+      if (postIndex >= 0) {
+        const incoming = messages[postIndex];
+        messages = messages.filter((_, index) => index !== postIndex);
+        const incomingContent = incoming.content ?? '';
+        const pendingContent = pending.content ?? '';
+        this.pendingAssistant = {
+          ...pending,
+          content: incomingContent.length > pendingContent.length ? incomingContent : pendingContent,
+          raw: mergeRawBlocksDuringStreaming(pending.raw, incoming.raw) as ClaudeMessage['raw'],
+        };
+      } else {
+        const tail = [...messages];
+        const preIndex = lastAssistantIndexBefore(tail, compactionIndex);
+        if (preIndex >= 0) {
+          tail[preIndex] = mergePendingIntoHost(tail[preIndex], pending);
+        } else {
+          const headIndex = lastAssistantIndexIn(headMessages);
+          if (headIndex >= 0) {
+            headMessages[headIndex] = mergePendingIntoHost(headMessages[headIndex], pending);
+          }
+        }
+        messages = tail;
+        this.pendingAssistant = null;
+        this.compactionBoundaryCrossed = true;
+      }
+    }
+
     this.base = hasFullPrefix ? 0 : tailStart;
     this.replaceRemote([...headMessages, ...messages]);
     this.paged = Math.min(this.paged, headMessages.length);
@@ -308,6 +378,7 @@ export class TabTranscript {
     this.local = [];
     this.pendingAssistant = null;
     this.streamingTurnId = null;
+    this.compactionBoundaryCrossed = false;
     this.paged = 0;
     this.base = 0;
     this.start = 0;
@@ -394,6 +465,7 @@ export class TabTranscript {
    */
   beginAssistant(turnId: number, replay: boolean): number {
     this.streamingTurnId = turnId;
+    this.snapshot = null;
     const pending = this.pendingAssistant;
 
     if (replay) {
@@ -484,23 +556,17 @@ export class TabTranscript {
       return this.indexOfPending();
     }
     const list = this.remoteArray();
+    const segmentStart = this.segmentStartIndex();
     let index = -1;
     if (turnId != null) {
-      for (let i = list.length - 1; i >= 0; i--) {
+      for (let i = list.length - 1; i >= segmentStart; i--) {
         if (list[i]?.type === 'assistant' && list[i].__turnId === turnId) {
           index = i;
           break;
         }
       }
     }
-    if (index < 0) {
-      for (let i = list.length - 1; i >= 0; i--) {
-        if (list[i]?.type === 'assistant') {
-          index = i;
-          break;
-        }
-      }
-    }
+    if (index < 0) index = this.lastRemoteAssistantIndex();
     if (index < 0) return -1;
     list[index] = updater(list[index]);
     this.replaceRemote(list);
@@ -605,9 +671,31 @@ export class TabTranscript {
     const pending = this.pendingAssistant;
     if (pending && (turnId == null || pending.__turnId === turnId)) {
       this.pendingAssistant = apply(pending);
+      this.snapshot = null;
       return;
     }
-    this.patchAssistant(turnId, apply);
+    // A delta never rewrites a sealed assistant. When the current segment has
+    // no assistant yet (the first delta after a compaction), open a new bubble;
+    // otherwise patch the segment's assistant (background tabs, replays).
+    if (this.lastRemoteAssistantIndex() >= 0) {
+      this.patchAssistant(turnId, apply);
+      return;
+    }
+    this.openStreamingBubble(turnId ?? this.streamingTurnId ?? -1);
+    this.pendingAssistant = apply(this.pendingAssistant as ClaudeMessage);
+    this.snapshot = null;
+  }
+
+  /** Open an empty streaming bubble for the current segment. */
+  private openStreamingBubble(turnId: number): void {
+    this.streamingTurnId = turnId;
+    this.pendingAssistant = {
+      type: 'assistant',
+      content: '',
+      isStreaming: true,
+      timestamp: new Date().toISOString(),
+      __turnId: turnId,
+    };
   }
 
   /**
@@ -645,8 +733,9 @@ export class TabTranscript {
       index = list.length - 1;
       current = pending;
     }
+    const segmentStart = lastCompactionIndex(list) + 1;
     if (!current) {
-      for (let i = list.length - 1; i >= 0; i--) {
+      for (let i = list.length - 1; i >= segmentStart; i--) {
         if (list[i]?.type === 'assistant' && list[i].__turnId === params.turnId) {
           index = i;
           current = list[i];
@@ -657,7 +746,7 @@ export class TabTranscript {
     if (!current) {
       // A bubble that lost its `__turnId` (or never carried one) is still the
       // open turn: an open turn cannot have a settled last assistant.
-      for (let i = list.length - 1; i >= 0; i--) {
+      for (let i = list.length - 1; i >= segmentStart; i--) {
         if (list[i]?.type === 'assistant' && list[i].isStreaming) {
           index = i;
           current = list[i];
@@ -826,8 +915,21 @@ export class TabTranscript {
     return this.order.length + this.local.length;
   }
 
-  private lastRemoteAssistantIndex(): number {
+  /**
+   * Index of the first remote message after the newest compaction boundary.
+   *
+   * <p>Streaming lookups stop here: an assistant from before the boundary is
+   * sealed and must never be patched, reclaimed or finalized again.</p>
+   */
+  private segmentStartIndex(): number {
     for (let i = this.order.length - 1; i >= 0; i--) {
+      if (this.byId.get(this.order[i])?.type === 'compaction') return i + 1;
+    }
+    return 0;
+  }
+
+  private lastRemoteAssistantIndex(): number {
+    for (let i = this.order.length - 1; i >= this.segmentStartIndex(); i--) {
       if (this.byId.get(this.order[i])?.type === 'assistant') return i;
     }
     return -1;
@@ -867,7 +969,8 @@ function hasContent(message: ClaudeMessage): boolean {
  * bubble, and merging it would graft another turn's blocks onto this one.</p>
  */
 function lastStreamingCopyIndex(messages: ClaudeMessage[], pending: ClaudeMessage): number {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
+  const boundary = lastCompactionIndex(messages);
+  for (let i = messages.length - 1; i > boundary; i -= 1) {
     const message = messages[i];
     if (message?.type !== 'assistant') continue;
     const pendingTurn = pending.__turnId;
@@ -887,4 +990,51 @@ function contentKey(message: ClaudeMessage): string {
 function providerIdOf(message: ClaudeMessage): string | null {
   const uuid = getRawUuid(message);
   return uuid ?? null;
+}
+
+/** Index of the newest compaction record, or -1. */
+function lastCompactionIndex(messages: ClaudeMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.type === 'compaction') return i;
+  }
+  return -1;
+}
+
+/** Index of the newest assistant strictly after `fromExclusive`, or -1. */
+function lastAssistantIndexAfter(messages: ClaudeMessage[], fromExclusive: number): number {
+  for (let i = messages.length - 1; i > fromExclusive; i -= 1) {
+    if (messages[i]?.type === 'assistant') return i;
+  }
+  return -1;
+}
+
+/** Index of the newest assistant strictly before `beforeExclusive`, or -1. */
+function lastAssistantIndexBefore(messages: ClaudeMessage[], beforeExclusive: number): number {
+  for (let i = beforeExclusive - 1; i >= 0; i -= 1) {
+    if (messages[i]?.type === 'assistant') return i;
+  }
+  return -1;
+}
+
+function lastAssistantIndexIn(messages: ClaudeMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.type === 'assistant') return i;
+  }
+  return -1;
+}
+
+/**
+ * Merge a pre-compaction pending bubble into the host's copy of that assistant.
+ *
+ * <p>The host copy wins identity (provider id, structural blocks); only text and
+ * raw blocks the webview saw first are carried over.</p>
+ */
+function mergePendingIntoHost(host: ClaudeMessage, pending: ClaudeMessage): ClaudeMessage {
+  const hostContent = host.content ?? '';
+  const pendingContent = pending.content ?? '';
+  return {
+    ...host,
+    content: pendingContent.length > hostContent.length ? pendingContent : hostContent,
+    raw: mergeRawBlocksDuringStreaming(host.raw, pending.raw) as ClaudeMessage['raw'],
+  };
 }

@@ -485,7 +485,25 @@ export class OpenCodeSession {
 		this.onSessionEnded?.();
 	}
 
-	/** 从历史恢复：collector 已按 tail 窗口保留，直接采纳窗口与全量元数据。 */
+	/**
+	 * 命令面发起的手动压缩。
+	 *
+	 * <p>引擎的 `compaction.started` 不保证及时到达，而用户需要立刻在对话里
+	 * 看到“正在压缩”。命令面先建立乐观记录，引擎事件到达后由同一个状态机
+	 * 补 id，不会多出第二条。</p>
+	 */
+	beginCompaction(reason: 'manual' | 'auto' = 'manual'): void {
+		this.messageHandler.beginCompaction(reason);
+	}
+
+	/** 命令面 RPC 结果的兜底收口（引擎终态事件仍是权威来源）。 */
+	finishCompaction(
+		status: 'completed' | 'failed',
+		options: { error?: string; summary?: string; reason?: string } = {},
+	): void {
+		this.messageHandler.finishCompaction(status, options);
+	}
+
 	/** 从历史恢复：全量装入状态并推送 updateMessages。 */
 	restoreMessages(messages: unknown[]): void {
 		const seq = this.adapter.coalescer.resetStreamState();

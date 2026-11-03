@@ -24,8 +24,6 @@ export interface UseSessionTabsOptions {
   setIsThinking?: (thinking: boolean) => void;
   status?: string;
   setStatus?: (status: string) => void;
-  sessionLoading?: boolean;
-  setSessionLoading?: (loading: boolean) => void;
   revertBoundaryId?: string | null;
   setRevertBoundaryId?: (id: string | null) => void;
   taskEvents?: Record<string, any>;
