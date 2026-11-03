@@ -25,10 +25,13 @@
     display: flex;
     justify-content: space-between;
     margin-bottom: 6px;
-    align-items: center;
+    align-items: baseline;
+    gap: 8px;
 }
 
 .history-item-title {
+    font-size: var(--ui-font-md);
+    line-height: 1.45;
     font-weight: 600;
     color: var(--text-secondary);
     white-space: nowrap;
@@ -38,23 +41,40 @@
     margin-right: 16px;
 }
 
+/* Provider 品牌图标：14px 与标题字号匹配，按 em 偏移落在文字视觉中线上，
+   不再用 vertical-align:middle（那会对齐 x-height，CJK 下会偏移）。 */
+.history-provider-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-right: 8px;
+    vertical-align: -0.125em;
+}
+
 .history-item-time {
-    font-size: 12px;
+    font-size: var(--ui-font-sm);
+    line-height: 1.45;
     color: var(--text-tertiary);
     white-space: nowrap;
 }
 
 .history-item-meta {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 8px;
-    font-size: 12px;
+    font-size: var(--ui-font-sm);
+    line-height: 1.5;
     color: var(--text-tertiary);
 }
 
+/* 分隔点用 CSS 绘制，不再依赖字体字形（跨平台字形宽度/基线不一致） */
 .history-meta-dot {
-    color: var(--text-tertiary);
-    opacity: 0.5;
+    align-self: center;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto;
 }
 
 .history-filesize-large {
@@ -490,14 +510,17 @@
 .history-session-id-container {
     display: flex;
     align-items: center;
+    align-self: baseline;
     gap: 4px;
 }
 
 /* Session ID text styles */
 .history-session-id {
-    font-family: var(--idea-editor-font-family, monospace);
+    font-family: var(--cc-gui-code-font-family, var(--idea-editor-font-family, monospace));
+    font-variant-numeric: tabular-nums;
     color: var(--text-tertiary);
-    font-size: 12px;
+    font-size: var(--ui-font-sm);
+    line-height: 1.5;
 }
 
 /* Copy session ID button styles */
@@ -506,8 +529,10 @@
     border: none;
     color: var(--text-tertiary);
     cursor: pointer;
-    font-size: 12px;
-    padding: 2px 4px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    flex: 0 0 auto;
     border-radius: 3px;
     transition: all 0.2s;
     display: flex;
@@ -555,16 +580,18 @@
 /* Entrypoint badge styles - generic base style */
 .history-entrypoint-badge {
     display: inline-flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
     padding: 2px 8px;
     border: 1px solid;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: var(--ui-font-xs);
     font-weight: 500;
     line-height: 1;
 
     .codicon {
+        align-self: baseline;
+        transform: translateY(var(--ui-icon-shift));
         font-size: 12px;
     }
 }

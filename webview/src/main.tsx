@@ -2,6 +2,11 @@
 // dispatch are installed before bridgeStartup's waitForBridge polls.
 import './vscodeBridge';
 
+// codicon 必须最先加载：组件 CSS（StatusPanel / ChatInputBox / settings 等）
+// 在 import App 时被一并引入，若 codicon 排在其后，`.x .codicon { font-size }`
+// 与 codicon 基础规则的优先级相同，会被后者的 16px/1 覆盖，导致图标尺寸失控。
+import './codicon.css';
+
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -11,7 +16,6 @@ import { SessionProvider } from './contexts/SessionContext';
 import { UIStateProvider } from './contexts/UIStateContext';
 import { DialogProvider } from './contexts/DialogContext';
 import { TaskEventProvider } from './contexts/SubagentContext';
-import './codicon.css';
 import './styles/app.less';
 import './i18n/config';
 import i18n from './i18n/config';

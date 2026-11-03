@@ -39,15 +39,21 @@
     color: var(--text-secondary);
     padding: 6px 12px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: var(--ui-font-md);
     cursor: pointer;
     transition: all 0.2s;
     font-weight: 500;
     display: flex;
-    align-items: center;
+    align-items: baseline;
+    line-height: 16px;
     position: relative;
     .flex-gap-horizontal(6px);
     .tooltip-bottom-center(32px);
+}
+
+.new-chat-button > .codicon {
+    align-self: baseline;
+    transform: translateY(var(--ui-icon-shift));
 }
 
 .new-chat-button:hover {
@@ -60,14 +66,20 @@
     border: none;
     color: var(--color-chat-bars-muted-text, var(--text-tertiary));
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--ui-font-md);
     padding: 4px 8px;
     border-radius: 4px;
     display: flex;
-    align-items: center;
+    align-items: baseline;
+    line-height: 16px;
     position: relative;
     .flex-gap-horizontal(4px);
     .tooltip-bottom-center(32px);
+}
+
+.back-button > .codicon {
+    align-self: baseline;
+    transform: translateY(var(--ui-icon-shift));
 }
 
 .back-button:hover {
@@ -124,7 +136,7 @@
 /* Session title: editable on hover */
 .session-title-wrapper {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
     min-width: 0;
     overflow: hidden;
@@ -132,7 +144,8 @@
 
 .session-title {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--ui-font-lg);
+    line-height: 1.45;
     padding-left: 8px;
     white-space: nowrap;
     overflow: hidden;
@@ -140,11 +153,12 @@
 }
 
 .session-title-edit-btn {
+    align-self: center;
     background: transparent;
     border: none;
     color: var(--color-chat-bars-muted-text, var(--text-tertiary));
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--ui-font-md);
     padding: 4px;
     border-radius: 4px;
     transition: all 0.2s;
@@ -175,11 +189,12 @@
    buttons also stay hidden until the wrapper is hovered (consistency with
    the edit/fork/share buttons). */
 .session-title-share-btn {
+    align-self: center;
     background: transparent;
     border: none;
     color: var(--color-chat-bars-muted-text, var(--text-tertiary));
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--ui-font-md);
     padding: 4px;
     border-radius: 4px;
     transition: all 0.2s;
@@ -366,6 +381,11 @@
     }
 }
 
+/* 会话 tab 图标尺寸：codicon 基础规则特异性为 (0,2,0)，包装类的 font-size 不会生效 */
+.session-tab-icon .codicon {
+    font-size: 13px;
+}
+
 .session-tab-item {
     position: relative;
     display: inline-flex;
@@ -414,11 +434,12 @@
     .session-tab-inner {
         position: relative;
         display: inline-flex;
-        align-items: center;
+        align-items: baseline;
         gap: 6px;
         padding: 4px 8px;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: var(--ui-font-sm);
+        line-height: var(--ui-line-row);
         color: var(--color-chat-bars-muted-text, var(--text-tertiary));
         background: transparent;
         border: 1px solid transparent;
@@ -437,6 +458,8 @@
                     color 0.15s ease;
 
         .session-tab-icon {
+            align-self: baseline;
+            transform: translateY(var(--ui-icon-shift));
             font-size: 13px;
             flex-shrink: 0;
             display: flex;
@@ -451,6 +474,7 @@
             white-space: nowrap;
             flex: 1;
             min-width: 0;
+            line-height: inherit;
             transition: color 0.15s ease;
         }
 
@@ -466,6 +490,7 @@
         }
 
         .session-tab-close-btn {
+            align-self: center;
             display: flex;
             align-items: center;
             justify-content: center;

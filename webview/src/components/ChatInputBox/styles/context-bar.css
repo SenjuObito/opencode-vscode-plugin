@@ -50,6 +50,10 @@
   outline: none;
 }
 
+.context-tool-btn .codicon {
+  font-size: 14px;
+}
+
 .context-tool-btn:hover:not(:disabled) {
   background: var(--button-hover);
   color: var(--text-primary);
@@ -214,7 +218,7 @@
   text-align: left;
 }
 
-.context-close {
+.context-close.codicon {
   cursor: pointer;
   opacity: 0.7;
   font-size: 14px;

@@ -209,6 +209,74 @@ sequenceDiagram
 
 ---
 
+### 2.4 全局对齐原语与 codicon 加载顺序（VS Code 插件）
+
+#### 问题现象
+
+会话列表卡片、状态面板 tab、消息耗时/token 等位置普遍出现“图标比文字高/低 1–2px”“数字与中文基线不齐”。1x 下偏差只有 0.5–1.5px，但 VS Code 常见 2x DPI 叠加插件 `zoom: 1.1/1.2/1.4` 后会被放大到 2–3 物理像素。
+
+#### 根因
+
+1. **codicon 加载顺序错误（影响面最大）**
+   `main.tsx` 原先先 `import App`（其依赖链会引入 `StatusPanel.less`、`ChatInputBox/styles/*.css`、`settings/**/*.less`），再 `import './codicon.css'`。构建后 codicon 基础规则排在组件规则之后：
+   ```css
+   .codicon[class*=codicon-], .codicon { font: 16px/1 codicon; ... }
+   ```
+   与组件里的 `.status-panel-tab .codicon { font-size: 12px }` 特异性相同（0,2,0），**后出现的 16px 覆盖了组件声明的尺寸**。结果是状态面板、输入区、设置页大量图标实际按 16px 渲染。
+
+2. **文本行用 `align-items:center`**
+   center 居中的是行盒，不是字形；不同字号/字体的 ascent/descent 不同，基线各走各的。
+
+3. **`line-height: normal` 由字体决定**
+   同一份 CSS 在不同平台字体下行高可差 6px，居中基准随之变化。
+
+4. **数字没有统一字体/等宽数字**
+   状态面板用 `--idea-editor-font-family`（硬编码 Menlo），消息区用 `--cc-gui-code-font-family`，且只有少数位置声明 `tabular-nums`。
+
+#### 修复
+
+1. **codicon 必须最先加载**（`webview/src/main.tsx`）：
+   ```ts
+   import './vscodeBridge';
+   import './codicon.css';   // 必须排在 import App 之前
+   import App from './App';
+   ```
+   这样组件 CSS 的后置规则才能覆盖 codicon 的 16px 默认值。
+
+2. **新增 `webview/src/styles/less/alignment.less`**（在 `app.less` 末尾、`responsive.less` 之后引入）：
+   - `--ui-font-xs/sm/md/lg`、`--ui-line-row`、`--ui-icon-shift`；
+   - `.ui-row`：`align-items: baseline`，图标 `align-self: baseline` + `translateY(var(--ui-icon-shift))`；
+   - `.ui-row-center`：纯图标/圆环行；
+   - `.ui-icon`：1em 方盒，消除内联 SVG 的基线空隙；
+   - `.ui-num`：`--cc-gui-code-font-family` + `font-variant-numeric: tabular-nums`；
+   - `.ui-badge`：徽标内部基线对齐。
+
+3. **规范**：
+   - 含文字/数字的行一律 `.ui-row`；只有纯图标行才用 center。
+   - 行高必须显式（px 或无单位），禁止依赖 `normal` 作为对齐基准。
+   - 字体声明必须落在承载文本的元素上（base.less 的全局 `*` 规则会截断 font-family 继承链）。
+   - 不再用 `vertical-align: middle` 对齐行内图标。
+
+4. **`--idea-editor-font-family` 改为别名**：
+   ```less
+   --idea-editor-font-family: var(--cc-gui-code-font-family, 'Menlo', 'Consolas', monospace);
+   ```
+   让历史卡片、状态面板的数字跟随用户配置的代码字体。
+
+#### 实测结果（构建产物 CSS + 无头 Chromium）
+
+| 位置 | 修复前 | 修复后 |
+|---|---|---|
+| 会话卡片标题 ↔ 时间 | 1.5px（140% 时 1.75px） | **0** |
+| 状态面板标签 ↔ `3/7` | 1px（140% 时 1.75px） | **0** |
+| 消息耗时标签 ↔ `1.2s` | 0.25–0.75px | **0** |
+| 图标 ↔ 文字视觉中心（跨 8 种字体） | 约 1px 漂移 | **-0.64 ~ +0.28px**，常见 CJK 字体约为 0 |
+| 状态面板 tab 高度 | 30.5px（图标 16px 撑高） | **28px**（与改造前点击区一致） |
+
+已在 `zoom: 0.9 / 1.0 / 1.2 / 1.4` 下验证文本↔数字基线差恒为 0。
+
+---
+
 ## 3. 单元测试与验证矩阵
 
 ### 3.1 IntelliJ IDEA 插件端测试

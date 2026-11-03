@@ -6,13 +6,6 @@ import { sanitizeUserText } from '../../utils/sanitizeUserText';
 import { ProviderModelIcon } from '../shared/ProviderModelIcon';
 
 // Module-level style constants (avoid breaking memoization)
-const PROVIDER_BADGE_STYLE: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  marginRight: '8px',
-  verticalAlign: 'middle',
-};
-
 const HIGHLIGHT_MARK_STYLE: React.CSSProperties = {
   backgroundColor: '#ffd700',
   color: '#000',
@@ -215,10 +208,9 @@ export const HistoryListItem = memo(({
           {session.provider && (
             <span
               className="history-provider-badge"
-              style={PROVIDER_BADGE_STYLE}
               title={session.provider === 'claude' ? 'Claude' : 'Codex'}
             >
-              <ProviderModelIcon providerId={session.provider} size={20} colored />
+              <ProviderModelIcon providerId={session.provider} size={14} colored />
             </span>
           )}
           {isEditing ? (
@@ -306,7 +298,7 @@ export const HistoryListItem = memo(({
               }`}></span>
               {t(`history.entrypointLabel.${session.entrypoint}`, { defaultValue: session.entrypoint })}
             </span>
-            <span className="history-meta-dot">•</span>
+            <span className="history-meta-dot" aria-hidden="true" />
           </>
         )}
         <div className="history-session-id-container">

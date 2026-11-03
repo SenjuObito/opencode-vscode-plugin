@@ -44,7 +44,7 @@
   padding: 4px;
 }
 
-.attachment-file-icon {
+.attachment-file-icon.codicon {
   font-size: 20px;
   color: var(--text-secondary);
 }

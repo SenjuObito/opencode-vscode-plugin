@@ -20,8 +20,9 @@
     --cc-gui-ui-font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif;
     /* 当前插件实际使用的代码字体 */
     --cc-gui-code-font-family: 'Menlo', 'Consolas', monospace;
-    /* 兼容旧样式里对 --idea-editor-font-family 的引用 */
-    --idea-editor-font-family: 'Menlo', 'Consolas', monospace;
+    /* 兼容旧样式里对 --idea-editor-font-family 的引用：跟随用户配置的代码字体，
+       避免状态面板/历史卡片里的数字与消息区使用两套等宽字体 */
+    --idea-editor-font-family: var(--cc-gui-code-font-family, 'Menlo', 'Consolas', monospace);
     --idea-editor-font-size: 14px;
     --idea-editor-line-spacing: 1.5;
 }

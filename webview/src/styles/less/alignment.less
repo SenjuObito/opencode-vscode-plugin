@@ -1,0 +1,95 @@
+/* ==========================================================================
+ * 对齐原语（Alignment primitives）
+ *
+ * 背景：本 webview 里 90% 的“图标/文字/数字不对齐”都来自同一类写法——
+ * 在有文字的 flex 行上用 align-items:center，并给文本容器写 line-height:1
+ * 来“凑”高度。center 居中的是行盒，不是字形；不同字号、不同字体的
+ * ascent/descent 不同，基线就会各走各的（实测跨字体可差 1–3.5px）。
+ *
+ * 规范（跨平台有效）：
+ *   1. 含文字/数字的行一律基线对齐（.ui-row），图标不再参与行盒居中。
+ *   2. 图标锚定在基线上，再用固定 em 偏移把视觉中心对到文字视觉中心；
+ *      偏移用 em 表达，字号缩放/DPI 缩放时等比缩放。
+ *   3. 数字统一 .ui-num：等宽数字 + 代码字体，避免宽度抖动与字体度量差。
+ *   4. 行高必须显式（px 或无单位），禁止依赖 line-height:normal——
+ *      normal 由字体决定，跨平台可差 6px。
+ *   5. 字体声明必须落在承载文本的元素上：base.less 的全局 * 规则会截断
+ *      font-family 继承链，父容器设字体对子元素无效。
+ * ========================================================================== */
+
+:root {
+    /* 字号刻度：只允许这四档，禁止百分比与小数 px */
+    --ui-font-xs: 11px;
+    --ui-font-sm: 12px;
+    --ui-font-md: 13px;
+    --ui-font-lg: 14px;
+
+    /* 行高刻度 */
+    --ui-line-tight: 1.25;
+    --ui-line-normal: 1.5;
+    --ui-line-row: 20px;
+
+    /* 图标相对基线的固定偏移（按图标字号缩放，可整体微调） */
+    --ui-icon-shift: 0.14em;
+
+    --ui-gap: 6px;
+}
+
+/* 文本 + 数字混合行：基线对齐，跨平台恒为 0 偏差 */
+.ui-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--ui-gap);
+    line-height: var(--ui-line-row);
+}
+
+/* 行内图标：锚定基线 + 固定 em 偏移，位置不再随 UI 字体行盒变化 */
+.ui-row > .codicon {
+    align-self: baseline;
+    transform: translateY(var(--ui-icon-shift));
+}
+
+/* SVG / 固定尺寸图标盒：也是盒子，不参与文字基线 */
+.ui-row > svg,
+.ui-row > .ui-icon {
+    align-self: center;
+    flex: 0 0 auto;
+}
+
+/* 纯图标按钮、圆环等没有文字的行才用 center */
+.ui-row-center {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-gap);
+}
+
+/* 1em 方盒：SVG / codicon 统一装进固定盒子，消除行内基线空隙 */
+.ui-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+/* 计数 / 百分比 / 耗时 / +N / -N */
+.ui-num {
+    font-family: var(--cc-gui-code-font-family, 'Menlo', 'Consolas', monospace);
+    font-variant-numeric: tabular-nums;
+    line-height: inherit;
+}
+
+/* 徽标：内部基线对齐（文字与图标同基线），外部由父级决定垂直位置 */
+.ui-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    line-height: 1;
+}
+
+.ui-badge > .codicon {
+    align-self: baseline;
+    transform: translateY(var(--ui-icon-shift));
+}

@@ -3,12 +3,12 @@
    ============================================================ */
 .selector-button {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 3px;
   padding: 4px 6px;
   height: 24px; /* 固定高度：模型/模式/推理力度三个按钮的 hover 背景高度必须一致 */
   box-sizing: border-box;
-  line-height: 1; /* 消除不同子元素的行高差异（codicon 14px vs 文本 11px vs svg 12px） */
+  line-height: 16px; /* 固定行盒，图标按基线锚定，避免子元素度量差异 */
   background: var(--button-bg);
   border: none;
   border-radius: 4px;
@@ -19,6 +19,15 @@
   transition: background 0.15s, color 0.15s;
 }
 
+.selector-button > .codicon {
+  align-self: baseline;
+  transform: translateY(var(--ui-icon-shift));
+}
+
+.selector-button > svg {
+  align-self: center;
+}
+
 .selector-button:hover {
   background: var(--button-hover);
   color: var(--text-primary);
@@ -26,6 +35,7 @@
 
 /* Compact provider icon button */
 .selector-button.provider-compact {
+  align-items: center;
   padding: 4px 5px;
   gap: 0;
   border-radius: 4px;
@@ -283,7 +293,7 @@
   cursor: default;
 }
 
-.model-selector-group-icon {
+.model-selector-group-icon.codicon {
   font-size: 11px;
   width: 12px;
   opacity: 0.85;
@@ -363,7 +373,7 @@
   opacity: 0.8;
 }
 
-.selector-add-icon {
+.selector-add-icon.codicon {
   font-size: 14px;
   width: 16px;
 }
@@ -442,6 +452,12 @@
   font-size: 11px;
   line-height: 1; /* 防止默认行高把百分比文字撑偏，导致与圆环/附件按钮不齐 */
 }
+
+/* 百分比标签：与 14px 圆环共用同一行高，等宽数字避免数值变化时抖动 */
+.token-percentage-label {
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+}
 .token-indicator-wrap {
   position: relative;
   display: inline-flex; /* inline-block 会让内联 svg 带基线空隙 */
@@ -481,6 +497,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   padding: 6px 8px;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   opacity: 0;
   visibility: hidden;
