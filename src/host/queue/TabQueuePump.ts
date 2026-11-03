@@ -185,11 +185,19 @@ export class TabQueuePump {
 		if (record.isClosed()) {
 			return false;
 		}
-		const state = record.getState();
 		// CREATING is deliberately allowed: it means a provisional session exists
 		// and the *first* send is exactly what turns it into a real one. The
 		// in-flight guard below already stops a second item from starting.
-		if (state === TabState.STREAMING || state === TabState.LOADING_HISTORY) {
+		//
+		// LOADING_HISTORY is a real gate: the transcript the prompt would be
+		// appended to is not there yet.
+		//
+		// STREAMING deliberately is NOT a gate. It is a projection maintained by
+		// the adapter's start/end callbacks and lags the authoritative session
+		// flags; a terminal judged against it can refuse the settlement and leave
+		// the outbox waiting for the next enqueue. `session.isBusy()/isLoading()`
+		// below is the authoritative "a turn is running" signal.
+		if (record.getState() === TabState.LOADING_HISTORY) {
 			return false;
 		}
 		const session = record.getSession();

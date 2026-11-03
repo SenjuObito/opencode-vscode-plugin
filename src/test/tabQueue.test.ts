@@ -410,6 +410,62 @@ suite('P8: per-tab host-owned message queue', () => {
 			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first', 'second']);
 		});
 
+		test('a settlement drains even when the tab still looks streaming', async () => {
+			const h = makeHarness(root);
+			const tabA = h.chatWindow.registry.getActiveTabId()!;
+			const sessionA = bindSession(h.chatWindow, h.factory, tabA.value, 'ses_a');
+
+			await enqueue(h.chatWindow, tabA.value, 'a-1', 'first');
+			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first']);
+			(sessionA.session.state as SessionState).setBusy(true);
+			await enqueue(h.chatWindow, tabA.value, 'a-2', 'second');
+
+			// The terminal arrives before the tab's streaming projection is cleared.
+			h.chatWindow.registry.markStreaming(TabId.of(tabA.value), true);
+			(sessionA.session.state as SessionState).setBusy(false);
+			h.chatWindow.queuePump.onTabSettled(recordOf(h.chatWindow, tabA));
+			await tick();
+
+			assert.deepStrictEqual(
+				sessionA.sent.map((payload) => payload.text),
+				['first', 'second'],
+				'a stale STREAMING projection must not strand the outbox',
+			);
+			assert.strictEqual(recordOf(h.chatWindow, tabA).queue.size(), 0, 'nothing is left waiting');
+		});
+
+		test('the terminal that arrives while the turn is still busy does not strand the queue', async () => {
+			const h = makeHarness(root);
+			const tabA = h.chatWindow.registry.getActiveTabId()!;
+			const sessionA = bindSession(h.chatWindow, h.factory, tabA.value, 'ses_a');
+
+			await enqueue(h.chatWindow, tabA.value, 'a-1', 'first');
+			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first']);
+			(sessionA.session.state as SessionState).setBusy(true);
+			await enqueue(h.chatWindow, tabA.value, 'a-2', 'second');
+
+			// Production order: `turn.settled` is published *before* the handler
+			// clears the session flags, so its drain is refused.
+			h.chatWindow.registry.markStreaming(TabId.of(tabA.value), true);
+			h.chatWindow.queuePump.onTabSettled(recordOf(h.chatWindow, tabA));
+			await tick();
+			assert.deepStrictEqual(sessionA.sent.map((payload) => payload.text), ['first']);
+
+			// The flags clear afterwards; that late wake-up must release the item.
+			(sessionA.session.state as SessionState).setBusy(false);
+			(sessionA.session.state as SessionState).setLoading(false);
+			h.chatWindow.registry.markStreaming(TabId.of(tabA.value), false);
+			// What the window sink does for `session.loading: false`.
+			h.chatWindow.queuePump.onTabIdle(recordOf(h.chatWindow, tabA));
+			await tick();
+
+			assert.deepStrictEqual(
+				sessionA.sent.map((payload) => payload.text),
+				['first', 'second'],
+				'clearing the flags must resume draining without a new enqueue',
+			);
+		});
+
 		test('a brand-new tab sends its first message immediately', async () => {
 			const h = makeHarness(root);
 			const tabA = h.chatWindow.registry.getActiveTabId()!;
