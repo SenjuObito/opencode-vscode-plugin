@@ -438,6 +438,7 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title > 50 chars uses applyHistoryTitleLocal to avoid backend 50-char limit', () => {
     const longTitle = 'A very long AI-generated session title that exceeds fifty characters easily';
+    seedTabStore([{ id: 'tab-new', sessionId: null, isCustomTitle: true }], 'tab-new');
     const opts = createOptions({
       customSessionTitleRef: { current: longTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -454,6 +455,7 @@ describe('useWindowCallbacks integration', () => {
 
   it('setSessionId with title <= 50 chars uses updateHistoryTitle for backend persistence', () => {
     const shortTitle = 'Short user-set title';
+    seedTabStore([{ id: 'tab-new', sessionId: null, isCustomTitle: true }], 'tab-new');
     const opts = createOptions({
       customSessionTitleRef: { current: shortTitle },
       currentSessionIdRef: { current: 'sess-old' },
@@ -466,6 +468,26 @@ describe('useWindowCallbacks integration', () => {
 
     expect(opts.updateHistoryTitle).toHaveBeenCalledWith('sess-new', shortTitle);
     expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
+  });
+
+  it('setSessionId does not persist a draft placeholder as the session title', () => {
+    // The tab shows "会话" until the engine titles the session. Persisting that
+    // placeholder made the server session non-default, which suppressed the
+    // automatic title generated after the first reply.
+    seedTabStore([{ id: 'tab-new', sessionId: null }], 'tab-new');
+    const opts = createOptions({
+      customSessionTitleRef: { current: '会话' },
+      currentSessionIdRef: { current: null },
+    });
+    renderHook(() => useWindowCallbacks(opts));
+
+    act(() => {
+      window.setSessionId!('sess-new');
+    });
+
+    expect(opts.updateHistoryTitle).not.toHaveBeenCalled();
+    expect(opts.applyHistoryTitleLocal).not.toHaveBeenCalled();
+    expect(getTabStore().findById('tab-new')?.sessionId).toBe('sess-new');
   });
 
   // ===== updateMessages is blocked during transition =====

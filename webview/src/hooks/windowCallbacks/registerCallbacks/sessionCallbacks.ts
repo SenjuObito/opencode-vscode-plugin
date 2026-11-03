@@ -83,9 +83,16 @@ export function registerSessionCallbacks(
     currentSessionIdRef.current = sessionId;
     setCurrentSessionId(sessionId);
 
-    // B-011 + B-014: Persist custom title under the real SDK session ID.
+    // B-011 + B-014: Carry a title the user typed onto the session that just
+    // got its id.
+    //
+    // Only a *user* rename may name the session: a draft tab's placeholder
+    // ("会话") or an engine title is not a rename. Persisting the placeholder
+    // here made the server session non-default before the first reply, and the
+    // engine only generates its automatic title for a session that is still
+    // unnamed — so the AI title never arrived and the tab kept the placeholder.
     const title = customSessionTitleRef.current;
-    if (title && oldId !== sessionId) {
+    if (title && oldId !== sessionId && targetTab?.isCustomTitle) {
       if (title.length <= CUSTOM_TITLE_MAX_LENGTH) {
         updateHistoryTitle(sessionId, title);
       } else {
