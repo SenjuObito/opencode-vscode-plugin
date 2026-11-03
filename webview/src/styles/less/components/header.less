@@ -70,16 +70,17 @@
     padding: 4px 8px;
     border-radius: 4px;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     line-height: 16px;
     position: relative;
     .flex-gap-horizontal(4px);
     .tooltip-bottom-center(32px);
 }
 
-.back-button > .codicon {
-    align-self: baseline;
-    transform: translateY(var(--ui-icon-shift));
+.back-button > .codicon,
+.back-button > svg {
+    align-self: center;
+    transform: none;
 }
 
 .back-button:hover {

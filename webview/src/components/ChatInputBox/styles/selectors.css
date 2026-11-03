@@ -3,7 +3,7 @@
    ============================================================ */
 .selector-button {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 3px;
   padding: 4px 6px;
   height: 24px; /* 固定高度：模型/模式/推理力度三个按钮的 hover 背景高度必须一致 */
@@ -20,8 +20,8 @@
 }
 
 .selector-button > .codicon {
-  align-self: baseline;
-  transform: translateY(var(--ui-icon-shift));
+  align-self: center;
+  transform: none;
 }
 
 .selector-button > svg {
