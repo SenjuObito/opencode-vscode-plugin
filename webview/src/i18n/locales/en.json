@@ -170,6 +170,14 @@
       "openTooltip": "Search in conversation (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "Conversation compacted",
+      "tokensAfter": "{{after}} tokens after compaction",
+      "tokensBeforeAfter": "{{before}} → {{after}} tokens",
+      "freedPercent": "{{percent}}% freed",
+      "duration": "took {{duration}}",
+      "summary": "Summary",
+      "copy": "Copy",
+      "copied": "Copied",
       "summarizedConversation": "Summarized conversation",
       "compactSummary": "Compact summary",
       "messagesUpTo": "Summarized {{count}} messages up to this point",

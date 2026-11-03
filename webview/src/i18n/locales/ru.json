@@ -141,6 +141,14 @@
       "openTooltip": "Поиск в беседе (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "Диалог сжат",
+      "tokensAfter": "{{after}} токенов после сжатия",
+      "tokensBeforeAfter": "Контекст {{before}} → {{after}} токенов",
+      "freedPercent": "освобождено {{percent}}%",
+      "duration": "за {{duration}}",
+      "summary": "Сводка",
+      "copy": "Копировать",
+      "copied": "Скопировано",
       "summarizedConversation": "Сводка беседы",
       "compactSummary": "Краткое резюме",
       "messagesUpTo": "Сведено {{count}} сообщений до этого момента",

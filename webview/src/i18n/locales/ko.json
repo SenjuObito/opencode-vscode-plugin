@@ -141,6 +141,14 @@
       "openTooltip": "대화에서 검색 (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "대화가 압축되었습니다",
+      "tokensAfter": "압축 후 {{after}} 토큰",
+      "tokensBeforeAfter": "컨텍스트 {{before}} → {{after}} 토큰",
+      "freedPercent": "{{percent}}% 절감",
+      "duration": "{{duration}} 소요",
+      "summary": "요약",
+      "copy": "복사",
+      "copied": "복사됨",
       "summarizedConversation": "요약된 대화",
       "compactSummary": "대화 요약",
       "messagesUpTo": "이 시점까지의 메시지 {{count}}개를 요약했습니다",

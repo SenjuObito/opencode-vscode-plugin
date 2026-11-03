@@ -411,7 +411,9 @@ export class SessionState {
 			...(tokens && typeof tokens === 'object' ? { tokens } : {}),
 		};
 		if (status === 'failed') {
-			if (error) next.error = error;
+			if (error) {
+				next.error = error;
+			}
 		} else {
 			// A late success supersedes a timeout failure: the card's error text
 			// must not survive next to a completed summary.

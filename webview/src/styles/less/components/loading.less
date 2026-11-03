@@ -84,199 +84,217 @@
     text-align: left;
 }
 
-/* ── Compact Card Spinners (Scheme B) ── */
-@keyframes compactSpinClockwise {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+/* ── Compaction divider (transcript boundary, not a message) ── */
+@keyframes compactDividerFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-@keyframes compactSpinCounterClockwise {
-    0% { transform: rotate(360deg); }
-    100% { transform: rotate(0deg); }
-}
-
-/* ── Smooth Fade In Animation ── */
-@keyframes compactCardFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(3px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* ── Compact Card Wrapper ── */
-.compact-card-wrapper {
-    padding: 0;
+.compact-divider-block {
     width: 100%;
 }
 
-/* 直接挂在消息列表底部的压缩中指示器（不在 .message 内），
-   补上与 .message 相同的左右 20px 边距，保证与压缩成功/失败卡片同宽 */
-.compact-card-wrapper--indicator {
-    padding: 0 20px;
-}
-
-/* ── Compact Card (shared base for compacting / success / failure) ── */
-.compact-card {
+.compact-divider {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 9px 14px;
-    border-radius: 8px;
-    font-size: 13px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-primary);
-    margin: 10px 0;
     width: 100%;
-    box-sizing: border-box;
-    animation: compactCardFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    margin: 2px 0;
+    padding: 0;
 }
 
-.compact-card__icon {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
+.compact-divider__line {
+    flex: 1;
+    min-width: 12px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-secondary));
+}
+
+.compact-divider__line--right {
+    background: linear-gradient(90deg, var(--border-secondary), transparent);
+}
+
+.compact-divider__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+    max-width: 100%;
+    height: 27px;
+    padding: 0 10px 0 8px;
+    border: 1px solid var(--border-primary);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+
+    &:hover:not(:disabled) {
+        border-color: var(--border-hover);
+        background: var(--bg-hover);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--accent-primary);
+        outline-offset: 1px;
+    }
+
+    &:disabled {
+        opacity: 1;
+        cursor: default;
+    }
+}
+
+.compact-divider__icon {
+    flex-shrink: 0;
+    color: var(--color-success);
+}
+
+.compact-divider__chip--auto .compact-divider__icon {
+    color: var(--accent-secondary);
+}
+
+.compact-divider__chip--fail .compact-divider__icon {
+    color: var(--color-error);
+}
+
+.compact-divider__title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.compact-divider__chip--fail .compact-divider__title {
+    color: var(--color-error);
+}
+
+.compact-divider__meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.compact-divider__sep {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.compact-divider__error {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+.compact-divider__spinner {
+    flex-shrink: 0;
+    color: var(--accent-secondary);
+    animation: spin 0.9s linear infinite;
+}
+
+.compact-divider__time {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(128, 128, 128, 0.14);
+    color: var(--text-tertiary);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.compact-divider__chevron {
+    flex-shrink: 0;
+    margin-left: 1px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    opacity: 0.7;
+}
+
+.compact-divider__panel {
+    margin: 8px 0 2px;
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    animation: compactDividerFadeIn 0.16s ease-out;
+}
+
+.compact-divider__panel-head {
     display: flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    font-size: 11px;
-}
-
-.compact-card__icon .codicon {
-    font-size: 12px;
-    line-height: 1;
-}
-
-.compact-card__spinner-dual {
-    position: relative;
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-}
-
-.compact-card__spinner-outer {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 1.5px solid transparent;
-    border-top-color: var(--vscode-progressBar-background, var(--vscode-textLink-foreground, #0e70c0));
-    animation: compactSpinClockwise 1.1s linear infinite;
-}
-
-.compact-card__spinner-inner {
-    position: absolute;
-    inset: 2.5px;
-    border-radius: 50%;
-    border: 1.5px solid transparent;
-    border-top-color: var(--vscode-descriptionForeground, #858585);
-    animation: compactSpinCounterClockwise 0.8s linear infinite;
-}
-
-.compact-card__text {
-    color: var(--vscode-foreground, #b0b0b0);
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.compact-card__text strong {
-    color: var(--vscode-foreground, #e0e0e0);
-    font-weight: 600;
-}
-
-/* Pulsing dots for compacting state */
-.compact-card__dots {
-    display: inline-block;
-    min-width: 1.5em;
-    text-align: left;
-}
-
-/* Time badge in compacting state */
-.compact-card__time-badge {
-    font-size: 11px;
-    font-family: var(--font-mono, monospace);
-    color: var(--vscode-descriptionForeground, #858585);
-    background: rgba(128, 128, 128, 0.12);
-    padding: 1.5px 7px;
-    border-radius: 4px;
-    margin-left: auto;
-    flex-shrink: 0;
-}
-
-/* Compacting state */
-.compact-card--compacting {
-    background: rgba(14, 99, 156, 0.08);
-    border-color: rgba(14, 99, 156, 0.28);
-}
-
-/* Success state */
-.compact-card--success {
-    background: rgba(46, 125, 79, 0.08);
-    border-color: rgba(46, 125, 79, 0.26);
-}
-
-.compact-card--success .compact-card__icon {
-    background: rgba(46, 125, 79, 0.2);
-    color: #6abf69;
-}
-
-/* Failure state */
-.compact-card--failure {
-    background: rgba(197, 69, 59, 0.08);
-    border-color: rgba(197, 69, 59, 0.26);
-}
-
-.compact-card--failure .compact-card__icon {
-    background: rgba(197, 69, 59, 0.2);
-    color: #f48771;
-}
-
-/* ── 方案 3: 极简紧凑单行条 (Ultra-Compact Inline Pill) ── */
-.compact-card--compact-pill {
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    margin: 8px 0;
     gap: 8px;
-    line-height: 1.4;
-    max-width: 100%;
+    padding: 7px 10px 0 12px;
 }
 
-.compact-card--compact-pill .compact-card__pill-icon {
-    font-size: 13px;
-    flex-shrink: 0;
-    line-height: 1;
+.compact-divider__panel-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
 }
 
-.compact-card--compact-pill.compact-card--success .compact-card__pill-icon {
-    color: #6abf69;
-}
-
-.compact-card--compact-pill.compact-card--failure .compact-card__pill-icon {
-    color: #f48771;
-}
-
-.compact-card__pill-title {
-    font-weight: 500;
-    color: var(--vscode-foreground, #cccccc);
-    flex-shrink: 0;
-}
-
-.compact-card--compact-pill.compact-card--failure .compact-card__pill-title {
-    color: var(--vscode-errorForeground, #f48771);
-}
-
-.compact-card__pill-detail {
-    color: var(--vscode-descriptionForeground, #858585);
+.compact-divider__copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font: inherit;
     font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+}
+
+.compact-divider__copy-icon {
+    font-size: 11px;
+}
+
+.compact-divider__panel-body {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 12px 12px;
+    color: var(--text-primary);
+    font-size: 12.5px;
+    line-height: 1.65;
+}
+
+.compact-divider__panel-body .markdown-block {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+
+/* Narrow panels: drop the stats before they squeeze the title. */
+@media (max-width: 560px) {
+    .compact-divider__meta,
+    .compact-divider__sep {
+        display: none;
+    }
+
+    .compact-divider__error {
+        max-width: 140px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .compact-divider__spinner {
+        animation-duration: 2.4s;
+    }
+
+    .compact-divider__panel {
+        animation: none;
+    }
 }

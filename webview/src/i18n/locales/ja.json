@@ -141,6 +141,14 @@
       "openTooltip": "会話内を検索 (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "会話を圧縮しました",
+      "tokensAfter": "圧縮後 {{after}} トークン",
+      "tokensBeforeAfter": "コンテキスト {{before}} → {{after}} トークン",
+      "freedPercent": "{{percent}}% 削減",
+      "duration": "所要 {{duration}}",
+      "summary": "要約",
+      "copy": "コピー",
+      "copied": "コピーしました",
       "summarizedConversation": "要約された会話",
       "compactSummary": "会話の要約",
       "messagesUpTo": "この時点までの{{count}}件のメッセージを要約しました",

@@ -519,7 +519,7 @@ export function getContentBlocks(
     };
     return [{
       type: 'compact_summary',
-      title: compactStatus === 'failure' ? 'chat.compactFailed' : 'chat.compactSummary.compactSummary',
+      title: compactStatus === 'failure' ? 'chat.compactFailed' : 'chat.compactSummary.compacted',
       content,
       compactStatus,
       startTime: meta?.startedAt,

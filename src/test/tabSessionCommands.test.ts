@@ -13,7 +13,20 @@ import type { OpenCodeSession } from '../host/session/OpenCodeSession';
 
 interface Call { method: string; params: Record<string, unknown> }
 
-function makeHarness(replies: Record<string, string>) {
+type RequestCallback = {
+	onLine: (line: string) => void;
+	onError: (error: string) => void;
+	onComplete: (success: boolean) => void;
+};
+
+type RequestBehavior = (
+	method: string,
+	params: Record<string, unknown>,
+	cb: RequestCallback,
+	state: SessionState,
+) => void;
+
+function makeHarness(replies: Record<string, string>, behavior?: RequestBehavior) {
 	const calls: Call[] = [];
 	const events: TabEvent[] = [];
 	const bound: Array<{ targetTabId: string; sessionId: string }> = [];
@@ -24,18 +37,23 @@ function makeHarness(replies: Record<string, string>) {
 		getState: () => state,
 		getAdapter: () => null,
 		getCoalescer: () => null,
+		beginCompaction: (reason: string, engineId?: string | null) => state.beginCompaction(reason, engineId),
+		finishCompaction: (
+			status: 'completed' | 'failed',
+			options: Parameters<SessionState['finishCompaction']>[1] = {},
+		) => state.finishCompaction(status, options),
 	} as unknown as OpenCodeSession;
 	registry.create(TabId.of('tab-src'), '/workspace');
 	registry.bind(TabId.of('tab-src'), 'ses_src', session, null, null);
 
 	const daemon = {
 		isAlive: () => true,
-		request: (method: string, params: Record<string, unknown>, cb: {
-			onLine: (line: string) => void;
-			onError: (error: string) => void;
-			onComplete: (success: boolean) => void;
-		}) => {
+		request: (method: string, params: Record<string, unknown>, cb: RequestCallback) => {
 			calls.push({ method, params });
+			if (behavior) {
+				behavior(method, params, cb, state);
+				return Promise.resolve(true);
+			}
 			const reply = replies[method];
 			if (reply) {
 				cb.onLine(reply);
@@ -88,6 +106,45 @@ suite('Tab session commands match the core method names', () => {
 		assert.strictEqual(done!.payload.source, 'command');
 		assert.strictEqual(done!.payload.reason, 'manual');
 		assert.strictEqual(done!.payload.requestId, 'r2');
+	});
+
+	test('a terminal ended before the summarize success keeps one compaction record', () => {
+		const h = makeHarness(
+			{ 'opencode.summarize': '{"success":true}' },
+			(_method, _params, cb, state) => {
+				state.finishCompaction('completed', { id: 'evt_cmp', reason: 'manual' });
+				cb.onComplete(true);
+			},
+		);
+		h.handler.compact(TabCommand.of('tab-src', 'session.compact', 'r-order-ok', {}));
+
+		const messages = h.state.getMessages();
+		assert.strictEqual(messages.length, 1);
+		assert.strictEqual(messages[0].compaction?.status, 'completed');
+		const raw = messages[0].raw as Record<string, unknown>;
+		assert.strictEqual(raw.id, 'evt_cmp');
+	});
+
+	test('a terminal failure before the summarize error keeps one compaction record', () => {
+		const h = makeHarness(
+			{},
+			(_method, _params, cb, state) => {
+				state.finishCompaction('failed', {
+					id: 'evt_failed',
+					reason: 'manual',
+					error: 'engine failed',
+				});
+				cb.onError('engine failed');
+			},
+		);
+		h.handler.compact(TabCommand.of('tab-src', 'session.compact', 'r-order-fail', {}));
+
+		const messages = h.state.getMessages();
+		assert.strictEqual(messages.length, 1);
+		assert.strictEqual(messages[0].compaction?.status, 'failed');
+		const raw = messages[0].raw as Record<string, unknown>;
+		assert.strictEqual(raw.id, 'evt_failed');
+		assert.ok(h.events.some((event) => event.type === 'session.compact.failed'));
 	});
 
 	test('share uses opencode.shareSession and publishes the url', () => {

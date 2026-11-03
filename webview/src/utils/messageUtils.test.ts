@@ -1009,7 +1009,7 @@ describe('getContentBlocks — compaction records', () => {
     expect(blocks[0]).toMatchObject({
       type: 'compact_summary',
       compactStatus: 'success',
-      title: 'chat.compactSummary.compactSummary',
+      title: 'chat.compactSummary.compacted',
       content: '## Objective\n- ship it',
       metadata: { trigger: 'manual', postTokens: 14582, durationMs: 109542 },
     });

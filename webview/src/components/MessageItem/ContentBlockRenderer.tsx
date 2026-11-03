@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useSyncExternalStore, memo } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore, memo } from 'react';
 import type { TFunction } from 'i18next';
 import type { ClaudeContentBlock, ToolResultBlock, CompactSummaryMetadata } from '../../types';
 
@@ -13,6 +13,7 @@ import {
 } from '../toolBlocks';
 import type { EditToolItem } from '../toolBlocks/EditToolBlock';
 import { EDIT_TOOL_NAMES, BASH_TOOL_NAMES, TASK_MANAGE_TOOL_NAMES, AGENT_TOOL_NAMES, isToolName, isTransientInternalToolName, normalizeToolName } from '../../utils/toolConstants';
+import { copyToClipboard } from '../../utils/copyUtils';
 import { TASK_STATUS_COLORS } from '../../utils/messageUtils';
 import { getQuestionAnswer, subscribe as subscribeQuestionAnswer, getSnapshot as getQuestionAnswerSnapshot } from '../../store/questionAnswerStore';
 
@@ -72,21 +73,110 @@ function formatCompactTokens(count: number): string {
   return String(count);
 }
 
+/** Format a compaction duration: "48s", "1m 50s". */
+function formatCompactionDuration(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
 /**
- * Build the compaction-stats subtitle from compact_boundary metadata:
- * "manual · 524.8K → 14.6K · 110s". Returns null when no stats are present.
+ * Weak stats trailing the title. The post-compaction size is always known; the
+ * before → after delta and the freed share only exist for history records that
+ * still carry `preTokens`.
  */
-function formatCompactionStats(meta: CompactSummaryMetadata): string | null {
+function buildCompactionStats(meta: CompactSummaryMetadata, t: TFunction): string[] {
   const parts: string[] = [];
-  if (meta.trigger) parts.push(meta.trigger);
-  if (typeof meta.preTokens === 'number') {
-    const tokens = typeof meta.postTokens === 'number'
-      ? `${formatCompactTokens(meta.preTokens)} → ${formatCompactTokens(meta.postTokens)}`
-      : formatCompactTokens(meta.preTokens);
-    parts.push(tokens);
+  const pre = typeof meta.preTokens === 'number' ? meta.preTokens : undefined;
+  const post = typeof meta.postTokens === 'number' ? meta.postTokens : undefined;
+
+  if (pre !== undefined && post !== undefined) {
+    parts.push(t('chat.compactSummary.tokensBeforeAfter', {
+      before: formatCompactTokens(pre),
+      after: formatCompactTokens(post),
+      defaultValue: '{{before}} → {{after}} tokens',
+    }));
+    if (pre > 0) {
+      const freed = Math.max(0, Math.min(100, Math.round(((pre - post) / pre) * 100)));
+      parts.push(t('chat.compactSummary.freedPercent', {
+        percent: freed,
+        defaultValue: '{{percent}}% freed',
+      }));
+    }
+  } else if (post !== undefined) {
+    parts.push(t('chat.compactSummary.tokensAfter', {
+      after: formatCompactTokens(post),
+      defaultValue: '{{after}} tokens',
+    }));
   }
-  if (typeof meta.durationMs === 'number') parts.push(`${Math.round(meta.durationMs / 1000)}s`);
-  return parts.length > 0 ? parts.join(' · ') : null;
+
+  if (typeof meta.durationMs === 'number' && meta.durationMs > 0) {
+    parts.push(t('chat.compactSummary.duration', {
+      duration: formatCompactionDuration(meta.durationMs),
+      defaultValue: 'took {{duration}}',
+    }));
+  }
+
+  return parts;
+}
+
+/**
+ * One glyph set for every compaction state: same 13px box, 1.4px stroke.
+ * `alert` marks a failed compaction, `auto` an engine-triggered one.
+ */
+function CompactionIcon({ kind }: { kind: 'archive' | 'auto' | 'alert' }) {
+  if (kind === 'alert') {
+    return (
+      <svg
+        className="compact-divider__icon"
+        width="13" height="13" viewBox="0 0 16 16"
+        fill="none" stroke="currentColor" strokeWidth={1.4}
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+      >
+        <circle cx="8" cy="8" r="6.2" />
+        <path d="M8 4.8v3.9M8 11.1v.1" />
+      </svg>
+    );
+  }
+  if (kind === 'auto') {
+    return (
+      <svg
+        className="compact-divider__icon"
+        width="13" height="13" viewBox="0 0 16 16"
+        fill="none" stroke="currentColor" strokeWidth={1.4}
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+      >
+        <path d="M8 1.9l1.4 4 4 1.4-4 1.4L8 12.7 6.6 8.7l-4-1.4 4-1.4z" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      className="compact-divider__icon"
+      width="13" height="13" viewBox="0 0 16 16"
+      fill="none" stroke="currentColor" strokeWidth={1.4}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+    >
+      <rect x="2" y="2.8" width="12" height="3" rx="1" />
+      <path d="M3.3 5.8v6.2a1.2 1.2 0 0 0 1.2 1.2h7a1.2 1.2 0 0 0 1.2-1.2V5.8" />
+      <path d="M6.5 8.6h3" />
+    </svg>
+  );
+}
+
+/** Running state: an arc in the same 13px/1.4px box as the other icons. */
+function CompactionSpinner() {
+  return (
+    <svg
+      className="compact-divider__spinner"
+      width="13" height="13" viewBox="0 0 16 16"
+      fill="none" stroke="currentColor" strokeWidth={1.4}
+      strokeLinecap="round" aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="5.4" strokeOpacity={0.22} />
+      <path d="M8 2.6a5.4 5.4 0 0 1 5.4 5.4" />
+    </svg>
+  );
 }
 
 interface CompactSummaryBlockProps {
@@ -101,39 +191,55 @@ interface CompactSummaryBlockProps {
   t: TFunction;
 }
 
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
 /**
- * Compact summary block - in-progress spinning state, or collapsed success card with expand/collapse.
- * Memoized to prevent state reset on parent re-renders during streaming.
+ * Compaction is a boundary in the transcript, not a message: a hairline split
+ * by a small capsule. Memoized so the elapsed timer and expansion survive the
+ * frequent re-renders of a streaming neighbour.
  * `block.title` is an i18n key resolved via t() at render time.
  */
 const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: CompactSummaryBlockProps) {
   const [expanded, setExpanded] = useState(false);
-  const toggleExpanded = useCallback(() => setExpanded(e => !e), []);
-  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setExpanded(prev => !prev);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current !== null) {
+      window.clearTimeout(copyTimer.current);
     }
   }, []);
 
+  const toggleExpanded = useCallback(() => {
+    if (!block.content) return;
+    setExpanded(prev => !prev);
+  }, [block.content]);
+
+  const handleCopy = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!block.content) return;
+    void copyToClipboard(block.content).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      if (copyTimer.current !== null) {
+        window.clearTimeout(copyTimer.current);
+      }
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1600);
+    });
+  }, [block.content]);
+
   const isInProgress = block.compactStatus === 'in_progress';
   const isFailure = block.compactStatus === 'failure';
+  const trigger = block.metadata?.trigger;
+  const isAuto = trigger === 'auto';
+  const isManual = trigger === 'manual';
 
-  const [dotCount, setDotCount] = useState(1);
-  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
-    if (block.startTime) {
-      return Math.max(0, Math.floor((Date.now() - block.startTime) / 1000));
-    }
-    return 0;
-  });
-
-  useEffect(() => {
-    if (!isInProgress) return;
-    const timer = setInterval(() => {
-      setDotCount(prev => (prev % 3) + 1);
-    }, 500);
-    return () => clearInterval(timer);
-  }, [isInProgress]);
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => (
+    block.startTime ? Math.max(0, Math.floor((Date.now() - block.startTime) / 1000)) : 0
+  ));
 
   useEffect(() => {
     if (!isInProgress) return;
@@ -147,29 +253,21 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
     return () => clearInterval(timer);
   }, [isInProgress, block.startTime]);
 
-  const dots = '.'.repeat(dotCount);
-  const formatTime = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}s`;
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}m ${s}s`;
-  };
-
   if (isInProgress) {
     return (
-      <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
-        <div className="compact-card compact-card--compacting">
-          <div className="compact-card__spinner-dual">
-            <div className="compact-card__spinner-outer" />
-            <div className="compact-card__spinner-inner" />
-          </div>
-          <span className="compact-card__text">
-            {block.metadata?.trigger === 'manual'
-              ? t('chat.manualCompacting', '正在压缩会话上下文...')
-              : t('chat.autoCompacting', '正在自动压缩会话上下文...')}
-            <span className="compact-card__dots">{dots}</span>
+      <div className="compact-divider-block">
+        <div className="compact-divider" role="status" aria-live="polite">
+          <span className="compact-divider__line" aria-hidden="true" />
+          <span className="compact-divider__chip">
+            <CompactionSpinner />
+            <span className="compact-divider__title">
+              {isManual
+                ? t('chat.manualCompacting', '正在压缩会话上下文...')
+                : t('chat.autoCompacting', '正在自动压缩会话上下文...')}
+            </span>
+            <span className="compact-divider__time">{formatElapsed(elapsedSeconds)}</span>
           </span>
-          <span className="compact-card__time-badge">{formatTime(elapsedSeconds)}</span>
+          <span className="compact-divider__line compact-divider__line--right" aria-hidden="true" />
         </div>
       </div>
     );
@@ -177,67 +275,82 @@ const CompactSummaryBlock = memo(function CompactSummaryBlock({ block, t }: Comp
 
   if (isFailure) {
     return (
-      <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
-        <div className="compact-card compact-card--compact-pill compact-card--failure">
-          <i className="codicon codicon-error compact-card__pill-icon" />
-          <span className="compact-card__pill-title">{t('chat.compactFailed')}</span>
-          {block.content && (
-            <span className="compact-card__pill-detail">{block.content}</span>
-          )}
+      <div className="compact-divider-block">
+        <div className="compact-divider">
+          <span className="compact-divider__line" aria-hidden="true" />
+          <span
+            className="compact-divider__chip compact-divider__chip--fail"
+            title={block.content || undefined}
+          >
+            <CompactionIcon kind="alert" />
+            <span className="compact-divider__title">{t('chat.compactFailed')}</span>
+            {block.content && (
+              <span className="compact-divider__error">{block.content}</span>
+            )}
+          </span>
+          <span className="compact-divider__line compact-divider__line--right" aria-hidden="true" />
         </div>
       </div>
     );
   }
 
-  const meta = block.metadata;
-  const hasCountMeta = meta && typeof meta.messagesSummarized === 'number';
-  const compactionStats = meta ? formatCompactionStats(meta) : null;
-  const toggleLabel = expanded ? t('chat.compactSummary.collapse') : t('chat.compactSummary.expand');
+  const hasContent = Boolean(block.content);
+  const stats = block.metadata ? buildCompactionStats(block.metadata, t) : [];
+  const toggleLabel = expanded
+    ? t('chat.compactSummary.collapse')
+    : t('chat.compactSummary.expand');
+  const copyLabel = copied
+    ? t('chat.compactSummary.copied', '已复制')
+    : t('chat.compactSummary.copy', '复制');
 
   return (
-    <div className="compact-card-wrapper" style={{ flexDirection: 'column' }}>
-      <div
-        className="compact-card compact-card--compact-pill compact-card--success"
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        aria-label={`${t(block.title)} — ${toggleLabel}`}
-        onClick={block.content ? toggleExpanded : undefined}
-        onKeyDown={block.content ? onKeyDown : undefined}
-        style={{ cursor: block.content ? 'pointer' : 'default' }}
-      >
-        <i className="codicon codicon-check compact-card__pill-icon" />
-        <span className="compact-card__pill-title">{t(block.title)}</span>
-        {hasCountMeta && (
-          <span className="compact-card__pill-detail">
-            {`— ${t(
-              meta.direction === 'from'
-                ? 'chat.compactSummary.messagesFrom'
-                : 'chat.compactSummary.messagesUpTo',
-              { count: meta.messagesSummarized },
-            )}`}
-          </span>
-        )}
-        {compactionStats && (
-          <span className="compact-card__pill-detail">
-            {`· ${compactionStats}`}
-          </span>
-        )}
-        {meta?.userContext && meta.userContext !== block.content && (
-          <span className="compact-card__pill-detail">
-            {`(${meta.userContext})`}
-          </span>
-        )}
-        {block.content && (
-          <span
-            className={`codicon ${expanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`}
-            style={{ marginLeft: 'auto', fontSize: '11px', opacity: 0.7 }}
-          />
-        )}
+    <div className="compact-divider-block">
+      <div className="compact-divider">
+        <span className="compact-divider__line" aria-hidden="true" />
+        <button
+          type="button"
+          className={`compact-divider__chip${isAuto ? ' compact-divider__chip--auto' : ''}`}
+          aria-expanded={hasContent ? expanded : undefined}
+          aria-label={`${t(block.title)}${hasContent ? ` — ${toggleLabel}` : ''}`}
+          onClick={toggleExpanded}
+          disabled={!hasContent}
+        >
+          <CompactionIcon kind={isAuto ? 'auto' : 'archive'} />
+          <span className="compact-divider__title">{t(block.title)}</span>
+          {stats.map((stat, index) => (
+            <span key={`${index}-${stat}`} className="compact-divider__meta">
+              {index > 0 && <span className="compact-divider__sep" aria-hidden="true">· </span>}
+              {stat}
+            </span>
+          ))}
+          {hasContent && (
+            <span
+              className={`codicon ${expanded ? 'codicon-chevron-down' : 'codicon-chevron-right'} compact-divider__chevron`}
+              aria-hidden="true"
+            />
+          )}
+        </button>
+        <span className="compact-divider__line compact-divider__line--right" aria-hidden="true" />
       </div>
-      {expanded && block.content && (
-        <div className="compact-summary-content" style={{ marginTop: '4px', width: '100%' }}>
-          <MarkdownBlock content={block.content} />
+      {expanded && hasContent && (
+        <div className="compact-divider__panel">
+          <div className="compact-divider__panel-head">
+            <span className="compact-divider__panel-label">
+              {t('chat.compactSummary.summary', '摘要')}
+            </span>
+            <button
+              type="button"
+              className="compact-divider__copy"
+              onClick={handleCopy}
+              aria-label={copyLabel}
+            >
+              <span className="codicon codicon-copy compact-divider__copy-icon" aria-hidden="true" />
+              <span>{copyLabel}</span>
+            </button>
+          </div>
+          <div className="compact-divider__panel-body">
+            <MarkdownBlock content={block.content} />
+          </div>
         </div>
       )}
     </div>

@@ -273,16 +273,24 @@ export class TabSessionCommandHandler {
 		// also reports a start, but waiting for it leaves the button looking
 		// dead. The record state machine reuses this one for that second signal.
 		beginCompaction?.('manual');
+		const failCompaction = (error: string) => {
+			// The engine terminal marker is authoritative and may already have
+			// closed the optimistic record. The RPC result must not create a
+			// second failed record after that.
+			if (session?.state.hasActiveCompaction()) {
+				finishCompaction?.('failed', { error });
+			}
+			this.publish('session.compact.failed', target.tabId, target.sessionId, {
+				error,
+				data: target.sessionId,
+				reason: 'manual',
+				source: 'command',
+				requestId: command.requestId,
+			});
+		};
 		this.request('summarize', params, (success) => {
 			if (!success) {
-				finishCompaction?.('failed', { error: 'compact failed' });
-				this.publish('session.compact.failed', target.tabId, target.sessionId, {
-					error: 'compact failed',
-					data: target.sessionId,
-					reason: 'manual',
-					source: 'command',
-					requestId: command.requestId,
-				});
+				failCompaction('compact failed');
 				return;
 			}
 			// The engine's `ended` is authoritative and normally lands first.
@@ -299,16 +307,7 @@ export class TabSessionCommandHandler {
 				source: 'command',
 				requestId: command.requestId,
 			});
-		}, (error) => {
-			finishCompaction?.('failed', { error });
-			this.publish('session.compact.failed', target.tabId, target.sessionId, {
-				error,
-				data: target.sessionId,
-				reason: 'manual',
-				source: 'command',
-				requestId: command.requestId,
-			});
-		});
+		}, failCompaction);
 	}
 
 	// ── Shared plumbing ──────────────────────────────────────────────────

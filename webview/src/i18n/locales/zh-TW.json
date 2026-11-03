@@ -141,6 +141,14 @@
       "openTooltip": "在對話中搜尋 (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "對話已壓縮",
+      "tokensAfter": "壓縮後 {{after}} tokens",
+      "tokensBeforeAfter": "上下文 {{before}} → {{after}} tokens",
+      "freedPercent": "釋放 {{percent}}%",
+      "duration": "耗時 {{duration}}",
+      "summary": "摘要",
+      "copy": "複製",
+      "copied": "已複製",
       "summarizedConversation": "已總結的對話",
       "compactSummary": "對話摘要",
       "messagesUpTo": "已總結此節點之前的 {{count}} 則訊息",

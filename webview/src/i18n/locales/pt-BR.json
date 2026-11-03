@@ -141,6 +141,14 @@
       "openTooltip": "Pesquisar na conversa (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "Conversa compactada",
+      "tokensAfter": "{{after}} tokens após compactar",
+      "tokensBeforeAfter": "Contexto {{before}} → {{after}} tokens",
+      "freedPercent": "{{percent}}% liberado",
+      "duration": "em {{duration}}",
+      "summary": "Resumo",
+      "copy": "Copiar",
+      "copied": "Copiado",
       "summarizedConversation": "Conversa resumida",
       "compactSummary": "Resumo compacto",
       "messagesUpTo": "{{count}} mensagens resumidas até este ponto",

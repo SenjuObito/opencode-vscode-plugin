@@ -170,6 +170,14 @@
       "openTooltip": "在对话中搜索 (Cmd/Ctrl+F)"
     },
     "compactSummary": {
+      "compacted": "对话已压缩",
+      "tokensAfter": "压缩后 {{after}} tokens",
+      "tokensBeforeAfter": "上下文 {{before}} → {{after}} tokens",
+      "freedPercent": "释放 {{percent}}%",
+      "duration": "用时 {{duration}}",
+      "summary": "摘要",
+      "copy": "复制",
+      "copied": "已复制",
       "summarizedConversation": "已总结的对话",
       "compactSummary": "对话摘要",
       "messagesUpTo": "已总结此节点之前的 {{count}} 条消息",
