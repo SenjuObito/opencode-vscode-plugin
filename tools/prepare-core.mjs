@@ -10,7 +10,7 @@
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,6 +35,27 @@ function getCoreTag() {
 		// fallback
 	}
 	return 'v1.0.0';
+}
+
+/**
+ * 收集 core 的运行时源码文件（排除测试、node_modules、dist、.git）。
+ *
+ * 只比较入口文件的 mtime 会漏掉 services/** 的改动，导致 VSIX 里打进上一次
+ * 的旧 zip；这里把所有会被打包的源码都纳入重建判定。
+ */
+function collectCoreSourceFiles(dir, out = []) {
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
+		const full = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			collectCoreSourceFiles(full, out);
+		} else if (entry.isFile()
+			&& /\.(js|cjs|mjs)$/.test(entry.name)
+			&& !/\.test\./.test(entry.name)) {
+			out.push(full);
+		}
+	}
+	return out;
 }
 
 function extractZip(zipPath, destDir) {
@@ -88,14 +109,17 @@ async function main() {
 		// 检查是否需要重新打包 local zip
 		let needPack = !existsSync(localZip);
 		if (!needPack && existsSync(packScript)) {
-			const zipTime = readFileSync(localZip); // check readable
+			readFileSync(localZip); // check readable
 			const keyFiles = [
 				join(siblingCoreDir, 'daemon.js'),
 				join(siblingCoreDir, 'package.json'),
 				packScript,
+				...collectCoreSourceFiles(join(siblingCoreDir, 'services')),
+				...collectCoreSourceFiles(join(siblingCoreDir, 'utils')),
+				...collectCoreSourceFiles(join(siblingCoreDir, 'channels')),
+				...collectCoreSourceFiles(join(siblingCoreDir, 'config')),
 			];
 			// 如果源码比 zip 新，重新构建
-			const { statSync } = await import('node:fs');
 			const zipMtime = statSync(localZip).mtimeMs;
 			needPack = keyFiles.some((f) => existsSync(f) && statSync(f).mtimeMs > zipMtime);
 		}
