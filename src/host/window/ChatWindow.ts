@@ -41,8 +41,7 @@ export interface ChatWindowOptions {
 	 */
 	createSession?: (
 		viewSink: JsTarget,
-		autoOpenFileEnabledResolver?: () => boolean | null | undefined,
-		contextEnabledResolver?: () => boolean,
+		autoOpenFileEnabledResolver?: () => boolean,
 		eventSink?: TabEventSink,
 	) => OpenCodeSession | null;
 	/** 会话新建后的初始化（从持久化设置回灌 model / mode / effort）。 */
@@ -121,6 +120,16 @@ export class ChatWindow {
 		this.fallbackWorkingDirectoryResolver = options.fallbackWorkingDirectoryResolver;
 
 		this.registry = new TabRegistry();
+		// A tab snapshots the global file-context switch when it is created;
+		// after that the tab owns it, so changing the setting only affects tabs
+		// created later (same model as idea's TabRegistry seed).
+		this.registry.setAutoOpenFileDefault(() => {
+			// 与设置页写入口径一致：按主工作区路径取全局值。
+			const projectPath = typeof options.settings?.getPrimaryWorkspaceRoot === 'function'
+				? options.settings.getPrimaryWorkspaceRoot()
+				: null;
+			return projectPath ? options.settings.getAutoOpenFileEnabled(projectPath) : false;
+		});
 		this.promptRegistry = new PromptRegistry();
 		this.viewRegistry = new ViewRegistry((newHostId) => {
 			this.eventRouter.publish(
@@ -256,7 +265,13 @@ export class ChatWindow {
 					type: 'tab.created',
 					tabId: tabId.value,
 					epoch: record.epoch,
-					payload: { tabId: tabId.value, title: record.getTitle() },
+					payload: {
+						tabId: tabId.value,
+						title: record.getTitle(),
+						// 宿主是 tab 开关的唯一真源：新建 tab 的初值随事件下发，
+						// 前端不再自行猜测（否则两边可能读到不同的全局设置）。
+						autoOpenFileEnabled: record.getSettings().isAutoOpenFileEnabled(),
+					},
 				}),
 			);
 			this.eventRouter.publish(
@@ -820,10 +835,8 @@ export class ChatWindow {
 				if (!resolved || data == null) { return null; }
 				return { data, fileName: resolved.fileName, mediaType: resolved.mediaType };
 			},
-			setContextEnabled: (tabId, enabled) => {
-				const settings = recordOf(tabId)?.getSettings();
-				settings?.setAutoOpenFileEnabled(enabled);
-				settings?.setContextEnabled(enabled);
+			setTabAutoOpenFileEnabled: (tabId, enabled) => {
+				recordOf(tabId)?.getSettings().setAutoOpenFileEnabled(enabled);
 			},
 			pauseQueue: (tabId) => this.pauseTabQueue(tabId),
 			markHistoryLoaded: (sessionId) => this.markHistoryLoaded(sessionId),
@@ -967,15 +980,10 @@ export class ChatWindow {
 		const session = create(
 			this.createLegacyTarget(),
 			() => {
-				// per-tab 的「自动打开文件」开关（§10.12）：tab 自己设过就用它的，
-				// 没设过（undefined）才回落到全局项目设置。
+				// 是否携带文件上下文只由 tab 决定：初值在创建时已快照，
+				// 之后全局设置的变化不会回写已有 tab。
 				const record = this.registry.get(tabId);
-				return record ? record.getSettings().getAutoOpenFileOverride() : undefined;
-			},
-			() => {
-				// 上下文注入开关：默认开；关闭后发送不再带活动文件/选区。
-				const record = this.registry.get(tabId);
-				return record ? record.getSettings().isContextEnabled() : true;
+				return record ? record.getSettings().isAutoOpenFileEnabled() : false;
 			},
 			(event) => {
 				// Named data plane: every session event is addressed to this tab

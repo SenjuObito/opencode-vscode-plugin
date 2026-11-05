@@ -87,7 +87,7 @@ function makeChatWindow(factory: ReturnType<typeof makeSessionFactory>): ChatWin
 		daemon: {} as never,
 		fileOps: {} as never,
 		fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-		createSession: (sink, _auto, _ctx, eventSink) => factory.create(sink, eventSink),
+		createSession: (sink, _auto, eventSink) => factory.create(sink, eventSink),
 	});
 	chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
 	return chatWindow;

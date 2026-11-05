@@ -11,6 +11,8 @@ export interface TabSnapshotData {
 	loading: boolean;
 	epoch: number;
 	draft?: string;
+	/** 本 tab 的文件上下文开关（宿主快照值，webview 直接采用）。 */
+	autoOpenFileEnabled: boolean;
 }
 
 export class TabSnapshot {
@@ -23,6 +25,7 @@ export class TabSnapshot {
 		readonly loading: boolean,
 		readonly epoch: number,
 		readonly draft: string = '',
+		readonly autoOpenFileEnabled: boolean = false,
 	) {}
 
 	toJson(): TabSnapshotData {
@@ -35,6 +38,7 @@ export class TabSnapshot {
 			loading: this.loading,
 			epoch: this.epoch,
 			draft: this.draft,
+			autoOpenFileEnabled: this.autoOpenFileEnabled,
 		};
 	}
 }

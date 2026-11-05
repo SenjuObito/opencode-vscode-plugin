@@ -241,6 +241,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           loading?: boolean;
           epoch?: number;
           draft?: string;
+          autoOpenFileEnabled?: boolean;
         }>;
       };
       try {
@@ -277,6 +278,11 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         const loading = typeof entry.loading === 'boolean'
           ? entry.loading
           : (previous?.loading ?? false);
+        // 宿主是 tab 开关的唯一真源：直接采用 resync 里的值，
+        // 不再回落到全局默认（否则 reload 会冲掉用户在 tab 内的选择）。
+        const autoOpenFileEnabled = typeof entry.autoOpenFileEnabled === 'boolean'
+          ? entry.autoOpenFileEnabled
+          : (previous?.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false));
         if (typeof entry.draft === 'string') {
           const previousDraft = draftStore.get(entry.tabId!);
           draftStore.set(entry.tabId!, {
@@ -287,7 +293,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           });
         }
         if (previous) {
-          return { ...previous, sessionId, title, streamingActive, loading };
+          return { ...previous, sessionId, title, streamingActive, loading, autoOpenFileEnabled };
         }
         return {
           id: entry.tabId!,
@@ -297,6 +303,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
           isShared: false,
           loading,
           streamingActive,
+          autoOpenFileEnabled,
           permissionMode: 'default',
           reasoningEffort: 'default',
           filteredFileChanges: [],
@@ -475,9 +482,10 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         setSelectedModel?.(resolvedModel, { silent: true });
       }
 
-      const isAutoOpen = targetTab.autoOpenFileEnabled ?? (defaultAutoOpenFileEnabled ?? false);
       if (!fromHost) {
-        sendHostCommand(targetTab.id, 'context.refresh', { enabled: isAutoOpen });
+        // 纯显示刷新：让宿主重推当前编辑器上下文（chip 重新定位）。
+        // 开关属于 tab，激活 tab 不改写宿主状态。
+        sendHostCommand(targetTab.id, 'context.refresh', {});
       }
       if (targetTab.contextInfo) {
         setContextInfo?.(targetTab.contextInfo);
@@ -546,9 +554,25 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
   // authority for which tab is active and in what order, so a view that is not
   // the initiator follows without writing back (no echo loop).
   useEffect(() => {
-    const onCreated = (payload: { tabId?: string; title?: string }) => {
+    const onCreated = (payload: { tabId?: string; title?: string; autoOpenFileEnabled?: boolean }) => {
       const tabId = payload?.tabId;
-      if (!tabId || tabsRef.current.some((tab) => tab.id === tabId)) {
+      if (!tabId) {
+        return;
+      }
+      // 宿主随事件下发该 tab 的开关快照；本地乐观创建的 tab 也要按它校正，
+      // 这样 tab 内开关始终以宿主记录为准。
+      const hostAutoOpen = typeof payload.autoOpenFileEnabled === 'boolean'
+        ? payload.autoOpenFileEnabled
+        : undefined;
+      if (tabsRef.current.some((tab) => tab.id === tabId)) {
+        if (hostAutoOpen === undefined) {
+          return;
+        }
+        const corrected = tabsRef.current.map((tab) =>
+          tab.id === tabId ? { ...tab, autoOpenFileEnabled: hostAutoOpen } : tab,
+        );
+        tabsRef.current = corrected;
+        setTabs(corrected);
         return;
       }
       const tab: SessionTabData = {
@@ -565,6 +589,7 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
         contextInfo: null,
         pendingPermissions: [],
         pendingQuestions: [],
+        autoOpenFileEnabled: hostAutoOpen ?? (defaultAutoOpenFileEnabled ?? false),
       };
       const next = [...tabsRef.current, tab];
       tabsRef.current = next;
@@ -767,7 +792,6 @@ export function useTabSessionBinder(options: UseTabSessionBinderOptions) {
                 reasoningEffort: resolvedEffort,
                 filteredFileChanges: [],
                 contextInfo: null,
-                autoOpenFileEnabled: defaultAutoOpenFileEnabled ?? false,
                 scrollState: undefined,
               }
             : t

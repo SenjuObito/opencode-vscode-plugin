@@ -70,15 +70,10 @@ export interface OpenCodeSessionOptions {
 	/**
 	 * 本 tab 的「自动打开文件」开关（§10.12）。
 	 *
-	 * 返回 null/undefined = 本 tab 没有单独设置，继续用全局项目设置；
-	 * 返回 true/false = 本 tab 自己的决定（每个 tab 可以不同）。
+	 * 是否携带上下文只由 tab 决定（tab 创建时快照全局设置，之后用户在本 tab
+	 * 内切换）。未绑定 tab 的会话（旧单会话/测试路径）没有 tab 状态可读，按关闭处理。
 	 */
-	autoOpenFileEnabledResolver?: () => boolean | null | undefined;
-	/**
-	 * 本 tab 是否注入 IDE 上下文（§10.12 `TabSettings.contextEnabled`）。
-	 * 关闭后不再带活动文件/选区；显式 @ 引用仍然生效。
-	 */
-	contextEnabledResolver?: () => boolean;
+	autoOpenFileEnabledResolver?: () => boolean;
 	/** 本 tab 的命名事件出口（未提供时退回 legacy JS 调用）。 */
 	eventSink?: TabEventSink;
 }
@@ -134,7 +129,6 @@ export class OpenCodeSession {
 		this.onTurnCompleted = options.onTurnCompleted;
 		this.editorSelectionResolver = options.editorSelectionResolver;
 		this.autoOpenFileEnabledResolver = options.autoOpenFileEnabledResolver;
-		this.contextEnabledResolver = options.contextEnabledResolver;
 		this.view = options.viewSink ?? {
 			callJavaScript: (fn, ...args) => this.context.callJavaScript(fn, ...args),
 		};
@@ -173,8 +167,7 @@ export class OpenCodeSession {
 		return this.adapter;
 	}
 
-	private readonly autoOpenFileEnabledResolver?: () => boolean | null | undefined;
-	private readonly contextEnabledResolver?: () => boolean;
+	private readonly autoOpenFileEnabledResolver?: () => boolean;
 
 
 	/**
@@ -188,20 +181,14 @@ export class OpenCodeSession {
 		// 与 TUI 一致，任何前导 '/' 文本都视为命令（未知命令由服务端报错）。
 		const slashCommand = parseSlashCommand(text);
 
-		const injectProjectPath = this.context.getSettingsService().getPrimaryWorkspaceRoot();
-		// per-tab 优先：tab 自己设过就用 tab 的，没设过才用全局项目设置。
-		const tabAutoOpenFile = this.autoOpenFileEnabledResolver?.();
-		const autoOpenFileOn = tabAutoOpenFile !== undefined && tabAutoOpenFile !== null
-			? tabAutoOpenFile
-			: (!injectProjectPath
-				|| this.context.getSettingsService().getAutoOpenFileEnabled(injectProjectPath));
-		// §10.12：tab 的上下文开关关闭时，不注入活动文件/选区；显式 @ 引用不受影响。
-		const contextEnabled = this.contextEnabledResolver?.() ?? true;
-		const selInfo = contextEnabled ? (this.editorSelectionResolver?.() ?? null) : null;
+		// 是否携带文件上下文只由 tab 决定：tab 创建时已快照全局设置，
+		// 之后全局变化不会影响本 tab。关闭时既不读选区也不拼 IDE 区块。
+		const autoOpenFileOn = this.autoOpenFileEnabledResolver?.() ?? false;
+		const selInfo = autoOpenFileOn ? (this.editorSelectionResolver?.() ?? null) : null;
 
 		let messageToSend = text;
 		if (!slashCommand) {
-			const contextAppend = buildContextAppend(payload, contextEnabled && autoOpenFileOn, selInfo);
+			const contextAppend = buildContextAppend(payload, autoOpenFileOn, selInfo);
 			messageToSend = (text ? text : '') + contextAppend;
 		}
 

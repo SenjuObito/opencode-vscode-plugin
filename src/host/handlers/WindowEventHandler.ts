@@ -31,6 +31,7 @@ const SUPPORTED_TYPES = [
 	'copy_to_clipboard',
 	'commands.refresh',
 	'context.refresh',
+	'context.setEnabled',
 ];
 
 export class WindowEventHandler extends BaseMessageHandler {
@@ -57,7 +58,12 @@ export class WindowEventHandler extends BaseMessageHandler {
 				this.handleRefreshSlashCommands(this.payloadString(content, 'tabId'));
 				return true;
 			case 'context.refresh':
-				this.handleTabContextRefresh(content);
+				// 纯显示刷新：把当前编辑器上下文重推给前端（chip 用它重新定位）。
+				// 开关状态只属于 tab，刷新命令不读写它。
+				this.context.pushEditorContext();
+				return true;
+			case 'context.setEnabled':
+				this.handleTabContextSetEnabled(content);
 				return true;
 			case 'get_thinking_enabled':
 				// opencode 无 thinking 开关；回默认关闭
@@ -178,19 +184,22 @@ export class WindowEventHandler extends BaseMessageHandler {
 		this.callJavaScript('updateSlashCommands', JSON.stringify(commands));
 	}
 
-	private handleTabContextRefresh(content: string): void {
+	private handleTabContextSetEnabled(content: string): void {
 		const tabId = this.payloadString(content, 'tabId');
 		if (!tabId) {
 			return;
 		}
-		let enabled = true;
+		let parsed: Record<string, unknown>;
 		try {
-			const parsed = JSON.parse(content) as Record<string, unknown>;
-			enabled = parsed.enabled !== false;
+			parsed = JSON.parse(content) as Record<string, unknown>;
 		} catch {
-			// Keep the default-on behaviour for a malformed/legacy payload.
+			return;
 		}
-		this.context.setTabContextEnabled(tabId, enabled);
+		// 开关必须由前端显式给出：缺参时不猜、不改宿主状态。
+		if (typeof parsed?.enabled !== 'boolean') {
+			return;
+		}
+		this.context.setTabAutoOpenFileEnabled(tabId, parsed.enabled);
 	}
 
 	private payloadString(content: string, key: string): string | null {

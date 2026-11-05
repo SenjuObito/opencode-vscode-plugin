@@ -93,8 +93,8 @@ suite('P8-A4: 窗口级 save_json', () => {
 	});
 });
 
-suite('P8-A4: tab 级 context.refresh / commands.refresh', () => {
-	suite('context.refresh', () => {
+suite('P8-A4: tab 级 context.setEnabled / context.refresh / commands.refresh', () => {
+	suite('context.setEnabled', () => {
 		test('把开关写进目标 tab 的 TabSettings，且只影响目标 tab', async () => {
 			const chatWindow = makeChatWindow({});
 			const view = new MockChannel();
@@ -106,31 +106,44 @@ suite('P8-A4: tab 级 context.refresh / commands.refresh', () => {
 			const recordA = chatWindow.registry.get(tabA) as TabRecord;
 			const recordB = chatWindow.registry.get(tabB) as TabRecord;
 
-			// 默认开启
+			// 全局未开启时，新 tab 的初值为关闭。
 			assert.strictEqual(recordA.getSettings().isAutoOpenFileEnabled(), false);
-			assert.strictEqual(recordA.getSettings().isContextEnabled(), true);
 
-			await sendCommand(chatWindow, 'sidebar', 'context.refresh', tabA.value, { enabled: true });
+			await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', tabA.value, { enabled: true });
 			assert.strictEqual(recordA.getSettings().isAutoOpenFileEnabled(), true);
-			assert.strictEqual(recordA.getSettings().isContextEnabled(), true);
 
-			await sendCommand(chatWindow, 'sidebar', 'context.refresh', tabA.value, { enabled: false });
+			await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', tabA.value, { enabled: false });
 			assert.strictEqual(recordA.getSettings().isAutoOpenFileEnabled(), false);
-			assert.strictEqual(recordA.getSettings().isContextEnabled(), false);
 
 			// B 未受影响
 			assert.strictEqual(recordB.getSettings().isAutoOpenFileEnabled(), false);
-			assert.strictEqual(recordB.getSettings().isContextEnabled(), true);
 		});
 
-		test('缺省 enabled 时按开启处理（旧版 webview 兼容）', async () => {
+		test('缺省 enabled / 缺 tabId 时不猜、不改宿主状态', async () => {
 			const chatWindow = makeChatWindow({});
 			chatWindow.registerView('sidebar', new MockChannel());
 			const tabA = chatWindow.registry.getActiveTabId()!;
 			const record = chatWindow.registry.get(tabA) as TabRecord;
 
-			await sendCommand(chatWindow, 'sidebar', 'context.refresh', tabA.value, {});
-			assert.strictEqual(record.getSettings().isContextEnabled(), true);
+			await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', tabA.value, {});
+			assert.strictEqual(record.getSettings().isAutoOpenFileEnabled(), false);
+
+			await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', tabA.value, { enabled: true });
+			await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', '', { enabled: false });
+			assert.strictEqual(record.getSettings().isAutoOpenFileEnabled(), true, '缺 tabId 的命令应被丢弃');
+		});
+	});
+
+	suite('context.refresh', () => {
+		test('只刷新显示，不改写 tab 开关', async () => {
+			const chatWindow = makeChatWindow({});
+			chatWindow.registerView('sidebar', new MockChannel());
+			const tabA = chatWindow.registry.getActiveTabId()!;
+			const record = chatWindow.registry.get(tabA) as TabRecord;
+
+			record.getSettings().setAutoOpenFileEnabled(false);
+			await sendCommand(chatWindow, 'sidebar', 'context.refresh', tabA.value, { enabled: true });
+			assert.strictEqual(record.getSettings().isAutoOpenFileEnabled(), false);
 		});
 	});
 

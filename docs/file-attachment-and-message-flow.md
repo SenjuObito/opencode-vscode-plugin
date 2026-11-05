@@ -145,6 +145,21 @@ sequenceDiagram
 3. **多模块工作区与终端（Modules & Terminal）**：
    - 注入 `## Workspace Context`、`## Project Modules` 以及 `## Active Terminal Session`。
 
+#### 3.3.1 文件上下文开关的归属（tab 独占）
+
+开关状态只有一个来源：tab 自己的 `TabSettings.autoOpenFileEnabled`。
+
+- **创建时快照**：`TabRegistry.create()` 读一次全局项目设置
+  （`autoOpenFileEnabled:<projectPath>`）并写入新 tab；之后全局设置变化只影响
+  新建 tab，不会回写已有 tab。
+- **写入命令**：前端切换开关发送 `context.setEnabled { enabled }`，宿主按命令的
+  `tabId` 只改该 tab；`context.refresh` 退化为纯显示刷新（重推编辑器上下文），
+  不读写开关状态。
+- **读取时机**：发送时由 `OpenCodeSession` 通过 `autoOpenFileEnabledResolver`
+  在**发送时刻**读该 tab 的值；关闭时既不读取编辑器选区，也不拼 `## IDE Context`。
+- **多视图同步**：`tab.resync` 与 `tab.created` 都携带 `autoOpenFileEnabled`，
+  webview 直接采用宿主值，不再回落到全局默认（避免 reload 冲掉用户选择）。
+
 ---
 
 ### 3.4 提示词净化与历史回放隔离 (`UserTextSanitizer`)

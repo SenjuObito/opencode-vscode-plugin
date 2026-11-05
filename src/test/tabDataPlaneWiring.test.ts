@@ -31,7 +31,7 @@ suite('Tab data plane wiring', () => {
 			daemon: {} as never,
 			fileOps: {} as never,
 			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-			createSession: (sink: JsTarget, _auto, _ctx, eventSink) => {
+			createSession: (sink: JsTarget, _auto, eventSink) => {
 				adapter = new SessionCallbackAdapter({
 					jsTarget: sink,
 					eventSink,

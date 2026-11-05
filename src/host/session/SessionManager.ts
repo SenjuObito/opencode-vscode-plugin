@@ -86,8 +86,7 @@ export class SessionManager {
 	/** 创建会话实例；`viewSink` 让多 tab 的输出带上归属。 */
 	createSessionInstance(options?: {
 		viewSink?: JsTarget;
-		autoOpenFileEnabledResolver?: () => boolean | null | undefined;
-		contextEnabledResolver?: () => boolean;
+		autoOpenFileEnabledResolver?: () => boolean;
 		eventSink?: TabEventSink;
 	}): OpenCodeSession {
 		const session = new OpenCodeSession({
@@ -98,7 +97,6 @@ export class SessionManager {
 			editorSelectionResolver: this.options.editorSelectionResolver,
 			viewSink: options?.viewSink,
 			autoOpenFileEnabledResolver: options?.autoOpenFileEnabledResolver,
-			contextEnabledResolver: options?.contextEnabledResolver,
 			eventSink: options?.eventSink,
 			onTurnCompleted: (info) => {
 				this.options.onTurnCompleted?.(info);

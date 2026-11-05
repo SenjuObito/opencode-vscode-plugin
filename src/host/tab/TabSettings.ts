@@ -9,9 +9,13 @@ export class TabSettings {
 	private model = '';
 	private permissionMode = 'default';
 	private reasoningEffort = 'default';
-	private contextEnabled = true;
-	/** 未设置（undefined）= 跟随全局项目设置；显式 true/false = 本 tab 自己决定。 */
-	private autoOpenFileEnabled: boolean | undefined = undefined;
+	/**
+	 * 本 tab 的文件上下文开关。
+	 *
+	 * <p>tab 创建时由全局项目设置快照写入一次；此后只由用户在**本 tab** 内切换，
+	 * 全局设置变化不会回写已有 tab。发送时只看这里。</p>
+	 */
+	private autoOpenFileEnabled = false;
 	private title = '';
 	private titleSource: TitleSource = 'AUTO';
 	private draft = '';
@@ -64,21 +68,8 @@ export class TabSettings {
 		}
 	}
 
-	isContextEnabled(): boolean {
-		return this.contextEnabled;
-	}
-
-	setContextEnabled(enabled: boolean): void {
-		this.contextEnabled = enabled;
-	}
-
-	/** 本 tab 的显式取值；undefined 表示跟随全局项目设置。 */
-	getAutoOpenFileOverride(): boolean | undefined {
-		return this.autoOpenFileEnabled;
-	}
-
 	isAutoOpenFileEnabled(): boolean {
-		return this.autoOpenFileEnabled ?? false;
+		return this.autoOpenFileEnabled;
 	}
 
 	setAutoOpenFileEnabled(enabled: boolean): void {

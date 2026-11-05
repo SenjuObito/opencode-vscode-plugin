@@ -96,7 +96,7 @@ function makeHarness(options: HarnessOptions = {}) {
 		getCwdForTab: () => WORKSPACE,
 		getSendSettings: () => null,
 		resolveAttachment: () => null,
-		setContextEnabled: () => {},
+		setTabAutoOpenFileEnabled: () => {},
 		pauseQueue: () => {},
 		markHistoryLoaded: () => {},
 	};

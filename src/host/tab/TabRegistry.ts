@@ -22,9 +22,20 @@ export class TabRegistry {
 	private tabOrder: TabId[] = [];
 	private activeTabId: TabId | null = null;
 	private eventSink: TabEventSink = () => {};
+	/**
+	 * 新 tab 的文件上下文开关初值。
+	 *
+	 * 只在 {@link create} 时读一次并写进 `TabSettings`；之后全局设置的变化不会
+	 * 影响已有 tab，是否携带上下文只由 tab 自己决定。
+	 */
+	private autoOpenFileDefault: (() => boolean) | null = null;
 
 	setEventSink(sink: TabEventSink): void {
 		this.eventSink = sink || (() => {});
+	}
+
+	setAutoOpenFileDefault(seed: (() => boolean) | null): void {
+		this.autoOpenFileDefault = seed;
 	}
 
 	create(tabId: TabId, cwd: string = ''): TabRecord {
@@ -37,6 +48,11 @@ export class TabRegistry {
 		}
 
 		const record = new TabRecord(tabId, cwd, this.eventSink);
+		// Snapshot the global default at creation time: the tab owns the switch
+		// from now on, and a later global change only reaches new tabs.
+		record.getSettings().setAutoOpenFileEnabled(
+			this.autoOpenFileDefault ? this.autoOpenFileDefault() : false,
+		);
 		this.tabs.set(tabId.value, record);
 		this.tabOrder.push(tabId);
 
@@ -217,6 +233,7 @@ export class TabRegistry {
 						record.getState() === TabState.LOADING_HISTORY,
 						record.getEpoch(),
 						record.getSettings().getDraft(),
+						record.getSettings().isAutoOpenFileEnabled(),
 					),
 				);
 			}

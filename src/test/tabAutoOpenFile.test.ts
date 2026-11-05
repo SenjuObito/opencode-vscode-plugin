@@ -51,78 +51,142 @@ async function sendCommand(
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-/**
- * §10.12：「自动打开文件」开关按 tab 生效。
- *
- * 之前会话层只读全局项目设置（`getAutoOpenFileEnabled(projectPath)`），tab 自己的
- * 开关（context.refresh 写进 TabSettings）形同虚设。现在会话按 tab 解析：tab 显式
- * 设过就用它的，没设过才跟随全局。
- */
-let tabSequence = 0;
-function churnTabId(): string {
-	tabSequence += 1;
-	return tabSequence === 1 ? 'tab-a' : 'tab-b';
+/** 可控的全局「自动打开文件」设置（按工作区路径存）。 */
+function makeSettings(initial: boolean): { settings: never; state: { autoOpen: boolean } } {
+	const state = { autoOpen: initial };
+	const settings = {
+		getPrimaryWorkspaceRoot: () => '/mock/workspace',
+		getAutoOpenFileEnabled: () => state.autoOpen,
+	};
+	return { settings: settings as never, state };
+}
+
+function makeChatWindow(
+	settings: never,
+	resolvers: Array<() => boolean>,
+): ChatWindow {
+	const chatWindow = new ChatWindow({
+		settings,
+		daemon: {} as never,
+		fileOps: {} as never,
+		fallbackWorkingDirectoryResolver: () => '/mock/workspace',
+		createSession: (sink, autoOpenFileEnabledResolver) => {
+			resolvers.push(autoOpenFileEnabledResolver ?? (() => false));
+			const state = new SessionState();
+			const adapter = new SessionCallbackAdapter({
+				jsTarget: sink,
+				model: () => state.getModel(),
+			});
+			return {
+				state,
+				getState: () => state,
+				getAdapter: () => adapter,
+				send: async () => {},
+				sendShell: async () => {},
+				interrupt: () => {},
+				dispose: () => {},
+			} as never;
+		},
+	});
+	chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
+	chatWindow.registerView('sidebar', new MockChannel());
+	return chatWindow;
 }
 
 suite('P8-A17: §10.12 per-tab autoOpenFileEnabled', () => {
-	test('没设过的 tab 跟随全局（undefined），设过的 tab 用自己的值', async () => {
-		const resolvers = new Map<string, () => boolean | null | undefined>();
-		const chatWindow = new ChatWindow({
-			settings: {} as never,
-			daemon: {} as never,
-			fileOps: {} as never,
-			fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-			createSession: (sink, autoOpenFileEnabledResolver) => {
-				const tabId = churnTabId();
-				resolvers.set(tabId, autoOpenFileEnabledResolver ?? (() => undefined));
-				const state = new SessionState();
-				const adapter = new SessionCallbackAdapter({
-					jsTarget: sink,
-					model: () => state.getModel(),
-				});
-				return {
-					state,
-					getState: () => state,
-					getAdapter: () => adapter,
-					send: async () => {},
-					sendShell: async () => {},
-					interrupt: () => {},
-					dispose: () => {},
-				} as never;
-			},
-		});
-		chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, {}));
-		chatWindow.registerView('sidebar', new MockChannel());
+	test('创建 tab 时快照全局值；之后全局变化只影响新建 tab', () => {
+		const { settings, state } = makeSettings(false);
+		const chatWindow = makeChatWindow(settings, []);
+
+		// 引导 tab 在全局关闭时创建 → 关闭。
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		assert.strictEqual(
+			chatWindow.registry.get(tabA)!.getSettings().isAutoOpenFileEnabled(),
+			false,
+		);
+
+		// 全局打开：已有 tab 不变，新 tab 继承。
+		state.autoOpen = true;
+		const tabB = chatWindow.registry.create(TabId.of('tab-b'), '/mock/workspace').getTabId();
+		assert.strictEqual(
+			chatWindow.registry.get(tabA)!.getSettings().isAutoOpenFileEnabled(),
+			false,
+			'全局变化不能回写已有 tab',
+		);
+		assert.strictEqual(
+			chatWindow.registry.get(tabB)!.getSettings().isAutoOpenFileEnabled(),
+			true,
+			'新 tab 应快照当时的全局值',
+		);
+	});
+
+	test('context.setEnabled 只改目标 tab，发送时解析器读该 tab 的当前值', async () => {
+		const { settings } = makeSettings(false);
+		const resolvers: Array<() => boolean> = [];
+		const chatWindow = makeChatWindow(settings, resolvers);
 
 		const tabA = chatWindow.registry.getActiveTabId()!;
 		const tabB = chatWindow.registry.create(TabId.of('tab-b'), '/mock/workspace').getTabId();
 
-		// A 显式关掉「自动打开文件」，B 不动（跟随全局）。
-		await sendCommand(chatWindow, 'sidebar', 'context.refresh', tabA.value, { enabled: false });
-		assert.strictEqual(
-			chatWindow.registry.get(tabA)!.getSettings().getAutoOpenFileOverride(),
-			false,
-			'A 应记录自己的取值',
-		);
-		assert.strictEqual(
-			chatWindow.registry.get(tabB)!.getSettings().getAutoOpenFileOverride(),
-			undefined,
-			'B 没设过，应为 undefined（跟随全局）',
-		);
+		await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', tabA.value, { enabled: true });
+		assert.strictEqual(chatWindow.registry.get(tabA)!.getSettings().isAutoOpenFileEnabled(), true);
+		assert.strictEqual(chatWindow.registry.get(tabB)!.getSettings().isAutoOpenFileEnabled(), false);
 
-		// 建会话：每个 tab 的会话拿到自己的 resolver。
+		// 先建会话再切换：解析器应在发送时刻读 tab，而不是建会话时的旧值。
 		await sendCommand(chatWindow, 'sidebar', 'session.send', tabA.value, { text: 'a' });
 		await sendCommand(chatWindow, 'sidebar', 'session.send', tabB.value, { text: 'b' });
+		assert.strictEqual(resolvers.length, 2, '两个 tab 各建了一个会话');
+		assert.deepStrictEqual(resolvers.map((resolve) => resolve()), [true, false]);
 
-		assert.strictEqual(resolvers.size, 2, '两个 tab 各建了一个会话');
-		const values = [...resolvers.values()].map((resolve) => resolve());
-		assert.ok(
-			values.includes(false),
-			`应有一个 tab 解析到 false（自己的设置），实际：${JSON.stringify(values)}`,
-		);
-		assert.ok(
-			values.includes(undefined),
-			`应有一个 tab 解析到 undefined（跟随全局），实际：${JSON.stringify(values)}`,
-		);
+		await sendCommand(chatWindow, 'sidebar', 'context.setEnabled', tabA.value, { enabled: false });
+		assert.strictEqual(resolvers[0](), false, '同一解析器应读到切换后的值');
+	});
+
+	test('resync 快照携带各 tab 的开关值', async () => {
+		const { settings } = makeSettings(true);
+		const chatWindow = makeChatWindow(settings, []);
+		const view = new MockChannel();
+		chatWindow.registerView('sidebar2', view);
+
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		await sendCommand(chatWindow, 'sidebar2', 'context.setEnabled', tabA.value, { enabled: false });
+
+		const snapshots = chatWindow.registry.snapshots().map((s) => s.toJson());
+		const snapshot = snapshots.find((s) => s.tabId === tabA.value);
+		assert.ok(snapshot, '应有该 tab 的快照');
+		assert.strictEqual(snapshot!.autoOpenFileEnabled, false);
+	});
+
+	test('tab.created 事件携带宿主快照值（前端据此校正显示）', async () => {
+		const { settings } = makeSettings(true);
+		const chatWindow = makeChatWindow(settings, []);
+		const view = new MockChannel();
+		chatWindow.registerView('sidebar', view);
+
+		await sendCommand(chatWindow, 'sidebar', 'tab.create', 'tab-c', {});
+
+		const created = view.raw
+			.flatMap((message) => {
+				const batch = (message as { batch?: unknown[] })?.batch;
+				return Array.isArray(batch) ? batch : [];
+			})
+			.find((event) => (event as { type?: string })?.type === 'tab.created') as
+			{ payload?: { tabId?: string; autoOpenFileEnabled?: boolean } } | undefined;
+
+		assert.ok(created, '应发布 tab.created');
+		assert.strictEqual(created!.payload?.tabId, 'tab-c');
+		assert.strictEqual(created!.payload?.autoOpenFileEnabled, true);
+	});
+
+	test('context.refresh 只刷新显示，不改写 tab 开关', async () => {
+		const { settings } = makeSettings(true);
+		const chatWindow = makeChatWindow(settings, []);
+		const tabA = chatWindow.registry.getActiveTabId()!;
+		const record = chatWindow.registry.get(tabA)!;
+
+		record.getSettings().setAutoOpenFileEnabled(false);
+		await sendCommand(chatWindow, 'sidebar', 'context.refresh', tabA.value, { enabled: true });
+
+		assert.strictEqual(record.getSettings().isAutoOpenFileEnabled(), false);
 	});
 });

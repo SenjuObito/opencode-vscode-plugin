@@ -414,11 +414,6 @@ export class TabStore {
     }
   }
 
-  /** Whether the tab on screen opens files touched by the assistant. */
-  getActiveTabAutoOpenFileEnabled(): boolean {
-    return this.getActiveTab().autoOpenFileEnabled ?? this.view.defaultAutoOpenFileEnabled ?? false;
-  }
-
   /** Drop the streaming runtime of the tab that owns a session. */
   clearStreamingRuntimeFor(sessionId: string | null | undefined): void {
     const owner = this.findIdBySession(sessionId);

@@ -62,7 +62,6 @@ export interface UseMessageSenderOptions {
   closeContextUsageDialog: (requestId?: string | null) => boolean;
   currentSessionId?: string | null;
   currentSessionIdRef?: RefObject<string | null>;
-  autoOpenFileEnabled?: boolean;
 }
 
 /**
@@ -98,7 +97,6 @@ export function useMessageSender({
   closeContextUsageDialog,
   currentSessionId,
   currentSessionIdRef,
-  autoOpenFileEnabled,
 }: UseMessageSenderOptions) {
   /**
    * Check if the input is a new session command
@@ -263,10 +261,6 @@ export function useMessageSender({
     const targetSessionId = currentSessionIdRef
       ? (currentSessionIdRef.current ?? undefined)
       : (currentSessionId ?? undefined);
-    const effectiveAutoOpenFileEnabled = typeof autoOpenFileEnabled === 'boolean'
-      ? autoOpenFileEnabled
-      : (getTabStore().getActiveTabAutoOpenFileEnabled() ?? false);
-
     if (!activeTabId) {
       cardDebugLog('[Frontend] refusing to send: no active tab id');
       addToast(t('chat.sendFailedNoTab', { defaultValue: '发送失败：找不到当前标签页' }), 'error');
@@ -290,7 +284,6 @@ export function useMessageSender({
           attachments: uploaded,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
-          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...modelPayload,
           ...reasoningEffortPayload,
         }, targetSessionId);
@@ -300,7 +293,6 @@ export function useMessageSender({
           text,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
-          autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
           ...modelPayload,
           ...reasoningEffortPayload,
         }, targetSessionId);
@@ -310,12 +302,11 @@ export function useMessageSender({
         text,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
-        autoOpenFileEnabled: effectiveAutoOpenFileEnabled,
         ...modelPayload,
         ...reasoningEffortPayload,
       }, targetSessionId);
     }
-  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, autoOpenFileEnabled, addToast, t]);
+  }, [currentProvider, selectedModel, reasoningEffort, currentSessionId, currentSessionIdRef, addToast, t]);
 
   /**
    * Execute message sending (from queue or directly)

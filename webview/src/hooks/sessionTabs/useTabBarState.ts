@@ -233,7 +233,7 @@ export function useTabBarState(options: UseTabBarStateOptions) {
         return tab;
       })
     );
-    sendHostCommand(activeTabIdRef.current, 'context.refresh', { enabled });
+    sendHostCommand(activeTabIdRef.current, 'context.setEnabled', { enabled });
   }, [setTabs]);
 
   const reorderTabs = useCallback((sourceIndex: number, targetIndex: number) => {

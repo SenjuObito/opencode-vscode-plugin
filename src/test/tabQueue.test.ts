@@ -168,7 +168,7 @@ function makeHarness(root: string): Harness {
 		fileOps: {} as never,
 		attachmentsRoot: root,
 		fallbackWorkingDirectoryResolver: () => '/mock/workspace',
-		createSession: (sink, _auto, _ctx, eventSink) => factory.create(sink, eventSink),
+		createSession: (sink, _auto, eventSink) => factory.create(sink, eventSink),
 	});
 	chatWindow.setWindowCommandDispatcher(attachWindowCommands(chatWindow, daemon));
 	const view = new MockChannel();

@@ -53,7 +53,7 @@ export interface TabSessionContext {
 		fileName: string;
 		mediaType: string;
 	} | null;
-	setContextEnabled(tabId: string, enabled: boolean): void;
+	setTabAutoOpenFileEnabled(tabId: string, enabled: boolean): void;
 	/** User stopped the turn: hold this tab's queue until it is resumed. */
 	pauseQueue(tabId: string): void;
 	/**
@@ -138,8 +138,8 @@ export class HandlerContext {
 		return this.tabSessionContext?.resolveAttachment(tabId, attachmentId) ?? null;
 	}
 
-	setTabContextEnabled(tabId: string, enabled: boolean): void {
-		this.tabSessionContext?.setContextEnabled(tabId, enabled);
+	setTabAutoOpenFileEnabled(tabId: string, enabled: boolean): void {
+		this.tabSessionContext?.setTabAutoOpenFileEnabled(tabId, enabled);
 	}
 
 	pauseTabQueue(tabId: string): void {

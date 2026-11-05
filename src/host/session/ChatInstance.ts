@@ -91,8 +91,7 @@ export interface ChatInstance {
 	 */
 	createSession(
 		viewSink?: JsTarget,
-		autoOpenFileEnabledResolver?: () => boolean | null | undefined,
-		contextEnabledResolver?: () => boolean,
+		autoOpenFileEnabledResolver?: () => boolean,
 		eventSink?: TabEventSink,
 	): OpenCodeSession;
 	/** 把某个历史会话加载进活跃 tab（v2 `session.load`）。 */
@@ -211,11 +210,10 @@ export function createChatInstance(deps: ChatInstanceDeps): ChatInstance {
 		historyHandler,
 		permissionHandler,
 		fontConfigHandler,
-		createSession: (viewSink, autoOpenFileEnabledResolver, contextEnabledResolver, eventSink) =>
+		createSession: (viewSink, autoOpenFileEnabledResolver, eventSink) =>
 			sessionManager.createSessionInstance({
 				viewSink,
 				autoOpenFileEnabledResolver,
-				contextEnabledResolver,
 				eventSink,
 			}),
 		loadSessionById: (sessionId) => historyHandler.loadSessionById(sessionId),
