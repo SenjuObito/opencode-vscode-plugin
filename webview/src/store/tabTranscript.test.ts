@@ -304,16 +304,18 @@ describe('TabTranscript', () => {
         .toBe('final text');
     });
 
-    it('does not duplicate the streaming bubble when a snapshot reports it', () => {
+    it('adopts the record the host declares as still being generated', () => {
       const transcript = new TabTranscript();
       transcript.applySnapshot([user('a', 'u1')]);
       transcript.beginAssistant(1, false);
       transcript.appendDelta('partial', 1);
 
-      transcript.applySnapshot([
-        user('a', 'u1'),
+      // The host names the open record beside the window, not inside it.
+      transcript.applySnapshot(
+        [user('a', 'u1')],
+        0,
         { type: 'assistant', content: 'partial answer', timestamp: '2026-01-01T00:00:01.000Z' } as ClaudeMessage,
-      ]);
+      );
 
       const assistantBubbles = transcript.getSnapshot().filter((message) => message.type === 'assistant');
       expect(assistantBubbles).toHaveLength(1);
@@ -321,14 +323,46 @@ describe('TabTranscript', () => {
       expect(assistantBubbles[0]).toMatchObject({ content: 'partial answer', isStreaming: true });
     });
 
-    it('takes structural blocks from a snapshot without losing streamed text', () => {
+    it('does not duplicate the reply when the draft becomes confirmed', () => {
+      const transcript = new TabTranscript();
+      const draft = assistant('answer', 'a1');
+      transcript.applySnapshot([user('a', 'u1')], 0, draft);
+      expect(transcript.getSnapshot()).toHaveLength(2);
+
+      // The turn ended: the same record is now confirmed and nothing is live.
+      transcript.applySnapshot([user('a', 'u1'), draft], 0, null);
+
+      const bubbles = transcript.getSnapshot().filter((message) => message.type === 'assistant');
+      expect(bubbles).toHaveLength(1);
+      expect(bubbles[0].content).toBe('answer');
+      expect(bubbles[0].isStreaming).toBe(false);
+    });
+
+    it('keeps one bubble when a tab is cleared and replayed mid-turn', () => {
+      const transcript = new TabTranscript();
+      const draft = assistant('half written', 'a1');
+      transcript.applySnapshot([user('a', 'u1')], 0, draft);
+
+      // Switching away and back: the host replays the window plus the draft.
+      transcript.clear();
+      transcript.applySnapshot([user('a', 'u1')], 0, draft);
+      transcript.beginAssistant(1, false);
+      transcript.appendDelta(' and more', 1);
+
+      const bubbles = transcript.getSnapshot().filter((message) => message.type === 'assistant');
+      expect(bubbles).toHaveLength(1);
+      expect(bubbles[0].content).toBe('half written and more');
+    });
+
+    it('takes structural blocks from the host draft without losing streamed text', () => {
       const transcript = new TabTranscript();
       transcript.applySnapshot([user('a', 'u1')]);
       transcript.beginAssistant(1, false);
       transcript.appendDelta('long streamed text', 1);
 
-      transcript.applySnapshot([
-        user('a', 'u1'),
+      transcript.applySnapshot(
+        [user('a', 'u1')],
+        0,
         {
           type: 'assistant',
           content: 'short',
@@ -342,7 +376,7 @@ describe('TabTranscript', () => {
             },
           },
         } as ClaudeMessage,
-      ]);
+      );
 
       const assistant = transcript.getSnapshot()[1];
       expect(assistant.content).toBe('long streamed text');
@@ -421,13 +455,17 @@ describe('TabTranscript compaction boundaries', () => {
     transcript.applySnapshot([user('u1')]);
     transcript.beginAssistant(1, false);
     transcript.appendDelta('before compaction', 1);
+    // The host names the record it is still writing, so the bubble carries the
+    // host's identity from here on.
+    transcript.applySnapshot([user('u1')], 0, assistant('before compaction', 'a1'));
 
-    // The host seals the assistant and appends the compaction record.
+    // The host seals the assistant, appends the compaction record, and states
+    // that nothing is in flight any more.
     transcript.applySnapshot([
       user('u1'),
       assistant('before compaction', 'a1'),
       compaction('c1'),
-    ]);
+    ], 0, null);
 
     expect(contents(transcript.getSnapshot())).toEqual(['u1', 'before compaction', '']);
     expect(transcript.getSnapshot()[2].type).toBe('compaction');
@@ -446,21 +484,19 @@ describe('TabTranscript compaction boundaries', () => {
 
   it('merges the post-compaction streaming copy instead of duplicating it', () => {
     const transcript = new TabTranscript();
-    transcript.applySnapshot([
-      user('u1'),
-      assistant('before', 'a1'),
-      compaction('c1'),
+    transcript.applySnapshot(
+      [user('u1'), assistant('before', 'a1'), compaction('c1')],
+      0,
       assistant('', 'a2'),
-    ]);
+    );
     transcript.beginAssistant(2, false);
     transcript.appendDelta('after', 2);
 
-    transcript.applySnapshot([
-      user('u1'),
-      assistant('before', 'a1'),
-      compaction('c1'),
+    transcript.applySnapshot(
+      [user('u1'), assistant('before', 'a1'), compaction('c1')],
+      0,
       assistant('after and more', 'a2'),
-    ]);
+    );
 
     const snapshot = transcript.getSnapshot();
     expect(snapshot.map((message) => message.type)).toEqual([

@@ -32,6 +32,12 @@ interface Window {
     sequence?: string | number,
     baseIndex?: string | number,
     targetSessionId?: string | null,
+    /**
+     * The record the host is still generating, serialised like a window entry
+     * (absent or null when nothing is in flight). It is deliberately NOT part
+     * of `json`: the window is confirmed history, the draft is the open bubble.
+     */
+    live?: unknown,
   ) => void;
   /** Replace a long conversation's tail without resending its unchanged prefix. */
   updateMessageTail?: (
@@ -39,6 +45,7 @@ interface Window {
     baseIndex: string | number,
     sequence?: string | number,
     targetSessionId?: string | null,
+    live?: unknown,
   ) => void;
   /** Whether a revert/undo boundary is currently active on the frontend. */
   __hasActiveRevert?: boolean;

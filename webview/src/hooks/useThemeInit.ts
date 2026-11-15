@@ -1,22 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { applyChatBarThemeColor, isValidHexColor } from '../utils/chatBarTheme';
-import { applyFontScale } from '../utils/fontScale';
+import { applyFontSizeLevel } from '../utils/fontScale';
 import {
   getUiPreferences,
   UI_PREFERENCES_CHANGED_EVENT,
   type UiPreferences,
   type UiPreferencesChangedDetail,
 } from '../utils/uiPreferences';
-
-/** 字号档位 → 缩放比（与设置页保持一致的唯一映射）。 */
-const FONT_SIZE_SCALE: Record<number, number> = {
-  1: 0.8,   // 80%
-  2: 0.9,   // 90% (default)
-  3: 1.0,   // 100%
-  4: 1.1,   // 110%
-  5: 1.2,   // 120%
-  6: 1.4,   // 140%
-};
 
 function applyAppearance(prefs: UiPreferences, ideTheme: 'light' | 'dark' | null): void {
   // 显式 light/dark 立即生效；跟随 IDE 时等 ideTheme 到达再切换。
@@ -27,7 +17,7 @@ function applyAppearance(prefs: UiPreferences, ideTheme: 'light' | 'dark' | null
     document.documentElement.setAttribute('data-theme', ideTheme);
   }
 
-  applyFontScale(String(FONT_SIZE_SCALE[prefs.fontSizeLevel] ?? 1.0));
+  applyFontSizeLevel(prefs.fontSizeLevel);
 
   if (prefs.chatBgColor && isValidHexColor(prefs.chatBgColor)) {
     document.documentElement.style.setProperty('--bg-chat', prefs.chatBgColor);

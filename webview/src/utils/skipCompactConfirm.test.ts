@@ -9,32 +9,31 @@ import {
   setSkipCompactConfirm,
   type SkipCompactConfirmChangedDetail,
 } from './skipCompactConfirm';
+import { __resetUiPreferencesForTests } from './uiPreferences';
 
 describe('skipCompactConfirm', () => {
   beforeEach(() => {
     localStorage.clear();
+    __resetUiPreferencesForTests();
   });
 
   describe('getSkipCompactConfirm', () => {
-    it('defaults to false when key is not present in localStorage', () => {
+    it('defaults to false', () => {
       expect(getSkipCompactConfirm()).toBe(false);
     });
 
-    it('returns true when key is set to "true"', () => {
+    it('reads the shared preference store, not the raw localStorage key', () => {
+      // A stale/foreign mirror must not win over the authoritative value.
       localStorage.setItem(SKIP_COMPACT_CONFIRM_KEY, 'true');
-      expect(getSkipCompactConfirm()).toBe(true);
-    });
+      expect(getSkipCompactConfirm()).toBe(false);
 
-    it('returns false when key is set to "false" or anything else', () => {
-      localStorage.setItem(SKIP_COMPACT_CONFIRM_KEY, 'false');
-      expect(getSkipCompactConfirm()).toBe(false);
-      localStorage.setItem(SKIP_COMPACT_CONFIRM_KEY, 'garbage');
-      expect(getSkipCompactConfirm()).toBe(false);
+      setSkipCompactConfirm(true);
+      expect(getSkipCompactConfirm()).toBe(true);
     });
   });
 
   describe('setSkipCompactConfirm', () => {
-    it('persists true to localStorage and dispatches CustomEvent with enabled: true', () => {
+    it('persists true (mirror + shared store) and dispatches CustomEvent with enabled: true', () => {
       const listener = vi.fn();
       window.addEventListener(SKIP_COMPACT_CONFIRM_EVENT, listener);
 
@@ -48,8 +47,8 @@ describe('skipCompactConfirm', () => {
       window.removeEventListener(SKIP_COMPACT_CONFIRM_EVENT, listener);
     });
 
-    it('persists false to localStorage and dispatches CustomEvent with enabled: false', () => {
-      localStorage.setItem(SKIP_COMPACT_CONFIRM_KEY, 'true');
+    it('persists false and dispatches CustomEvent with enabled: false', () => {
+      setSkipCompactConfirm(true);
       const listener = vi.fn();
       window.addEventListener(SKIP_COMPACT_CONFIRM_EVENT, listener);
 
@@ -60,6 +59,16 @@ describe('skipCompactConfirm', () => {
       const event = listener.mock.calls[0][0] as CustomEvent<SkipCompactConfirmChangedDetail>;
       expect(event.detail).toEqual({ enabled: false });
 
+      window.removeEventListener(SKIP_COMPACT_CONFIRM_EVENT, listener);
+    });
+
+    it('does not dispatch when the value is unchanged', () => {
+      const listener = vi.fn();
+      window.addEventListener(SKIP_COMPACT_CONFIRM_EVENT, listener);
+
+      setSkipCompactConfirm(false);
+
+      expect(listener).not.toHaveBeenCalled();
       window.removeEventListener(SKIP_COMPACT_CONFIRM_EVENT, listener);
     });
   });

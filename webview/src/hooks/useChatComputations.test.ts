@@ -34,7 +34,7 @@ describe('deriveTodosForTurn', () => {
     ];
 
     const latestTurn = sliceLatestConversationTurn(messages);
-    expect(deriveTodosForTurn(latestTurn, getContentBlocks, true)).toEqual([]);
+    expect(deriveTodosForTurn(latestTurn, getContentBlocks)).toEqual([]);
   });
 
   it('shows the latest plan created in the current turn', () => {
@@ -54,7 +54,7 @@ describe('deriveTodosForTurn', () => {
     ];
 
     const latestTurn = sliceLatestConversationTurn(messages);
-    expect(deriveTodosForTurn(latestTurn, getContentBlocks, true)).toEqual([
+    expect(deriveTodosForTurn(latestTurn, getContentBlocks)).toEqual([
       { content: 'First', status: 'in_progress' },
       { content: 'Second', status: 'pending' },
       { content: 'Third', status: 'pending' },
@@ -80,13 +80,15 @@ describe('deriveTodosForTurn', () => {
     ];
 
     const latestTurn = sliceLatestConversationTurn(messages);
-    expect(deriveTodosForTurn(latestTurn, getContentBlocks, true)).toEqual([]);
+    expect(deriveTodosForTurn(latestTurn, getContentBlocks)).toEqual([]);
   });
 
   it('keeps earlier todos when the full transcript is scoped (settled history replay)', () => {
     // Non-streaming scope feeds the WHOLE transcript to deriveTodosForTurn, so an
     // earlier turn's plan survives even when the last turn has no task tool —
     // exactly what a resumed history session needs to render its task list.
+    // Statuses are copied verbatim: a settled turn never means "unfinished work
+    // is done" (core owns that answer).
     const messages = [
       user('previous request'),
       assistant([toolUse('old-plan', 'update_plan', {
@@ -98,9 +100,9 @@ describe('deriveTodosForTurn', () => {
       user('Only answer OK'),
     ];
 
-    expect(deriveTodosForTurn(messages, getContentBlocks, false)).toEqual([
+    expect(deriveTodosForTurn(messages, getContentBlocks)).toEqual([
       { content: 'Kept step', status: 'completed' },
-      { content: 'In-flight step', status: 'completed' },
+      { content: 'In-flight step', status: 'in_progress' },
     ]);
   });
 });

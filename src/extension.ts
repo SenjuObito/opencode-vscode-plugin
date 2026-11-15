@@ -161,21 +161,12 @@ export function activate(context: vscode.ExtensionContext) {
 	editorContextTracker.register();
 	context.subscriptions.push({ dispose: () => editorContextTracker.dispose() });
 
-	// ── 5. VS Code 主题与字体变化广播（设置页「跟随 VS Code」选项）─────────
+	// ── 5. VS Code 主题变化广播（设置页「跟随 VS Code」选项）─────────────
 	const pushIdeTheme = (): void => {
 		const isDark = vscode.window.activeColorTheme.kind !== vscode.ColorThemeKind.Light;
 		WebviewBroadcaster.broadcastJavaScript('onIdeThemeChanged', JSON.stringify({ isDark }));
 	};
 	context.subscriptions.push(vscode.window.onDidChangeActiveColorTheme(pushIdeTheme));
-	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration((event) => {
-			if (event.affectsConfiguration('editor.fontFamily')
-				|| event.affectsConfiguration('editor.fontSize')
-				|| event.affectsConfiguration('editor.lineHeight')) {
-				WebviewBroadcaster.broadcastJavaScript('onFontConfigChanged');
-			}
-		}),
-	);
 
 	// ── 5b. 全局单例：一个 ChatInstance + 一个 ChatWindow（单实例多视图）────────
 	// 会话归 tab 所有：所有视图（左右侧边栏 + 编辑器 panel）共享同一个实例，
@@ -188,6 +179,19 @@ export function activate(context: vscode.ExtensionContext) {
 		fallbackWorkingDirectoryResolver,
 		editorContextTracker,
 	});
+
+	// 编辑器字体/字号/行高变化 → 重推字体快照（editor / ui / code 三份）。
+	// 走 HandlerContext 的既有钩子，装配层不直接调用 handler 业务方法；
+	// 投递范围由 BroadcastWebviewChannel 决定，覆盖所有存活视图。
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((event) => {
+			if (event.affectsConfiguration('editor.fontFamily')
+				|| event.affectsConfiguration('editor.fontSize')
+				|| event.affectsConfiguration('editor.lineHeight')) {
+				instance.context.pushFontConfig();
+			}
+		}),
+	);
 
 	const chatWindow = new ChatWindow({
 		settings,

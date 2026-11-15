@@ -3,7 +3,7 @@
  * Holds all state for one conversation (opencode only: provider is fixed).
  */
 import { randomUUID } from 'crypto';
-import { ChatMessage, MessageType } from './types';
+import { ChatMessage, MessageType, MessageWindow } from './types';
 import { truncateMessageRawForState } from '../util/MessageJsonConverter';
 
 /** Canonical permission-mode validator (opencode primary agent ids).
@@ -74,6 +74,18 @@ export class SessionState {
 	// ── 消息历史 ──
 	private readonly messages: ChatMessage[] = [];
 
+	/**
+	 * 引擎仍在生成的那条 assistant，或 null。
+	 *
+	 * <p>它是 {@link messages} 里的一个元素（同一个对象引用），但还不是确认
+	 * 历史：投递时被投影出去单独作为草稿发送，让视图的流式气泡成为它唯一的
+	 * 所有者。没有这一层时，同一条回复会同时以「窗口条目」和「视图草稿」的
+	 * 形态各出现一次。</p>
+	 *
+	 * <p>只在引擎真正开始写这条消息时设置，在每一处终止路径清除。</p>
+	 */
+	private liveAssistant: ChatMessage | null = null;
+
 	// ── 会话元数据 ──
 	private summary: string | null = null;
 	private lastModifiedTime = Date.now();
@@ -110,6 +122,48 @@ export class SessionState {
 	}
 	getMessagesReference(): ChatMessage[] {
 		return this.messages;
+	}
+
+	/** 引擎仍在生成的那条 assistant，或 null。 */
+	getLiveAssistant(): ChatMessage | null {
+		return this.liveAssistant;
+	}
+
+	/**
+	 * 声明（或撤销）当前回合的草稿。
+	 *
+	 * <p>只在引擎真正采纳/创建这条 assistant 时调用；每一处终止路径都要
+	 * 调用 {@link clearLiveAssistant}，保证最终帧里它回到已确认窗口。</p>
+	 */
+	setLiveAssistant(message: ChatMessage | null): void {
+		this.liveAssistant = message;
+	}
+
+	/** 无条件清除草稿引用（回合终止、重置、会话切换）。 */
+	clearLiveAssistant(): void {
+		this.liveAssistant = null;
+	}
+
+	/**
+	 * 把当前消息列表拆成「已确认窗口 + 草稿」。
+	 *
+	 * <p>草稿按**对象引用**从窗口里剔除，而不是按内容或位置：它就是列表里的
+	 * 那个元素，剔除后窗口剩下的顺序不变。引用已不在列表里（列表被替换/裁剪
+	 * 过）时按「没有草稿」处理，绝不复活一个已经不属于这里的对象。</p>
+	 */
+	getMessageWindow(): MessageWindow {
+		const confirmed = [...this.messages];
+		const live = this.liveAssistant;
+		if (!live) {
+			return { confirmed, live: null };
+		}
+		const index = confirmed.indexOf(live);
+		if (index < 0) {
+			this.liveAssistant = null;
+			return { confirmed, live: null };
+		}
+		confirmed.splice(index, 1);
+		return { confirmed, live };
 	}
 	getSummary(): string | null {
 		return this.summary;
@@ -234,13 +288,22 @@ export class SessionState {
 	}
 
 	// ── 消息操作 ──
-	addMessage(message: ChatMessage): void {
+	/**
+	 * 追加一条消息。
+	 *
+	 * @returns 实际存入列表的对象。准入截断可能把它换成新对象，调用方必须
+	 * 用返回值持有它（草稿身份按对象引用比较，拿着旧对象会失配）。
+	 */
+	addMessage(message: ChatMessage): ChatMessage {
 		// 准入截断：raw 里的超长字符串块（工具输出/长文本）进入长期驻留的
 		// state 前截断到 32K/块，防超大 raw 撑爆内存。
-		this.messages.push(truncateMessageRawForState(message));
+		const stored = truncateMessageRawForState(message);
+		this.messages.push(stored);
+		return stored;
 	}
 	clearMessages(): void {
 		this.messages.length = 0;
+		this.liveAssistant = null;
 	}
 
 	/**
@@ -480,6 +543,11 @@ export class SessionState {
 				this.messages.splice(i, 1);
 			}
 		}
+		// 被删掉的可能正是草稿：它已经不在这份转录里了，不能继续作为
+		// 未确认窗口发送出去。
+		if (this.liveAssistant && this.messages.indexOf(this.liveAssistant) < 0) {
+			this.liveAssistant = null;
+		}
 		return this.messages.length !== before;
 	}
 
@@ -508,6 +576,9 @@ export class SessionState {
 		}
 		// 含边界本身：未指定 partID 时服务端从边界消息起删（SessionRevert.cleanup）。
 		this.messages.splice(idx);
+		if (this.liveAssistant && this.messages.indexOf(this.liveAssistant) < 0) {
+			this.liveAssistant = null;
+		}
 		return true;
 	}
 

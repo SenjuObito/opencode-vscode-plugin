@@ -8,7 +8,7 @@
 import { startTransition } from 'react';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import type { ClaudeMessage, ClaudeRawMessage } from '../../../types';
-import { sendBridgeEvent } from '../../../utils/bridge';
+import { cardDebugLog, sendBridgeEvent } from '../../../utils/bridge';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
 import { parseSequence } from '../parseSequence';
 import { getStreamEndHandlingMode } from '../messageSync';
@@ -27,6 +27,7 @@ import {
   parseEventJson,
   updateBackgroundTab,
 } from '../../../utils/tabEventRouting';
+import { todoListFromPayload } from '../../../utils/todoShared';
 import { resolveSessionId } from '../../../utils/sessionIdentity';
 import { getTabStore } from '../../../store/tabStore';
 
@@ -295,10 +296,9 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
    * a transient channel).  Because the coalescer also pushes message snapshots
    * via `updateMessages` independent of `streamingActive`, content would still
    * render while `streamingActive` stayed false — so the host looked busy but
-   * the StatusPanel (and `finalizeTodosForSettledTurn`) behaved as if the turn
-   * had settled, wrongly flipping `in_progress` todos to `completed`.  An
-   * incoming content/thinking delta is undeniable proof the backend is
-   * mid-stream, so we recover the streaming state here.
+   * the StatusPanel behaved as if the turn had settled.  An incoming
+   * content/thinking delta is undeniable proof the backend is mid-stream, so we
+   * recover the streaming state here.
    */
   const ensureStreamingActive = (): void => {
     if (isStreamingRef.current) return;
@@ -655,12 +655,16 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       if (!json) return;
       const messages = parseEventJson<ClaudeMessage[]>(json);
       if (!messages) return;
-      if (updateBackgroundTab(env, (tab) => applySnapshotToTab(tab, messages))) return;
+      // The record the host is still writing travels beside the window: the
+      // view adopts it as the open bubble instead of hunting for it in the list.
+      const live = parseEventJson<ClaudeMessage>(data.live);
+      if (updateBackgroundTab(env, (tab) => applySnapshotToTab(tab, messages, live))) return;
       window.updateMessages?.(
         json,
         String(data.sequence ?? ''),
         String(data.baseIndex ?? 0),
         env?.sessionId ?? null,
+        live,
       );
     },
     'message.tail': (payload: unknown, env?: HostEventEnvelope) => {
@@ -669,17 +673,20 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       if (!json) return;
       const messages = parseEventJson<ClaudeMessage[]>(json);
       if (!messages) return;
+      const live = parseEventJson<ClaudeMessage>(data.live);
       const tailBase = Number(payloadOf(payload).baseIndex);
       if (updateBackgroundTab(env, (tab) => applyTailToTab(
         tab,
         messages,
         Number.isSafeInteger(tailBase) && tailBase >= 0 ? tailBase : 0,
+        live,
       ))) return;
       window.updateMessageTail?.(
         json,
         String(data.baseIndex ?? 0),
         String(data.sequence ?? ''),
         env?.sessionId ?? null,
+        live,
       );
     },
     'turn.heartbeat': (_payload: unknown, env?: HostEventEnvelope) => {
@@ -791,12 +798,31 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       window.onBlockReset?.();
     },
     'todos.updated': (payload: unknown, env?: HostEventEnvelope) => {
-      const todos = payloadOf(payload).todos;
-      if (updateBackgroundTab(env, (tab) => {
-        const parsed = parseEventJson(todos);
-        if (Array.isArray(parsed)) tab.sseTodos = parsed as any;
-      })) return;
-      if (typeof todos === 'string') window.onTodoUpdated?.(todos);
+      // core emits the canonical list as `{ sessionID, revision, todos }`;
+      // older/daemon-local paths send the bare array. Both are accepted here so
+      // the routing below never has to know which one it got.
+      const todos = todoListFromPayload(payloadOf(payload).todos);
+      if (todos === null) {
+        cardDebugLog('[todos.updated] not a task list, dropped');
+        return;
+      }
+
+      // The host owns sessionId -> tabId and stamps every tab-scoped event.
+      // This layer routes strictly by that id: a session on screen is never
+      // taken as the owner of an event that names another tab.
+      const tabId = eventTabId(env);
+      if (!tabId) {
+        // Legacy/no-tab publisher: its only meaningful target is the view.
+        window.onTodoUpdated?.(JSON.stringify({ todos }));
+        return;
+      }
+
+      const store = getTabStore();
+      if (!store.findById(tabId)) {
+        cardDebugLog('[todos.updated] unknown tab, dropped:', tabId);
+        return;
+      }
+      store.updateTab(tabId, (tab) => ({ ...tab, sseTodos: todos }));
     },
     'message.removed': (payload: unknown, env?: HostEventEnvelope) => {
       const idsRaw = payloadOf(payload).ids;

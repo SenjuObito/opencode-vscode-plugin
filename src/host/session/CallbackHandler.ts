@@ -2,7 +2,7 @@
  * CallbackHandler — port of cc-gui `session/CallbackHandler.java`.
  * Thin dispatch layer to the session callback.
  */
-import { ChatMessage, SessionCallback, PermissionRequest } from './types';
+import { MessageWindow, SessionCallback, PermissionRequest } from './types';
 
 export class CallbackHandler {
 	private callback: SessionCallback | null = null;
@@ -11,8 +11,8 @@ export class CallbackHandler {
 		this.callback = callback;
 	}
 
-	notifyMessageUpdate(messages: ChatMessage[]): void {
-		this.callback?.onMessageUpdate(messages);
+	notifyMessageUpdate(window: MessageWindow): void {
+		this.callback?.onMessageUpdate(window);
 	}
 
 	notifyStateChange(busy: boolean, loading: boolean, error: string | null): void {

@@ -67,8 +67,20 @@ export interface PermissionRequest {
 	questions?: Array<Record<string, unknown>>;
 }
 
+/**
+ * 一次投递里割裂的两个事实：已确认窗口 + 引擎仍在生成的草稿。
+ *
+ * <p>草稿是 messages 里的同一条记录（同一个对象引用），只是它还没终结。
+ * 单独送出而不是夹在窗口里，视图才能让流式气泡独占它 —— 否则同一条回复
+ * 会同时以「快照条目」和「视图草稿」出现两次。</p>
+ */
+export interface MessageWindow {
+	confirmed: ChatMessage[];
+	live: ChatMessage | null;
+}
+
 export interface SessionCallback {
-	onMessageUpdate(messages: ChatMessage[]): void;
+	onMessageUpdate(window: MessageWindow): void;
 	onStateChange(busy: boolean, loading: boolean, error: string | null): void;
 	onStatusMessage?(message: string): void;
 	onSessionIdReceived(sessionId: string): void;

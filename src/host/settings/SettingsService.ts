@@ -26,7 +26,7 @@ export const DEFAULT_PERMISSION_DIALOG_TIMEOUT_SECONDS = 30;
 export interface UiPreferences {
 	/** 'system' = 跟随 VS Code 主题。 */
 	theme: 'light' | 'dark' | 'system';
-	/** 1..6，见 webview fontSizeMap（2 = 90%）。 */
+	/** 1..6，见 webview utils/fontScale.ts（2 = 90%）。 */
 	fontSizeLevel: number;
 	chatBgColor: string;
 	userMsgColor: string;
@@ -35,6 +35,8 @@ export interface UiPreferences {
 	diffTheme: string;
 	diffExpandedByDefault: boolean;
 	historyCompletionEnabled: boolean;
+	/** 跳过「压缩会话」确认弹窗（与 webview skipCompactConfirm 同义）。 */
+	skipCompactConfirm: boolean;
 	detailedOutputEnabled: boolean;
 }
 
@@ -47,6 +49,7 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 	diffTheme: 'follow',
 	diffExpandedByDefault: false,
 	historyCompletionEnabled: true,
+	skipCompactConfirm: false,
 	detailedOutputEnabled: false,
 };
 
@@ -337,6 +340,7 @@ export class SettingsService {
 			diffTheme,
 			diffExpandedByDefault: bool(raw.diffExpandedByDefault, DEFAULT_UI_PREFERENCES.diffExpandedByDefault),
 			historyCompletionEnabled: bool(raw.historyCompletionEnabled, DEFAULT_UI_PREFERENCES.historyCompletionEnabled),
+			skipCompactConfirm: bool(raw.skipCompactConfirm, DEFAULT_UI_PREFERENCES.skipCompactConfirm),
 			detailedOutputEnabled: bool(raw.detailedOutputEnabled, DEFAULT_UI_PREFERENCES.detailedOutputEnabled),
 		};
 	}

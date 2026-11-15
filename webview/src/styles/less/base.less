@@ -14,6 +14,9 @@
 
 /* 字体变量（由宿主 FontConfigHandler 动态注入，默认跟随 VS Code 字体栈） */
 :root {
+    /* 字号档位 1..6 → 缩放比：唯一定义处（webview 只写 data-font-size-level）。
+       默认档 2 = 90%，与 utils/fontScale.ts 的 DEFAULT_FONT_SIZE_LEVEL 对应。 */
+    --font-scale: 0.9;
     /* 编辑器原始字体 */
     --cc-gui-editor-font-family: 'Menlo', 'Consolas', monospace;
     /* 当前插件实际使用的 UI 字体（VS Code workbench 无 UI 字体设置，取全平台系统对称栈） */
@@ -26,6 +29,14 @@
     --idea-editor-font-size: 14px;
     --idea-editor-line-spacing: 1.5;
 }
+
+/* 字号档位 → 缩放比（唯一事实源；宿主与设置页只写 data-font-size-level）。 */
+html[data-font-size-level='1'] { --font-scale: 0.8; }
+html[data-font-size-level='2'] { --font-scale: 0.9; }
+html[data-font-size-level='3'] { --font-scale: 1; }
+html[data-font-size-level='4'] { --font-scale: 1.1; }
+html[data-font-size-level='5'] { --font-scale: 1.2; }
+html[data-font-size-level='6'] { --font-scale: 1.4; }
 
 body {
     font-family: var(--cc-gui-ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Noto Sans SC', system-ui, sans-serif);

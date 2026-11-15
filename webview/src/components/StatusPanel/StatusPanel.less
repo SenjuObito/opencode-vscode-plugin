@@ -161,6 +161,8 @@
   }
 }
 
+/* The spinner is one more icon in the tab row: same glyph size as the static
+ * ones beside it, so the baseline shift keeps them on one visual line. */
 .status-panel-tab-loading.codicon {
   font-size: 14px;
   animation: status-spin 1s linear infinite;
@@ -770,13 +772,19 @@
   font-size: 13px;
 }
 
-/* Spin animation */
+/* Spin animation.
+ *
+ * Uses the independent `rotate` property, never `transform`: a spinning icon
+ * inside a baseline row still carries `transform: translateY(--ui-icon-shift)`
+ * (see `.status-panel-tab .codicon`), and an animated `transform` would replace
+ * that offset frame by frame, leaving the spinner a couple of pixels above the
+ * text it sits next to. */
 @keyframes status-spin {
   from {
-    transform: rotate(0deg);
+    rotate: 0deg;
   }
   to {
-    transform: rotate(360deg);
+    rotate: 360deg;
   }
 }
 

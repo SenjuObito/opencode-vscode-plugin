@@ -21,6 +21,7 @@
 import { sendBridgeEvent } from './bridge';
 import { getStoredDiffTheme, type DiffThemeMode } from './diffTheme';
 import { CHAT_BAR_COLOR_STORAGE_KEY } from './chatBarTheme';
+import { DEFAULT_FONT_SIZE_LEVEL, normalizeFontSizeLevel } from './fontScale';
 import {
   DETAILED_OUTPUT_ENABLED_EVENT,
   type DetailedOutputEnabledChangedDetail,
@@ -29,7 +30,7 @@ import {
 export interface UiPreferences {
   /** 'system' = follow the VS Code color theme. */
   theme: 'light' | 'dark' | 'system';
-  /** 1..6, see the fontSizeMap in useThemeInit / useSettingsThemeSync. */
+  /** 1..6, see utils/fontScale.ts (the level→ratio table itself lives in base.less). */
   fontSizeLevel: number;
   chatBgColor: string;
   userMsgColor: string;
@@ -43,7 +44,7 @@ export interface UiPreferences {
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
   theme: 'system',
-  fontSizeLevel: 2,
+  fontSizeLevel: DEFAULT_FONT_SIZE_LEVEL,
   chatBgColor: '',
   userMsgColor: '',
   chatBarColor: '',
@@ -55,6 +56,14 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 };
 
 export const UI_PREFERENCES_CHANGED_EVENT = 'ui-preferences-changed';
+
+/** 字段级事件：让只关心单个开关的订阅者（如输入框内联补全）也能跟随宿主推送。 */
+export const HISTORY_COMPLETION_CHANGED_EVENT = 'historyCompletionChanged';
+export const SKIP_COMPACT_CONFIRM_CHANGED_EVENT = 'skipCompactConfirmChanged';
+
+export interface BoolPreferenceChangedDetail {
+  enabled: boolean;
+}
 
 export interface UiPreferencesChangedDetail {
   preferences: UiPreferences;
@@ -113,7 +122,7 @@ function sanitize(patch: unknown): Partial<UiPreferences> {
     out.theme = raw.theme as UiPreferences['theme'];
   }
   if (typeof raw.fontSizeLevel === 'number' && Number.isFinite(raw.fontSizeLevel)) {
-    out.fontSizeLevel = Math.min(6, Math.max(1, Math.trunc(raw.fontSizeLevel)));
+    out.fontSizeLevel = normalizeFontSizeLevel(raw.fontSizeLevel);
   }
   const colors: Array<keyof Pick<UiPreferences, 'chatBgColor' | 'userMsgColor' | 'chatBarColor'>> = [
     'chatBgColor',
@@ -148,7 +157,7 @@ function readLocalMirror(): Partial<UiPreferences> {
     partial.theme = theme as UiPreferences['theme'];
   }
   if (readString('fontSizeLevel') !== null) {
-    partial.fontSizeLevel = Math.min(6, Math.max(1, readInt('fontSizeLevel', 2)));
+    partial.fontSizeLevel = normalizeFontSizeLevel(readInt('fontSizeLevel', DEFAULT_FONT_SIZE_LEVEL));
   }
   for (const key of ['chatBgColor', 'userMsgColor'] as const) {
     const value = readString(key);
@@ -211,6 +220,17 @@ function emit(source: UiPreferencesChangedDetail['source']): void {
     DETAILED_OUTPUT_ENABLED_EVENT,
     { detail: { enabled: current.detailedOutputEnabled } },
   ));
+  // 字段级事件。宿主回放（source='host'）也必须派发：聊天输入框的补全、
+  // 全局「跳过压缩确认」判定等订阅者只监听这些事件，缺了它们就会出现
+  // 「设置页已经是新值，其他视图仍是旧行为」。
+  window.dispatchEvent(new CustomEvent<BoolPreferenceChangedDetail>(
+    HISTORY_COMPLETION_CHANGED_EVENT,
+    { detail: { enabled: current.historyCompletionEnabled } },
+  ));
+  window.dispatchEvent(new CustomEvent<BoolPreferenceChangedDetail>(
+    SKIP_COMPACT_CONFIRM_CHANGED_EVENT,
+    { detail: { enabled: current.skipCompactConfirm } },
+  ));
 }
 
 /**
@@ -252,6 +272,18 @@ export function updateUiPreferences(patch: Partial<UiPreferences>): void {
 /** Ask the extension host for the authoritative preferences. */
 export function requestUiPreferences(): void {
   sendBridgeEvent('get_ui_preferences');
+}
+
+/**
+ * Test-only: reset the in-memory copy to defaults (and rewrite the mirror).
+ *
+ * Production code seeds `current` exactly once at module load; tests need a
+ * predictable starting point between cases.
+ */
+export function __resetUiPreferencesForTests(): void {
+  current = { ...DEFAULT_UI_PREFERENCES };
+  lastSyncedJson = '';
+  writeLocalMirror(current);
 }
 
 /**

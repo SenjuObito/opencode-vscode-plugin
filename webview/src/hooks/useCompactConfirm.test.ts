@@ -9,6 +9,10 @@ import {
 
 describe('useCompactConfirm', () => {
   beforeEach(() => {
+    // The preference lives in an in-memory blob that outlives `localStorage`,
+    // so clearing the mirror alone leaves the previous test's value in place and
+    // makes the next `requestCompact` bypass its dialog.
+    setSkipCompactConfirm(false);
     localStorage.clear();
   });
 

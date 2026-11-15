@@ -1253,21 +1253,21 @@ describe('useWindowCallbacks integration', () => {
     });
 
     act(() => {
-      window.updateMessages!(JSON.stringify([
-        {
-          type: 'assistant',
-          content: 'Working',
-          timestamp: '2026-04-02T10:00:00.000Z',
-          raw: {
-            message: {
-              content: [
-                { type: 'tool_use', id: 'spawn-1', name: 'spawn_agent', input: { agent_type: 'Explore', message: 'Inspect renderer' } },
-                { type: 'text', text: 'Working' },
-              ],
-            },
+      // The host states that the open record is the one it is still writing;
+      // that record is not in the window it sends beside it.
+      window.updateMessages!(JSON.stringify([]), undefined, undefined, undefined, {
+        type: 'assistant',
+        content: 'Working',
+        timestamp: '2026-04-02T10:00:00.000Z',
+        raw: {
+          message: {
+            content: [
+              { type: 'tool_use', id: 'spawn-1', name: 'spawn_agent', input: { agent_type: 'Explore', message: 'Inspect renderer' } },
+              { type: 'text', text: 'Working' },
+            ],
           },
         },
-      ]));
+      });
     });
 
     const nextMessages = getTabStore().getActiveTabMessages();

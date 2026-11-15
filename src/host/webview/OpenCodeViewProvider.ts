@@ -116,8 +116,10 @@ export function buildWebviewHtml(
 		'try{var lt=localStorage.getItem("theme");if(lt==="light"||lt==="dark"||lt==="system"){prefs.theme=lt;}}catch(e){}',
 		'var theme=prefs.theme==="light"||prefs.theme==="dark"?prefs.theme:ideTheme;',
 		'document.documentElement.setAttribute("data-theme",theme);',
-		'var m={1:0.8,2:0.9,3:1.0,4:1.1,5:1.2,6:1.4};',
-		'document.documentElement.style.setProperty("--font-scale",String(m[prefs.fontSizeLevel]||1.0));',
+		// 字号档位：localStorage 镜像优先（与 webview readInitialPreferences 一致），
+		// 只写 level 属性；缩放比由 base.less 的 data-font-size-level 规则唯一决定。
+		'try{var lf=parseInt(localStorage.getItem("fontSizeLevel"),10);if(lf>=1&&lf<=6){prefs.fontSizeLevel=lf;}}catch(e){}',
+		'document.documentElement.setAttribute("data-font-size-level",String(prefs.fontSizeLevel||2));',
 		'}catch(e){}})();',
 		'</script>',
 	].join('');

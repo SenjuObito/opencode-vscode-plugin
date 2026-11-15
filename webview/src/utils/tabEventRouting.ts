@@ -67,8 +67,12 @@ export function appendDeltaToTab(tab: SessionTabData, delta: string): void {
 }
 
 /** Replace a tab's transcript with a host snapshot (background tab). */
-export function applySnapshotToTab(tab: SessionTabData, messages: ClaudeMessage[]): void {
-  tab.transcript.applySnapshot(messages);
+export function applySnapshotToTab(
+  tab: SessionTabData,
+  messages: ClaudeMessage[],
+  live: ClaudeMessage | null = null,
+): void {
+  tab.transcript.applySnapshot(messages, 0, live);
   // Background tabs keep no delta buffers; discard the boundary flag so a later
   // foreground read cannot reset the active tab's buffers with it.
   tab.transcript.consumeCompactionBoundary();
@@ -81,9 +85,14 @@ export function applyPrependToTab(tab: SessionTabData, messages: ClaudeMessage[]
 }
 
 /** Apply a tail update to a tab's transcript (background tab). */
-export function applyTailToTab(tab: SessionTabData, messages: ClaudeMessage[], baseIndex = 0): void {
+export function applyTailToTab(
+  tab: SessionTabData,
+  messages: ClaudeMessage[],
+  baseIndex = 0,
+  live: ClaudeMessage | null = null,
+): void {
   if (messages.length === 0) return;
-  tab.transcript.applyTail(messages, baseIndex);
+  tab.transcript.applyTail(messages, baseIndex, live);
 }
 
 /** Parse a JSON payload that may arrive as a string or an object. */

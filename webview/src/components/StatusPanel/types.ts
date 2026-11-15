@@ -33,12 +33,14 @@ export const statusClassMap: Record<TodoItem['status'], string> = {
   pending: 'status-pending',
   in_progress: 'status-in-progress',
   completed: 'status-completed',
+  cancelled: 'status-cancelled',
 };
 
 export const statusIconMap: Record<TodoItem['status'], string> = {
   pending: 'codicon-circle-outline',
   in_progress: 'codicon-loading',
   completed: 'codicon-check',
+  cancelled: 'codicon-circle-slash',
 };
 
 export const subagentStatusIconMap: Record<SubagentInfo['status'], string> = {

@@ -85,8 +85,20 @@ export class TabTranscript {
    * It joins `remote` when the turn settles.</p>
    */
   private pendingAssistant: ClaudeMessage | null = null;
+  /**
+   * Identity of the host record `pendingAssistant` stands for, or null when
+   * the bubble was opened locally (a send of this webview, or a turn event
+   * with no host record behind it yet).
+   *
+   * <p>With this key the bubble can be matched to the host's copy by identity
+   * instead of by position or text, which is what makes "one reply, one
+   * bubble" hold while a snapshot and a delta race.</p>
+   */
+  private pendingHostKey: string | null = null;
   private snapshot: ClaudeMessage[] | null = null;
   private streamingTurnId: number | null = null;
+  /** Identity of the newest compaction record already observed. */
+  private lastCompactionKey: string | null = null;
   /**
    * Set when a snapshot/tail crossed a compaction boundary.
    *
@@ -159,47 +171,15 @@ export class TabTranscript {
    * two are de-duplicated by identity because the window and the page overlap
    * at the boundary.</p>
    */
-  applySnapshot(messages: ClaudeMessage[], baseIndex = 0): void {
+  applySnapshot(messages: ClaudeMessage[], baseIndex = 0, live: ClaudeMessage | null = null): void {
     const newBase = Number.isSafeInteger(baseIndex) && baseIndex >= 0 ? baseIndex : 0;
-    let windowMessages = messages;
+    const windowMessages = messages;
 
-    // The host's copy of the assistant that is still streaming is a progress
-    // report, not a confirmed message: `pendingAssistant` owns that bubble. Its
-    // structural blocks (tool_use, tool_result) come from the host, its
-    // text/thinking keeps whichever side is further ahead.
-    //
-    // A compaction record is the segment boundary. A pending bubble that sits
-    // before the newest boundary belongs to the pre-compaction segment and must
-    // land there, not below the card; one that sits after it is the open
-    // segment and keeps the normal merge.
-    const pending = this.pendingAssistant;
-    const compactionIndex = lastCompactionIndex(messages);
-    if (pending) {
-      const streamingIndex = lastStreamingCopyIndex(messages, pending);
-      if (streamingIndex >= 0) {
-        const incoming = messages[streamingIndex];
-        windowMessages = messages.filter((_, index) => index !== streamingIndex);
-        const incomingContent = incoming.content ?? '';
-        const pendingContent = pending.content ?? '';
-        this.pendingAssistant = {
-          ...pending,
-          content: incomingContent.length > pendingContent.length ? incomingContent : pendingContent,
-          raw: mergeRawBlocksDuringStreaming(pending.raw, incoming.raw) as ClaudeMessage['raw'],
-        };
-      } else if (compactionIndex >= 0) {
-        windowMessages = [...messages];
-        const preIndex = lastAssistantIndexBefore(windowMessages, compactionIndex);
-        if (preIndex >= 0) {
-          windowMessages[preIndex] = mergePendingIntoHost(windowMessages[preIndex], pending);
-        } else {
-          windowMessages.splice(compactionIndex, 0, pending);
-        }
-        // The next delta belongs to the post-compaction segment and opens a new
-        // bubble; it must never be appended to the sealed one.
-        this.pendingAssistant = null;
-        this.compactionBoundaryCrossed = true;
-      }
-    }
+    // The host states which record it is still generating, and that record is
+    // no longer part of the window. Nothing here has to guess it by position or
+    // text any more — that guess is what put a second copy of the same reply on
+    // screen.
+    this.observeCompaction(messages);
 
     // Everything that came before the new window stays in front of it: the
     // pages already read on top, plus the head of the old window that slid
@@ -257,6 +237,7 @@ export class TabTranscript {
     this.replaceRemote(next);
     // Every kept message lies before the new window.
     this.paged = Math.min(headCount, next.length);
+    this.applyLiveDraft(live);
   }
 
   /**
@@ -266,7 +247,7 @@ export class TabTranscript {
    * inside the current window the prefix is kept; when the window slid past
    * it, only the older pages survive in front of the tail.</p>
    */
-  applyTail(messages: ClaudeMessage[], baseIndex: number): void {
+  applyTail(messages: ClaudeMessage[], baseIndex: number, live: ClaudeMessage | null = null): void {
     if (messages.length === 0) return;
     const windowCount = Math.max(0, this.order.length - this.paged);
     const tailStart = Number.isSafeInteger(baseIndex) && baseIndex >= 0 ? baseIndex : this.base;
@@ -280,44 +261,147 @@ export class TabTranscript {
       .map((key) => this.byId.get(key))
       .filter((message): message is ClaudeMessage => Boolean(message));
 
-    // A tail can carry a compaction record too (long conversations). Apply the
-    // same boundary rule as `applySnapshot`: settle the pre-compaction pending
-    // into the assistant before the card, or merge a post-compaction streaming
-    // copy into the open bubble instead of duplicating it.
-    const pending = this.pendingAssistant;
-    const compactionIndex = lastCompactionIndex(messages);
-    if (pending && compactionIndex >= 0) {
-      const postIndex = lastAssistantIndexAfter(messages, compactionIndex);
-      if (postIndex >= 0) {
-        const incoming = messages[postIndex];
-        messages = messages.filter((_, index) => index !== postIndex);
-        const incomingContent = incoming.content ?? '';
-        const pendingContent = pending.content ?? '';
-        this.pendingAssistant = {
-          ...pending,
-          content: incomingContent.length > pendingContent.length ? incomingContent : pendingContent,
-          raw: mergeRawBlocksDuringStreaming(pending.raw, incoming.raw) as ClaudeMessage['raw'],
-        };
-      } else {
-        const tail = [...messages];
-        const preIndex = lastAssistantIndexBefore(tail, compactionIndex);
-        if (preIndex >= 0) {
-          tail[preIndex] = mergePendingIntoHost(tail[preIndex], pending);
-        } else {
-          const headIndex = lastAssistantIndexIn(headMessages);
-          if (headIndex >= 0) {
-            headMessages[headIndex] = mergePendingIntoHost(headMessages[headIndex], pending);
-          }
-        }
-        messages = tail;
-        this.pendingAssistant = null;
-        this.compactionBoundaryCrossed = true;
-      }
-    }
+    // A tail can carry a compaction record too (long conversations); the same
+    // boundary rule as the snapshot applies.
+    this.observeCompaction(messages);
 
     this.base = hasFullPrefix ? 0 : tailStart;
     this.replaceRemote([...headMessages, ...messages]);
     this.paged = Math.min(this.paged, headMessages.length);
+    this.applyLiveDraft(live);
+  }
+
+  /**
+   * Note a compaction boundary that appeared in a host frame.
+   *
+   * <p>A compaction record seals everything before it. The bubble that was
+   * streaming when the boundary appeared belongs to the sealed segment, so the
+   * view's delta buffers describe an old segment and must be dropped before the
+   * next snapshot merges.</p>
+   */
+  private observeCompaction(messages: ClaudeMessage[]): void {
+    const index = lastCompactionIndex(messages);
+    if (index < 0) return;
+    const key = draftKeyOf(messages[index]);
+    if (key === this.lastCompactionKey) return;
+    this.lastCompactionKey = key;
+    if (!this.pendingAssistant) return;
+    this.compactionBoundaryCrossed = true;
+  }
+
+  /**
+   * Apply the host's statement about the record it is still generating.
+   *
+   * <p>`live` is that record (still being written), or null when the host has
+   * nothing in flight. This is the transcript's only way to learn about a turn
+   * it did not start itself, and the only place a streaming bubble is created
+   * for one — no position or text heuristics involved.</p>
+   *
+   * <p>Three cases:</p>
+   * <ul>
+   *   <li>null — the bubble is history now: move it into the remote list by
+   *       identity.</li>
+   *   <li>the record is already in the remote list — a late copy; the confirmed
+   *       entry owns the bubble.</li>
+   *   <li>otherwise — adopt the host's copy as the open bubble, keeping whatever
+   *       text the view already received through the delta channel.</li>
+   * </ul>
+   */
+  applyLiveDraft(live: ClaudeMessage | null): void {
+    if (!live) {
+      this.commitPendingToHost();
+      return;
+    }
+    const key = draftKeyOf(live);
+    if (this.indexOfDraftHost(key) >= 0) {
+      this.commitPendingToHost();
+      return;
+    }
+    const pending = this.pendingAssistant;
+    const pendingKey = this.pendingHostKey;
+    if (pending && pendingKey && !draftKeysCompatible(pendingKey, key)) {
+      // A different record is in flight now: the old bubble is history.
+      this.commitPendingToHost();
+    }
+    const current = this.pendingAssistant;
+    // The host copy wins structure (tool blocks, ids); the view keeps whichever
+    // text is further ahead because the delta channel can lead the snapshot.
+    this.pendingAssistant = current
+      ? { ...mergeHostDraft(live, current), isStreaming: true }
+      : { ...live, isStreaming: true };
+    this.pendingHostKey = key;
+    this.snapshot = null;
+  }
+
+  /**
+   * Drop the draft segment by moving its bubble into the confirmed list.
+   *
+   * <p>Identity decides where it goes. When the host already has the record in
+   * the list, the bubble merges into that entry instead of being appended
+   * again — the exact case that used to render the same reply twice.</p>
+   */
+  private commitPendingToHost(): void {
+    const pending = this.pendingAssistant;
+    const key = this.pendingHostKey;
+    if (!pending) {
+      this.pendingHostKey = null;
+      return;
+    }
+    this.pendingAssistant = null;
+    this.pendingHostKey = null;
+    this.snapshot = null;
+
+    // The turn id is the transcript's own notion of "the open turn"; a bubble
+    // adopted from the host draft never learned it, so stamp it here. Settling
+    // paths look the record up by that id right after this.
+    const turnId = this.streamingTurnId;
+    const settle = (message: ClaudeMessage): ClaudeMessage => ({
+      ...message,
+      isStreaming: false,
+      ...(message.__turnId == null && turnId != null ? { __turnId: turnId } : {}),
+    });
+
+    const list = this.remoteArray();
+    const hostIndex = key ? this.indexOfDraftHost(key) : this.lastStreamingRemoteAssistantIndex();
+    if (hostIndex < 0) {
+      list.push(settle(pending));
+      this.replaceRemote(list);
+      return;
+    }
+    list[hostIndex] = settle(mergeHostDraft(list[hostIndex], pending));
+    this.replaceRemote(list);
+  }
+
+  /** Index of the host's copy of a draft record, or -1. */
+  private indexOfDraftHost(key: string): number {
+    if (!key) return -1;
+    for (let i = this.order.length - 1; i >= 0; i -= 1) {
+      const message = this.byId.get(this.order[i]);
+      if (message && draftKeyOf(message) === key) return i;
+    }
+    return -1;
+  }
+
+  /**
+   * Newest assistant of the open segment the host has already placed in the
+   * list, or -1. Only used for a bubble with no host identity (a locally
+   * started turn), and only when the host marked it streaming.
+   */
+  private lastStreamingRemoteAssistantIndex(): number {
+    for (let i = this.order.length - 1; i >= this.segmentStartIndex(); i -= 1) {
+      const message = this.byId.get(this.order[i]);
+      if (message?.type === 'assistant' && message.isStreaming === true) return i;
+    }
+    return -1;
+  }
+
+  /** Drop every per-turn streaming marker (used by `clear`). */
+  private resetStreamingMarkers(): void {
+    this.pendingAssistant = null;
+    this.pendingHostKey = null;
+    this.streamingTurnId = null;
+    this.compactionBoundaryCrossed = false;
+    this.lastCompactionKey = null;
   }
 
   /**
@@ -369,16 +453,17 @@ export class TabTranscript {
     });
     if (this.pendingAssistant) {
       const providerId = providerIdOf(this.pendingAssistant);
-      if (providerId && removed.has(providerId)) this.pendingAssistant = null;
+      if (providerId && removed.has(providerId)) {
+        this.pendingAssistant = null;
+        this.pendingHostKey = null;
+      }
     }
     this.replaceRemote(next);
   }
 
   clear(): void {
     this.local = [];
-    this.pendingAssistant = null;
-    this.streamingTurnId = null;
-    this.compactionBoundaryCrossed = false;
+    this.resetStreamingMarkers();
     this.paged = 0;
     this.base = 0;
     this.start = 0;
@@ -468,6 +553,14 @@ export class TabTranscript {
     this.snapshot = null;
     const pending = this.pendingAssistant;
 
+    // A bubble the host already announced through the draft channel is this
+    // turn's bubble: it only lacked the turn id. Reusing it keeps one bubble
+    // per reply even when the turn event arrives after the first frame.
+    if (pending && this.pendingHostKey) {
+      this.pendingAssistant = { ...pending, isStreaming: true, __turnId: turnId };
+      return this.indexOfPending();
+    }
+
     if (replay) {
       if (pending) {
         this.pendingAssistant = { ...pending, isStreaming: true, __turnId: turnId };
@@ -551,7 +644,9 @@ export class TabTranscript {
     updater: (message: ClaudeMessage) => ClaudeMessage,
   ): number {
     const pending = this.pendingAssistant;
-    if (pending && (turnId == null || pending.__turnId === turnId)) {
+    // A bubble adopted from the host's draft carries no turn id yet: it is
+    // still the open turn, so a patch aimed at that turn must land on it.
+    if (pending && (turnId == null || pending.__turnId == null || pending.__turnId === turnId)) {
       this.pendingAssistant = updater(pending);
       return this.indexOfPending();
     }
@@ -576,15 +671,10 @@ export class TabTranscript {
   /** Close the streaming bubble of a turn and stamp its duration. */
   settleAssistant(turnId: number | null, durationMs?: number): void {
     this.streamingTurnId = null;
-    const pending = this.pendingAssistant;
-    if (pending) {
-      this.pendingAssistant = null;
-      this.pushRemote({
-        ...pending,
-        isStreaming: false,
-        durationMs: durationMs != null && pending.durationMs == null ? durationMs : pending.durationMs,
-      });
-      return;
+    // The draft joins the confirmed list by identity; when the host already put
+    // the same record there this merges into it instead of appending a copy.
+    if (this.pendingAssistant) {
+      this.commitPendingToHost();
     }
     this.patchAssistant(turnId, (message) => ({
       ...message,
@@ -669,7 +759,7 @@ export class TabTranscript {
     };
 
     const pending = this.pendingAssistant;
-    if (pending && (turnId == null || pending.__turnId === turnId)) {
+    if (pending && (turnId == null || pending.__turnId == null || pending.__turnId === turnId)) {
       this.pendingAssistant = apply(pending);
       this.snapshot = null;
       return;
@@ -723,7 +813,7 @@ export class TabTranscript {
     let index = -1;
     let current: ClaudeMessage | undefined;
 
-    if (pending && (params.turnId <= 0 || pending.__turnId === params.turnId)) {
+    if (pending && (params.turnId <= 0 || pending.__turnId == null || pending.__turnId === params.turnId)) {
       current = pending;
       this.pendingAssistant = null;
     } else if (pending) {
@@ -943,15 +1033,6 @@ export class TabTranscript {
     this.byId.delete(key);
     this.snapshot = null;
   }
-
-  private pushRemote(message: ClaudeMessage): void {
-    const known = new Set(this.remoteArray().map(fingerprint));
-    if (known.has(fingerprint(message))) {
-      this.snapshot = null;
-      return;
-    }
-    this.replaceRemote([...this.remoteArray(), message]);
-  }
 }
 
 function hasContent(message: ClaudeMessage): boolean {
@@ -959,28 +1040,6 @@ function hasContent(message: ClaudeMessage): boolean {
   const raw = message.raw as { message?: { content?: unknown } } | undefined;
   const content = raw?.message?.content;
   return Array.isArray(content) && content.length > 0;
-}
-
-/**
- * Index of the host snapshot's copy of the assistant that is still streaming.
- *
- * <p>The open turn is the newest one, so its assistant is the last assistant in
- * the snapshot. A snapshot that names a different turn is not a copy of this
- * bubble, and merging it would graft another turn's blocks onto this one.</p>
- */
-function lastStreamingCopyIndex(messages: ClaudeMessage[], pending: ClaudeMessage): number {
-  const boundary = lastCompactionIndex(messages);
-  for (let i = messages.length - 1; i > boundary; i -= 1) {
-    const message = messages[i];
-    if (message?.type !== 'assistant') continue;
-    const pendingTurn = pending.__turnId;
-    const incomingTurn = message.__turnId;
-    if (typeof pendingTurn === 'number' && typeof incomingTurn === 'number' && pendingTurn !== incomingTurn) {
-      return -1;
-    }
-    return i;
-  }
-  return -1;
 }
 
 function contentKey(message: ClaudeMessage): string {
@@ -1000,41 +1059,42 @@ function lastCompactionIndex(messages: ClaudeMessage[]): number {
   return -1;
 }
 
-/** Index of the newest assistant strictly after `fromExclusive`, or -1. */
-function lastAssistantIndexAfter(messages: ClaudeMessage[], fromExclusive: number): number {
-  for (let i = messages.length - 1; i > fromExclusive; i -= 1) {
-    if (messages[i]?.type === 'assistant') return i;
-  }
-  return -1;
+/**
+ * Identity of a record as both sides know it: type plus provider id.
+ *
+ * <p>Timestamps are the fallback only when a record carries no id (optimistic
+ * bubbles, partially parsed rows). The host and the view serialise the same
+ * record, so the fallback agrees on both sides; it is never used to *guess*
+ * that two different records are the same.</p>
+ */
+export function draftKeyOf(message: ClaudeMessage): string {
+  const uuid = getRawUuid(message);
+  if (uuid) return `${message.type}\u0000${uuid}`;
+  return `${message.type}\u0000${message.timestamp ?? ''}`;
 }
 
-/** Index of the newest assistant strictly before `beforeExclusive`, or -1. */
-function lastAssistantIndexBefore(messages: ClaudeMessage[], beforeExclusive: number): number {
-  for (let i = beforeExclusive - 1; i >= 0; i -= 1) {
-    if (messages[i]?.type === 'assistant') return i;
-  }
-  return -1;
-}
-
-function lastAssistantIndexIn(messages: ClaudeMessage[]): number {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.type === 'assistant') return i;
-  }
-  return -1;
+/** Whether two draft identities denote the same record. */
+function draftKeysCompatible(a: string, b: string): boolean {
+  return a.length > 0 && a === b;
 }
 
 /**
- * Merge a pre-compaction pending bubble into the host's copy of that assistant.
+ * Merge a bubble into the host's copy of the same record.
  *
  * <p>The host copy wins identity (provider id, structural blocks); only text and
- * raw blocks the webview saw first are carried over.</p>
+ * raw blocks the view saw first are carried over. The delta channel can lead
+ * the coalesced frame, so the longer text is the more recent one.</p>
  */
-function mergePendingIntoHost(host: ClaudeMessage, pending: ClaudeMessage): ClaudeMessage {
+function mergeHostDraft(host: ClaudeMessage, bubble: ClaudeMessage): ClaudeMessage {
   const hostContent = host.content ?? '';
-  const pendingContent = pending.content ?? '';
+  const bubbleContent = bubble.content ?? '';
   return {
     ...host,
-    content: pendingContent.length > hostContent.length ? pendingContent : hostContent,
-    raw: mergeRawBlocksDuringStreaming(host.raw, pending.raw) as ClaudeMessage['raw'],
+    ...(typeof bubble.__turnId === 'number' ? { __turnId: bubble.__turnId } : {}),
+    content: bubbleContent.length > hostContent.length ? bubbleContent : hostContent,
+    // `mergeRawBlocksDuringStreaming(prev, next)` takes structure from `next`
+    // and longer text from `prev`: the host owns the blocks, the bubble may be
+    // ahead on text because the delta channel runs on its own clock.
+    raw: mergeRawBlocksDuringStreaming(bubble.raw, host.raw) as ClaudeMessage['raw'],
   };
 }

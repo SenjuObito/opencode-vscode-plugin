@@ -16,6 +16,16 @@ export function convertMessagesToJson(messages: ChatMessage[]): string {
 	return JSON.stringify(messages.map(convertMessage));
 }
 
+/**
+ * 序列化单条消息（与批量序列化使用同一形状）。
+ *
+ * <p>用于把「草稿」旁路送出：它是同一条记录，必须与窗口条目可比较，
+ * 否则视图无法按身份把它和已确认的那条配对。</p>
+ */
+export function convertMessageToJson(message: ChatMessage): string {
+	return JSON.stringify(convertMessage(message));
+}
+
 function convertMessage(msg: ChatMessage): JsonObject {
 	const msgObj: JsonObject = {
 		type: msg.type,

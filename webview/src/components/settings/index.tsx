@@ -14,6 +14,7 @@ import OtherSettingsSection from './OtherSettingsSection';
 import { SkillsSettingsSection } from '../skills';
 import SettingsDialogs from './SettingsDialogs';
 import { setCompactConfirmEnabled as persistCompactConfirmEnabled } from '../../utils/skipCompactConfirm';
+import { updateUiPreferences } from '../../utils/uiPreferences';
 
 // Import custom hooks
 import {
@@ -361,9 +362,8 @@ const SettingsView = ({
               historyCompletionEnabled={historyCompletionEnabled}
               onHistoryCompletionEnabledChange={(enabled) => {
                 setHistoryCompletionEnabled(enabled);
-                localStorage.setItem('historyCompletionEnabled', enabled.toString());
-                // Dispatch custom event for same-tab sync (localStorage 'storage' event only fires for cross-tab)
-                window.dispatchEvent(new CustomEvent('historyCompletionChanged', { detail: { enabled } }));
+                // 单一写入路径：镜像 + 宿主持久化 + 字段级事件都由共享 store 负责。
+                updateUiPreferences({ historyCompletionEnabled: enabled });
               }}
             />
           )}

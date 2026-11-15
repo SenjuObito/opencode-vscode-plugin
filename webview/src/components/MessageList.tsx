@@ -507,6 +507,16 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
     }
   }, [revertBoundaryId, getScrollContainer]);
 
+  // Index of the newest user message; rows at or after it have no user message
+  // below them.
+  let lastUserMessageIndex = -1;
+  for (let i = displayMessages.length - 1; i >= 0; i -= 1) {
+    if (displayMessages[i]?.type === 'user') {
+      lastUserMessageIndex = i;
+      break;
+    }
+  }
+
   return (
     <div ref={containerRef} onContextMenu={handleMessageContextMenu}>
       {ctxMenu.visible && (
@@ -548,10 +558,10 @@ export const MessageList = memo(forwardRef<MessageListRevealHandle, MessageListP
         const messageKey = messageKeys[messageIndex];
         const toolResultSignature = getMessageToolResultSignature(message, messageIndex, getContentBlocks, findToolResult);
 
-        const isLatestUserMessage = message.type === 'user' &&
-          messageIndex === displayMessages.length - 1 ||
-          (messageIndex < displayMessages.length - 1 &&
-           displayMessages.slice(messageIndex + 1).some(m => m.type === 'user') === false);
+        // "No user message after this one" — the same predicate as before, but
+        // computed once instead of scanning the remainder for every row (which
+        // was O(n²) and dominated a long conversation's render).
+        const isLatestUserMessage = messageIndex >= lastUserMessageIndex;
 
         return (
           <Fragment key={messageKey}>

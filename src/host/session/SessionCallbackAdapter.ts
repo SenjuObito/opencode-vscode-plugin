@@ -7,7 +7,7 @@
  * `window.<fn>` call remains only for the no-tab/single-session path; when a
  * tab exists the named path is the only one used for migrated data events.</p>
  */
-import { ChatMessage, PermissionRequest, SessionCallback } from './types';
+import { ChatMessage, MessageWindow, PermissionRequest, SessionCallback } from './types';
 import { StreamDeltaThrottler } from './StreamDeltaThrottler';
 import { StreamMessageCoalescer } from './StreamMessageCoalescer';
 import { buildUsageSnapshot } from '../util/MessageJsonConverter';
@@ -178,12 +178,12 @@ export class SessionCallbackAdapter implements SessionCallback {
 	// SessionCallback
 	// =========================================================================
 
-	onMessageUpdate(messages: ChatMessage[]): void {
+	onMessageUpdate(window: MessageWindow): void {
 		if (!this.active) {
 			console.log('[SessionCallbackAdapter] onMessageUpdate BLOCKED: adapter inactive');
 			return;
 		}
-		this.streamCoalescer.enqueue(messages, this.windowBaseIndex());
+		this.streamCoalescer.enqueue(window.confirmed, this.windowBaseIndex(), window.live);
 	}
 
 	onStateChange(busy: boolean, loading: boolean, error: string | null): void {

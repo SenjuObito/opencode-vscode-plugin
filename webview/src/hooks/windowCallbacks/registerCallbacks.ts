@@ -15,10 +15,10 @@ import type { UseWindowCallbacksOptions } from '../useWindowCallbacks';
 import { cardDebugLog } from '../../utils/bridge';
 import { isTaskEventForSession, parseSubagentStatusEvent, parseTaskNotification } from '../../utils/taskEventParser';
 import { deepEqual } from '../../utils/deepEqual';
-import { normalizeTodoStatus } from '../../utils/todoShared';
+import { todoListFromPayload } from '../../utils/todoShared';
 import { getTabStore } from '../../store/tabStore';
 import type { SubagentHistoryResponse } from '../../types/subagent';
-import type { TaskEvent, TodoItem } from '../../types';
+import type { TaskEvent } from '../../types';
 import {
   setupSlashCommandsCallback,
   resetSlashCommandsState,
@@ -101,32 +101,21 @@ function appendSubagentHistoryChunk(transferId: string, chunk: string, isFinal: 
 }
 
 /**
- * 把 opencode 的 todo 条目归一化成前端的 TodoItem（与 idea 同形）。
+ * Replace the active tab's task list from a legacy (tab-less) todo event.
  *
- * 服务端的字段名不统一（content / step / title / text / subject / description），
- * 状态也要归一（done → completed、running → in_progress、cancelled → completed）。
+ * <p>Tab-scoped todo updates no longer travel through this path: the host
+ * stamps the owning tab and `todos.updated` writes that tab directly. This
+ * entry point exists only for a publisher that names no tab, whose only
+ * meaningful target is the view the user is looking at.</p>
  */
-function normalizeTodoItems(raw: unknown): TodoItem[] | null {
-  if (!Array.isArray(raw)) {
-    return null;
+function applyLegacyTodos(raw: string): void {
+  const todos = todoListFromPayload(raw);
+  if (todos === null) {
+    cardDebugLog('[onTodoUpdated] legacy payload is not a task list, dropped');
+    return;
   }
-  return raw
-    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
-    .map((item, index) => {
-      const content = item.content || item.step || item.title || item.text || item.subject || item.description || '';
-      return {
-        id: item.id != null ? String(item.id) : String(index),
-        content: typeof content === 'string' ? content.trim() : String(content),
-        status: normalizeTodoStatus(item.status),
-        ...(Array.isArray(item.blockedBy)
-          ? {
-              blockedBy: item.blockedBy
-                .map((id: unknown) => (id != null ? String(id) : null))
-                .filter((id: unknown): id is string => id !== null),
-            }
-          : {}),
-      } as TodoItem;
-    });
+  cardDebugLog('[onTodoUpdated] legacy update, todos:', todos.length);
+  getTabStore().updateActiveTab((tab) => ({ ...tab, sseTodos: todos }));
 }
 
 export function registerWindowCallbacks(
@@ -271,46 +260,12 @@ export function registerWindowCallbacks(
     }
   };
 
-  // opencode todo.updated SSE event — stores authoritative todo list
+  // Legacy todo entry (no tab id): only the view on screen can be the target.
+  // Tab-scoped updates never come through here — the host names the tab and
+  // `todos.updated` writes that tab, so the webview never reverse-looks-up a
+  // session to guess an owner.
   window.onTodoUpdated = (payload: string) => {
-    try {
-      cardDebugLog('[onTodoUpdated] received payload length:', payload?.length);
-      const { sessionID, todos } = JSON.parse(payload);
-      cardDebugLog('[onTodoUpdated] parsed sessionID:', sessionID, 'currentSessionId:', options.currentSessionIdRef.current, 'todos count:', todos?.length);
-
-      const normalizedTodos = normalizeTodoItems(todos);
-      if (!normalizedTodos) {
-        cardDebugLog('[onTodoUpdated] SKIPPED: todos is not an array');
-        return;
-      }
-
-      // 归属：宿主给的 sessionID 反查 tab。查得到就写进**那个 tab**（后台 tab 的
-      // 待办不该被丢弃，否则切回去时列表是空的）；查不到才按旧规则丢弃。
-      const tabStore = getTabStore();
-      const ownerTabId = sessionID ? tabStore.findIdBySession(sessionID) : null;
-      const activeTabId = tabStore.getActiveTabId();
-
-      if (ownerTabId && ownerTabId !== activeTabId) {
-        cardDebugLog('[onTodoUpdated] writing to background tab', ownerTabId, normalizedTodos.length, 'todos');
-        tabStore.updateTab(ownerTabId, (tab) => ({ ...tab, sseTodos: normalizedTodos }));
-        return;
-      }
-
-      if (sessionID && sessionID !== options.currentSessionIdRef.current) {
-        cardDebugLog('[onTodoUpdated] SKIPPED: sessionID mismatch');
-        return;
-      }
-
-      if (options.setSseTodos) {
-        cardDebugLog('[onTodoUpdated] calling setSseTodos with', normalizedTodos.length, 'todos');
-        options.setSseTodos(normalizedTodos);
-      } else {
-        cardDebugLog('[onTodoUpdated] SKIPPED: setSseTodos is undefined');
-      }
-    } catch (e) {
-      console.error('[onTodoUpdated] parse error:', e);
-      // Ignore malformed todo event payloads.
-    }
+    applyLegacyTodos(payload);
   };
 
   // =========================================================================

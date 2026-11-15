@@ -64,6 +64,33 @@ export class MessageHandler implements MessageCallback {
 		this.callbackHandler = callbackHandler;
 	}
 
+	/**
+	 * 唯一投递出口：把「已确认窗口 + 草稿」一起交给上层。
+	 *
+	 * <p>所有快照都必须走这里。草稿的生死由本类声明（只有它知道
+	 * stream_start / stream_end），所以任何一处直接传 `getMessages()` 都会
+	 * 让视图重新退回「猜哪条还在写」。</p>
+	 */
+	private notifyMessageUpdate(): void {
+		this.callbackHandler.notifyMessageUpdate(this.state.getMessageWindow());
+	}
+
+	/**
+	 * 让当前 assistant 成为本回合的草稿。
+	 *
+	 * <p>对象引用必须与列表里的一致：`addMessage` 可能因准入截断换成新对象，
+	 * 所以统一以它的返回值为准。</p>
+	 */
+	private adoptAsLive(message: ChatMessage | null): ChatMessage | null {
+		this.state.setLiveAssistant(message);
+		return message;
+	}
+
+	/** 回合终止：草稿回到已确认窗口，视图据此把气泡与它配对。 */
+	private releaseLiveAssistant(): void {
+		this.state.clearLiveAssistant();
+	}
+
 	private resetSegmentState(): void {
 		this.textSegmentActive = false;
 		this.thinkingSegmentActive = false;
@@ -79,6 +106,9 @@ export class MessageHandler implements MessageCallback {
 		this.assistantContent = '';
 		this.currentAssistantMessage = null;
 		this.isThinking = false;
+		// 上一轮的草稿在新回合开始前必须下线：否则新回合的第一帧会让视图
+		// 把它当成仍在生成的那条。
+		this.releaseLiveAssistant();
 		this.resetSegmentState();
 	}
 
@@ -220,9 +250,12 @@ export class MessageHandler implements MessageCallback {
 		// 两条 ERROR 气泡会被读成失败两次。
 		this.state.replaceLastErrorMessage(error);
 
+		// 失败回合没有「还在生成」的回复：草稿下线，最终帧里它属于已确认窗口。
+		this.releaseLiveAssistant();
+
 		// 先 signal stream-end 再推错误快照（与 Java 一致，顺序关键）。
 		this.callbackHandler.notifyStreamEnd();
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.notifyMessageUpdate();
 		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
 	}
 
@@ -264,7 +297,10 @@ export class MessageHandler implements MessageCallback {
 
 		if (wasStreaming) {
 			this.finalizeTurnDuration();
-			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+			// 与 handleStreamEnd 同一语义：缺少 STREAM_END 的强制收尾也要把
+			// 草稿交付给已确认窗口，否则视图会一直把它当作仍在生成的那条。
+			this.releaseLiveAssistant();
+			this.notifyMessageUpdate();
 			this.callbackHandler.notifyStreamEnd();
 		}
 
@@ -287,8 +323,14 @@ export class MessageHandler implements MessageCallback {
 			const mergedRaw = this.messageMerger.mergeAssistantMessage(previousRaw, messageJson);
 
 			if (this.currentAssistantMessage == null) {
-				this.currentAssistantMessage = createMessage(MessageType.ASSISTANT, '', mergedRaw);
-				this.state.addMessage(this.currentAssistantMessage!);
+				this.currentAssistantMessage = this.state.addMessage(
+					createMessage(MessageType.ASSISTANT, '', mergedRaw),
+				);
+				// 流式中的完整消息就是本回合的草稿；非流式的完整消息已经是
+				// 确认历史，不能投影出去（否则它永远不会出现在窗口里）。
+				if (this.isStreaming) {
+					this.adoptAsLive(this.currentAssistantMessage);
+				}
 			} else {
 				this.currentAssistantMessage!.raw = mergedRaw;
 			}
@@ -349,7 +391,7 @@ export class MessageHandler implements MessageCallback {
 			}
 
 			// 结构化变化（tool_use/thinking 块、分段边界）必须推给前端。
-			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+			this.notifyMessageUpdate();
 
 			// assistant 消息的 usage 是权威终值，流式与非流式都必须更新。
 			const messageObj = getObj(mergedRaw, 'message');
@@ -400,14 +442,18 @@ export class MessageHandler implements MessageCallback {
 		this.assistantContent += content;
 
 		if (this.currentAssistantMessage == null) {
-			this.currentAssistantMessage = createMessage(MessageType.ASSISTANT, this.assistantContent);
-			this.state.addMessage(this.currentAssistantMessage!);
+			this.currentAssistantMessage = this.state.addMessage(
+				createMessage(MessageType.ASSISTANT, this.assistantContent),
+			);
+			if (this.isStreaming) {
+				this.adoptAsLive(this.currentAssistantMessage);
+			}
 		} else {
 			this.currentAssistantMessage.content = this.assistantContent;
 		}
 
 		if (!this.isStreaming) {
-			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+			this.notifyMessageUpdate();
 		}
 	}
 
@@ -435,7 +481,7 @@ export class MessageHandler implements MessageCallback {
 
 		this.callbackHandler.notifyContentDelta(novelContent);
 		console.log('[MessageHandler] handleContentDelta calling notifyMessageUpdate, messages count:', this.state.getMessages().length);
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.notifyMessageUpdate();
 	}
 
 	private handleSessionId(content: string): void {
@@ -453,7 +499,7 @@ export class MessageHandler implements MessageCallback {
 			if (this.messageParser.hasToolResult(userMsg)) {
 				const toolResultMessage = createMessage(MessageType.USER, '[tool_result]', userMsg);
 				this.state.addMessage(toolResultMessage);
-				this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+				this.notifyMessageUpdate();
 				return;
 			}
 
@@ -504,7 +550,7 @@ export class MessageHandler implements MessageCallback {
 				};
 				const toolResultMessage = createMessage(MessageType.USER, '[tool_result]', rawUser);
 				this.state.addMessage(toolResultMessage);
-				this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+				this.notifyMessageUpdate();
 			}
 		} catch {
 			// 解析失败忽略
@@ -538,7 +584,7 @@ export class MessageHandler implements MessageCallback {
 					const maxTokens = getModelContextLimit(this.state.getModel());
 					this.callbackHandler.notifyUsageUpdate(usedTokens, maxTokens);
 				}
-				this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+				this.notifyMessageUpdate();
 			}
 		} catch {
 			// 解析失败忽略
@@ -615,7 +661,12 @@ export class MessageHandler implements MessageCallback {
 		this.ensureRawBlocksConsistency();
 		this.finalizeTurnDuration();
 
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		// 流结束 = 这条 assistant 不再被生成，交回已确认窗口。必须先于
+		// notifyMessageUpdate：视图看到它出现在窗口里，就会把自己持有的草稿
+		// 按身份并进去，而不是再建一个气泡。
+		this.releaseLiveAssistant();
+
+		this.notifyMessageUpdate();
 		this.callbackHandler.notifyStreamEnd();
 		this.state.setBusy(false);
 		this.state.setLoading(false);
@@ -678,15 +729,18 @@ export class MessageHandler implements MessageCallback {
 			this.thinkingSegmentActive = true;
 			// 仅在实际应用 delta 时通知前端 —— 前端无去重，会累加导致重复。
 			this.callbackHandler.notifyThinkingDelta(novelContent);
-			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+			this.notifyMessageUpdate();
 		}
 	}
 
 	private ensureCurrentAssistantMessageExists(): void {
 		if (this.currentAssistantMessage == null) {
 			const raw: JsonObject = { type: 'assistant', message: { content: [] } };
-			this.currentAssistantMessage = createMessage(MessageType.ASSISTANT, '', raw);
-			this.state.addMessage(this.currentAssistantMessage!);
+			this.currentAssistantMessage = this.state.addMessage(
+				createMessage(MessageType.ASSISTANT, '', raw),
+			);
+			// 这是流式路径唯一的创建点：从这里开始，这条消息归草稿所有。
+			this.adoptAsLive(this.currentAssistantMessage);
 		}
 		if (!isObject(this.currentAssistantMessage.raw)) {
 			this.currentAssistantMessage.raw = { type: 'assistant', message: { content: [] } };
@@ -896,7 +950,7 @@ export class MessageHandler implements MessageCallback {
 			// 顺序重要：先让 webview 剔除，再推（已经变短的）快照。提前剔除使 webview 的
 			// 列表长度与快照同步，其「收缩保护」才不会把作废的尾部抢救回来。
 			this.callbackHandler.notifyMessagesRemoved([messageId]);
-			this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+			this.notifyMessageUpdate();
 		} catch {
 			// 解析失败忽略
 		}
@@ -998,7 +1052,7 @@ export class MessageHandler implements MessageCallback {
 			raw.turnCostUsd = usageJson.cost;
 		}
 
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.notifyMessageUpdate();
 	}
 
 	private handleSessionTitle(content: string): void {
@@ -1061,7 +1115,7 @@ export class MessageHandler implements MessageCallback {
 		this.state.setLoading(false);
 		this.state.replaceLastErrorMessage(message);
 		this.callbackHandler.notifyStreamEnd();
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.notifyMessageUpdate();
 		this.callbackHandler.notifyStateChange(this.state.isBusy(), this.state.isLoading(), this.state.getError());
 	}
 
@@ -1221,7 +1275,7 @@ export class MessageHandler implements MessageCallback {
 
 	private publishCompactionChange(): void {
 		this.state.updateLastModifiedTime();
-		this.callbackHandler.notifyMessageUpdate(this.state.getMessages());
+		this.notifyMessageUpdate();
 		// Flush now: the compaction card and the sealed assistant must reach the
 		// view before the first post-compaction delta, otherwise that delta has
 		// no boundary to attach to.

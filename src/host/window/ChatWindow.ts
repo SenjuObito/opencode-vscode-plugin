@@ -146,11 +146,17 @@ export class ChatWindow {
 			// A title belongs to the session, not to whichever adapter carried
 			// it: re-address it to the owning tab and persist it on the host
 			// record before the webview sees it (idea's `applyTitleEvent`).
-			const routed = event.type === 'tab.title.changed' ? this.applyTitleEvent(event) : event;
-			// The producing session does not know the tab binding generation;
-			// stamp the current one at the single publish choke point so a late
-			// event from before a rebind is rejected by the webview.
-			const record = this.registry.get(TabId.of(routed.tabId));
+			const titled = event.type === 'tab.title.changed' ? this.applyTitleEvent(event) : event;
+			// The adapter's tab id says where the session was when the adapter
+			// was built; a rebind or a fork can make it stale. The registry is
+			// the only owner of the session↔tab binding, so the single publish
+			// choke point rewrites the id here and the webview can route by
+			// tabId alone (idea's `publishTabEvent` does the same).
+			const routed = this.reAddressToOwner(titled);
+			// A window-level event (no tab id) still has to be published — the
+			// router puts it on the global lane — but it owns no record, so the
+			// epoch and the queue side effects do not apply to it.
+			const record = routed.tabId ? this.registry.get(TabId.of(routed.tabId)) : null;
 			this.eventRouter.publish(record ? routed.withEpoch(record.getEpoch()) : routed);
 			// The queue consumes the next item only after a turn really ended.
 			// This is the one place every tab-owned event passes through, so a
@@ -895,6 +901,25 @@ export class ChatWindow {
 
 
 	/**
+	 * Re-address a session-scoped event to the tab that owns its session.
+	 *
+	 * <p>The webview routes by `tabId` only and never reverse-looks-up a session
+	 * to guess "the tab on screen". A publisher that only knows the session
+	 * (daemon-side todo state, a stale adapter after a rebind) is fixed here, at
+	 * the one place every tab-owned event passes through.</p>
+	 */
+	private reAddressToOwner(event: TabEvent): TabEvent {
+		if (!event.sessionId) {
+			return event;
+		}
+		const owner = this.registry.findBySession(event.sessionId);
+		if (!owner || owner.isClosed()) {
+			return event;
+		}
+		return event.withTabId(owner.getTabId().value);
+	}
+
+	/**
 	 * Apply an engine title to the tab that owns `event.sessionId`.
 	 *
 	 * <p>Mirror of idea's `applyTitleEvent`: `applyAutoTitle` is the AUTO path,
@@ -1219,8 +1244,18 @@ export class ChatWindow {
 		const state = session.state;
 		const coalescer = record.getCoalescer() ?? session.getAdapter().getCoalescer();
 		const barrier = coalescer.resetStreamState();
+		// Replaying a tab whose turn is still running must restore the streaming
+		// state that `resetStreamState` just dropped. Without it the coalescer
+		// falls back to a fixed interval with no payload-based backoff — the
+		// "slower after switching tabs" symptom on long conversations.
+		if (state.getLiveAssistant() != null) {
+			coalescer.onStreamStart();
+		}
 		this.publishRecordEvent(record, 'session.cleared', { barrier });
-		coalescer.enqueue(state.getMessages(), state.getWindowBaseIndex());
+		// 回放的是「已确认窗口 + 草稿」：切回一个还在生成的 tab 时，草稿必须
+		// 同时到达，否则视图只能靠位置/文本把它接回列表（重复显示的来源）。
+		const replayWindow = state.getMessageWindow();
+		coalescer.enqueue(replayWindow.confirmed, state.getWindowBaseIndex(), replayWindow.live);
 		coalescer.flush();
 
 		this.publishRecordEvent(record, 'session.bound', { sessionId: state.getSessionId() ?? '' });

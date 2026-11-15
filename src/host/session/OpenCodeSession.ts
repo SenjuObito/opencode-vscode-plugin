@@ -221,7 +221,7 @@ export class OpenCodeSession {
 		this.state.setBusy(true);
 		this.state.setLoading(true);
 		this.state.updateLastModifiedTime();
-		this.adapter.onMessageUpdate(this.state.getMessages());
+		this.adapter.onMessageUpdate(this.state.getMessageWindow());
 		this.adapter.onStateChange(true, true, null);
 		if (this.state.getSummary() == null && userMessage.content && userMessage.content.trim() !== '') {
 			const summary = truncateSummary(userMessage.content);
@@ -305,7 +305,7 @@ export class OpenCodeSession {
 			{ type: 'user', message: { content: [{ type: 'text', text: `!${trimmed}` }] } },
 		);
 		this.state.addMessage(userMessage);
-		this.adapter.onMessageUpdate(this.state.getMessages());
+		this.adapter.onMessageUpdate(this.state.getMessageWindow());
 		this.adapter.onStateChange(true, true, null);
 
 		this.streamCtx = {
@@ -499,7 +499,7 @@ export class OpenCodeSession {
 			this.state.addMessage(m as ChatMessage);
 		}
 		this.adapter.notifyMessagesCleared(seq);
-		this.adapter.onMessageUpdate(this.state.getMessages());
+		this.adapter.onMessageUpdate(this.state.getMessageWindow());
 		this.adapter.getCoalescer().flush();
 
 		// 恢复历史 Token 统计

@@ -1,11 +1,15 @@
 /**
  * Persistence for the "compact session" confirm dialog preference.
  *
- * Storage: localStorage (per-machine, resets when switching devices — matches user expectation).
+ * Authority: the shared UI-preferences blob (`uiPreferences.ts`), which the
+ * extension host persists in `globalState`. `localStorage` is only a mirror so
+ * legacy direct readers keep working — it is never the source of truth, because
+ * a webview rebuild (tab switch, reload, workspace change) can drop it.
  *
- * Sync: a CustomEvent is dispatched after a successful write so that any open
- * settings page (or any other listener) can react in real time. This mirrors
- * the same localStorage + CustomEvent pattern used by the other UI toggles.
+ * Sync: changing the value goes through `updateUiPreferences`, which dispatches
+ * the field-level `skipCompactConfirmChanged` event for every listener — both
+ * for local edits and for snapshots pushed back by the host, so two views no
+ * longer disagree after one of them writes the setting.
  *
  * Two semantically-equivalent API pairs are exported:
  *   - getSkipCompactConfirm / setSkipCompactConfirm  (raw, "skip" semantics)
@@ -15,10 +19,15 @@
  * Internal call sites that gate "should we bypass the dialog?" stay with the raw pair.
  */
 
-import { updateUiPreferences } from './uiPreferences';
+import {
+  SKIP_COMPACT_CONFIRM_CHANGED_EVENT,
+  getUiPreferences,
+  updateUiPreferences,
+} from './uiPreferences';
 
 export const SKIP_COMPACT_CONFIRM_KEY = 'skipCompactConfirm';
-export const SKIP_COMPACT_CONFIRM_EVENT = 'skipCompactConfirmChanged';
+/** @deprecated Event identity now lives with the preference blob; kept for callers. */
+export const SKIP_COMPACT_CONFIRM_EVENT = SKIP_COMPACT_CONFIRM_CHANGED_EVENT;
 
 export interface SkipCompactConfirmChangedDetail {
   enabled: boolean;
@@ -29,37 +38,18 @@ export interface SkipCompactConfirmChangedDetail {
  * so existing users see no behaviour change after upgrade.
  */
 export function getSkipCompactConfirm(): boolean {
-  try {
-    return localStorage.getItem(SKIP_COMPACT_CONFIRM_KEY) === 'true';
-  } catch {
-    // localStorage can throw in some sandboxed contexts; fall back to safest default.
-    return false;
-  }
+  return getUiPreferences().skipCompactConfirm;
 }
 
 /**
- * Persist the preference AND notify any listeners in the same tab.
+ * Persist the preference and notify subscribers.
  *
- * The native `storage` event only fires for cross-tab writes, so we dispatch a
- * CustomEvent for same-tab subscribers (settings page toggle, etc.).
- *
- * If the localStorage write fails (sandboxed iframe, quota exceeded, etc.), we
- * deliberately DO NOT dispatch the event — otherwise the UI would optimistically
- * update while the next page reload silently reverts, causing visible drift
- * between settings-page state and the actual dialog behaviour.
+ * The shared store performs deduplication, so an unchanged value dispatches
+ * nothing. That is intentional: the settings page and the dialog checkbox both
+ * re-read the same authoritative value.
  */
 export function setSkipCompactConfirm(value: boolean): void {
-  try {
-    localStorage.setItem(SKIP_COMPACT_CONFIRM_KEY, value ? 'true' : 'false');
-  } catch (error) {
-    console.warn('[skipCompactConfirm] failed to persist:', error);
-    return;
-  }
-
   updateUiPreferences({ skipCompactConfirm: value });
-
-  const detail: SkipCompactConfirmChangedDetail = { enabled: value };
-  window.dispatchEvent(new CustomEvent(SKIP_COMPACT_CONFIRM_EVENT, { detail }));
 }
 
 /**

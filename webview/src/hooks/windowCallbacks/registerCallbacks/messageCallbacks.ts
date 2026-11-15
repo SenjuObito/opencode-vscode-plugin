@@ -105,6 +105,7 @@ export function registerMessageCallbacks(
   let pendingUpdateSequence: number | null = null;
   let pendingUpdateBaseIndex: string | number | null | undefined = null;
   let pendingUpdateTargetSessionId: string | null = null;
+  let pendingUpdateLive: ClaudeMessage | null = null;
   // Expose a cancellation function so onStreamEnd can cancel stale rAF-deferred
   // updateMessages calls, preventing them from overwriting the final state after
   // streaming refs are cleared.
@@ -117,6 +118,7 @@ export function registerMessageCallbacks(
     pendingUpdateSequence = null;
     pendingUpdateBaseIndex = null;
     pendingUpdateTargetSessionId = null;
+    pendingUpdateLive = null;
     window.__pendingUpdateRaf = null;
     window.__pendingUpdateJson = null;
     window.__pendingUpdateSequence = null;
@@ -142,6 +144,7 @@ export function registerMessageCallbacks(
     sequence: number | null = null,
     baseIndexArg?: string | number | null,
     targetSessionId?: string | null,
+    live: ClaudeMessage | null = null,
   ) => {
     // Re-check the session-transition guard inside processUpdateMessages so the
     // rAF-deferred path cannot resurrect cleared messages when a transition
@@ -170,7 +173,7 @@ export function registerMessageCallbacks(
       const hasWindowBase = parsedBase != null && Number.isSafeInteger(parsedBase) && parsedBase >= 0;
 
       getTabStore().mutateActiveTranscript((transcript) => {
-        transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0);
+        transcript.applySnapshot(backendMessages, hasWindowBase ? (parsedBase as number) : 0, live);
         // A boundary seals the pre-compaction bubble into remote. The delta
         // buffers still describe that old segment, so drop them before the
         // first post-compaction snapshot merges into a new bubble.
@@ -214,6 +217,7 @@ export function registerMessageCallbacks(
     baseIndexArg: string | number,
     sequenceArg?: string | number,
     targetSessionId?: string | null,
+    live: ClaudeMessage | null = null,
   ) => {
     if (isTransitionBlocked(targetSessionId)) return;
     const sequence = parseSequence(sequenceArg);
@@ -237,7 +241,7 @@ export function registerMessageCallbacks(
       }
 
       getTabStore().mutateActiveTranscript((transcript) => {
-        transcript.applyTail(tail, baseIndex);
+        transcript.applyTail(tail, baseIndex, live);
         if (transcript.consumeCompactionBoundary()) {
           streamingContentRef.current = '';
           streamingThinkingRef.current = '';
@@ -271,7 +275,8 @@ export function registerMessageCallbacks(
     }
   };
 
-  window.updateMessages = (json, sequenceArg, baseIndexArg, targetSessionIdArg) => {
+  window.updateMessages = (json, sequenceArg, baseIndexArg, targetSessionIdArg, liveArg) => {
+    const live = (liveArg ?? null) as ClaudeMessage | null;
     // Port of idea's guard: a transition only blocks the outgoing session.
     // The session the tab is switching to is authoritative and must land.
     const targetSessionId = targetSessionIdArg ?? null;
@@ -301,6 +306,7 @@ export function registerMessageCallbacks(
       pendingUpdateSequence = sequence;
       pendingUpdateBaseIndex = baseIndexArg ?? null;
       pendingUpdateTargetSessionId = targetSessionId;
+      pendingUpdateLive = live;
       window.__pendingUpdateJson = json;
       window.__pendingUpdateSequence = sequence;
       if (pendingUpdateRaf === null) {
@@ -311,6 +317,8 @@ export function registerMessageCallbacks(
           const latestSequence = pendingUpdateSequence;
           const latestBaseIndex = pendingUpdateBaseIndex;
           const latestTargetSessionId = pendingUpdateTargetSessionId;
+          const latestLive = pendingUpdateLive;
+          pendingUpdateLive = null;
           pendingUpdateJson = null;
           pendingUpdateSequence = null;
           pendingUpdateBaseIndex = null;
@@ -322,7 +330,7 @@ export function registerMessageCallbacks(
           // this early return only protects against an outgoing-session frame.
           if (isTransitionBlocked(latestTargetSessionId)) return;
           if (latestJson) {
-            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, latestTargetSessionId);
+            processUpdateMessages(latestJson, latestSequence, latestBaseIndex, latestTargetSessionId, latestLive);
           }
         }, 16);
         pendingUpdateRaf = timerId as unknown as number;
@@ -331,10 +339,18 @@ export function registerMessageCallbacks(
       return;
     }
 
-    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId);
+    processUpdateMessages(json, sequence, baseIndexArg, targetSessionId, live);
   };
 
-  window.updateMessageTail = processMessageTail;
+  window.updateMessageTail = (json, baseIndexArg, sequenceArg, targetSessionIdArg, liveArg) => {
+    processMessageTail(
+      json,
+      baseIndexArg,
+      sequenceArg,
+      targetSessionIdArg,
+      (liveArg ?? null) as ClaudeMessage | null,
+    );
+  };
 
 
   const pendingMessages = (window as unknown as Record<string, unknown>).__pendingUpdateMessages;

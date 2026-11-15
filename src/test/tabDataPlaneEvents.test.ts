@@ -45,7 +45,7 @@ suite('Tab data plane named events', () => {
 		const messages: ChatMessage[] = [
 			{ type: MessageType.ASSISTANT, content: 'snapshot', timestamp: 1 },
 		];
-		adapter.onMessageUpdate(messages);
+		adapter.onMessageUpdate({ confirmed: messages, live: null });
 		adapter.getCoalescer().flush();
 
 		const snapshot = events.find((event) => event.type === 'message.snapshot');

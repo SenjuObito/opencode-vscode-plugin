@@ -1,6 +1,5 @@
 import { type RefObject, useCallback, useMemo, useRef } from 'react';
 import type { TFunction } from 'i18next';
-import { cardDebugLog } from '../utils/bridge';
 import type {
   ClaudeContentBlock,
   ClaudeMessage,
@@ -14,7 +13,6 @@ import { extractTodosFromToolUse, extractAccumulatedTasks } from '../utils/todoT
 import {
   computeStatusScopeMessages,
   finalizeSubagentsForSettledTurn,
-  finalizeTodosForSettledTurn,
   sliceLatestConversationTurn,
 } from '../utils/turnScope';
 import { extractSubagentsFromMessages, useSubagents } from './useSubagents';
@@ -57,17 +55,20 @@ function sliceHasToolUse(
   return false;
 }
 
+/**
+ * Replay fallback for a session whose transcript is the only source of tasks
+ * (no `todos.updated` state yet). The statuses come from the transcript as
+ * written — a settled turn is never evidence that an unfinished task finished.
+ */
 export function deriveTodosForTurn(
   turnMessages: ClaudeMessage[],
   getContentBlocks: (message: ClaudeMessage) => ClaudeContentBlock[],
-  streamingActive: boolean,
 ): TodoItem[] {
   let latestTodos: ReturnType<typeof extractTodosFromToolUse> = null;
   for (let i = turnMessages.length - 1; i >= 0; i--) {
     const msg = turnMessages[i];
     if (msg.type !== 'assistant') continue;
     const blocks = getContentBlocks(msg);
-    cardDebugLog('[deriveTodos] msg', i, 'type:', msg.type, 'blocks:', blocks.length, 'types:', blocks.map(b => b.type));
     for (let j = blocks.length - 1; j >= 0; j--) {
       const todos = extractTodosFromToolUse(blocks[j]);
       if (todos && todos.length > 0) {
@@ -79,7 +80,7 @@ export function deriveTodosForTurn(
   }
 
   if (latestTodos) {
-    return finalizeTodosForSettledTurn(latestTodos, streamingActive);
+    return latestTodos;
   }
 
   return extractAccumulatedTasks(turnMessages, getContentBlocks);
@@ -103,46 +104,55 @@ export function useChatComputations({
   getContentBlocks,
   sseTodos,
 }: UseChatComputationsParams) {
-  // Ref-backed scan over messages for tool_result blocks, with a per-id cache.
+  // Ref-backed index over the transcript: tool_use_id → result block + its raw
+  // message.
+  //
+  // <p>Built once per transcript array identity (the store hands out a fresh
+  // array on every change) so a render pass costs O(1) per tool card instead of
+  // scanning the whole conversation for each one. The previous per-id cache
+  // still scanned on every miss and grew without bound as the session went on —
+  // together they made long conversations progressively slower.</p>
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const toolResultRawMapRef = useRef<Map<string, ClaudeRawMessage>>(new Map());
+  const toolResultIndexRef = useRef<{
+    source: ClaudeMessage[] | null;
+    index: Map<string, { block: ToolResultBlock; raw: ClaudeRawMessage }>;
+  }>({ source: null, index: new Map() });
 
-  const findToolResult = useCallback((toolUseId?: string, messageIndex?: number): ToolResultBlock | null => {
-    if (!toolUseId || typeof messageIndex !== 'number') return null;
-    const currentMessages = messagesRef.current;
-    const cachedRaw = toolResultRawMapRef.current.get(toolUseId);
-    if (cachedRaw != null) {
-      const content = cachedRaw.content ?? cachedRaw.message?.content;
-      if (Array.isArray(content)) {
-        const hit = content.find(
-          (block): block is ToolResultBlock =>
-            Boolean(block) && block.type === 'tool_result' && block.tool_use_id === toolUseId,
-        );
-        if (hit) return hit;
-      }
+  const toolResultIndex = useCallback((): Map<string, { block: ToolResultBlock; raw: ClaudeRawMessage }> => {
+    const source = messagesRef.current;
+    const cache = toolResultIndexRef.current;
+    if (cache.source === source) {
+      return cache.index;
     }
-    for (let i = 0; i < currentMessages.length; i += 1) {
-      const candidate = currentMessages[i];
+    const index = new Map<string, { block: ToolResultBlock; raw: ClaudeRawMessage }>();
+    for (const candidate of source) {
       const raw = candidate.raw;
       if (!raw || typeof raw === 'string') continue;
       const content = raw.content ?? raw.message?.content;
       if (!Array.isArray(content)) continue;
-      const resultBlock = content.find(
-        (block): block is ToolResultBlock =>
-          Boolean(block) && block.type === 'tool_result' && block.tool_use_id === toolUseId,
-      );
-      if (resultBlock) {
-        toolResultRawMapRef.current.set(toolUseId, raw);
-        return resultBlock;
+      for (const block of content) {
+        if (!block || block.type !== 'tool_result') continue;
+        const id = (block as ToolResultBlock).tool_use_id;
+        // The first occurrence wins, exactly like the linear scan did.
+        if (typeof id === 'string' && !index.has(id)) {
+          index.set(id, { block: block as ToolResultBlock, raw });
+        }
       }
     }
-    return null;
+    cache.source = source;
+    cache.index = index;
+    return index;
   }, []);
 
+  const findToolResult = useCallback((toolUseId?: string, messageIndex?: number): ToolResultBlock | null => {
+    if (!toolUseId || typeof messageIndex !== 'number') return null;
+    return toolResultIndex().get(toolUseId)?.block ?? null;
+  }, [toolResultIndex]);
+
   const getToolResultRaw = useCallback<GetToolResultRawFn>(
-    (toolUseId: string) => toolResultRawMapRef.current.get(toolUseId) ?? null,
-    [],
+    (toolUseId: string) => toolResultIndex().get(toolUseId)?.raw ?? null,
+    [toolResultIndex],
   );
 
   // File changes (depend on findToolResult which is now stable above).
@@ -159,7 +169,6 @@ export function useChatComputations({
 
   const filteredFileChanges = useMemo(() => {
     const result = fileChangeMgmt.processedFiles.length === 0 ? fileChanges : fileChanges.filter((fc) => !fileChangeMgmt.processedFiles.includes(fc.filePath));
-    cardDebugLog('[filteredFileChanges]', result.length, 'files:', result.map(f => f.filePath?.split('/').pop()));
     return result;
   }, [fileChanges, fileChangeMgmt.processedFiles]);
 
@@ -197,7 +206,6 @@ export function useChatComputations({
   const statusScopeMessages = useMemo(() => {
     const latestTurnHasToolUse = latestTurnMessages.length > 0 && sliceHasToolUse(latestTurnMessages, getContentBlocks);
     const result = computeStatusScopeMessages(streamingActive, asyncAgentPresence, latestTurnMessages, messages, latestTurnHasToolUse);
-    cardDebugLog('[statusScope]', result.length, 'latestTurn:', latestTurnMessages.length, 'msgs:', messages.length, 'streaming:', streamingActive, 'toolUse:', latestTurnHasToolUse);
     return result;
   }, [streamingActive, asyncAgentPresence, latestTurnMessages, messages, getContentBlocks]);
 
@@ -214,11 +222,12 @@ export function useChatComputations({
   );
 
   const globalTodos = useMemo(() => {
-    // Prefer authoritative todo list from opencode's `todo.updated` SSE event.
-    if (sseTodos && sseTodos.length > 0) {
-      const result = finalizeTodosForSettledTurn(sseTodos, streamingActive);
-      cardDebugLog('[globalTodos] sseTodos:', result.length, 'todos:', result.map(t => t.content?.substring(0, 30)));
-      return result;
+    // The engine's list is authoritative: `null` means "no canonical list yet"
+    // and falls back to the transcript, while an empty array is a real state
+    // (the engine cleared every task) and must clear the panel too. Statuses
+    // are copied verbatim — a settled turn says nothing about `in_progress`.
+    if (sseTodos !== null) {
+      return sseTodos;
     }
     // Fallback: derive from tool_use content blocks in messages.
     //
@@ -235,10 +244,9 @@ export function useChatComputations({
     //
     // Todo lists are session-wide state, not per-turn. Deriving from the
     // full messages keeps the panel live throughout the turn.
-    const result = deriveTodosForTurn(messages, getContentBlocks, streamingActive);
-    cardDebugLog('[globalTodos] derived:', result.length, 'todos:', result.map(t => t.content?.substring(0, 30)));
+    const result = deriveTodosForTurn(messages, getContentBlocks);
     return result;
-  }, [sseTodos, messages, getContentBlocks, streamingActive]);
+  }, [sseTodos, messages, getContentBlocks]);
 
   /**
    * The tab/header title is the engine's name for the session, never the text

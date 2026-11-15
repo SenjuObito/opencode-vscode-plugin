@@ -5,7 +5,7 @@
  * (delta channel keeps text live; updateMessages carries structural blocks).
  */
 import { ChatMessage } from './types';
-import { convertMessagesToJson } from '../util/MessageJsonConverter';
+import { convertMessageToJson, convertMessagesToJson } from '../util/MessageJsonConverter';
 import { TabEvent, TabEventSink } from '../tab/TabEvent';
 
 const UPDATE_INTERVAL_MS = 50;
@@ -24,7 +24,12 @@ export interface CoalescerTarget {
 	/** 推 `onStreamingHeartbeat`。 */
 	callHeartbeat(): void;
 	isDisposed(): boolean;
-	/** 消息快照推送后，把用量兜底推给前端。 */
+	/**
+	 * 消息快照推送后，把用量兜底推给前端。
+	 *
+	 * <p>入参是「窗口 + 草稿」拼合后的完整序列：用量描述的是会话最新状态，
+	 * 少算正在生成的那一条会让上下文环在整轮里停在旧值。</p>
+	 */
 	pushUsageUpdate(messages: ChatMessage[]): void;
 	/** 流结束（turn 的流式段结束）时回调宿主。 */
 	onStreamEnded?(): void;
@@ -46,6 +51,13 @@ export class StreamMessageCoalescer {
 	private lastPayloadChars = 0;
 	private lastPushedSequence = 0;
 	private pendingMessages: ChatMessage[] | null = null;
+	/**
+	 * 待投递的草稿（引擎仍在生成的那条），与 pendingMessages 同一帧。
+	 *
+	 * <p>它永远不进 pendingMessages：裁剪基准（前缀稳定性比较）只对已确认
+	 * 窗口成立，草稿每帧完整单独发送，不参与裁剪，也不影响窗口基址。</p>
+	 */
+	private pendingLive: ChatMessage | null = null;
 	/** pendingMessages 对应的宿主窗口基址（全局索引，见 SessionState 窗口化）。 */
 	private pendingBaseIndex = 0;
 	private lastSnapshot: ChatMessage[] | null = null;
@@ -78,7 +90,7 @@ export class StreamMessageCoalescer {
 		this.eventSink = eventSink;
 	}
 
-	enqueue(messages: ChatMessage[], baseIndex = 0): void {
+	enqueue(messages: ChatMessage[], baseIndex = 0, live: ChatMessage | null = null): void {
 		if (this.target.isDisposed()) {
 			console.log('[StreamMessageCoalescer] enqueue BLOCKED: target disposed');
 			return;
@@ -86,6 +98,7 @@ export class StreamMessageCoalescer {
 		const snapshot = [...messages];
 		this.pendingMessages = snapshot;
 		this.pendingBaseIndex = baseIndex;
+		this.pendingLive = live;
 		console.log('[StreamMessageCoalescer] enqueue messages:', snapshot.length, 'streamActive:', this.streamActive);
 		this.schedulePush();
 		if (this.streamActive) {
@@ -124,6 +137,7 @@ export class StreamMessageCoalescer {
 		this.updateScheduled = false;
 		this.pendingMessages = null;
 		this.pendingBaseIndex = 0;
+		this.pendingLive = null;
 		this.lastSnapshot = null;
 		this.lastSnapshotBaseIndex = 0;
 		this.lastDeliveredSnapshot = null;
@@ -146,6 +160,7 @@ export class StreamMessageCoalescer {
 		this.updateScheduled = false;
 		const snapshot = this.pendingMessages ?? this.lastSnapshot;
 		const baseIndex = this.pendingMessages != null ? this.pendingBaseIndex : this.lastSnapshotBaseIndex;
+		const live = this.pendingMessages != null ? this.pendingLive : null;
 		this.pendingMessages = null;
 		const sequence = ++this.updateSequence;
 
@@ -153,7 +168,7 @@ export class StreamMessageCoalescer {
 			afterFlushOnEdt?.(sequence);
 			return;
 		}
-		this.sendToWebView(snapshot, sequence, afterFlushOnEdt, baseIndex);
+		this.sendToWebView(snapshot, sequence, afterFlushOnEdt, baseIndex, live);
 	}
 
 	dispose(): void {
@@ -199,6 +214,7 @@ export class StreamMessageCoalescer {
 			this.lastUpdateAtMs = Date.now();
 			const snapshot = this.pendingMessages;
 			const baseIndex = this.pendingBaseIndex;
+			const live = this.pendingLive;
 			this.pendingMessages = null;
 			const sequence = this.updateSequence;
 
@@ -206,7 +222,7 @@ export class StreamMessageCoalescer {
 				return;
 			}
 			if (snapshot != null) {
-				this.sendToWebView(snapshot, sequence, undefined, baseIndex);
+				this.sendToWebView(snapshot, sequence, undefined, baseIndex, live);
 			}
 			if (this.pendingMessages != null && !this.target.isDisposed()) {
 				this.schedulePush();
@@ -219,6 +235,7 @@ export class StreamMessageCoalescer {
 		sequence: number,
 		afterSendOnEdt?: (sequence: number) => void,
 		baseIndex = 0,
+		live: ChatMessage | null = null,
 	): void {
 		this.lastSnapshot = messages;
 		this.lastSnapshotBaseIndex = baseIndex;
@@ -232,9 +249,11 @@ export class StreamMessageCoalescer {
 		const transportMessages = transport.messages;
 
 		let json: string;
+		let liveJson: string | null = null;
 		try {
 			json = convertMessagesToJson(transportMessages);
-			this.lastPayloadChars = json.length;
+			liveJson = live != null ? convertMessageToJson(live) : null;
+			this.lastPayloadChars = json.length + (liveJson?.length ?? 0);
 		} catch (err) {
 			console.warn(`[StreamMessageCoalescer] Failed to serialize: ${(err as Error).message}`);
 			afterSendOnEdt?.(sequence);
@@ -267,19 +286,33 @@ export class StreamMessageCoalescer {
 					epoch: 0,
 					sessionId: this.sessionId,
 					seq: sequence,
-					payload: { json, sequence, baseIndex: baseForEvent },
+					payload: { json, sequence, baseIndex: baseForEvent, live: liveJson },
 					legacy: false,
 				}));
 			} else if (tailUpdate) {
-				this.target.callUpdateMessages('updateMessageTail', [json, String(tailBaseIndex), String(sequence)]);
+				this.target.callUpdateMessages('updateMessageTail', [
+					json,
+					String(tailBaseIndex),
+					String(sequence),
+					// 第四位是 legacy 的 targetSessionId（无 tab 时才走这条），
+					// 第五位才是草稿。legacy 通道一律传字符串：空串表示本帧没有草稿。
+					'',
+					liveJson ?? '',
+				]);
 			} else {
 				// 全量快照现在承载的是宿主「窗口」而非完整历史，第三个参数
 				// 把窗口基址（全局序号）告知 webview，webview 侧据此做窗口
 				// 精确替换/合并（缺省视为 0，兼容旧语义）。
-				this.target.callUpdateMessages('updateMessages', [json, String(sequence), String(baseIndex)]);
+				this.target.callUpdateMessages('updateMessages', [
+					json,
+					String(sequence),
+					String(baseIndex),
+					liveJson ?? '',
+				]);
 			}
 			this.lastDeliveredSnapshot = messages;
-			this.target.pushUsageUpdate(messages);
+			// 用量按「窗口 + 草稿」的完整序列计算：正在生成的那条也带 usage。
+			this.target.pushUsageUpdate(live != null ? [...messages, live] : messages);
 		} catch (err) {
 			console.warn(`[StreamMessageCoalescer] Failed to push updateMessages: ${(err as Error).message}`);
 		}

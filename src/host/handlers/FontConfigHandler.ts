@@ -23,7 +23,6 @@ import { BaseMessageHandler } from '../router/MessageHandler';
 import { HandlerContext } from '../router/HandlerContext';
 import { SettingsService } from '../settings/SettingsService';
 import { listSystemFontFamilies } from '../fonts/SystemFontEnumerator';
-import { WebviewBroadcaster } from '../router/WebviewBroadcaster';
 import { logDiagnostic } from '../util/DiagnosticLogger';
 
 const SUPPORTED_TYPES = [
@@ -177,10 +176,10 @@ export class FontConfigHandler extends BaseMessageHandler {
 		};
 		const json = JSON.stringify(config);
 		logDiagnostic(`Pushed editor font config: ${json}`, 'FontConfigHandler');
+		// 单一投递：HandlerContext.callJavaScript 走全局通道（BroadcastWebviewChannel），
+		// 已经是"发给所有存活视图"。这里再显式 broadcast 会让每个视图收到两份。
 		this.callJavaScript('onEditorFontConfigReceived', json);
 		this.callJavaScript('applyIdeaFontConfig', config as unknown as string);
-		WebviewBroadcaster.broadcastJavaScript('onEditorFontConfigReceived', json);
-		WebviewBroadcaster.broadcastJavaScript('applyIdeaFontConfig', config as unknown as string);
 	}
 
 	private pushFontList(): void {
@@ -238,8 +237,6 @@ export class FontConfigHandler extends BaseMessageHandler {
 		const applyFn = kind === 'ui' ? 'applyUiFontConfig' : 'applyCodeFontConfig';
 		this.callJavaScript(fn, json);
 		this.callJavaScript(applyFn, json);
-		WebviewBroadcaster.broadcastJavaScript(fn, json);
-		WebviewBroadcaster.broadcastJavaScript(applyFn, json);
 	}
 
 	private baseFontSize(): number {

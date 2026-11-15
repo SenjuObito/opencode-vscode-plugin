@@ -1,33 +1,49 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { applyFontScale } from './fontScale';
+import { applyFontSizeLevel, normalizeFontSizeLevel } from './fontScale';
 
-describe('applyFontScale', () => {
+describe('applyFontSizeLevel', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app" style="zoom: 0.9"></div>';
-    document.documentElement.style.removeProperty('--font-scale');
+    document.documentElement.removeAttribute('data-font-size-level');
   });
 
-  it('sets the --font-scale variable on the document element', () => {
-    applyFontScale('1.4');
-    expect(document.documentElement.style.getPropertyValue('--font-scale')).toBe('1.4');
+  it('writes the level attribute so CSS owns the scale', () => {
+    applyFontSizeLevel(6);
+    expect(document.documentElement.getAttribute('data-font-size-level')).toBe('6');
   });
 
-  it('clears stale inline zoom on #app so the stylesheet var takes over', () => {
+  it('returns the normalised level', () => {
+    expect(applyFontSizeLevel(4)).toBe(4);
+    expect(applyFontSizeLevel(99)).toBe(6);
+    expect(applyFontSizeLevel(0)).toBe(1);
+  });
+
+  it('clears stale inline zoom on #app so the stylesheet rule takes over', () => {
     const app = document.getElementById('app') as HTMLElement;
     expect(app.style.zoom).toBe('0.9');
 
-    applyFontScale('1.4');
+    applyFontSizeLevel(5);
 
     expect(app.style.zoom).toBe('');
   });
+});
 
-  it('is a no-op for #app when no inline zoom residue exists', () => {
-    const app = document.getElementById('app') as HTMLElement;
-    app.style.removeProperty('zoom');
+describe('normalizeFontSizeLevel', () => {
+  it('clamps and truncates numbers', () => {
+    expect(normalizeFontSizeLevel(3.9)).toBe(3);
+    expect(normalizeFontSizeLevel(-2)).toBe(1);
+    expect(normalizeFontSizeLevel(7)).toBe(6);
+  });
 
-    applyFontScale('0.8');
+  it('falls back to the default for junk input', () => {
+    expect(normalizeFontSizeLevel(undefined)).toBe(2);
+    expect(normalizeFontSizeLevel(null)).toBe(2);
+    expect(normalizeFontSizeLevel('')).toBe(2);
+    expect(normalizeFontSizeLevel('nope')).toBe(2);
+    expect(normalizeFontSizeLevel(Number.NaN)).toBe(2);
+  });
 
-    expect(app.style.zoom).toBe('');
-    expect(document.documentElement.style.getPropertyValue('--font-scale')).toBe('0.8');
+  it('accepts numeric strings (host payloads may arrive stringified)', () => {
+    expect(normalizeFontSizeLevel('5')).toBe(5);
   });
 });

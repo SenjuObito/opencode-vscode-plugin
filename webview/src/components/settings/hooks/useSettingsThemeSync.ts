@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { sendBridgeEvent } from '../../../utils/bridge';
 import { applyDiffTheme, type DiffThemeMode } from '../../../utils/diffTheme';
 import { applyChatBarThemeColor } from '../../../utils/chatBarTheme';
-import { applyFontScale } from '../../../utils/fontScale';
+import { applyFontSizeLevel } from '../../../utils/fontScale';
 import {
   getUiPreferences,
   updateUiPreferences,
@@ -121,20 +121,9 @@ export function useSettingsThemeSync(): UseSettingsThemeSyncReturn {
 
   // Font size scaling handler
   useEffect(() => {
-    // Map level to scale ratio
-    const fontSizeMap: Record<number, number> = {
-      1: 0.8,   // 80%
-      2: 0.9,   // 90% (default)
-      3: 1.0,   // 100%
-      4: 1.1,   // 110%
-      5: 1.2,   // 120%
-      6: 1.4,   // 140%
-    };
-    const scale = fontSizeMap[fontSizeLevel] || 1.0;
-
-    // Apply to root element (also clears any stale inline zoom on #app)
-    applyFontScale(scale.toString());
-
+    // Level → ratio mapping lives in base.less (data-font-size-level rules);
+    // this effect only publishes the persisted level.
+    applyFontSizeLevel(fontSizeLevel);
     updateUiPreferences({ fontSizeLevel });
   }, [fontSizeLevel]);
 

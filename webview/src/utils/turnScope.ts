@@ -1,4 +1,4 @@
-import type { ClaudeMessage, TodoItem, SubagentInfo } from '../types';
+import type { ClaudeMessage, SubagentInfo } from '../types';
 
 export function isToolResultOnlyUserMessage(message: ClaudeMessage): boolean {
   if (message.type !== 'user') return false;
@@ -50,15 +50,6 @@ export function computeStatusScopeMessages(
   if (!streamingActive) return messages;
   if (hasAsyncAgents) return messages;
   return latestTurnMessages.length > 0 && latestTurnHasToolUse ? latestTurnMessages : messages;
-}
-
-export function finalizeTodosForSettledTurn(todos: TodoItem[], isStreaming: boolean): TodoItem[] {
-  if (isStreaming) return todos;
-  return todos.map((todo) => (
-    todo.status === 'in_progress'
-      ? { ...todo, status: 'completed' }
-      : todo
-  ));
 }
 
 export function finalizeSubagentsForSettledTurn(subagents: SubagentInfo[], _isStreaming: boolean): SubagentInfo[] {
